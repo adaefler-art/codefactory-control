@@ -1,0 +1,46 @@
+{
+  "name": "codefactory-control",
+  "version": "1.0.0",
+  "description": "Control-Plane für AFU-9 (Autonomous Fabrication Unit) - autonome Code-Fabrikation für GitHub-Repos",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "cdk": "cdk",
+    "deploy": "npm run build && cdk deploy",
+    "synth": "cdk synth"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "step-functions",
+    "github",
+    "automation",
+    "ci-cd"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.130",
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.6",
+    "@typescript-eslint/eslint-plugin": "^6.17.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "aws-cdk": "^2.117.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.484.0",
+    "@aws-sdk/client-sfn": "^3.484.0",
+    "@octokit/auth-app": "^6.0.2",
+    "@octokit/rest": "^20.0.2",
+    "aws-cdk-lib": "^2.117.0",
+    "constructs": "^10.3.0",
+    "source-map-support": "^0.5.21"
+  }
+}
