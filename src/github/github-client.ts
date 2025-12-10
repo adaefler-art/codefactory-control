@@ -5,6 +5,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
+import * as crypto from 'crypto';
 
 export interface GitHubWebhookEvent {
   action: string;
@@ -166,8 +167,6 @@ export function verifyWebhookSignature(
   signature: string,
   secret: string
 ): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const crypto = require('crypto');
   const hmac = crypto.createHmac('sha256', secret);
   const digest = 'sha256=' + hmac.update(payload).digest('hex');
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));

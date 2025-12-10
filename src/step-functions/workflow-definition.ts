@@ -9,7 +9,7 @@ export const workflowDefinition = {
   States: {
     AnalyzeIssue: {
       Type: 'Task',
-      Resource: '${IssueInterpreterLambdaArn}',
+      Resource: 'PLACEHOLDER_ISSUE_INTERPRETER',
       ResultPath: '$.issueAnalysis',
       Next: 'CheckIfActionable',
       Retry: [
@@ -45,7 +45,7 @@ export const workflowDefinition = {
     },
     GeneratePatch: {
       Type: 'Task',
-      Resource: '${PatchGeneratorLambdaArn}',
+      Resource: 'PLACEHOLDER_PATCH_GENERATOR',
       ResultPath: '$.patchResult',
       Next: 'ValidatePatch',
       Retry: [
@@ -82,7 +82,7 @@ export const workflowDefinition = {
     },
     CreatePullRequest: {
       Type: 'Task',
-      Resource: '${PRCreatorLambdaArn}',
+      Resource: 'PLACEHOLDER_PR_CREATOR',
       ResultPath: '$.prResult',
       Next: 'WaitForCI',
       Retry: [
@@ -108,7 +108,7 @@ export const workflowDefinition = {
     },
     ProcessCIFeedback: {
       Type: 'Task',
-      Resource: '${CIFeedbackLambdaArn}',
+      Resource: 'PLACEHOLDER_CI_FEEDBACK',
       ResultPath: '$.ciResult',
       Next: 'CheckCIStatus',
       Retry: [
@@ -159,9 +159,14 @@ export function getWorkflowDefinitionWithArns(lambdaArns: {
   prCreator: string;
   ciFeedback: string;
 }): string {
-  return JSON.stringify(workflowDefinition)
-    .replace('${IssueInterpreterLambdaArn}', lambdaArns.issueInterpreter)
-    .replace('${PatchGeneratorLambdaArn}', lambdaArns.patchGenerator)
-    .replace('${PRCreatorLambdaArn}', lambdaArns.prCreator)
-    .replace('${CIFeedbackLambdaArn}', lambdaArns.ciFeedback);
+  // Deep clone the workflow definition to avoid mutation
+  const workflow = JSON.parse(JSON.stringify(workflowDefinition));
+  
+  // Replace Lambda ARNs in the workflow states
+  workflow.States.AnalyzeIssue.Resource = lambdaArns.issueInterpreter;
+  workflow.States.GeneratePatch.Resource = lambdaArns.patchGenerator;
+  workflow.States.CreatePullRequest.Resource = lambdaArns.prCreator;
+  workflow.States.ProcessCIFeedback.Resource = lambdaArns.ciFeedback;
+  
+  return JSON.stringify(workflow);
 }
