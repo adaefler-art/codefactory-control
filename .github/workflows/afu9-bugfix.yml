@@ -1,0 +1,40 @@
+name: AFU-9 Bugfix Pipeline (v0.1)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Target branch (e.g. main or develop)"
+        required: true
+        default: "main"
+      issue_number:
+        description: "Optional: GitHub Issue number to fix"
+        required: false
+
+jobs:
+  trigger-afu9:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (for context only)
+        uses: actions/checkout@v4
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli jq
+
+      - name: Call AFU-9 Orchestrator (AWS Lambda)
+        env:
+          AWS_REGION: ${{ secrets.AFU9_AWS_REGION }}
+          AFU9_LAMBDA_ARN: ${{ secrets.AFU9_LAMBDA_ARN }}
+        run: |
+          PAYLOAD=$(jq -n                     --arg repo "${GITHUB_REPOSITORY}"                     --arg ref "${{ github.ref_name }}"                     --arg target_branch "${{ github.event.inputs.target_branch }}"                     --arg issue_number "${{ github.event.inputs.issue_number }}"                     --arg run_id "${{ github.run_id }}"                     '{
+              "repo": $repo,
+              "ref": $ref,
+              "targetBranch": $target_branch,
+              "issueNumber": $issue_number,
+              "githubRunId": $run_id
+            }')
+
+          aws lambda invoke                     --function-name "$AFU9_LAMBDA_ARN"                     --region "$AWS_REGION"                     --payload "$PAYLOAD"                     /dev/stdout

@@ -1,0 +1,144 @@
+{
+  "version": "38.0.1",
+  "artifacts": {
+    "CodefactoryControlStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "CodefactoryControlStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "CodefactoryControlStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://unknown-account/unknown-region",
+      "properties": {
+        "templateFile": "CodefactoryControlStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "notificationArns": [],
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/1d2599f0e457611ce4b7a530f1086a6c0cfcefae62865da782ee3876e292ea63.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "CodefactoryControlStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-${AWS::Region}",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "CodefactoryControlStack.assets"
+      ],
+      "metadata": {
+        "/CodefactoryControlStack/Afu9IssueInterpreterFn/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9IssueInterpreterFnServiceRoleD4B11FA2"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9IssueInterpreterFn/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9IssueInterpreterFn1F6DD394"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9PatchGeneratorFn/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9PatchGeneratorFnServiceRole8F778E5A"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9PatchGeneratorFn/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9PatchGeneratorFn3D299974"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9PrCreatorFn/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9PrCreatorFnServiceRole7F81D9AF"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9PrCreatorFn/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9PrCreatorFn56CD1CD7"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9OrchestratorFn/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9OrchestratorFnServiceRoleF9C561E8"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9OrchestratorFn/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9OrchestratorFnServiceRoleDefaultPolicy1A751BF5"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9OrchestratorFn/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9OrchestratorFn68600045"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9BugfixStateMachine/Role/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9BugfixStateMachineRole6CB7E9E8"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9BugfixStateMachine/Role/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9BugfixStateMachineRoleDefaultPolicyAFE8B878"
+          }
+        ],
+        "/CodefactoryControlStack/Afu9BugfixStateMachine/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9BugfixStateMachineB431E3B0"
+          }
+        ],
+        "/CodefactoryControlStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/CodefactoryControlStack/CDKMetadata/Condition": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadataAvailable"
+          }
+        ],
+        "/CodefactoryControlStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/CodefactoryControlStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "CodefactoryControlStack"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    }
+  }
+}
