@@ -66,7 +66,7 @@ export class PatchGenerator {
    */
   private async planChanges(
     issueAnalysis: IssueAnalysis,
-    repositoryContext: {
+    _repositoryContext: {
       existingFiles: string[];
       programmingLanguages: string[];
     }

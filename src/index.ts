@@ -14,11 +14,8 @@ export * from './config/config-manager';
 // GitHub integration
 export * from './github/github-client';
 
-// Lambda handlers
-export * from './lambdas/issue-analysis-handler';
-export * from './lambdas/patch-generation-handler';
-export * from './lambdas/pr-creation-handler';
-export * from './lambdas/ci-feedback-handler';
-
 // Step Functions
 export * from './step-functions/workflow-definition';
+
+// Lambda handlers are not exported here to avoid naming conflicts
+// They are meant to be used directly as Lambda entry points

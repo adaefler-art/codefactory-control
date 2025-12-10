@@ -94,9 +94,7 @@ export class PROrchestrator {
     const checkRuns = await this.getCheckRuns(owner, repo, prNumber);
     const overallStatus = this.determineOverallStatus(checkRuns);
     const requiresAction = overallStatus === 'failure';
-    const suggestedFixes = this.analyzeFailed
-
-CheckRuns(checkRuns);
+    const suggestedFixes = this.analyzeFailedCheckRuns(checkRuns);
 
     return {
       prNumber,
@@ -154,8 +152,8 @@ CheckRuns(checkRuns);
     }
   }
 
-  private generatePRTitle(patchPlan: PatchPlan): string {
-    return `Fix issue #${patchPlan.issueNumber}`;
+  private generatePRTitle(_patchPlan: PatchPlan): string {
+    return `Fix issue #${_patchPlan.issueNumber}`;
   }
 
   private generatePRBody(patchPlan: PatchPlan): string {
@@ -179,7 +177,7 @@ ${patchPlan.testStrategy}
     owner: string,
     repo: string,
     prNumber: number,
-    patchPlan: PatchPlan
+    _patchPlan: PatchPlan
   ): Promise<void> {
     const labels = ['automated', 'afu-9'];
     
