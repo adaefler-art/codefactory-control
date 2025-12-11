@@ -54,6 +54,10 @@ export interface MCPServerConfig {
   endpoint: string;
   enabled: boolean;
   healthCheckUrl?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  backoffMultiplier?: number;
 }
 
 /**
@@ -82,4 +86,14 @@ export interface MCPServerHealth {
   server: string;
   timestamp: string;
   error?: string;
+}
+
+/**
+ * MCP Client Options for tool calls
+ */
+export interface MCPCallOptions {
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  backoffMultiplier?: number;
 }
