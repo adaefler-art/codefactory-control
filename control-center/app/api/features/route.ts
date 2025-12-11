@@ -2,6 +2,49 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Octokit } from "octokit";
 
+export async function GET() {
+  const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
+  const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
+
+  const octokit = new Octokit({
+    auth: process.env.GITHUB_TOKEN,
+  });
+
+  try {
+    console.log(`Fetching issues with label source:afu-9 from ${GITHUB_OWNER}/${GITHUB_REPO}...`);
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      labels: "source:afu-9",
+      state: "all",
+      sort: "created",
+      direction: "desc",
+    });
+
+    const formattedIssues = issues.map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      createdAt: issue.created_at,
+      htmlUrl: issue.html_url,
+    }));
+
+    console.log(`Found ${formattedIssues.length} issues with label source:afu-9`);
+
+    return NextResponse.json({
+      status: "ok",
+      issues: formattedIssues,
+    });
+  } catch (error) {
+    console.error("Error fetching issues:", error);
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
   const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
