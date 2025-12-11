@@ -23,6 +23,7 @@ export default function Home() {
             href="/features"
             title="Features anzeigen"
             description="Übersicht aller durch AFU-9 erstellten Features"
+            bgColor="bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-900/30"
           />
         </div>
       </div>
