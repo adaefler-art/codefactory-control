@@ -25,9 +25,15 @@ AFU-9 uses PostgreSQL 15 on AWS RDS for persistent storage of:
 
 ```
 database/
-├── README.md                  # This file
-└── migrations/                # SQL migration scripts
-    └── 001_initial_schema.sql # Initial database schema
+├── README.md                       # This file
+├── workflow-schema.json            # JSON schema for workflow validation
+├── migrations/                     # SQL migration scripts
+│   ├── 001_initial_schema.sql      # Initial database schema
+│   └── 002_add_example_workflows.sql # Additional example workflows
+└── examples/                       # Example workflow JSON files
+    ├── README.md                   # Examples documentation
+    ├── issue_to_pr.json            # Basic issue-to-PR workflow
+    └── fix_deploy_failure.json     # Deploy failure recovery workflow
 ```
 
 ## Migrations
@@ -53,6 +59,14 @@ Initial database schema for AFU-9 v0.2, including:
 - Indexes for performance
 - Update triggers
 - Default data (MCP server configs, example workflow)
+
+#### 002_add_example_workflows.sql
+Additional example workflows for common use cases:
+- `fix_deploy_failure` - Diagnose and fix deployment failures
+- `pr_review_workflow` - Automated PR review and feedback
+- `ci_failure_handler` - Handle CI/CD pipeline failures
+- `issue_triage` - Automatically triage and label issues
+- `dependency_update` - Automated dependency updates
 
 ## Running Migrations
 
@@ -575,11 +589,27 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
    SELECT * FROM pg_locks WHERE granted = false;
    ```
 
+## Workflow Model
+
+AFU-9 uses a generic workflow model for orchestrating autonomous code fabrication. See these resources for details:
+
+- **[Workflow Schema Documentation](../docs/WORKFLOW-SCHEMA.md)** - Complete workflow JSON format specification
+- **[Workflow Examples](examples/README.md)** - Example workflows with detailed documentation
+- **[JSON Schema](workflow-schema.json)** - JSON schema for workflow validation
+
+### Quick Start with Workflows
+
+1. **View example workflows**: Check `database/examples/` directory
+2. **Validate workflow JSON**: Use `workflow-schema.json` for validation
+3. **Load workflows to database**: Run migrations to add example workflows
+4. **Create custom workflows**: Follow the schema and examples
+
 ## Additional Resources
 
 - [PostgreSQL 15 Documentation](https://www.postgresql.org/docs/15/)
 - [AWS RDS PostgreSQL Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html)
 - [AFU-9 Architecture Overview](../docs/architecture/afu9-v0.2-overview.md)
 - [Database Schema Documentation](../docs/architecture/database-schema.md)
+- [Workflow Engine Documentation](../docs/WORKFLOW-ENGINE.md)
 - [Local Development Guide](../docs/DATABASE-LOCAL-DEVELOPMENT.md)
 - [Deployment Guide](../docs/DEPLOYMENT.md)

@@ -1,0 +1,98 @@
+{
+  "name": "fix_deploy_failure",
+  "description": "Diagnose and fix deployment failures by analyzing logs and creating a fix PR",
+  "steps": [
+    {
+      "name": "get_service_status",
+      "tool": "deploy.getServiceStatus",
+      "params": {
+        "cluster": "${input.cluster}",
+        "service": "${input.service}"
+      },
+      "assign": "service_status"
+    },
+    {
+      "name": "fetch_logs",
+      "tool": "observability.getServiceLogs",
+      "params": {
+        "logGroup": "/ecs/${input.cluster}/${input.service}",
+        "startTime": "${input.failure_time}",
+        "limit": 100
+      },
+      "assign": "logs"
+    },
+    {
+      "name": "analyze_failure",
+      "tool": "agent.analyze",
+      "params": {
+        "prompt": "Analyze these deployment logs and identify the root cause: ${logs}",
+        "context": {
+          "service": "${input.service}",
+          "cluster": "${input.cluster}",
+          "status": "${service_status}"
+        }
+      },
+      "assign": "analysis"
+    },
+    {
+      "name": "create_fix_branch",
+      "tool": "github.createBranch",
+      "params": {
+        "owner": "${repo.owner}",
+        "repo": "${repo.name}",
+        "branch": "fix/deploy-${input.service}",
+        "from": "${repo.default_branch}"
+      },
+      "assign": "fix_branch",
+      "if": "${analysis.has_fix}"
+    },
+    {
+      "name": "create_fix_pr",
+      "tool": "github.createPullRequest",
+      "params": {
+        "owner": "${repo.owner}",
+        "repo": "${repo.name}",
+        "title": "Fix: ${input.service} deployment failure",
+        "body": "Automated fix for deployment failure\n\n## Analysis\n${analysis.description}\n\n## Root Cause\n${analysis.root_cause}\n\n## Proposed Fix\n${analysis.fix_description}",
+        "head": "fix/deploy-${input.service}",
+        "base": "${repo.default_branch}",
+        "labels": ["automated-fix", "deployment"]
+      },
+      "assign": "fix_pr",
+      "if": "${analysis.has_fix}"
+    },
+    {
+      "name": "create_issue",
+      "tool": "github.createIssue",
+      "params": {
+        "owner": "${repo.owner}",
+        "repo": "${repo.name}",
+        "title": "Manual intervention needed: ${input.service} deployment failure",
+        "body": "Automated analysis could not determine a fix.\n\n## Analysis\n${analysis.description}\n\n## Logs\n${logs}",
+        "labels": ["needs-manual-fix", "deployment"]
+      },
+      "assign": "manual_issue",
+      "if": "${!analysis.has_fix}"
+    },
+    {
+      "name": "rollback_deployment",
+      "tool": "deploy.rollbackService",
+      "params": {
+        "cluster": "${input.cluster}",
+        "service": "${input.service}",
+        "targetRevision": "${service_status.previous_revision}"
+      },
+      "assign": "rollback_result",
+      "retry": {
+        "maxAttempts": 3,
+        "backoff": "exponential",
+        "initialDelayMs": 2000
+      }
+    }
+  ],
+  "config": {
+    "timeoutMs": 600000,
+    "continueOnError": false,
+    "maxRetries": 0
+  }
+}
