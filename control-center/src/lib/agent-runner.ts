@@ -73,6 +73,18 @@ export class AgentRunner {
     startTime: number
   ): Promise<AgentExecutionResult> {
     const client = this.getOpenAIClient();
+    return await this.executeOpenAICompatible(client, context, config, startTime);
+  }
+
+  /**
+   * Execute agent using OpenAI-compatible API (OpenAI or DeepSeek)
+   */
+  private async executeOpenAICompatible(
+    client: OpenAI,
+    context: AgentContext,
+    config: AgentConfig,
+    startTime: number
+  ): Promise<AgentExecutionResult> {
     
     const messages: AgentMessage[] = [];
     const allToolCalls: Array<{
@@ -279,15 +291,7 @@ export class AgentRunner {
     const client = this.getDeepSeekClient();
     
     // DeepSeek uses the same API as OpenAI, so we can reuse the OpenAI execution logic
-    // Just need to use the DeepSeek client instead
-    const originalClient = this.openaiClient;
-    this.openaiClient = client;
-    
-    try {
-      return await this.executeOpenAI(context, config, startTime);
-    } finally {
-      this.openaiClient = originalClient;
-    }
+    return await this.executeOpenAICompatible(client, context, config, startTime);
   }
 
   /**
