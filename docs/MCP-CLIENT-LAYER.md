@@ -418,8 +418,7 @@ The MCP Client provides detailed logging for debugging:
 
 ## Related Documentation
 
-- [Workflow Engine Documentation](./WORKFLOW-ENGINE.md)
-- [Agent Runner Documentation](./WORKFLOW-ENGINE.md#3-agent-runner)
+- [Workflow Engine & Agent Runner Documentation](./WORKFLOW-ENGINE.md)
 - [MCP Protocol Specification](./architecture/mcp-protocol.md)
 - [AFU-9 Architecture Overview](./architecture/README.md)
 

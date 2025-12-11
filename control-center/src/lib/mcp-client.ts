@@ -346,21 +346,29 @@ export class MCPClient {
   /**
    * Check health of an MCP server
    * @param serverName - Name of the MCP server
+   * @param options - Optional call options (timeout)
    * @returns Health status
    */
-  async checkHealth(serverName: string): Promise<MCPServerHealth> {
+  async checkHealth(serverName: string, options?: MCPCallOptions): Promise<MCPServerHealth> {
     const server = this.servers.get(serverName);
     
     if (!server) {
       throw new Error(`MCP server not found: ${serverName}`);
     }
 
+    const timeoutMs = options?.timeoutMs ?? server.timeoutMs ?? 10000; // 10s default for health checks
     const healthUrl = server.healthCheckUrl || `${server.endpoint}/health`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(healthUrl, {
         method: 'GET',
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         return {
@@ -379,6 +387,17 @@ export class MCPClient {
         timestamp: health.timestamp || new Date().toISOString(),
       };
     } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          status: 'error',
+          server: serverName,
+          timestamp: new Date().toISOString(),
+          error: `Health check timed out after ${timeoutMs}ms`,
+        };
+      }
+      
       return {
         status: 'error',
         server: serverName,
