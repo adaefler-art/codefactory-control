@@ -34,9 +34,10 @@ function getOpenAIClient(): OpenAI {
  * @throws Error if OPENAI_API_KEY is not configured or if the LLM response is invalid
  */
 export async function generateFeatureSpec(briefing: string): Promise<string> {
-  const openai = getOpenAIClient();
+  try {
+    const openai = getOpenAIClient();
 
-  const specPrompt = `Ich bin AFU-9 – Autonomous Fabrication Unit, Ninefold Architecture.
+    const specPrompt = `Ich bin AFU-9 – Autonomous Fabrication Unit, Ninefold Architecture.
 Erstelle eine technische Spezifikation zu folgendem Feature:
 
 BRIEFING:
@@ -52,29 +53,50 @@ Struktur:
 Sprache: Deutsch.
 Beziehe dich konkret auf das Projekt "rhythmologicum-connect" (Next.js + Supabase).`;
 
-  console.log("Generating specification with OpenAI...");
-  const completion = await openai.chat.completions.create({
-    model: OPENAI_MODEL,
-    messages: [
-      {
-        role: "system",
-        content: "Du bist AFU-9, ein KI-System zur Erstellung technischer Spezifikationen. Antworte präzise und strukturiert auf Deutsch.",
-      },
-      {
-        role: "user",
-        content: specPrompt,
-      },
-    ],
-    temperature: 0.7,
-  });
+    console.log("Generating specification with OpenAI...", { model: OPENAI_MODEL });
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: "Du bist AFU-9, ein KI-System zur Erstellung technischer Spezifikationen. Antworte präzise und strukturiert auf Deutsch.",
+        },
+        {
+          role: "user",
+          content: specPrompt,
+        },
+      ],
+      temperature: 0.7,
+    });
 
-  const specification = completion.choices[0]?.message?.content;
+    const specification = completion.choices[0]?.message?.content;
 
-  if (!specification || specification.trim() === "") {
-    throw new Error("LLM returned an empty or invalid specification");
+    if (!specification || specification.trim() === "") {
+      console.error("LLM returned an empty or invalid specification");
+      throw new Error("LLM returned an empty or invalid specification");
+    }
+
+    console.log("Specification generated successfully");
+
+    return specification;
+  } catch (error) {
+    console.error("Error generating feature specification:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
+    if (error instanceof Error && error.message === "OPENAI_API_KEY is not configured") {
+      throw error;
+    }
+    
+    if (error instanceof Error && error.message.includes("API key")) {
+      throw new Error("OpenAI API-Schlüssel ist ungültig oder fehlt");
+    }
+    
+    if (error instanceof Error && error.message.includes("quota")) {
+      throw new Error("OpenAI API-Quota überschritten");
+    }
+    
+    throw new Error(`Fehler bei der LLM-Anfrage: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
   }
-
-  console.log("Specification generated");
-
-  return specification;
 }
