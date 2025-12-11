@@ -158,7 +158,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
       // Backup configuration
       backupRetention: cdk.Duration.days(7),
       preferredBackupWindow: '02:00-03:00', // UTC
-      deleteAutomatedBackups: true,
+      deleteAutomatedBackups: false, // Retain backups for compliance and recovery
       
       // Maintenance configuration
       autoMinorVersionUpgrade: true,
@@ -187,6 +187,8 @@ export class Afu9DatabaseStack extends cdk.Stack {
     // ========================================
 
     // Create a comprehensive secret for application use
+    // Note: host/port are not sensitive as database is in private subnet,
+    // but keeping all connection details together for convenience
     const appConnectionSecret = new secretsmanager.Secret(this, 'AppConnectionSecret', {
       secretName: 'afu9/database',
       description: 'Database connection details for AFU-9 application',

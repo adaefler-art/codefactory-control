@@ -119,7 +119,7 @@ if ! psql -c "SELECT version();" > /dev/null 2>&1; then
     echo "  3. You are connected to the correct network (VPN, AWS VPC, etc.)"
     echo ""
     echo "For local development, you may need to set up port forwarding:"
-    echo "  See docs/DEVELOPMENT.md for instructions"
+    echo "  See docs/DATABASE-LOCAL-DEVELOPMENT.md for instructions"
     exit 1
 fi
 
