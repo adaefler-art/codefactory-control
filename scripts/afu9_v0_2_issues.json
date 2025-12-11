@@ -1,0 +1,235 @@
+{
+  "version": "0.2",
+  "epics": [
+    {
+      "key": "E-AWS-MCP-ARCH",
+      "title": "[AFU-9 v0.2] AWS & MCP Architektur-Basis",
+      "labels": ["epic", "v0.2", "architecture", "aws"],
+      "body": "Ziel dieses Epics:\n- AFU-9 als Control Center auf AWS deployen (ECS Fargate + ALB + RDS Postgres).\n- MCP als zentrales Architektur-Pattern etablieren (AFU-9 als MCP-Client, spezialisierte MCP-Server für GitHub, Deploy, Observability).\n- Minimal lauffähige und dokumentierte Architektur herstellen, die für weitere Versionen erweiterbar ist.",
+      "children": [
+        "I-AWS-ARCH-DOC",
+        "I-AWS-NETWORK",
+        "I-AWS-RDS",
+        "I-AWS-ECS-ECR",
+        "I-AWS-HTTPS-DNS"
+      ]
+    },
+    {
+      "key": "E-CORE-ENGINE",
+      "title": "[AFU-9 v0.2] Workflow Engine & Agent Runner",
+      "labels": ["epic", "v0.2", "backend", "engine"],
+      "body": "Ziel dieses Epics:\n- Generische Workflow-Engine für AFU-9 implementieren, die Workflows als Sequenz von Tool-Calls ausführt.\n- Agent Runner implementieren, der LLMs und MCP-Tools einheitlich ansteuert.\n- MCP-Client-Layer integrieren, sodass Workflows MCP-Server (z.B. GitHub, Deploy) nutzen können.",
+      "children": [
+        "I-CORE-WORKFLOW-MODEL",
+        "I-CORE-ENGINE-IMPL",
+        "I-CORE-AGENT-RUNNER",
+        "I-CORE-MCP-CLIENT",
+        "I-CORE-GH-WEBHOOK-HANDLER"
+      ]
+    },
+    {
+      "key": "E-MCP-SERVERS",
+      "title": "[AFU-9 v0.2] MCP-Server (GitHub, Deploy, Observability)",
+      "labels": ["epic", "v0.2", "mcp", "integration"],
+      "body": "Ziel dieses Epics:\n- MCP-Server für GitHub, AWS Deploy und Observability implementieren.\n- Minimalen, aber praxistauglichen Satz an Tools bereitstellen (Issues/PRs, ECS-Deploy, Logs/Metrics).\n- MCP-Server als Sidecars im gleichen ECS Task lauffähig machen und von AFU-9 aus nutzbar machen.",
+      "children": [
+        "I-MCP-GITHUB-V0",
+        "I-MCP-AWS-DEPLOY-V0",
+        "I-MCP-OBSERVABILITY-V0",
+        "I-MCP-SERVER-DEPLOY"
+      ]
+    },
+    {
+      "key": "E-CONTROL-CENTER-UI",
+      "title": "[AFU-9 v0.2] Control Center UI",
+      "labels": ["epic", "v0.2", "frontend", "ui"],
+      "body": "Ziel dieses Epics:\n- AFU-9 als nutzbares Control Center UI bereitstellen.\n- Kern-Views: Dashboard, Workflows, Agents, Repositories, Settings.\n- Direkte Auslösung von Workflows und Einsicht in Logs/Status ermöglichen.",
+      "children": [
+        "I-UI-DASHBOARD",
+        "I-UI-WORKFLOWS",
+        "I-UI-AGENTS",
+        "I-UI-REPOS",
+        "I-UI-SETTINGS"
+      ]
+    },
+    {
+      "key": "E-OBS-SEC",
+      "title": "[AFU-9 v0.2] Observability & Security",
+      "labels": ["epic", "v0.2", "observability", "security"],
+      "body": "Ziel dieses Epics:\n- Logging, Metriken und Grund-Alerting für AFU-9 etablieren.\n- IAM-Rollen und Secrets-Handling (GitHub, LLM, AWS) sauber aufsetzen.\n- Observability-Daten im Control Center sichtbar machen (mindestens Fehler und einfache Health-Indikatoren).",
+      "children": [
+        "I-SEC-IAM-ROLES",
+        "I-SEC-SECRET-MGMT",
+        "I-OBS-LOGGING",
+        "I-OBS-ALERTING"
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "key": "I-AWS-ARCH-DOC",
+      "parent": "E-AWS-MCP-ARCH",
+      "title": "Architektur-Übersicht für AFU-9 v0.2 (AWS + MCP) erstellen",
+      "labels": ["v0.2", "architecture", "aws"],
+      "body": "Erstelle eine Architektur-Dokumentation (z.B. als Markdown + Mermaid) für AFU-9 v0.2:\n- AWS-Komponenten: VPC, Subnets, ALB, ECS Fargate, RDS Postgres, S3, Secrets Manager.\n- Container-Aufteilung: AFU-9 Control Center + MCP-Server (GitHub, Deploy, Observability).\n- MCP-Pattern: AFU-9 als MCP-Client, spezialisierte MCP-Server als Tool-Provider.\n- Einbettung in den Entwicklungs-Workflow (GitHub, CI/CD, Agenten)."
+    },
+    {
+      "key": "I-AWS-NETWORK",
+      "parent": "E-AWS-MCP-ARCH",
+      "title": "AWS Netzwerk-Basis für AFU-9 aufsetzen (VPC, Subnets, ALB)",
+      "labels": ["v0.2", "aws", "infra"],
+      "body": "Setze die Netzwerk-Grundlage für AFU-9 auf AWS auf:\n- VPC mit mindestens 2 AZs.\n- Private Subnets für ECS Tasks, Public Subnets für ALB.\n- Security Groups für ALB und ECS Tasks (least privilege, z.B. nur ALB → ECS, Bastion/CI → RDS).\n- Application Load Balancer mit Target Group für AFU-9 Service.\n- Basis-Dokumentation der gewählten CIDR- und Port-Strategie."
+    },
+    {
+      "key": "I-AWS-RDS",
+      "parent": "E-AWS-MCP-ARCH",
+      "title": "RDS Postgres für AFU-9 bereitstellen und anbinden",
+      "labels": ["v0.2", "aws", "database"],
+      "body": "Richte eine RDS Postgres Instanz für AFU-9 ein:\n- Parameter: Region eu-central-1, passende Instance Class (z.B. db.t4g.micro) für v0.2.\n- Security Group: nur aus ECS-Subnets erreichbar.\n- Initiales Datenbankschema deployen (Migrationsskripte aus dem Repo).\n- Konfiguration in AFU-9 (Connection String via Secrets/Parameter Store).\n- Kurze Anleitung, wie lokal gegen diese DB entwickelt/getestet werden kann."
+    },
+    {
+      "key": "I-AWS-ECS-ECR",
+      "parent": "E-AWS-MCP-ARCH",
+      "title": "ECR Repository & ECS Service für AFU-9 + MCP-Sidecars einrichten",
+      "labels": ["v0.2", "aws", "ecs", "ecr"],
+      "body": "Implementiere das Deployment von AFU-9 als ECS Fargate Service:\n- ECR Repository für AFU-9 Images anlegen.\n- Dockerfile für AFU-9 erstellen/überprüfen (inkl. MCP-Client, API, UI).\n- ECS Task Definition mit mindestens zwei Containern: `afu9-control-center` und `mcp-servers` (oder separate MCP-Container, falls bereits getrennt).\n- ECS Service mit gewünschter Task-Anzahl, Auto-Restart, an ALB angebunden.\n- GitHub Actions Workflow (oder alternative CI/CD) zum Build & Push nach ECR und Update des ECS Service anlegen."
+    },
+    {
+      "key": "I-AWS-HTTPS-DNS",
+      "parent": "E-AWS-MCP-ARCH",
+      "title": "HTTPS & DNS für AFU-9 Control Center konfigurieren",
+      "labels": ["v0.2", "aws", "networking"],
+      "body": "Stelle sicher, dass AFU-9 über HTTPS und sprechbare Domain erreichbar ist:\n- ACM-Zertifikat für die gewünschte Domain/Subdomain (z.B. afu9.example.com) erstellen.\n- ALB mit HTTPS-Listener und Zertifikat konfigurieren.\n- Route53-Einträge für die Domain/Subdomain anlegen.\n- Dokumentation der finalen URL(s) und ihrer Zuordnung (UI, API, Webhooks)."
+    },
+
+    {
+      "key": "I-CORE-WORKFLOW-MODEL",
+      "parent": "E-CORE-ENGINE",
+      "title": "Workflow-Modell und Persistenz für AFU-9 definieren",
+      "labels": ["v0.2", "backend", "engine"],
+      "body": "Definiere ein generisches Workflow-Modell für AFU-9:\n- Datenmodell (DB-Schema) für Workflows, Steps, Ausführungsstatus, Inputs/Outputs.\n- JSON-Konventionsformat für Workflows (z.B. `name`, `steps`, `tool`, `params`, `assign`, `if`).\n- Migrationen in der Datenbank anlegen.\n- Beispiel-Workflows erstellen (z.B. `issue_to_pr`, `fix_deploy_failure`)."
+    },
+    {
+      "key": "I-CORE-ENGINE-IMPL",
+      "parent": "E-CORE-ENGINE",
+      "title": "Workflow-Engine Implementierung (Sequenzen von MCP-Tool-Calls)",
+      "labels": ["v0.2", "backend", "engine"],
+      "body": "Implementiere die Workflow-Engine:\n- Interpreter, der die Workflow-Definitionen einliest und Step für Step ausführt.\n- Unterstützung für einfache Control-Flow-Elemente (Sequenz, `if`-Bedingungen, Variable Assignment).\n- Persistenz des Ausführungsstatus, sodass Runs fortgesetzt/rekonstruiert werden können.\n- Logging aller Step-Ausführungen (Start, Ende, Erfolg/Fehler, Dauer)."
+    },
+    {
+      "key": "I-CORE-AGENT-RUNNER",
+      "parent": "E-CORE-ENGINE",
+      "title": "Agent Runner für LLM- und MCP-Aufrufe implementieren",
+      "labels": ["v0.2", "backend", "agent"],
+      "body": "Baue einen Agent Runner, der die eigentlichen Agenten-Logiken kapselt:\n- Einheitliches Interface für Agenten (Eingabe-Payload, Kontext, gewünschte Tools).\n- Anbindung an LLM-Provider (DeepSeek, Claude, GPT) via Konfiguration.\n- Fähigkeit, im Rahmen eines Agent-Calls MCP-Tools aufzurufen (Tool-Use innerhalb des Agenten).\n- Logging und einfache Metriken (Dauer, Tokenverbrauch falls verfügbar, Erfolg/Fehler)."
+    },
+    {
+      "key": "I-CORE-MCP-CLIENT",
+      "parent": "E-CORE-ENGINE",
+      "title": "MCP-Client-Layer in AFU-9 Core integrieren",
+      "labels": ["v0.2", "backend", "mcp"],
+      "body": "Implementiere einen MCP-Client-Layer im AFU-9 Core:\n- Konfigurationsmodell für verfügbare MCP-Server (Name, Host, Port, angebotene Tools).\n- Generic `callTool(serverName, toolName, params)`-Funktion mit Fehlerhandling.\n- Unterstützung für Timeouts, Retries (einfaches Backoff).\n- Integration in Workflow-Engine und Agent Runner."
+    },
+    {
+      "key": "I-CORE-GH-WEBHOOK-HANDLER",
+      "parent": "E-CORE-ENGINE",
+      "title": "GitHub Webhook-Handler implementieren (Issues, PRs, Checks)",
+      "labels": ["v0.2", "backend", "github"],
+      "body": "Implementiere einen Endpoint für GitHub Webhooks in AFU-9:\n- Empfang von Events (z.B. Issues, Pull Requests, Check Runs).\n- Validierung der Signatur (Secret).\n- Abbildung relevanter Events auf Workflows (z.B. `issue_opened` → optionaler Auto-Workflow).\n- Logging und einfache Debug-Ansicht im UI (welche Webhooks kamen an, wie wurden sie verarbeitet?)."
+    },
+
+    {
+      "key": "I-MCP-GITHUB-V0",
+      "parent": "E-MCP-SERVERS",
+      "title": "MCP-Server für GitHub implementieren (v0.2)",
+      "labels": ["v0.2", "mcp", "github"],
+      "body": "Implementiere einen MCP-Server, der GitHub-Funktionalität als Tools bereitstellt:\n- Mindestens folgende Tools: `github.getIssue`, `github.listIssues`, `github.createBranch`, `github.commitFileChanges`, `github.createPullRequest`, `github.mergePullRequest`.\n- Authentifizierung via GitHub App oder PAT (konfigurierbar, Secrets Manager).\n- Saubere Fehlerbehandlung (Rate Limits, Invalid Credentials, fehlende Berechtigungen).\n- Kurze Doku, wie neue GitHub-Tools hinzugefügt werden können."
+    },
+    {
+      "key": "I-MCP-AWS-DEPLOY-V0",
+      "parent": "E-MCP-SERVERS",
+      "title": "MCP-Server für AWS-Deploy (ECS) implementieren (v0.2)",
+      "labels": ["v0.2", "mcp", "aws"],
+      "body": "Implementiere einen MCP-Server für Deployments auf AWS ECS:\n- Tools: `deploy.updateService` (Service auf neues Image/Tag setzen), `deploy.getServiceStatus`.\n- Nutzung des AWS SDK mit IAM-Rolle des ECS Tasks.\n- Parametrisierung (Cluster, Service, Container, Image Tag).\n- Geeignetes Logging aller Deploy-Aktionen, inkl. Rückgabe von Task-/Event-Informationen."
+    },
+    {
+      "key": "I-MCP-OBSERVABILITY-V0",
+      "parent": "E-MCP-SERVERS",
+      "title": "MCP-Server für Observability (CloudWatch Logs & Metrics) implementieren",
+      "labels": ["v0.2", "mcp", "observability"],
+      "body": "Implementiere einen MCP-Server, der Observability-Funktionen anbietet:\n- Tool `logs.search` (CloudWatch Logs nach Pattern durchsuchen, z.B. ERROR, RequestId, TaskId).\n- Tool `metrics.getServiceHealth` (Basis-Metriken für ECS Service: CPU, Memory, 5xx Rate am ALB falls verfügbar).\n- Paginierung und Limitierung für Log-Ergebnisse.\n- Nutzung dieser Tools durch den Observer-Agent und das UI."
+    },
+    {
+      "key": "I-MCP-SERVER-DEPLOY",
+      "parent": "E-MCP-SERVERS",
+      "title": "MCP-Server als Sidecars im ECS Task deployen",
+      "labels": ["v0.2", "mcp", "aws", "ecs"],
+      "body": "Stelle sicher, dass die MCP-Server in der AFU-9 Infrastruktur laufen:\n- Container-Definitionen für `mcp-github`, `mcp-aws-deploy`, `mcp-observability` in der ECS Task Definition.\n- Interne Kommunikation zwischen AFU-9 Core und MCP-Servern (localhost/Cluster-Intern, Ports und Health Checks).\n- Konfiguration der MCP-Server (z.B. Secrets, Regions, Repos).\n- Health Checks, Logging in CloudWatch für alle MCP-Server."
+    },
+
+    {
+      "key": "I-UI-DASHBOARD",
+      "parent": "E-CONTROL-CENTER-UI",
+      "title": "Control Center Dashboard implementieren",
+      "labels": ["v0.2", "frontend", "ui"],
+      "body": "Implementiere das AFU-9 Dashboard:\n- Anzeige aktiver und kürzlich beendeter Workflows (Status, letzter Step, Dauer).\n- Kachel für Agentenaktivität (letzte Runs, Fehlerquote).\n- Kachel für Infrastruktur-Health (z.B. aus `metrics.getServiceHealth`).\n- Basis-Navigation zu Workflows-, Agent- und Repo-Ansichten."
+    },
+    {
+      "key": "I-UI-WORKFLOWS",
+      "parent": "E-CONTROL-CENTER-UI",
+      "title": "Workflows-Ansicht & Trigger-UI umsetzen",
+      "labels": ["v0.2", "frontend", "ui"],
+      "body": "Erstelle eine Workflows-Ansicht im Control Center:\n- Liste definierter Workflows (Name, Beschreibung, letzte Runs).\n- Detailansicht für einen Workflow (Definition, Historie, Logs).\n- Möglichkeit, Workflows manuell zu starten (mit Parametern, z.B. Repo, Issue-Nummer).\n- Anzeige des Step-Fortschritts für laufende Workflows."
+    },
+    {
+      "key": "I-UI-AGENTS",
+      "parent": "E-CONTROL-CENTER-UI",
+      "title": "Agenten-Übersicht & -Detailseiten implementieren",
+      "labels": ["v0.2", "frontend", "ui"],
+      "body": "Implementiere UI für Agenten:\n- Liste aller registrierten Agenten (Name, Typ, verwendete LLMs/Tools).\n- Detailseite pro Agent mit Historie der Runs, Logs, durchschnittlichen Laufzeiten.\n- Optional: Möglichkeit, einen Agenten mit Test-Input manuell auszuführen (Playground)."
+    },
+    {
+      "key": "I-UI-REPOS",
+      "parent": "E-CONTROL-CENTER-UI",
+      "title": "Repository-Ansicht (GitHub-Integration) implementieren",
+      "labels": ["v0.2", "frontend", "ui", "github"],
+      "body": "Implementiere eine Sicht auf die angebundenen Repositories:\n- Liste registrierter Repos (Name, Owner, Default Branch).\n- Anzeige offener PRs, wichtiger Issues und automatisiert erstellter PRs.\n- Link-Out zu GitHub.\n- Optional: Behelfs-Status der letzten Pipelines/Deployments für ein Repo."
+    },
+    {
+      "key": "I-UI-SETTINGS",
+      "parent": "E-CONTROL-CENTER-UI",
+      "title": "Settings-Ansicht (Tokens, MCP-Server, Repos) implementieren",
+      "labels": ["v0.2", "frontend", "ui", "settings"],
+      "body": "Erstelle eine Settings-Ansicht für AFU-9:\n- Überblick über konfigurierte MCP-Server (Name, Endpoint, Status).\n- Verwaltung der registrierten Repositories (Hinzufügen/Entfernen, Basis-Konfiguration).\n- Anzeige (nicht im Klartext) von verwendeten Integrationen (z.B. GitHub App, verwendete AWS-Region).\n- Hinweis, dass geheime Werte ausschließlich im Secrets Manager liegen und nicht im UI verändert werden."
+    },
+
+    {
+      "key": "I-SEC-IAM-ROLES",
+      "parent": "E-OBS-SEC",
+      "title": "IAM-Rollen & Policies für AFU-9 definieren",
+      "labels": ["v0.2", "security", "aws"],
+      "body": "Definiere und implementiere die IAM-Rollen für AFU-9:\n- ECS Task Role mit minimal notwendigen Rechten (RDS, CloudWatch Logs, CloudWatch Metrics, ECS Describe/Update, optional S3).\n- Separate Rollen für Deploy-Tooling, falls nötig.\n- Dokumentation der Berechtigungen und Begründung (Least Privilege)."
+    },
+    {
+      "key": "I-SEC-SECRET-MGMT",
+      "parent": "E-OBS-SEC",
+      "title": "Secret-Management für GitHub, LLM und interne Keys umsetzen",
+      "labels": ["v0.2", "security", "aws"],
+      "body": "Implementiere ein sauberes Secret-Management:\n- Speicherung aller sensiblen Daten (GitHub App Keys, LLM-API-Keys, ggf. DB-Passwörter) im AWS Secrets Manager.\n- Zugriff aus ECS Tasks über IAM-Rolle (keine Secrets in Environment-Dateien einchecken).\n- Helper-Layer im Code für Secret-Loading mit Caching und Fallback-Strategie.\n- Kurze Security-Readme für das Repo."
+    },
+    {
+      "key": "I-OBS-LOGGING",
+      "parent": "E-OBS-SEC",
+      "title": "Logging-Konzept & CloudWatch-Integration implementieren",
+      "labels": ["v0.2", "observability", "logging"],
+      "body": "Implementiere ein zentrales Logging-Konzept:\n- Strukturierte Logs (z.B. JSON) für AFU-9 Core und die MCP-Server.\n- Anbindung der Container-Logs an CloudWatch Logs.\n- Konventionen für Log-Level (DEBUG, INFO, WARN, ERROR) definieren.\n- Verknüpfung mit mcp-observability (`logs.search`) und Anzeige relevanter Logs im UI (Fehlersicht)."
+    },
+    {
+      "key": "I-OBS-ALERTING",
+      "parent": "E-OBS-SEC",
+      "title": "Basis-Alerting für AFU-9 (CloudWatch Alarme + UI-Hinweise) aufsetzen",
+      "labels": ["v0.2", "observability", "alerting"],
+      "body": "Setze ein einfaches Alerting für AFU-9 auf:\n- CloudWatch Alarme für: erhöhte 5xx Rate am ALB, ungewöhnlich hohe CPU/Memory-Nutzung, ECS-Task-Failures.\n- Ausgabe dieser Zustände im Control Center Dashboard (z.B. Health-Indikator auf Rot/Gelb/Grün).\n- Optional: Simple Benachrichtigungskanäle (E-Mail oder Slack/Webhook), minimal für v0.2."
+    }
+  ]
+}
