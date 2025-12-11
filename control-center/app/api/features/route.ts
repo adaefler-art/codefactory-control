@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Octokit } from "octokit";
 
+const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
+const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
+
 export async function GET() {
-  const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
-  const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
 
   if (!process.env.GITHUB_TOKEN) {
     console.error("GITHUB_TOKEN is not configured");
@@ -54,9 +55,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
-  const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
-
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });

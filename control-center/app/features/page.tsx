@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 interface Issue {
   number: number;
   title: string;
-  state: string;
+  state: "open" | "closed";
   createdAt: string;
   htmlUrl: string;
 }
