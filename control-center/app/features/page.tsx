@@ -21,8 +21,13 @@ export default function FeaturesPage() {
         const response = await fetch("/api/features");
         
         if (!response.ok) {
-          const data = await response.json().catch(() => ({ error: "Unknown error" }));
-          setError(data.error || `Server error: ${response.status}`);
+          let errorMessage = `Server error: ${response.status}`;
+          const contentType = response.headers.get("content-type");
+          if (contentType?.includes("application/json")) {
+            const data = await response.json().catch(() => ({}));
+            errorMessage = data.error || errorMessage;
+          }
+          setError(errorMessage);
           return;
         }
 

@@ -33,7 +33,7 @@ export async function GET() {
     const formattedIssues = issues.map((issue) => ({
       number: issue.number,
       title: issue.title,
-      state: issue.state,
+      state: issue.state as "open" | "closed",
       createdAt: issue.created_at,
       htmlUrl: issue.html_url,
     }));
