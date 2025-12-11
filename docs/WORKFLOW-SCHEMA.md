@@ -103,7 +103,11 @@ Steps can be conditionally executed using the `if` field:
 
 Currently supported condition formats:
 - Variable existence check: `"${variable}"` - true if variable exists and is truthy
-- Future: comparison operators, logical operators
+
+Future planned operators:
+- Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- Logical: `&&` (and), `||` (or), `!` (not)
+- Example: `"${analysis.confidence > 0.8 && analysis.has_fix}"`
 
 ## Error Handling
 
@@ -383,7 +387,7 @@ Automatically diagnose and fix deployment failures.
       "if": "${analysis.has_fix}"
     },
     {
-      "name": "create_issue",
+      "name": "create_issue_if_no_fix",
       "tool": "github.createIssue",
       "params": {
         "owner": "${repo.owner}",
@@ -392,8 +396,7 @@ Automatically diagnose and fix deployment failures.
         "body": "Automated analysis could not determine a fix.\n\n## Analysis\n${analysis.description}\n\n## Logs\n${logs}",
         "labels": ["needs-manual-fix", "deployment"]
       },
-      "assign": "manual_issue",
-      "if": "${!analysis.has_fix}"
+      "assign": "manual_issue"
     },
     {
       "name": "rollback_deployment",

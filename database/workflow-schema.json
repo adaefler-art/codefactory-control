@@ -5,7 +5,19 @@
   "description": "JSON schema for AFU-9 workflow definitions",
   "type": "object",
   "required": ["steps"],
+  "additionalProperties": false,
   "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the workflow",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the workflow purpose"
+    },
     "steps": {
       "type": "array",
       "description": "Array of workflow steps to execute in sequence",
