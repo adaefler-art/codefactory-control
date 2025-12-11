@@ -359,6 +359,7 @@ export default function BoardPage() {
   const [modalDefaultStatus, setModalDefaultStatus] =
     useState<Issue["status"]>("backlog");
   const [activeTab, setActiveTab] = useState("backlog");
+  const [nextId, setNextId] = useState(4); // Start after CF1-3
 
   const handleStatusChange = (id: string, newStatus: Issue["status"]) => {
     setIssues((prevIssues) =>
@@ -375,13 +376,14 @@ export default function BoardPage() {
 
   const handleCreateItem = (title: string, status: Issue["status"]) => {
     const newIssue: Issue = {
-      id: `CF1-${issues.length + 1}`,
+      id: `CF1-${nextId}`,
       title,
       status,
-      assignee: "AE",
-      priority: "medium",
+      assignee: "AE", // TODO: Make assignee configurable based on user selection
+      priority: "medium", // TODO: Allow priority selection in add item modal
     };
     setIssues((prevIssues) => [...prevIssues, newIssue]);
+    setNextId((prev) => prev + 1);
   };
 
   const backlogIssues = issues.filter((issue) => issue.status === "backlog");
@@ -419,6 +421,8 @@ export default function BoardPage() {
                   : "text-gray-400 hover:text-gray-200"
               }`}
               disabled
+              aria-disabled="true"
+              title="Priority board view - Coming soon"
             >
               Priority board
             </button>
@@ -430,6 +434,8 @@ export default function BoardPage() {
                   : "text-gray-400 hover:text-gray-200"
               }`}
               disabled
+              aria-disabled="true"
+              title="Team items view - Coming soon"
             >
               Team items
             </button>
@@ -441,6 +447,8 @@ export default function BoardPage() {
                   : "text-gray-400 hover:text-gray-200"
               }`}
               disabled
+              aria-disabled="true"
+              title="Roadmap view - Coming soon"
             >
               Roadmap
             </button>
