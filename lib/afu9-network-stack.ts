@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { aws_ec2 as ec2, aws_elasticloadbalancingv2 as elbv2 } from 'aws-cdk-lib';
+import { aws_ec2 as ec2, aws_elasticloadbalancingv2 as elbv2, aws_certificatemanager as acm } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 /**
@@ -28,6 +28,14 @@ import { Construct } from 'constructs';
  * - 3003: ECS → MCP Observability Server (internal)
  * - 5432 (PostgreSQL): ECS → RDS
  */
+export interface Afu9NetworkStackProps extends cdk.StackProps {
+  /**
+   * Optional: ARN of the ACM certificate for HTTPS
+   * If not provided, only HTTP listener will be configured
+   */
+  certificateArn?: string;
+}
+
 export class Afu9NetworkStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
   public readonly albSecurityGroup: ec2.SecurityGroup;
@@ -35,8 +43,10 @@ export class Afu9NetworkStack extends cdk.Stack {
   public readonly dbSecurityGroup: ec2.SecurityGroup;
   public readonly loadBalancer: elbv2.ApplicationLoadBalancer;
   public readonly targetGroup: elbv2.ApplicationTargetGroup;
+  public readonly httpsListener?: elbv2.ApplicationListener;
+  public readonly httpListener: elbv2.ApplicationListener;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: Afu9NetworkStackProps) {
     super(scope, id, props);
 
     // ========================================
@@ -138,16 +148,6 @@ export class Afu9NetworkStack extends cdk.Stack {
     cdk.Tags.of(this.loadBalancer).add('Name', 'afu9-alb');
     cdk.Tags.of(this.loadBalancer).add('Environment', 'production');
 
-    // HTTP Listener (port 80)
-    const httpListener = this.loadBalancer.addListener('HttpListener', {
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      defaultAction: elbv2.ListenerAction.fixedResponse(200, {
-        contentType: 'text/plain',
-        messageBody: 'AFU-9 Control Center - Configure HTTPS listener for production use',
-      }),
-    });
-
     // Target Group for ECS Service
     this.targetGroup = new elbv2.ApplicationTargetGroup(this, 'Afu9TargetGroup', {
       vpc: this.vpc,
@@ -168,10 +168,43 @@ export class Afu9NetworkStack extends cdk.Stack {
 
     cdk.Tags.of(this.targetGroup).add('Name', 'afu9-target-group');
 
-    // Connect HTTP listener to target group
-    httpListener.addAction('ForwardToTargetGroup', {
-      action: elbv2.ListenerAction.forward([this.targetGroup]),
-    });
+    // ========================================
+    // Listeners (HTTP and optionally HTTPS)
+    // ========================================
+
+    // HTTPS Listener (port 443) - only if certificate is provided
+    if (props?.certificateArn) {
+      const certificate = acm.Certificate.fromCertificateArn(
+        this,
+        'Certificate',
+        props.certificateArn
+      );
+
+      this.httpsListener = this.loadBalancer.addListener('HttpsListener', {
+        port: 443,
+        protocol: elbv2.ApplicationProtocol.HTTPS,
+        certificates: [certificate],
+        defaultAction: elbv2.ListenerAction.forward([this.targetGroup]),
+      });
+
+      // HTTP Listener (port 80) - redirect to HTTPS when certificate is configured
+      this.httpListener = this.loadBalancer.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        defaultAction: elbv2.ListenerAction.redirect({
+          protocol: 'HTTPS',
+          port: '443',
+          permanent: true,
+        }),
+      });
+    } else {
+      // HTTP Listener (port 80) - forward to target group when no certificate
+      this.httpListener = this.loadBalancer.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        defaultAction: elbv2.ListenerAction.forward([this.targetGroup]),
+      });
+    }
 
     // ========================================
     // Stack Outputs
@@ -199,6 +232,11 @@ export class Afu9NetworkStack extends cdk.Stack {
       value: this.loadBalancer.loadBalancerArn,
       description: 'ARN of the Application Load Balancer',
       exportName: 'Afu9LoadBalancerArn',
+    });
+
+    new cdk.CfnOutput(this, 'HttpsEnabled', {
+      value: props?.certificateArn ? 'true' : 'false',
+      description: 'Whether HTTPS is enabled on the ALB',
     });
 
     new cdk.CfnOutput(this, 'TargetGroupArn', {

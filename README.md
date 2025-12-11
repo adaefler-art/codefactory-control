@@ -105,15 +105,19 @@ Quick deploy:
 # 1. Bootstrap CDK (first time only)
 npx cdk bootstrap
 
-# 2. Deploy infrastructure stacks
+# 2. (Optional) Deploy DNS and certificate for HTTPS
+npx cdk deploy Afu9DnsStack -c afu9-domain=afu9.yourdomain.com
+# See docs/HTTPS-DNS-SETUP.md for detailed HTTPS configuration
+
+# 3. Deploy infrastructure stacks
 npx cdk deploy Afu9NetworkStack
 npx cdk deploy Afu9DatabaseStack
 npx cdk deploy Afu9EcsStack
 
-# 3. Configure secrets in AWS Secrets Manager
+# 4. Configure secrets in AWS Secrets Manager
 # (See ECS deployment guide for details)
 
-# 4. Build and push Docker images
+# 5. Build and push Docker images
 # (Use GitHub Actions or manual build - see deployment guide)
 ```
 
