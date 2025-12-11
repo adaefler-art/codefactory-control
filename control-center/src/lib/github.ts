@@ -39,30 +39,53 @@ export interface CreateIssueResult {
  */
 export async function createIssue(params: CreateIssueParams): Promise<CreateIssueResult> {
   if (!GITHUB_TOKEN) {
+    console.error("GITHUB_TOKEN environment variable is not configured");
     throw new Error("GITHUB_TOKEN is not configured");
   }
 
-  const octokit = new Octokit({
-    auth: GITHUB_TOKEN,
-  });
+  try {
+    const octokit = new Octokit({
+      auth: GITHUB_TOKEN,
+    });
 
-  const { title, body, labels = [] } = params;
+    const { title, body, labels = [] } = params;
 
-  console.log(`Creating GitHub issue in ${GITHUB_OWNER}/${GITHUB_REPO}...`);
-  const { data: issue } = await octokit.rest.issues.create({
-    owner: GITHUB_OWNER,
-    repo: GITHUB_REPO,
-    title,
-    body,
-    labels,
-  });
+    console.log(`Creating GitHub issue in ${GITHUB_OWNER}/${GITHUB_REPO}...`, { title });
+    const { data: issue } = await octokit.rest.issues.create({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      title,
+      body,
+      labels,
+    });
 
-  console.log(`GitHub issue created: ${issue.html_url}`);
+    console.log(`GitHub issue created: ${issue.html_url}`, { number: issue.number });
 
-  return {
-    html_url: issue.html_url,
-    number: issue.number,
-  };
+    return {
+      html_url: issue.html_url,
+      number: issue.number,
+    };
+  } catch (error) {
+    console.error("Error creating GitHub issue:", {
+      error: error instanceof Error ? error.message : String(error),
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+    });
+    
+    if (error instanceof Error && error.message.includes("Bad credentials")) {
+      throw new Error("GitHub-Token ist ungültig");
+    }
+    
+    if (error instanceof Error && error.message.includes("Not Found")) {
+      throw new Error(`GitHub-Repository ${GITHUB_OWNER}/${GITHUB_REPO} nicht gefunden`);
+    }
+    
+    if (error instanceof Error && error.message.includes("rate limit")) {
+      throw new Error("GitHub API-Limit erreicht");
+    }
+    
+    throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
+  }
 }
 
 /**
@@ -72,32 +95,56 @@ export async function createIssue(params: CreateIssueParams): Promise<CreateIssu
  */
 export async function listIssuesByLabel(label: string): Promise<MinimalIssue[]> {
   if (!GITHUB_TOKEN) {
+    console.error("GITHUB_TOKEN environment variable is not configured");
     throw new Error("GITHUB_TOKEN is not configured");
   }
 
-  const octokit = new Octokit({
-    auth: GITHUB_TOKEN,
-  });
+  try {
+    const octokit = new Octokit({
+      auth: GITHUB_TOKEN,
+    });
 
-  console.log(`Fetching issues with label ${label} from ${GITHUB_OWNER}/${GITHUB_REPO}...`);
-  const { data: issues } = await octokit.rest.issues.listForRepo({
-    owner: GITHUB_OWNER,
-    repo: GITHUB_REPO,
-    labels: label,
-    state: "all",
-    sort: "created",
-    direction: "desc",
-  });
+    console.log(`Fetching issues with label ${label} from ${GITHUB_OWNER}/${GITHUB_REPO}...`);
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+      labels: label,
+      state: "all",
+      sort: "created",
+      direction: "desc",
+    });
 
-  const minimalIssues = issues.map((issue) => ({
-    id: issue.number,
-    title: issue.title,
-    state: issue.state,
-    html_url: issue.html_url,
-    created_at: issue.created_at,
-  }));
+    const minimalIssues = issues.map((issue) => ({
+      id: issue.number,
+      title: issue.title,
+      state: issue.state,
+      html_url: issue.html_url,
+      created_at: issue.created_at,
+    }));
 
-  console.log(`Found ${minimalIssues.length} issues with label ${label}`);
+    console.log(`Found ${minimalIssues.length} issues with label ${label}`);
 
-  return minimalIssues;
+    return minimalIssues;
+  } catch (error) {
+    console.error("Error fetching GitHub issues:", {
+      error: error instanceof Error ? error.message : String(error),
+      label,
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO,
+    });
+    
+    if (error instanceof Error && error.message.includes("Bad credentials")) {
+      throw new Error("GitHub-Token ist ungültig");
+    }
+    
+    if (error instanceof Error && error.message.includes("Not Found")) {
+      throw new Error(`GitHub-Repository ${GITHUB_OWNER}/${GITHUB_REPO} nicht gefunden`);
+    }
+    
+    if (error instanceof Error && error.message.includes("rate limit")) {
+      throw new Error("GitHub API-Limit erreicht");
+    }
+    
+    throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
+  }
 }

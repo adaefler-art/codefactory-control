@@ -6,10 +6,12 @@ export default function NewFeaturePage() {
   const [title, setTitle] = useState("");
   const [briefing, setBriefing] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
 
     try {
       const response = await fetch("/api/features", {
@@ -27,11 +29,12 @@ export default function NewFeaturePage() {
         setTitle("");
         setBriefing("");
       } else {
-        alert(`Fehler: ${data.error || "Unbekannter Fehler"}`);
+        const errorMessage = data.error || "Unbekannter Fehler";
+        setError(errorMessage);
       }
     } catch (error) {
       console.error("Error submitting feature:", error);
-      alert("Fehler beim Erstellen des Features");
+      setError("Netzwerkfehler: Bitte überprüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.");
     } finally {
       setIsSubmitting(false);
     }
@@ -43,6 +46,13 @@ export default function NewFeaturePage() {
         <h1 className="text-3xl font-bold mb-6 text-black dark:text-white">
           Neues Feature erstellen
         </h1>
+        
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+            <p className="text-red-800 dark:text-red-200 font-medium">Fehler</p>
+            <p className="text-red-700 dark:text-red-300 text-sm mt-1">{error}</p>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>

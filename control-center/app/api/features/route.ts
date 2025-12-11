@@ -19,7 +19,11 @@ export async function GET() {
       issues: formattedIssues,
     });
   } catch (error) {
-    console.error("Error fetching issues:", error);
+    console.error("Error fetching issues:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
     const message = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
       { error: message },
@@ -40,7 +44,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate technical specification using the LLM helper
-    const specification = await generateFeatureSpec(briefing);
+    let specification: string;
+    try {
+      specification = await generateFeatureSpec(briefing);
+    } catch (error) {
+      console.error("LLM specification generation failed:", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     // Create GitHub issue
     const issueBody = `**Quelle:** AFU-9 Control Center
@@ -57,11 +69,19 @@ ${specification}
 *Erstellt durch AFU-9 v0.1*
 *Label: source:afu-9*`;
 
-    const issue = await createIssue({
-      title,
-      body: issueBody,
-      labels: ["source:afu-9", "codefactory"],
-    });
+    let issue: { html_url: string; number: number };
+    try {
+      issue = await createIssue({
+        title,
+        body: issueBody,
+        labels: ["source:afu-9", "codefactory"],
+      });
+    } catch (error) {
+      console.error("GitHub issue creation failed:", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     return NextResponse.json({
       status: "ok",
@@ -70,7 +90,11 @@ ${specification}
       specification,
     });
   } catch (error) {
-    console.error("Error creating feature:", error);
+    console.error("Error creating feature:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
     const message = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
       { error: message },
