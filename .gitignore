@@ -3,8 +3,9 @@
 !bin/*.js
 !jest.config.js
 *.d.ts
-node_modules
-cdk.out
+node_modules/
+cdk.out/
+dist/
 
 # Local .terraform directories
 **/.terraform/*
