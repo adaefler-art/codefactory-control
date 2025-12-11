@@ -206,9 +206,28 @@ const runner = getAgentRunner();
 // Load tools from MCP servers
 const tools = await runner.loadToolsFromMCP(['github', 'deploy']);
 
-const config: AgentConfig = {
+// Example 1: Using OpenAI (GPT)
+const openaiConfig: AgentConfig = {
   provider: 'openai',
   model: 'gpt-4o-mini',
+  temperature: 0.7,
+  maxIterations: 10,
+  systemPrompt: 'You are a helpful assistant for managing GitHub repositories.',
+};
+
+// Example 2: Using DeepSeek
+const deepseekConfig: AgentConfig = {
+  provider: 'deepseek',
+  model: 'deepseek-chat',
+  temperature: 0.7,
+  maxIterations: 10,
+  systemPrompt: 'You are a helpful assistant for managing GitHub repositories.',
+};
+
+// Example 3: Using Anthropic Claude
+const claudeConfig: AgentConfig = {
+  provider: 'anthropic',
+  model: 'claude-3-5-sonnet-20241022',
   temperature: 0.7,
   maxIterations: 10,
   systemPrompt: 'You are a helpful assistant for managing GitHub repositories.',
@@ -219,10 +238,28 @@ const context: AgentContext = {
   tools,
 };
 
-const result = await runner.execute(context, config);
+const result = await runner.execute(context, openaiConfig); // or deepseekConfig, or claudeConfig
 console.log(result.response); // Final LLM response
 console.log(result.toolCalls); // All tools called by the agent
 console.log(result.usage); // Token usage statistics
+```
+
+#### Provider-Specific Configuration
+
+**OpenAI:**
+- Environment variable: `OPENAI_API_KEY`
+- Models: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`
+- API: OpenAI API
+
+**DeepSeek:**
+- Environment variable: `DEEPSEEK_API_KEY`
+- Models: `deepseek-chat`, `deepseek-coder`
+- API: OpenAI-compatible API at `https://api.deepseek.com`
+
+**Anthropic:**
+- Environment variable: `ANTHROPIC_API_KEY`
+- Models: `claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, `claude-3-sonnet-20240229`
+- API: Anthropic API
 ```
 
 #### Agent Execution Flow
@@ -237,8 +274,9 @@ console.log(result.usage); // Token usage statistics
 
 #### Supported Providers
 
-- **OpenAI**: ✅ Implemented
-- **Anthropic**: 🚧 Coming soon
+- **OpenAI** (GPT-4, GPT-4o, GPT-3.5): ✅ Implemented
+- **DeepSeek**: ✅ Implemented (OpenAI-compatible API)
+- **Anthropic** (Claude 3.5 Sonnet, Claude 3 Opus): ✅ Implemented
 - **AWS Bedrock**: 🚧 Coming soon
 
 ## API Endpoints
@@ -309,6 +347,35 @@ Execute an LLM-based agent with tool calling.
     "provider": "openai",
     "model": "gpt-4o-mini",
     "temperature": 0.7
+  },
+  "serverNames": ["github"]
+}
+```
+
+**Example with DeepSeek:**
+
+```json
+{
+  "prompt": "Create a new branch called feature/add-tests",
+  "config": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.5
+  },
+  "serverNames": ["github"]
+}
+```
+
+**Example with Anthropic Claude:**
+
+```json
+{
+  "prompt": "Analyze the recent issues and create a summary",
+  "config": {
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet-20241022",
+    "temperature": 0.7,
+    "maxTokens": 4096
   },
   "serverNames": ["github"]
 }
@@ -605,7 +672,8 @@ curl -X POST http://localhost:3000/api/agent/execute \
 - [ ] **Workflow Visualization**: UI for viewing workflow progress
 - [ ] **Agent Memory**: Persist agent conversation history
 - [ ] **Custom Tools**: Allow users to define custom tools
-- [ ] **Anthropic Integration**: Add Claude support
+- [x] **DeepSeek Integration**: Add DeepSeek support
+- [x] **Anthropic Integration**: Add Claude support
 - [ ] **Bedrock Integration**: Add AWS Bedrock support
 - [ ] **Streaming Responses**: Stream agent responses in real-time
 - [ ] **Cost Tracking**: Detailed cost analysis for LLM usage
@@ -639,7 +707,27 @@ curl -X POST http://localhost:3000/api/agent/execute \
 - Verify tools are loaded: check `tools` array in context
 - Make prompt more explicit about what needs to be done
 - Increase `maxIterations` if agent is stopping early
-- Check OpenAI API key is valid
+- Check API key is valid for your chosen provider:
+  - OpenAI: `OPENAI_API_KEY`
+  - DeepSeek: `DEEPSEEK_API_KEY`
+  - Anthropic: `ANTHROPIC_API_KEY`
+
+### LLM Provider Errors
+
+**Problem**: Provider-specific errors
+
+**OpenAI/DeepSeek:**
+- Error: "OPENAI_API_KEY/DEEPSEEK_API_KEY is not configured"
+  - Set the appropriate API key in environment variables
+- Rate limit errors
+  - Implement backoff or use a different model tier
+
+**Anthropic:**
+- Error: "ANTHROPIC_API_KEY is not configured"
+  - Set your Anthropic API key in environment variables
+- Model not found
+  - Verify you're using a valid Claude model name
+  - Example: `claude-3-5-sonnet-20241022`
 
 ## References
 
