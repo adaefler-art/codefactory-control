@@ -26,7 +26,9 @@ const env = {
 // DNS and Certificate stack (optional, for HTTPS)
 // To enable HTTPS, provide domain name via context:
 // npx cdk deploy --all -c afu9-domain=afu9.yourdomain.com
-const enableHttps = app.node.tryGetContext('afu9-enable-https') !== 'false'; // Default: true
+// To disable HTTPS explicitly, set: -c afu9-enable-https=false
+const enableHttpsContext = app.node.tryGetContext('afu9-enable-https');
+const enableHttps = enableHttpsContext === undefined ? true : enableHttpsContext !== false && enableHttpsContext !== 'false';
 let dnsStack: Afu9DnsStack | undefined;
 
 if (enableHttps) {

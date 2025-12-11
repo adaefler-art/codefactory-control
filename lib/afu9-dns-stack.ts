@@ -167,8 +167,23 @@ export class Afu9DnsStack extends cdk.Stack {
       return domainName;
     }
     
+    // Check for known multi-part TLDs that require special handling
+    const multiPartTlds = [
+      'co.uk', 'com.au', 'co.nz', 'co.za', 'com.br', 'co.jp',
+      'ac.uk', 'gov.uk', 'org.uk', 'com.mx', 'com.ar', 'co.in',
+    ];
+    
+    const lastTwoParts = parts.slice(-2).join('.');
+    if (multiPartTlds.includes(lastTwoParts)) {
+      // Multi-part TLD detected - provide helpful error message
+      throw new Error(
+        `Multi-part TLD detected (.${lastTwoParts}) in domain "${domainName}". ` +
+        `Please provide an existing hosted zone using hostedZoneId and hostedZoneName props. ` +
+        `Example: { domainName: "${domainName}", hostedZoneId: "Z123...", hostedZoneName: "${parts.slice(-3).join('.')}" }`
+      );
+    }
+    
     // Otherwise, return the last two parts (e.g., "example.com")
-    // Note: For multi-part TLDs (.co.uk, .com.au, etc.), use the hostedZoneId/hostedZoneName props
     return parts.slice(-2).join('.');
   }
 }
