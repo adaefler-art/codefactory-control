@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import { CodefactoryControlStack } from '../lib/codefactory-control-stack';
 import { Afu9DnsStack } from '../lib/afu9-dns-stack';
 import { Afu9NetworkStack } from '../lib/afu9-network-stack';
@@ -44,10 +46,6 @@ const networkStack = new Afu9NetworkStack(app, 'Afu9NetworkStack', {
 // If DNS stack exists, add Route53 A record to point to ALB
 if (dnsStack) {
   networkStack.addDependency(dnsStack);
-  
-  // Import Route53 module for A record
-  const route53 = require('aws-cdk-lib/aws-route53');
-  const route53Targets = require('aws-cdk-lib/aws-route53-targets');
   
   // Add A record to point domain to ALB
   new route53.ARecord(networkStack, 'AliasRecord', {

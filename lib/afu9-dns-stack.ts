@@ -141,10 +141,23 @@ export class Afu9DnsStack extends cdk.Stack {
 
   /**
    * Extract the zone name from a full domain name
+   * 
    * Examples:
    * - "afu9.example.com" -> "example.com"
    * - "example.com" -> "example.com"
    * - "afu9.subdomain.example.com" -> "subdomain.example.com"
+   * 
+   * Limitations:
+   * - This method assumes standard TLDs (e.g., .com, .org, .net)
+   * - For multi-part TLDs like .co.uk, .com.au, or .ac.uk, the extraction will be incorrect
+   * - In these cases, use the hostedZoneId and hostedZoneName props to specify an existing zone
+   * 
+   * Example for .co.uk domain:
+   *   new Afu9DnsStack(app, 'Afu9DnsStack', {
+   *     domainName: 'afu9.example.co.uk',
+   *     hostedZoneId: 'Z1234567890ABC',
+   *     hostedZoneName: 'example.co.uk',
+   *   });
    */
   private extractZoneName(domainName: string): string {
     const parts = domainName.split('.');
@@ -155,7 +168,7 @@ export class Afu9DnsStack extends cdk.Stack {
     }
     
     // Otherwise, return the last two parts (e.g., "example.com")
-    // This assumes standard TLDs. For special TLDs like .co.uk, manual configuration is needed.
+    // Note: For multi-part TLDs (.co.uk, .com.au, etc.), use the hostedZoneId/hostedZoneName props
     return parts.slice(-2).join('.');
   }
 }
