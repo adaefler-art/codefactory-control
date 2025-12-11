@@ -19,7 +19,7 @@
         "notificationArns": [],
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/1d2599f0e457611ce4b7a530f1086a6c0cfcefae62865da782ee3876e292ea63.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/0242e1746ad70f6eaa1ec9c8d324cc4fb96dc2fbedbff5c2050ad6c8922abaa2.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -133,6 +133,315 @@
         ]
       },
       "displayName": "CodefactoryControlStack"
+    },
+    "Afu9NetworkStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "Afu9NetworkStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "Afu9NetworkStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://unknown-account/eu-central-1",
+      "properties": {
+        "templateFile": "Afu9NetworkStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "notificationArns": [],
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-eu-central-1",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-eu-central-1",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-eu-central-1/ba1726350ff603fcd96ef07990837cd94131dbf55f19435d6d244acc7f491759.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "Afu9NetworkStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-eu-central-1",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "Afu9NetworkStack.assets"
+      ],
+      "metadata": {
+        "/Afu9NetworkStack/Afu9Vpc/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9Vpc320154AE"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet1/Subnet": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet1Subnet5E97C810"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet1/RouteTable": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet1RouteTable09FE8A63"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet1/RouteTableAssociation": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet1RouteTableAssociationA732979F"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet1/DefaultRoute": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet1DefaultRoute2241E38A"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet1/EIP": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet1EIP2F8A36D3"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet1/NATGateway": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet1NATGateway41F2CABC"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet2/Subnet": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet2SubnetDD4ECB30"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet2/RouteTable": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet2RouteTable35ECD0F2"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet2/RouteTableAssociation": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet2RouteTableAssociation5AFC7FE4"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PublicSubnet2/DefaultRoute": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPublicSubnet2DefaultRoute090D5BF4"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet1/Subnet": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet1Subnet192515EE"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet1/RouteTable": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet1RouteTable5C966ED8"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet1/RouteTableAssociation": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet1RouteTableAssociation7E02D4F4"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet1/DefaultRoute": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet1DefaultRouteDF16549C"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet2/Subnet": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet2Subnet0FBB041C"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet2/RouteTable": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet2RouteTableA36FBBF1"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet2/RouteTableAssociation": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet2RouteTableAssociation47A05C16"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/PrivateSubnet2/DefaultRoute": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcPrivateSubnet2DefaultRouteDF82B8AE"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/IGW": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcIGWF98E069F"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9Vpc/VPCGW": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9VpcVPCGW78DE1833"
+          }
+        ],
+        "/Afu9NetworkStack/AlbSecurityGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AlbSecurityGroup86A59E99"
+          }
+        ],
+        "/Afu9NetworkStack/EcsSecurityGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "EcsSecurityGroup44008BF1"
+          }
+        ],
+        "/Afu9NetworkStack/EcsSecurityGroup/from Afu9NetworkStackAlbSecurityGroupD1479A09:3000": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "EcsSecurityGroupfromAfu9NetworkStackAlbSecurityGroupD1479A093000A9956A81"
+          }
+        ],
+        "/Afu9NetworkStack/DbSecurityGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DbSecurityGroupE9D701AD"
+          }
+        ],
+        "/Afu9NetworkStack/DbSecurityGroup/from Afu9NetworkStackEcsSecurityGroupC7755A64:5432": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DbSecurityGroupfromAfu9NetworkStackEcsSecurityGroupC7755A6454323C70B10A"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9LoadBalancer/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9LoadBalancerCE61156C"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9LoadBalancer/HttpListener": [
+          {
+            "type": "aws:cdk:warning",
+            "data": "A default Action already existed on this Listener and was replaced. Configure exactly one default Action. [ack: @aws-cdk/aws-elbv2:listenerExistingDefaultActionReplaced]",
+            "trace": [
+              "Annotations.addMessage (/home/runner/work/codefactory-control/codefactory-control/node_modules/aws-cdk-lib/core/lib/annotations.js:1:1608)",
+              "Annotations.addWarningV2 (/home/runner/work/codefactory-control/codefactory-control/node_modules/aws-cdk-lib/core/lib/annotations.js:1:825)",
+              "ApplicationListener._setDefaultAction (/home/runner/work/codefactory-control/codefactory-control/node_modules/aws-cdk-lib/aws-elasticloadbalancingv2/lib/shared/base-listener.js:1:2489)",
+              "ApplicationListener.setDefaultAction (/home/runner/work/codefactory-control/codefactory-control/node_modules/aws-cdk-lib/aws-elasticloadbalancingv2/lib/alb/application-listener.js:1:9805)",
+              "ApplicationListener.addAction (/home/runner/work/codefactory-control/codefactory-control/node_modules/aws-cdk-lib/aws-elasticloadbalancingv2/lib/alb/application-listener.js:1:6210)",
+              "new Afu9NetworkStack (/home/runner/work/codefactory-control/codefactory-control/lib/afu9-network-stack.ts:173:18)",
+              "Object.<anonymous> (/home/runner/work/codefactory-control/codefactory-control/bin/codefactory-control.ts:17:1)",
+              "Module._compile (node:internal/modules/cjs/loader:1521:14)",
+              "Module.m._compile (/home/runner/work/codefactory-control/codefactory-control/node_modules/ts-node/src/index.ts:1618:23)",
+              "Module._extensions..js (node:internal/modules/cjs/loader:1623:10)",
+              "Object.require.extensions.<computed> [as .ts] (/home/runner/work/codefactory-control/codefactory-control/node_modules/ts-node/src/index.ts:1621:12)",
+              "Module.load (node:internal/modules/cjs/loader:1266:32)",
+              "Function.Module._load (node:internal/modules/cjs/loader:1091:12)",
+              "Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)",
+              "phase4 (/home/runner/work/codefactory-control/codefactory-control/node_modules/ts-node/src/bin.ts:649:14)",
+              "bootstrap (/home/runner/work/codefactory-control/codefactory-control/node_modules/ts-node/src/bin.ts:95:10)",
+              "main (/home/runner/work/codefactory-control/codefactory-control/node_modules/ts-node/src/bin.ts:55:10)",
+              "Object.<anonymous> (/home/runner/work/codefactory-control/codefactory-control/node_modules/ts-node/src/bin.ts:800:3)",
+              "Module._compile (node:internal/modules/cjs/loader:1521:14)",
+              "Object.Module._extensions..js (node:internal/modules/cjs/loader:1623:10)",
+              "Module.load (node:internal/modules/cjs/loader:1266:32)",
+              "Function.Module._load (node:internal/modules/cjs/loader:1091:12)",
+              "Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)",
+              "node:internal/main/run_main_module:28:49"
+            ]
+          }
+        ],
+        "/Afu9NetworkStack/Afu9LoadBalancer/HttpListener/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9LoadBalancerHttpListenerCC98544E"
+          }
+        ],
+        "/Afu9NetworkStack/Afu9TargetGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Afu9TargetGroupE3C98BA9"
+          }
+        ],
+        "/Afu9NetworkStack/VpcId": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "VpcId"
+          }
+        ],
+        "/Afu9NetworkStack/VpcCidr": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "VpcCidr"
+          }
+        ],
+        "/Afu9NetworkStack/LoadBalancerDNS": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LoadBalancerDNS"
+          }
+        ],
+        "/Afu9NetworkStack/LoadBalancerArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LoadBalancerArn"
+          }
+        ],
+        "/Afu9NetworkStack/TargetGroupArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "TargetGroupArn"
+          }
+        ],
+        "/Afu9NetworkStack/AlbSecurityGroupId": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AlbSecurityGroupId"
+          }
+        ],
+        "/Afu9NetworkStack/EcsSecurityGroupId": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "EcsSecurityGroupId"
+          }
+        ],
+        "/Afu9NetworkStack/DbSecurityGroupId": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DbSecurityGroupId"
+          }
+        ],
+        "/Afu9NetworkStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/Afu9NetworkStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/Afu9NetworkStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "Afu9NetworkStack"
     },
     "Tree": {
       "type": "cdk:tree",
