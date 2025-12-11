@@ -1,44 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { Octokit } from "octokit";
-
-const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
-const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
+import { createIssue, listIssuesByLabel } from "../../../src/lib/github";
 
 export async function GET() {
-
-  if (!process.env.GITHUB_TOKEN) {
-    console.error("GITHUB_TOKEN is not configured");
-    return NextResponse.json(
-      { error: "GitHub token not configured" },
-      { status: 500 }
-    );
-  }
-
-  const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN,
-  });
-
   try {
-    console.log(`Fetching issues with label source:afu-9 from ${GITHUB_OWNER}/${GITHUB_REPO}...`);
-    const { data: issues } = await octokit.rest.issues.listForRepo({
-      owner: GITHUB_OWNER,
-      repo: GITHUB_REPO,
-      labels: "source:afu-9",
-      state: "all",
-      sort: "created",
-      direction: "desc",
-    });
+    const issues = await listIssuesByLabel("source:afu-9");
 
     const formattedIssues = issues.map((issue) => ({
-      number: issue.number,
+      number: issue.id,
       title: issue.title,
       state: issue.state as "open" | "closed",
       createdAt: issue.created_at,
       htmlUrl: issue.html_url,
     }));
-
-    console.log(`Found ${formattedIssues.length} issues with label source:afu-9`);
 
     return NextResponse.json({
       status: "ok",
@@ -59,9 +33,6 @@ export async function POST(request: NextRequest) {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN,
-  });
   try {
     const { title, briefing } = await request.json();
 
@@ -123,16 +94,11 @@ ${specification}
 *Erstellt durch AFU-9 v0.1*
 *Label: source:afu-9*`;
 
-    console.log(`Creating GitHub issue in ${GITHUB_OWNER}/${GITHUB_REPO}...`);
-    const { data: issue } = await octokit.rest.issues.create({
-      owner: GITHUB_OWNER,
-      repo: GITHUB_REPO,
+    const issue = await createIssue({
       title,
       body: issueBody,
       labels: ["source:afu-9", "codefactory"],
     });
-
-    console.log(`GitHub issue created: ${issue.html_url}`);
 
     return NextResponse.json({
       status: "ok",
