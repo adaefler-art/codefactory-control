@@ -97,22 +97,78 @@ cat cdk.out/Afu9InfrastructureStack.template.json
 
 ## Step 5: Deploy Infrastructure
 
-```bash
-# Bootstrap CDK (first time only)
-npx cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_REGION
+Deploy the infrastructure in stages to handle dependencies:
 
-# Deploy the infrastructure stack
-npx cdk deploy Afu9InfrastructureStack
+### 5.1: Bootstrap CDK (First Time Only)
+
+```bash
+# Bootstrap CDK
+npx cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_REGION
+```
+
+### 5.2: Deploy Network Stack
+
+```bash
+# Deploy VPC, subnets, security groups, and ALB
+npx cdk deploy Afu9NetworkStack
 
 # Note the outputs:
+# - VpcId: vpc-xxxxx
 # - LoadBalancerDNS: xxx.eu-central-1.elb.amazonaws.com
-# - DatabaseEndpoint: afu9-db.xxx.eu-central-1.rds.amazonaws.com
-# - EcrControlCenterRepo: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/afu9/control-center
+# - DbSecurityGroupId: sg-xxxxx
 ```
+
+### 5.3: Deploy Database Stack
+
+```bash
+# Deploy RDS Postgres instance
+npx cdk deploy Afu9DatabaseStack
+
+# This will:
+# - Create RDS Postgres 15.5 instance (db.t4g.micro)
+# - Generate secure credentials in Secrets Manager
+# - Configure automated backups (7 days)
+# - Enable encryption at rest
+# - Deploy in private subnets with ECS-only access
+
+# Note the outputs:
+# - DbEndpoint: afu9-postgres.xxxxx.eu-central-1.rds.amazonaws.com
+# - DbPort: 5432
+# - DbName: afu9
+# - DbSecretArn: arn:aws:secretsmanager:eu-central-1:xxx:secret:afu9/database-xxx
+```
+
+**Note**: RDS deployment takes approximately 10-15 minutes.
 
 ## Step 6: Initialize Database
 
-Connect to the RDS instance and run migrations:
+After the database is deployed, run migrations to create the schema:
+
+### 6.1: Using the Migration Script (Recommended)
+
+The migration script automatically retrieves credentials from Secrets Manager and runs migrations:
+
+```bash
+# Ensure you have psql installed
+# macOS: brew install postgresql
+# Ubuntu: sudo apt-get install postgresql-client
+
+# Run all migrations
+./scripts/deploy-migrations.sh
+
+# Or run a specific migration
+./scripts/deploy-migrations.sh 001_initial_schema.sql
+```
+
+The script will:
+1. Retrieve credentials from AWS Secrets Manager
+2. Test database connectivity
+3. Run migrations in order
+4. Show table statistics
+
+### 6.2: Manual Migration (Alternative)
+
+If you prefer to run migrations manually:
 
 ```bash
 # Get database credentials from Secrets Manager
@@ -123,11 +179,126 @@ DB_SECRET=$(aws secretsmanager get-secret-value \
   --region $AWS_REGION)
 
 DB_HOST=$(echo $DB_SECRET | jq -r '.host')
+DB_PORT=$(echo $DB_SECRET | jq -r '.port')
 DB_USER=$(echo $DB_SECRET | jq -r '.username')
 DB_PASSWORD=$(echo $DB_SECRET | jq -r '.password')
+DB_NAME=$(echo $DB_SECRET | jq -r '.database')
 
-# Connect via bastion or VPN, then run migration
-psql -h $DB_HOST -U $DB_USER -d afu9 -f database/migrations/001_initial_schema.sql
+# Export environment variables
+export PGHOST=$DB_HOST
+export PGPORT=$DB_PORT
+export PGUSER=$DB_USER
+export PGPASSWORD=$DB_PASSWORD
+export PGDATABASE=$DB_NAME
+export PGSSLMODE=require
+
+# Run migration (requires network access to RDS)
+psql -f database/migrations/001_initial_schema.sql
+```
+
+### 6.3: Setting Up Network Access for Migrations
+
+Since the database is in a private subnet, you need network access. Choose one option:
+
+**Option A: AWS Systems Manager Session Manager (Recommended)**
+
+```bash
+# Launch a bastion EC2 instance (if not exists)
+# See docs/DATABASE-LOCAL-DEVELOPMENT.md for detailed instructions
+
+# Start port forwarding session
+aws ssm start-session \
+  --target <instance-id> \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters host="$DB_HOST",portNumber="5432",localPortNumber="5432"
+
+# Then run migrations using localhost
+./scripts/deploy-migrations.sh
+```
+
+**Option B: Temporary Security Group Rule (Development Only)**
+
+⚠️ **Warning**: Only for development. Avoid in production.
+
+```bash
+# Get your public IP
+MY_IP=$(curl -s https://checkip.amazonaws.com)
+
+# Get security group ID
+SG_ID=$(aws cloudformation describe-stacks \
+  --stack-name Afu9NetworkStack \
+  --query "Stacks[0].Outputs[?OutputKey=='DbSecurityGroupId'].OutputValue" \
+  --output text)
+
+# Add temporary ingress rule
+aws ec2 authorize-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp \
+  --port 5432 \
+  --cidr $MY_IP/32 \
+  --region $AWS_REGION
+
+# Run migrations
+./scripts/deploy-migrations.sh
+
+# IMPORTANT: Remove the rule after migrations
+aws ec2 revoke-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp \
+  --port 5432 \
+  --cidr $MY_IP/32 \
+  --region $AWS_REGION
+```
+
+**Option C: From EC2 Instance in Same VPC**
+
+If you have an EC2 instance in the same VPC:
+
+```bash
+# SSH to the instance
+ssh ec2-user@<instance-ip>
+
+# Install PostgreSQL client
+sudo yum install postgresql15
+
+# Clone the repository
+git clone https://github.com/adaefler-art/codefactory-control.git
+cd codefactory-control
+
+# Run migrations
+./scripts/deploy-migrations.sh
+```
+
+### 6.4: Verify Database Setup
+
+```bash
+# Connect to database
+export PGPASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id afu9/database \
+  --query SecretString \
+  --output text \
+  --region $AWS_REGION | jq -r '.password')
+
+DB_HOST=$(aws secretsmanager get-secret-value \
+  --secret-id afu9/database \
+  --query SecretString \
+  --output text \
+  --region $AWS_REGION | jq -r '.host')
+
+# List tables
+psql -h $DB_HOST -U afu9_admin -d afu9 -c "\dt"
+
+# Expected output:
+#              List of relations
+#  Schema |         Name         | Type  |   Owner    
+# --------+----------------------+-------+------------
+#  public | agent_runs           | table | afu9_admin
+#  public | mcp_servers          | table | afu9_admin
+#  public | mcp_tool_calls       | table | afu9_admin
+#  public | repositories         | table | afu9_admin
+#  public | workflow_executions  | table | afu9_admin
+#  public | workflow_steps       | table | afu9_admin
+#  public | workflows            | table | afu9_admin
 ```
 
 ## Step 7: Build and Push Docker Images
