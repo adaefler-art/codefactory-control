@@ -7,7 +7,7 @@
 /**
  * LLM Provider type
  */
-export type LLMProvider = 'openai' | 'anthropic' | 'bedrock';
+export type LLMProvider = 'openai' | 'anthropic' | 'bedrock' | 'deepseek';
 
 /**
  * Agent configuration
