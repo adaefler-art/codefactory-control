@@ -95,20 +95,31 @@ npm install && npm run dev
 
 ### Deployment (AWS)
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for complete deployment guide.
+**v0.2 ECS Deployment (Recommended):**
+
+See [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) for complete ECS deployment guide.
 
 Quick deploy:
 
 ```bash
-# Build and deploy infrastructure
-npm install
-npm run build
+# 1. Bootstrap CDK (first time only)
 npx cdk bootstrap
-npx cdk deploy Afu9InfrastructureStack
 
-# Build and push Docker images
-# (See deployment guide for details)
+# 2. Deploy infrastructure stacks
+npx cdk deploy Afu9NetworkStack
+npx cdk deploy Afu9DatabaseStack
+npx cdk deploy Afu9EcsStack
+
+# 3. Configure secrets in AWS Secrets Manager
+# (See ECS deployment guide for details)
+
+# 4. Build and push Docker images
+# (Use GitHub Actions or manual build - see deployment guide)
 ```
+
+**v0.1 Lambda Deployment (Legacy):**
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Lambda-based deployment.
 
 ## Architecture
 
