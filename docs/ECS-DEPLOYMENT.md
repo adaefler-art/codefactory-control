@@ -10,9 +10,14 @@ The AFU-9 v0.2 deployment consists of:
 - **ECS Cluster**: Fargate cluster with Container Insights
 - **ECS Service**: Single service running 4 containers in one task
 - **ALB**: Application Load Balancer for HTTP/HTTPS traffic
+- **Route53 & ACM**: Custom domain with TLS certificate (optional)
 - **RDS**: PostgreSQL 15 database
 - **Secrets Manager**: Secure credential storage
 - **CloudWatch**: Centralized logging and monitoring
+
+**📚 Additional Resources:**
+- [HTTPS & DNS Setup Guide](./HTTPS-DNS-SETUP.md) - Configure custom domain and HTTPS
+- [URL Mappings](./URL-MAPPINGS.md) - Complete URL reference for all endpoints
 
 ## Architecture
 
