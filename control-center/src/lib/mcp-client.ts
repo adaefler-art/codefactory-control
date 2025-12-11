@@ -104,8 +104,9 @@ export class MCPClient {
       });
 
       if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Unable to read error body');
         throw new Error(
-          `MCP server returned error status: ${response.status} ${response.statusText}`
+          `MCP server returned HTTP ${response.status} ${response.statusText}: ${errorBody}`
         );
       }
 

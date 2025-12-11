@@ -271,10 +271,12 @@ export class WorkflowEngine {
         return !!value;
       }
 
-      // For now, return true for other conditions
-      // TODO: Implement more sophisticated condition evaluation
-      return true;
-    } catch {
+      // Default to false for unrecognized condition formats
+      // This is safer than defaulting to true
+      console.warn(`[Workflow Engine] Unrecognized condition format: ${condition}`);
+      return false;
+    } catch (error) {
+      console.error(`[Workflow Engine] Error evaluating condition: ${condition}`, error);
       return false;
     }
   }

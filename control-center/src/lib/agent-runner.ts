@@ -137,12 +137,16 @@ export class AgentRunner {
           role: 'assistant',
           content: assistantMessage.content || '',
           toolCalls: assistantMessage.tool_calls.map((tc) => {
-            // Handle both function and custom tool calls
-            const toolCall = tc as any;
+            // OpenAI tool calls always have the function property
+            // This type assertion is safe as we're coming from OpenAI's API
+            const functionCall = (tc as any).function;
+            if (!functionCall) {
+              throw new Error(`Invalid tool call format: missing function property`);
+            }
             return {
               id: tc.id,
-              name: toolCall.function?.name || toolCall.name,
-              arguments: JSON.parse(toolCall.function?.arguments || toolCall.arguments || '{}'),
+              name: functionCall.name,
+              arguments: JSON.parse(functionCall.arguments),
             };
           }),
         });
@@ -150,10 +154,13 @@ export class AgentRunner {
         // Execute each tool call
         for (const toolCall of assistantMessage.tool_calls) {
           try {
-            // Handle both function and custom tool calls
-            const tc = toolCall as any;
-            const toolName = tc.function?.name || tc.name;
-            const args = JSON.parse(tc.function?.arguments || tc.arguments || '{}');
+            // OpenAI tool calls always have the function property
+            const functionCall = (toolCall as any).function;
+            if (!functionCall) {
+              throw new Error(`Invalid tool call format: missing function property`);
+            }
+            const toolName = functionCall.name;
+            const args = JSON.parse(functionCall.arguments);
 
             console.log(`[Agent Runner] Executing tool: ${toolName}`, { args });
 
