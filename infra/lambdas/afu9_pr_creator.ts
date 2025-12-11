@@ -35,7 +35,7 @@ export const handler = async (event: PatchState) => {
 
   const [owner, repo] = event.repo.split("/");
   
-  if (!owner || !repo) {
+  if (!owner || !repo || event.repo.split("/").length !== 2) {
     console.error("Invalid repo format", { repo: event.repo });
     throw new Error(`Invalid repo format: ${event.repo}. Expected format: owner/repo`);
   }
@@ -152,8 +152,14 @@ export const handler = async (event: PatchState) => {
         base: event.targetBranch,
       });
       
-      if (error instanceof Error && error.message.includes("Validation Failed")) {
-        throw new Error(`Failed to create PR: A pull request already exists for ${branchName}`);
+      // Check for duplicate PR by looking at error details
+      if (error instanceof Error) {
+        const errorMsg = error.message.toLowerCase();
+        if (errorMsg.includes("validation failed") || 
+            errorMsg.includes("pull request already exists") ||
+            errorMsg.includes("a pull request already exists")) {
+          throw new Error(`Failed to create PR: A pull request already exists for ${branchName}`);
+        }
       }
       
       throw new Error("Failed to create pull request");
