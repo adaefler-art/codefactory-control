@@ -27,10 +27,15 @@ cp .env.local.template .env.local
 
 Erforderliche Variablen:
 
-- `GITHUB_TOKEN`: GitHub Fine-grained Personal Access Token mit `repo:issues` (read/write) Berechtigung
+- `GITHUB_TOKEN`: GitHub Personal Access Token (PAT)
+  - **Erstellen**: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
+  - **Erforderliche Berechtigung**: `repo:issues` (read/write)
+  - **Format**: `ghp_...` (klassisch) oder `github_pat_...` (fine-grained)
 - `GITHUB_OWNER`: GitHub-Organisation oder User (default: `adaefler-art`)
 - `GITHUB_REPO`: Zielrepository für Issues (default: `rhythmologicum-connect`)
 - `OPENAI_API_KEY`: OpenAI API-Schlüssel für GPT-4o-mini
+  - **Erstellen**: [OpenAI Platform](https://platform.openai.com/api-keys)
+  - **Format**: `sk-...`
 
 ### 3. Development-Server starten
 
@@ -104,9 +109,11 @@ Navigiere zu `/features` um eine Liste aller durch AFU-9 erstellten Features zu 
 
 ## Sicherheit
 
-- `.env.local` wird automatisch durch `.gitignore` ausgeschlossen
+- **`.env.local`** wird automatisch durch `.gitignore` ausgeschlossen und niemals committed
+- **`.env*`** Pattern in `.gitignore` schützt alle Environment-Dateien
 - API-Keys werden niemals im Frontend exponiert
 - Alle API-Calls laufen über Next.js Server-Side Routes
+- **Niemals** Tokens oder API-Keys im Code oder in Commits einchecken
 
 ## Deployment
 
