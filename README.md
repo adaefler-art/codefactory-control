@@ -54,7 +54,12 @@ Web UI for feature intake and GitHub issue generation. See [`control-center/READ
 cd control-center
 npm install
 cp .env.local.template .env.local
-# Edit .env.local with your credentials
+# Edit .env.local with your credentials:
+#   - GITHUB_TOKEN: Personal Access Token from GitHub Settings
+#                   (requires repo:issues read/write permission)
+#   - GITHUB_OWNER: Your GitHub username or organization
+#   - GITHUB_REPO: Target repository for issues
+#   - OPENAI_API_KEY: API key from OpenAI Platform
 npm run dev
 ```
 
