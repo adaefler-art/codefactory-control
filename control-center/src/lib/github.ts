@@ -8,7 +8,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
  * Minimal issue fields returned by listIssuesByLabel
  */
 export interface MinimalIssue {
-  id: number;
+  id: number; // Issue number (not the internal GitHub ID)
   title: string;
   state: string;
   html_url: string;
