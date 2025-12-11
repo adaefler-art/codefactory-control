@@ -1,0 +1,40 @@
+{
+  "name": "issue_to_pr",
+  "description": "Convert a GitHub issue into a pull request with automated fix - basic workflow example",
+  "steps": [
+    {
+      "name": "fetch_issue",
+      "tool": "github.getIssue",
+      "params": {
+        "owner": "${repo.owner}",
+        "repo": "${repo.name}",
+        "number": "${input.issue_number}"
+      },
+      "assign": "issue"
+    },
+    {
+      "name": "create_branch",
+      "tool": "github.createBranch",
+      "params": {
+        "owner": "${repo.owner}",
+        "repo": "${repo.name}",
+        "branch": "fix/${issue.number}",
+        "from": "${repo.default_branch}"
+      },
+      "assign": "branch"
+    },
+    {
+      "name": "create_pull_request",
+      "tool": "github.createPullRequest",
+      "params": {
+        "owner": "${repo.owner}",
+        "repo": "${repo.name}",
+        "title": "Fix: ${issue.title}",
+        "body": "Automated fix for #${issue.number}\n\n${issue.body}",
+        "head": "fix/${issue.number}",
+        "base": "${repo.default_branch}"
+      },
+      "assign": "pull_request"
+    }
+  ]
+}

@@ -143,6 +143,9 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 **📚 Documentation:**
 - [Architecture Overview](docs/architecture/README.md) - Technical architecture details
 - [Complete Architecture Guide (German)](docs/architecture/afu9-v0.2-overview.md) - Comprehensive guide with AWS components, MCP pattern, and development workflow integration
+- [Workflow Schema](docs/WORKFLOW-SCHEMA.md) - Complete workflow model and JSON format specification
+- [Workflow Engine](docs/WORKFLOW-ENGINE.md) - Workflow execution and agent runner documentation
+- [Database Schema](docs/architecture/database-schema.md) - Database structure and workflow persistence
 
 ### v0.1 Architecture (Legacy)
 

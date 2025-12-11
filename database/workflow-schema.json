@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/adaefler-art/codefactory-control/workflow-schema.json",
+  "title": "AFU-9 Workflow Schema",
+  "description": "JSON schema for AFU-9 workflow definitions",
+  "type": "object",
+  "required": ["steps"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the workflow",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the workflow purpose"
+    },
+    "steps": {
+      "type": "array",
+      "description": "Array of workflow steps to execute in sequence",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/workflowStep"
+      }
+    },
+    "config": {
+      "type": "object",
+      "description": "Optional workflow-level configuration",
+      "properties": {
+        "continueOnError": {
+          "type": "boolean",
+          "description": "Whether to continue execution if a step fails",
+          "default": false
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "Maximum execution time in milliseconds",
+          "minimum": 1000,
+          "default": 300000
+        },
+        "maxRetries": {
+          "type": "integer",
+          "description": "Maximum number of retries for the entire workflow",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    }
+  },
+  "definitions": {
+    "workflowStep": {
+      "type": "object",
+      "required": ["name", "tool", "params"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique name for this step within the workflow",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "tool": {
+          "type": "string",
+          "description": "MCP tool to call in format 'server.toolName'",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-zA-Z][a-zA-Z0-9_]*$",
+          "examples": [
+            "github.getIssue",
+            "github.createPullRequest",
+            "deploy.updateService",
+            "observability.getServiceLogs"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameters to pass to the tool (supports variable substitution with ${path})",
+          "additionalProperties": true
+        },
+        "assign": {
+          "type": "string",
+          "description": "Variable name to assign the step's output to",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "if": {
+          "type": "string",
+          "description": "Condition expression - step only executes if true",
+          "pattern": "^\\$\\{.*\\}$",
+          "examples": [
+            "${variable}",
+            "${issue.labels[0].name === 'bug'}"
+          ]
+        },
+        "retry": {
+          "type": "object",
+          "description": "Retry configuration for failed steps",
+          "properties": {
+            "maxAttempts": {
+              "type": "integer",
+              "description": "Maximum number of retry attempts",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 3
+            },
+            "backoff": {
+              "type": "string",
+              "description": "Backoff strategy for retries",
+              "enum": ["fixed", "linear", "exponential"],
+              "default": "exponential"
+            },
+            "backoffMultiplier": {
+              "type": "number",
+              "description": "Multiplier for backoff (used with exponential/linear)",
+              "minimum": 1,
+              "default": 2
+            },
+            "initialDelayMs": {
+              "type": "integer",
+              "description": "Initial delay before first retry in milliseconds",
+              "minimum": 100,
+              "default": 1000
+            },
+            "maxDelayMs": {
+              "type": "integer",
+              "description": "Maximum delay between retries in milliseconds",
+              "minimum": 1000,
+              "default": 60000
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "steps": [
+        {
+          "name": "fetch_issue",
+          "tool": "github.getIssue",
+          "params": {
+            "owner": "${repo.owner}",
+            "repo": "${repo.name}",
+            "number": "${input.issue_number}"
+          },
+          "assign": "issue"
+        },
+        {
+          "name": "create_branch",
+          "tool": "github.createBranch",
+          "params": {
+            "owner": "${repo.owner}",
+            "repo": "${repo.name}",
+            "branch": "fix/${issue.number}",
+            "from": "${repo.default_branch}"
+          },
+          "assign": "branch"
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "name": "deploy_service",
+          "tool": "deploy.updateService",
+          "params": {
+            "cluster": "${input.cluster}",
+            "service": "${input.service}",
+            "image": "${input.image_tag}"
+          },
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "exponential",
+            "initialDelayMs": 2000
+          },
+          "assign": "deployment"
+        },
+        {
+          "name": "verify_deployment",
+          "tool": "deploy.getServiceStatus",
+          "params": {
+            "cluster": "${input.cluster}",
+            "service": "${input.service}"
+          },
+          "assign": "status"
+        }
+      ],
+      "config": {
+        "timeoutMs": 600000,
+        "continueOnError": false
+      }
+    }
+  ]
+}
