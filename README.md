@@ -3,68 +3,168 @@
 Control-plane for AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture).
 
 `codefactory-control` orchestrates autonomous code fabrication across GitHub repositories using:
-- AWS Lambda
-- AWS Step Functions
+- AWS ECS Fargate (Control Center + MCP Servers)
+- AWS Lambda & Step Functions (v0.1 pipeline)
+- RDS Postgres (workflow state)
 - GitHub Actions
 - External LLMs (optional)
 
-v0.1 implements a walking skeleton for the flow:
-**Issue → AFU-9 Pipeline → Patch → Branch → Pull Request → CI Feedback**.
+## Versions
+
+- **v0.1**: Walking skeleton with Lambda-based pipeline  
+  **Flow**: Issue → AFU-9 Pipeline → Patch → Branch → Pull Request → CI Feedback
+  
+- **v0.2**: Production-ready architecture on ECS with MCP pattern  
+  **Features**: Control Center UI, MCP-based tool architecture, RDS persistence, scalable infrastructure
 
 ## Repository Structure
 
-This repository is organized into two main parts:
+```
+codefactory-control/
+├── bin/                      # CDK entry point
+├── lib/                      # CDK stack definitions
+│   ├── codefactory-control-stack.ts       # v0.1 Lambda stack
+│   └── afu9-infrastructure-stack.ts       # v0.2 ECS stack (WIP)
+├── infra/lambdas/            # Lambda function implementations (v0.1)
+├── control-center/           # Next.js Control Center app
+├── mcp-servers/              # MCP server implementations (v0.2)
+│   ├── base/                 # Base MCP server
+│   ├── github/               # GitHub operations
+│   ├── deploy/               # AWS ECS deployments
+│   └── observability/        # CloudWatch monitoring
+├── database/migrations/      # Database schema migrations
+├── docs/                     # Architecture documentation
+│   ├── architecture/         # Detailed architecture docs
+│   └── DEPLOYMENT.md         # Deployment guide
+└── scripts/                  # Utility scripts
+```
 
-### Root: Infrastructure & CDK
-The root directory contains AWS CDK infrastructure and orchestration logic:
+### Infrastructure & CDK
+The root directory contains AWS CDK infrastructure:
 - `bin/` - CDK entry point
+- `lib/` - CDK stack definitions (Lambda v0.1 + ECS v0.2)
 - `infra/` - Lambda function implementations
-- `lib/` - CDK stack definitions
-- `cdk.json` - CDK configuration
-- `package.json` - Infrastructure dependencies (AWS CDK, TypeScript, etc.)
-- `tsconfig.json` - TypeScript configuration for infrastructure
+- `package.json` - Infrastructure dependencies
 
-### Subdirectory: Control Center App
-The `control-center/` directory contains a standalone Next.js application:
-- Complete Next.js App Router application
-- TypeScript-based
-- Own `package.json` and dependencies
-- Dedicated README with setup instructions
+### Control Center (Next.js)
+The `control-center/` directory contains the web application:
+- Next.js 16 App Router
+- TypeScript
+- Tailwind CSS
+- See [`control-center/README.md`](control-center/README.md) for details
+
+### MCP Servers
+The `mcp-servers/` directory contains specialized microservices:
+- GitHub operations (issues, PRs, branches)
+- AWS ECS deployments
+- CloudWatch observability
+- See [`mcp-servers/README.md`](mcp-servers/README.md) for details
+
+## Quick Start
+
+### Development (Local)
+
+1. **Install dependencies**:
+```bash
+npm install
+cd control-center && npm install && cd ..
+```
+
+2. **Run Control Center locally**:
+```bash
+cd control-center
+cp .env.local.template .env.local
+# Edit .env.local with your credentials
+npm run dev
+```
+
+3. **Run MCP servers locally** (optional):
+```bash
+# Terminal 1: GitHub server
+cd mcp-servers/github
+npm install && npm run dev
+
+# Terminal 2: Deploy server  
+cd mcp-servers/deploy
+npm install && npm run dev
+
+# Terminal 3: Observability server
+cd mcp-servers/observability
+npm install && npm run dev
+```
+
+### Deployment (AWS)
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for complete deployment guide.
+
+Quick deploy:
+
+```bash
+# Build and deploy infrastructure
+npm install
+npm run build
+npx cdk bootstrap
+npx cdk deploy Afu9InfrastructureStack
+
+# Build and push Docker images
+# (See deployment guide for details)
+```
+
+## Architecture
+
+### v0.2 Architecture (Current)
+
+AFU-9 v0.2 uses a modern, scalable architecture:
+
+- **ECS Fargate**: Control Center + 3 MCP server sidecars
+- **RDS Postgres**: Workflow state and execution history
+- **ALB**: HTTPS termination and load balancing
+- **CloudWatch**: Centralized logging and monitoring
+- **Secrets Manager**: Secure credential storage
+
+**MCP Pattern**: AFU-9 acts as an MCP-Client, consuming specialized MCP-Servers for different domains (GitHub, Deploy, Observability).
+
+See [docs/architecture/README.md](docs/architecture/README.md) for detailed architecture documentation.
+
+### v0.1 Architecture (Legacy)
+
+Lambda-based pipeline with Step Functions orchestration. Still functional for simple workflows.
 
 ## Components
 
 ### Infrastructure (CDK)
 
-AWS CDK infrastructure for deploying Lambda functions and Step Functions state machine.
+AWS CDK infrastructure for deploying the complete stack.
 
 ```bash
 npm install
-npx cdk synth
-npx cdk deploy
+npx cdk synth              # Generate CloudFormation
+npx cdk deploy            # Deploy to AWS
 ```
 
-Then configure in your target repo a GitHub Action that calls the AFU-9 orchestrator Lambda
-(see `.github/workflows/afu9-bugfix.yml`).
+Stacks:
+- `CodefactoryControlStack` - v0.1 Lambda-based pipeline
+- `Afu9InfrastructureStack` - v0.2 ECS-based infrastructure
 
 ### Control Center (Next.js)
 
-Web UI for feature intake and GitHub issue generation. See [`control-center/README.md`](control-center/README.md) for details.
+Web UI for workflow management and feature intake.
 
-```bash
-cd control-center
-npm install
-cp .env.local.template .env.local
-# Edit .env.local with your credentials:
-#   - GITHUB_TOKEN: Personal Access Token from GitHub Settings
-#                   (requires repo:issues read/write permission)
-#   - GITHUB_OWNER: Your GitHub username or organization
-#   - GITHUB_REPO: Target repository for issues
-#   - OPENAI_API_KEY: API key from OpenAI Platform
-npm run dev
-```
-
-The Control Center provides:
+Features:
 - Feature briefing input form
-- LLM-powered technical specification generation
+- LLM-powered specification generation
 - Automatic GitHub issue creation
-- Feature tracking dashboard
+- Workflow execution dashboard
+- MCP server status monitoring
+
+See [`control-center/README.md`](control-center/README.md) for details.
+
+### MCP Servers
+
+Specialized microservices providing domain-specific tools:
+
+- **GitHub** (port 3001): Issue/PR/branch operations
+- **Deploy** (port 3002): ECS service deployments
+- **Observability** (port 3003): CloudWatch logs/metrics
+
+See [`mcp-servers/README.md`](mcp-servers/README.md) for details.
