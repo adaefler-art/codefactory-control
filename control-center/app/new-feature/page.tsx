@@ -22,7 +22,7 @@ export default function NewFeaturePage() {
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && data.status === "ok") {
         alert(`Feature erstellt: ${data.url}`);
         setTitle("");
         setBriefing("");

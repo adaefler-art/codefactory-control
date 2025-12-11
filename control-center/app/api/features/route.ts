@@ -80,13 +80,13 @@ ${specification}
       repo: GITHUB_REPO,
       title,
       body: issueBody,
-      labels: ["source:afu-9"],
+      labels: ["source:afu-9", "codefactory"],
     });
 
     console.log(`GitHub issue created: ${issue.html_url}`);
 
     return NextResponse.json({
-      success: true,
+      status: "ok",
       url: issue.html_url,
       issueNumber: issue.number,
       specification,
