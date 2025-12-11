@@ -113,30 +113,41 @@ export class Afu9EcsStack extends cdk.Stack {
     // Secrets Manager
     // ========================================
 
-    // Import database secret
+    // Import database secret (connection details for application)
+    // This is the comprehensive secret created by Afu9DatabaseStack
     const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
       this,
       'DatabaseSecret',
       dbSecretArn
     );
 
-    // Placeholder for GitHub credentials (to be populated manually)
+    // GitHub credentials secret - create with placeholder that must be updated manually
+    // Note: This creates a new secret. Update it after deployment with:
+    // aws secretsmanager update-secret --secret-id afu9/github --secret-string '{"token":"ghp_...","owner":"org","repo":"repo"}'
     const githubSecret = new secretsmanager.Secret(this, 'GithubSecret', {
       secretName: 'afu9/github',
-      description: 'AFU-9 GitHub credentials',
-      secretObjectValue: {
-        token: cdk.SecretValue.unsafePlainText('PLACEHOLDER_UPDATE_MANUALLY'),
-        owner: cdk.SecretValue.unsafePlainText('your-github-org'),
-        repo: cdk.SecretValue.unsafePlainText('your-repo'),
+      description: 'AFU-9 GitHub credentials (UPDATE AFTER DEPLOYMENT)',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          token: 'PLACEHOLDER_UPDATE_MANUALLY',
+          owner: 'your-github-org',
+          repo: 'your-repo',
+        }),
+        generateStringKey: 'dummy', // Required but not used
       },
     });
 
-    // Placeholder for LLM API keys (to be populated manually)
+    // LLM API keys secret - create with placeholder that must be updated manually
+    // Note: This creates a new secret. Update it after deployment with:
+    // aws secretsmanager update-secret --secret-id afu9/llm --secret-string '{"openai_api_key":"sk-..."}'
     const llmSecret = new secretsmanager.Secret(this, 'LlmSecret', {
       secretName: 'afu9/llm',
-      description: 'AFU-9 LLM API keys',
-      secretObjectValue: {
-        openai_api_key: cdk.SecretValue.unsafePlainText('PLACEHOLDER_UPDATE_MANUALLY'),
+      description: 'AFU-9 LLM API keys (UPDATE AFTER DEPLOYMENT)',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          openai_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
+        }),
+        generateStringKey: 'dummy', // Required but not used
       },
     });
 
@@ -376,7 +387,9 @@ export class Afu9EcsStack extends cdk.Stack {
       taskDefinition,
       serviceName: 'afu9-control-center',
       desiredCount: 1,
-      minHealthyPercent: 100,
+      // For single-task deployments, allow zero tasks during updates
+      // This enables rolling deployments even with only 1 task
+      minHealthyPercent: 0,
       maxHealthyPercent: 200,
       securityGroups: [ecsSecurityGroup],
       vpcSubnets: {

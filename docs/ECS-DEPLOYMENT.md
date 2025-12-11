@@ -111,6 +111,8 @@ This creates:
 
 ### 5. Configure Secrets
 
+**IMPORTANT:** The ECS stack creates placeholder secrets that must be updated before the service can start successfully.
+
 After deployment, update the placeholder secrets in AWS Secrets Manager:
 
 #### GitHub Credentials
@@ -126,6 +128,10 @@ aws secretsmanager update-secret \
   --region eu-central-1
 ```
 
+**Note:** The GitHub token needs the following scopes:
+- `repo` - Full control of private repositories
+- `workflow` - Update GitHub Action workflows
+
 #### LLM API Keys
 
 ```bash
@@ -134,6 +140,24 @@ aws secretsmanager update-secret \
   --secret-string '{
     "openai_api_key": "sk-your-openai-key-here"
   }' \
+  --region eu-central-1
+```
+
+**Note:** You can verify secrets are configured correctly with:
+
+```bash
+# Check GitHub secret
+aws secretsmanager get-secret-value \
+  --secret-id afu9/github \
+  --query SecretString \
+  --output text \
+  --region eu-central-1
+
+# Check LLM secret
+aws secretsmanager get-secret-value \
+  --secret-id afu9/llm \
+  --query SecretString \
+  --output text \
   --region eu-central-1
 ```
 
