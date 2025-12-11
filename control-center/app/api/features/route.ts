@@ -6,6 +6,14 @@ export async function GET() {
   const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
   const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
 
+  if (!process.env.GITHUB_TOKEN) {
+    console.error("GITHUB_TOKEN is not configured");
+    return NextResponse.json(
+      { error: "GitHub token not configured" },
+      { status: 500 }
+    );
+  }
+
   const octokit = new Octokit({
     auth: process.env.GITHUB_TOKEN,
   });

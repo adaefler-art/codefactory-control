@@ -19,9 +19,16 @@ export default function FeaturesPage() {
     async function fetchIssues() {
       try {
         const response = await fetch("/api/features");
+        
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({ error: "Unknown error" }));
+          setError(data.error || `Server error: ${response.status}`);
+          return;
+        }
+
         const data = await response.json();
 
-        if (response.ok && data.status === "ok") {
+        if (data.status === "ok") {
           setIssues(data.issues);
         } else {
           setError(data.error || "Fehler beim Laden der Features");
