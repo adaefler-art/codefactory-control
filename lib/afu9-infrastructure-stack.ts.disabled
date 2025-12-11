@@ -1,0 +1,497 @@
+/**
+ * AFU-9 v0.2 Infrastructure Stack (DISABLED - TypeScript Compilation Issues)
+ * 
+ * This file contains the complete CDK infrastructure definition for AFU-9 v0.2,
+ * but is currently disabled due to TypeScript compilation issues with aws-cdk-lib imports.
+ * 
+ * Known Issues:
+ * - TypeScript cannot resolve types from aws-cdk-lib/aws-* submodules
+ * - Type annotations on class properties need namespace prefixes (ec2.Vpc, ecs.Cluster, etc.)
+ * 
+ * To fix:
+ * 1. Investigate aws-cdk-lib v2.162.1 type definitions
+ * 2. Ensure proper TypeScript configuration in tsconfig.json
+ * 3. Add explicit type annotations with namespace prefixes throughout
+ * 4. Test with: npm run build
+ * 5. Rename file back to .ts when working
+ * 
+ * See docs/DEPLOYMENT.md for deployment instructions once fixed.
+ */
+
+import * as cdk from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as rds from 'aws-cdk-lib/aws-rds';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
+
+/**
+ * AFU-9 v0.2 Infrastructure Stack
+ * 
+ * Deploys AFU-9 Control Center on AWS with:
+ * - VPC with public/private subnets across 2 AZs
+ * - Application Load Balancer (HTTPS)
+ * - ECS Fargate cluster and service
+ * - RDS Postgres database
+ * - Secrets Manager for credentials
+ * - ECR repositories for container images
+ */
+export class Afu9InfrastructureStack extends cdk.Stack {
+  public readonly vpc: Vpc;
+  public readonly cluster: Cluster;
+  public readonly database: DatabaseInstance;
+  public readonly loadBalancer: ApplicationLoadBalancer;
+
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // ========================================
+    // VPC & Networking
+    // ========================================
+    
+    this.vpc = new ec2.Vpc(this, 'Afu9Vpc', {
+      maxAzs: 2,
+      natGateways: 1, // Cost optimization for v0.2
+      subnetConfiguration: [
+        {
+          cidrMask: 24,
+          name: 'Public',
+          subnetType: ec2.SubnetType.PUBLIC,
+        },
+        {
+          cidrMask: 24,
+          name: 'Private',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        },
+      ],
+    });
+
+    // ========================================
+    // Security Groups
+    // ========================================
+
+    const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+      vpc: this.vpc,
+      description: 'Security group for ALB',
+      allowAllOutbound: true,
+    });
+
+    albSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      'Allow HTTPS traffic from internet'
+    );
+
+    // For development, also allow HTTP (can be removed in production)
+    albSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(80),
+      'Allow HTTP traffic from internet (development)'
+    );
+
+    const ecsSecurityGroup = new ec2.SecurityGroup(this, 'EcsSecurityGroup', {
+      vpc: this.vpc,
+      description: 'Security group for ECS tasks',
+      allowAllOutbound: true,
+    });
+
+    ecsSecurityGroup.addIngressRule(
+      albSecurityGroup,
+      ec2.Port.tcp(3000),
+      'Allow traffic from ALB to ECS on port 3000'
+    );
+
+    const dbSecurityGroup = new ec2.SecurityGroup(this, 'DbSecurityGroup', {
+      vpc: this.vpc,
+      description: 'Security group for RDS Postgres',
+      allowAllOutbound: false,
+    });
+
+    dbSecurityGroup.addIngressRule(
+      ecsSecurityGroup,
+      ec2.Port.tcp(5432),
+      'Allow PostgreSQL traffic from ECS tasks'
+    );
+
+    // ========================================
+    // Secrets Manager
+    // ========================================
+
+    // Database credentials secret
+    const dbSecret = new secretsmanager.Secret(this, 'DatabaseSecret', {
+      secretName: 'afu9/database',
+      description: 'AFU-9 RDS Postgres credentials',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          username: 'afu9_admin',
+        }),
+        generateStringKey: 'password',
+        excludePunctuation: true,
+        includeSpace: false,
+        passwordLength: 32,
+      },
+    });
+
+    // Placeholder for GitHub credentials (to be populated manually)
+    const githubSecret = new secretsmanager.Secret(this, 'GithubSecret', {
+      secretName: 'afu9/github',
+      description: 'AFU-9 GitHub credentials',
+      secretObjectValue: {
+        token: cdk.SecretValue.unsafePlainText('PLACEHOLDER_UPDATE_MANUALLY'),
+      },
+    });
+
+    // Placeholder for LLM API keys (to be populated manually)
+    const llmSecret = new secretsmanager.Secret(this, 'LlmSecret', {
+      secretName: 'afu9/llm',
+      description: 'AFU-9 LLM API keys',
+      secretObjectValue: {
+        openai_api_key: cdk.SecretValue.unsafePlainText('PLACEHOLDER_UPDATE_MANUALLY'),
+      },
+    });
+
+    // ========================================
+    // RDS Postgres
+    // ========================================
+
+    this.database = new rds.DatabaseInstance(this, 'Afu9Database', {
+      engine: rds.DatabaseInstanceEngine.postgres({
+        version: rds.PostgresEngineVersion.VER_15,
+      }),
+      instanceType: ec2.InstanceType.of(
+        ec2.InstanceClass.T4G,
+        ec2.InstanceSize.MICRO
+      ),
+      vpc: this.vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      securityGroups: [dbSecurityGroup],
+      databaseName: 'afu9',
+      credentials: rds.Credentials.fromSecret(dbSecret),
+      allocatedStorage: 20,
+      storageType: rds.StorageType.GP3,
+      backupRetention: cdk.Duration.days(7),
+      deletionProtection: false, // Set to true for production
+      removalPolicy: cdk.RemovalPolicy.SNAPSHOT, // Take snapshot on deletion
+      storageEncrypted: true,
+    });
+
+    // ========================================
+    // ECR Repositories
+    // ========================================
+
+    const controlCenterRepo = new ecr.Repository(this, 'ControlCenterRepo', {
+      repositoryName: 'afu9/control-center',
+      imageScanOnPush: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const mcpGithubRepo = new ecr.Repository(this, 'McpGithubRepo', {
+      repositoryName: 'afu9/mcp-github',
+      imageScanOnPush: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const mcpDeployRepo = new ecr.Repository(this, 'McpDeployRepo', {
+      repositoryName: 'afu9/mcp-deploy',
+      imageScanOnPush: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const mcpObservabilityRepo = new ecr.Repository(this, 'McpObservabilityRepo', {
+      repositoryName: 'afu9/mcp-observability',
+      imageScanOnPush: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // ========================================
+    // ECS Cluster
+    // ========================================
+
+    this.cluster = new ecs.Cluster(this, 'Afu9Cluster', {
+      clusterName: 'afu9-cluster',
+      vpc: this.vpc,
+      containerInsights: true,
+    });
+
+    // ========================================
+    // IAM Roles
+    // ========================================
+
+    // Task execution role (used by ECS to pull images and write logs)
+    const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AmazonECSTaskExecutionRolePolicy'
+        ),
+      ],
+    });
+
+    // Grant access to secrets
+    dbSecret.grantRead(taskExecutionRole);
+    githubSecret.grantRead(taskExecutionRole);
+    llmSecret.grantRead(taskExecutionRole);
+
+    // Task role (used by application code for AWS API calls)
+    const taskRole = new iam.Role(this, 'TaskRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+    });
+
+    // Grant task role access to secrets
+    dbSecret.grantRead(taskRole);
+    githubSecret.grantRead(taskRole);
+    llmSecret.grantRead(taskRole);
+
+    // Grant CloudWatch permissions
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+          'logs:FilterLogEvents',
+          'cloudwatch:GetMetricStatistics',
+          'cloudwatch:DescribeAlarms',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    // Grant ECS permissions for deploy MCP server
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecs:DescribeServices',
+          'ecs:UpdateService',
+          'ecs:DescribeTasks',
+          'ecs:ListTasks',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    // ========================================
+    // ECS Task Definition
+    // ========================================
+
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
+      family: 'afu9-control-center',
+      cpu: 1024, // 1 vCPU
+      memoryLimitMiB: 2048, // 2 GB
+      executionRole: taskExecutionRole,
+      taskRole: taskRole,
+    });
+
+    // Control Center container
+    const controlCenterContainer = taskDefinition.addContainer('control-center', {
+      image: ecs.ContainerImage.fromEcrRepository(controlCenterRepo, 'latest'),
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'control-center',
+        logGroup: new logs.LogGroup(this, 'ControlCenterLogGroup', {
+          logGroupName: '/ecs/afu9/control-center',
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      }),
+      environment: {
+        NODE_ENV: 'production',
+        PORT: '3000',
+        MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
+        MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
+        MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
+      },
+      secrets: {
+        DATABASE_URL: ecs.Secret.fromSecretsManager(dbSecret),
+        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
+        OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
+      },
+    });
+
+    controlCenterContainer.addPortMappings({
+      containerPort: 3000,
+      protocol: ecs.Protocol.TCP,
+    });
+
+    // MCP GitHub Server container
+    const mcpGithubContainer = taskDefinition.addContainer('mcp-github', {
+      image: ecs.ContainerImage.fromEcrRepository(mcpGithubRepo, 'latest'),
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'mcp-github',
+        logGroup: new logs.LogGroup(this, 'McpGithubLogGroup', {
+          logGroupName: '/ecs/afu9/mcp-github',
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      }),
+      environment: {
+        NODE_ENV: 'production',
+        PORT: '3001',
+      },
+      secrets: {
+        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
+      },
+    });
+
+    mcpGithubContainer.addPortMappings({
+      containerPort: 3001,
+      protocol: ecs.Protocol.TCP,
+    });
+
+    // MCP Deploy Server container
+    const mcpDeployContainer = taskDefinition.addContainer('mcp-deploy', {
+      image: ecs.ContainerImage.fromEcrRepository(mcpDeployRepo, 'latest'),
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'mcp-deploy',
+        logGroup: new logs.LogGroup(this, 'McpDeployLogGroup', {
+          logGroupName: '/ecs/afu9/mcp-deploy',
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      }),
+      environment: {
+        NODE_ENV: 'production',
+        PORT: '3002',
+        AWS_REGION: cdk.Stack.of(this).region,
+      },
+    });
+
+    mcpDeployContainer.addPortMappings({
+      containerPort: 3002,
+      protocol: ecs.Protocol.TCP,
+    });
+
+    // MCP Observability Server container
+    const mcpObservabilityContainer = taskDefinition.addContainer('mcp-observability', {
+      image: ecs.ContainerImage.fromEcrRepository(mcpObservabilityRepo, 'latest'),
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'mcp-observability',
+        logGroup: new logs.LogGroup(this, 'McpObservabilityLogGroup', {
+          logGroupName: '/ecs/afu9/mcp-observability',
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      }),
+      environment: {
+        NODE_ENV: 'production',
+        PORT: '3003',
+        AWS_REGION: cdk.Stack.of(this).region,
+      },
+    });
+
+    mcpObservabilityContainer.addPortMappings({
+      containerPort: 3003,
+      protocol: ecs.Protocol.TCP,
+    });
+
+    // ========================================
+    // Application Load Balancer
+    // ========================================
+
+    this.loadBalancer = new elbv2.ApplicationLoadBalancer(this, 'LoadBalancer', {
+      vpc: this.vpc,
+      internetFacing: true,
+      securityGroup: albSecurityGroup,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+    });
+
+    // HTTP listener (for development, redirects to HTTPS in production)
+    const httpListener = this.loadBalancer.addListener('HttpListener', {
+      port: 80,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      defaultAction: elbv2.ListenerAction.fixedResponse(200, {
+        contentType: 'text/plain',
+        messageBody: 'AFU-9 Control Center - Use HTTPS for secure access',
+      }),
+    });
+
+    // Target group for ECS service
+    const targetGroup = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
+      vpc: this.vpc,
+      port: 3000,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      healthCheck: {
+        path: '/api/health',
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
+    });
+
+    // ========================================
+    // ECS Service
+    // ========================================
+
+    const service = new ecs.FargateService(this, 'Service', {
+      cluster: this.cluster,
+      taskDefinition,
+      serviceName: 'afu9-control-center',
+      desiredCount: 1,
+      securityGroups: [ecsSecurityGroup],
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      assignPublicIp: false,
+      healthCheckGracePeriod: cdk.Duration.seconds(60),
+    });
+
+    // Attach service to target group
+    service.attachToApplicationTargetGroup(targetGroup);
+
+    // Add forwarding rule to HTTP listener
+    httpListener.addAction('ForwardToEcs', {
+      action: elbv2.ListenerAction.forward([targetGroup]),
+    });
+
+    // ========================================
+    // Outputs
+    // ========================================
+
+    new cdk.CfnOutput(this, 'LoadBalancerDNS', {
+      value: this.loadBalancer.loadBalancerDnsName,
+      description: 'DNS name of the load balancer',
+      exportName: 'Afu9LoadBalancerDNS',
+    });
+
+    new cdk.CfnOutput(this, 'LoadBalancerURL', {
+      value: `http://${this.loadBalancer.loadBalancerDnsName}`,
+      description: 'URL of AFU-9 Control Center',
+      exportName: 'Afu9ControlCenterURL',
+    });
+
+    new cdk.CfnOutput(this, 'DatabaseEndpoint', {
+      value: this.database.dbInstanceEndpointAddress,
+      description: 'RDS Postgres endpoint',
+      exportName: 'Afu9DatabaseEndpoint',
+    });
+
+    new cdk.CfnOutput(this, 'DatabaseSecretArn', {
+      value: dbSecret.secretArn,
+      description: 'ARN of database credentials secret',
+      exportName: 'Afu9DatabaseSecretArn',
+    });
+
+    new cdk.CfnOutput(this, 'EcrControlCenterRepo', {
+      value: controlCenterRepo.repositoryUri,
+      description: 'ECR repository URI for Control Center',
+      exportName: 'Afu9EcrControlCenterRepo',
+    });
+
+    new cdk.CfnOutput(this, 'ClusterName', {
+      value: this.cluster.clusterName,
+      description: 'ECS cluster name',
+      exportName: 'Afu9ClusterName',
+    });
+  }
+}

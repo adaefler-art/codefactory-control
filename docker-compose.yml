@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: afu9-postgres
+    environment:
+      POSTGRES_DB: afu9
+      POSTGRES_USER: afu9_admin
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U afu9_admin -d afu9"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MCP GitHub Server
+  mcp-github:
+    build:
+      context: ./mcp-servers
+      dockerfile: github/Dockerfile
+    container_name: afu9-mcp-github
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # MCP Deploy Server
+  mcp-deploy:
+    build:
+      context: ./mcp-servers
+      dockerfile: deploy/Dockerfile
+    container_name: afu9-mcp-deploy
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - AWS_REGION=${AWS_REGION:-eu-central-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # MCP Observability Server
+  mcp-observability:
+    build:
+      context: ./mcp-servers
+      dockerfile: observability/Dockerfile
+    container_name: afu9-mcp-observability
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - AWS_REGION=${AWS_REGION:-eu-central-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Control Center (Next.js)
+  control-center:
+    build:
+      context: ./control-center
+      dockerfile: Dockerfile
+    container_name: afu9-control-center
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://afu9_admin:dev_password@postgres:5432/afu9
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_GITHUB_ENDPOINT=http://mcp-github:3001
+      - MCP_DEPLOY_ENDPOINT=http://mcp-deploy:3002
+      - MCP_OBSERVABILITY_ENDPOINT=http://mcp-observability:3003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mcp-github:
+        condition: service_started
+      mcp-deploy:
+        condition: service_started
+      mcp-observability:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
