@@ -15,12 +15,22 @@ import {
   WorkflowExecutionResult,
   WorkflowExecutionConfig,
 } from './types/workflow';
+import {
+  createExecution,
+  updateExecutionStatus,
+  updateExecutionContext,
+  createStep,
+  updateStep,
+  incrementStepRetry,
+} from './workflow-persistence';
+import { checkDatabase } from './db';
 
 /**
  * Step execution result
  */
 interface StepExecutionResult {
   stepName: string;
+  stepId?: string;
   status: StepStatus;
   output?: any;
   error?: string;
@@ -34,9 +44,11 @@ interface StepExecutionResult {
  */
 export class WorkflowEngine {
   private mcpClient: MCPClient;
+  private persistenceEnabled: boolean;
 
-  constructor(mcpClient?: MCPClient) {
+  constructor(mcpClient?: MCPClient, enablePersistence: boolean = true) {
     this.mcpClient = mcpClient || getMCPClient();
+    this.persistenceEnabled = enablePersistence;
   }
 
   /**
@@ -51,7 +63,6 @@ export class WorkflowEngine {
     context: WorkflowContext,
     config?: WorkflowExecutionConfig
   ): Promise<WorkflowExecutionResult> {
-    const executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const startedAt = new Date();
     
     const mergedConfig: Required<WorkflowExecutionConfig> = {
@@ -60,9 +71,39 @@ export class WorkflowEngine {
       continueOnError: config?.continueOnError || false,
     };
 
+    // Check if database persistence is available
+    let dbAvailable = false;
+    if (this.persistenceEnabled) {
+      dbAvailable = await checkDatabase();
+      if (!dbAvailable) {
+        console.warn('[Workflow Engine] Database not available, running without persistence');
+      }
+    }
+
+    // Create execution record in database if persistence is enabled
+    let executionId: string;
+    if (dbAvailable) {
+      try {
+        executionId = await createExecution(
+          null, // workflowId - could be passed in config if workflow is stored
+          context.input,
+          context
+        );
+        console.log(`[Workflow Engine] Created database execution record: ${executionId}`);
+      } catch (error) {
+        console.error('[Workflow Engine] Failed to create execution record:', error);
+        // Fall back to in-memory execution ID
+        executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        dbAvailable = false;
+      }
+    } else {
+      executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    }
+
     console.log(`[Workflow Engine] Starting execution ${executionId}`, {
       stepsCount: workflow.steps.length,
       config: mergedConfig,
+      persistenceEnabled: dbAvailable,
     });
 
     const stepResults: StepExecutionResult[] = [];
@@ -76,9 +117,21 @@ export class WorkflowEngine {
         
         console.log(`[Workflow Engine] Executing step ${i + 1}/${workflow.steps.length}: ${step.name}`);
 
-        // Check if step should be executed based on condition
-        if (step.condition && !this.evaluateCondition(step.condition, context)) {
-          console.log(`[Workflow Engine] Skipping step ${step.name} (condition not met)`);
+        // Check if step should be executed based on condition (supports both "condition" and "if" fields)
+        const conditionField = step.condition || (step as any).if;
+        if (conditionField && !this.evaluateCondition(conditionField, context)) {
+          console.log(`[Workflow Engine] Skipping step ${step.name} (condition not met: ${conditionField})`);
+          
+          // Log skipped step to database
+          if (dbAvailable) {
+            try {
+              const stepId = await createStep(executionId, step.name, i, step.params);
+              await updateStep(stepId, 'skipped');
+            } catch (dbError) {
+              console.error('[Workflow Engine] Failed to log skipped step:', dbError);
+            }
+          }
+          
           stepResults.push({
             stepName: step.name,
             status: 'skipped',
@@ -90,7 +143,14 @@ export class WorkflowEngine {
         }
 
         // Execute the step with retries
-        const stepResult = await this.executeStep(step, context, mergedConfig.maxRetries);
+        const stepResult = await this.executeStep(
+          step,
+          context,
+          mergedConfig.maxRetries,
+          executionId,
+          i,
+          dbAvailable
+        );
         stepResults.push(stepResult);
 
         // Handle step failure
@@ -108,6 +168,15 @@ export class WorkflowEngine {
         // Assign result to context if specified
         if (step.assign && stepResult.output !== undefined) {
           context.variables[step.assign] = stepResult.output;
+          
+          // Update context in database
+          if (dbAvailable) {
+            try {
+              await updateExecutionContext(executionId, context);
+            } catch (dbError) {
+              console.error('[Workflow Engine] Failed to update execution context:', dbError);
+            }
+          }
         }
       }
 
@@ -119,6 +188,15 @@ export class WorkflowEngine {
       console.error(`[Workflow Engine] Workflow execution failed`, err);
       status = 'failed';
       error = err instanceof Error ? err.message : String(err);
+    }
+
+    // Update final execution status in database
+    if (dbAvailable) {
+      try {
+        await updateExecutionStatus(executionId, status, context.variables, error);
+      } catch (dbError) {
+        console.error('[Workflow Engine] Failed to update execution status:', dbError);
+      }
     }
 
     const completedAt = new Date();
@@ -153,15 +231,39 @@ export class WorkflowEngine {
   private async executeStep(
     step: WorkflowStep,
     context: WorkflowContext,
-    maxRetries: number
+    maxRetries: number,
+    executionId: string,
+    stepIndex: number,
+    dbAvailable: boolean
   ): Promise<StepExecutionResult> {
     const startedAt = new Date();
     let lastError: Error | undefined;
+    let stepId: string | undefined;
+
+    // Create step record in database
+    if (dbAvailable) {
+      try {
+        const substitutedParams = this.substituteVariables(step.params, context);
+        stepId = await createStep(executionId, step.name, stepIndex, substitutedParams);
+        console.log(`[Workflow Engine] Created database step record: ${stepId}`);
+      } catch (error) {
+        console.error('[Workflow Engine] Failed to create step record:', error);
+      }
+    }
 
     // Try executing with retries
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {
         console.log(`[Workflow Engine] Retrying step ${step.name}, attempt ${attempt + 1}/${maxRetries + 1}`);
+        
+        // Increment retry count in database
+        if (dbAvailable && stepId) {
+          try {
+            await incrementStepRetry(stepId);
+          } catch (error) {
+            console.error('[Workflow Engine] Failed to increment retry count:', error);
+          }
+        }
       }
 
       try {
@@ -175,14 +277,28 @@ export class WorkflowEngine {
         // Substitute variables in parameters
         const substitutedParams = this.substituteVariables(step.params, context);
 
+        console.log(`[Workflow Engine] Calling tool ${step.tool} with params:`, substitutedParams);
+
         // Call the MCP tool
         const output = await this.mcpClient.callTool(serverName, toolName, substitutedParams);
 
         const completedAt = new Date();
         const durationMs = completedAt.getTime() - startedAt.getTime();
 
+        console.log(`[Workflow Engine] Step ${step.name} completed successfully (${durationMs}ms)`);
+
+        // Update step in database
+        if (dbAvailable && stepId) {
+          try {
+            await updateStep(stepId, 'completed', output, undefined, durationMs);
+          } catch (error) {
+            console.error('[Workflow Engine] Failed to update step:', error);
+          }
+        }
+
         return {
           stepName: step.name,
+          stepId,
           status: 'completed',
           output,
           durationMs,
@@ -201,8 +317,20 @@ export class WorkflowEngine {
     const completedAt = new Date();
     const durationMs = completedAt.getTime() - startedAt.getTime();
 
+    console.error(`[Workflow Engine] Step ${step.name} failed after ${maxRetries + 1} attempts`);
+
+    // Update step in database as failed
+    if (dbAvailable && stepId) {
+      try {
+        await updateStep(stepId, 'failed', undefined, lastError?.message, durationMs);
+      } catch (error) {
+        console.error('[Workflow Engine] Failed to update step:', error);
+      }
+    }
+
     return {
       stepName: step.name,
+      stepId,
       status: 'failed',
       error: lastError?.message || 'Unknown error',
       durationMs,
@@ -259,22 +387,57 @@ export class WorkflowEngine {
 
   /**
    * Evaluate a condition string
-   * For now, this is a simple implementation
-   * In the future, could support more complex expressions
+   * Supports:
+   * - Variable existence: "${variable}"
+   * - Simple comparisons: "${var} === 'value'" (after variable substitution)
+   * - Boolean values: true/false
    */
   private evaluateCondition(condition: string, context: WorkflowContext): boolean {
     try {
+      // Substitute variables first
+      const substituted = this.substituteVariables(condition, context);
+      
+      console.log(`[Workflow Engine] Evaluating condition: "${condition}" -> "${substituted}"`);
+      
+      // Handle simple boolean strings
+      if (substituted === 'true') return true;
+      if (substituted === 'false') return false;
+      
       // Simple variable existence check: "${variable}"
       const match = condition.match(/^\$\{([^}]+)\}$/);
       if (match) {
         const value = this.resolvePath(match[1], context);
-        return !!value;
+        const result = !!value;
+        console.log(`[Workflow Engine] Condition result: ${result} (value: ${JSON.stringify(value)})`);
+        return result;
       }
 
-      // Default to false for unrecognized condition formats
-      // This is safer than defaulting to true
-      console.warn(`[Workflow Engine] Unrecognized condition format: ${condition}`);
-      return false;
+      // If the condition still has ${} syntax after substitution, it means variables weren't found
+      if (substituted.includes('${')) {
+        console.log(`[Workflow Engine] Condition contains unresolved variables, evaluating as false`);
+        return false;
+      }
+
+      // For simple comparisons, try to evaluate as JavaScript expression
+      // This is safe because we've already substituted variables
+      if (substituted.includes('===') || substituted.includes('!==') || 
+          substituted.includes('==') || substituted.includes('!=') ||
+          substituted.includes('>') || substituted.includes('<')) {
+        try {
+          // Use Function constructor for safer evaluation than eval
+          const result = new Function('return ' + substituted)();
+          console.log(`[Workflow Engine] Condition expression result: ${result}`);
+          return !!result;
+        } catch (evalError) {
+          console.warn(`[Workflow Engine] Failed to evaluate condition expression: ${substituted}`, evalError);
+          return false;
+        }
+      }
+
+      // If it's not a recognized pattern, treat as truthy/falsy
+      const result = !!substituted && substituted !== 'null' && substituted !== 'undefined';
+      console.log(`[Workflow Engine] Condition truthy check result: ${result}`);
+      return result;
     } catch (error) {
       console.error(`[Workflow Engine] Error evaluating condition: ${condition}`, error);
       return false;
