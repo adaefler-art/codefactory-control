@@ -4,6 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 import { CodefactoryControlStack } from '../lib/codefactory-control-stack';
 import { Afu9NetworkStack } from '../lib/afu9-network-stack';
 import { Afu9DatabaseStack } from '../lib/afu9-database-stack';
+import { Afu9EcsStack } from '../lib/afu9-ecs-stack';
 
 const app = new cdk.App();
 
@@ -26,10 +27,20 @@ const networkStack = new Afu9NetworkStack(app, 'Afu9NetworkStack', {
 });
 
 // Database stack (depends on network)
-new Afu9DatabaseStack(app, 'Afu9DatabaseStack', {
+const databaseStack = new Afu9DatabaseStack(app, 'Afu9DatabaseStack', {
   env,
   description: 'AFU-9 v0.2 Database: RDS Postgres 15 with automated backups',
   vpc: networkStack.vpc,
   dbSecurityGroup: networkStack.dbSecurityGroup,
   multiAz: false, // Set to true for production high availability
+});
+
+// ECS stack (depends on network and database)
+new Afu9EcsStack(app, 'Afu9EcsStack', {
+  env,
+  description: 'AFU-9 v0.2 ECS: Fargate service with Control Center and MCP servers',
+  vpc: networkStack.vpc,
+  ecsSecurityGroup: networkStack.ecsSecurityGroup,
+  targetGroup: networkStack.targetGroup,
+  dbSecretArn: databaseStack.dbSecret.secretArn,
 });

@@ -1,7 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as rds from 'aws-cdk-lib/aws-rds';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { aws_ec2 as ec2, aws_rds as rds, aws_secretsmanager as secretsmanager } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 /**
@@ -25,12 +23,12 @@ export interface Afu9DatabaseStackProps extends cdk.StackProps {
   /**
    * VPC to deploy the database in
    */
-  vpc: ec2.IVpc;
+  vpc: ec2.Vpc;
 
   /**
    * Security group for database access
    */
-  dbSecurityGroup: ec2.ISecurityGroup;
+  dbSecurityGroup: ec2.SecurityGroup;
 
   /**
    * Whether to enable Multi-AZ deployment (default: false for cost optimization)
