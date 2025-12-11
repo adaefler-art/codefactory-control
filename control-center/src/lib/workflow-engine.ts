@@ -369,17 +369,26 @@ export class WorkflowEngine {
 
   /**
    * Resolve a dot-notation path in the context
-   * Example: "repo.owner" or "input.issue_number"
+   * Example: "repo.owner" or "input.issue_number" or "issue.labels[0].name"
    */
   private resolvePath(path: string, context: WorkflowContext): any {
-    const parts = path.split('.');
+    // Handle array indices like "issue.labels[0].name"
+    const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+    const parts = normalizedPath.split('.');
     let current: any = context;
 
     for (const part of parts) {
       if (current === undefined || current === null) {
         return undefined;
       }
-      current = current[part];
+      
+      // Handle numeric indices for arrays
+      const index = parseInt(part, 10);
+      if (!isNaN(index) && Array.isArray(current)) {
+        current = current[index];
+      } else {
+        current = current[part];
+      }
     }
 
     return current;
