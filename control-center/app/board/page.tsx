@@ -50,29 +50,6 @@ const initialIssues: Issue[] = [
   },
 ];
 
-// Status Badge Component
-function StatusBadge({ status }: { status: Issue["status"] }) {
-  const colors = {
-    backlog: "bg-gray-500/20 text-gray-300 border-gray-600",
-    in_progress: "bg-blue-500/20 text-blue-300 border-blue-600",
-    done: "bg-green-500/20 text-green-300 border-green-600",
-  };
-
-  const labels = {
-    backlog: "Backlog",
-    in_progress: "In progress",
-    done: "Done",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colors[status]}`}
-    >
-      {labels[status]}
-    </span>
-  );
-}
-
 // Priority Badge Component
 function PriorityBadge({ priority }: { priority?: Issue["priority"] }) {
   if (!priority) return <span className="text-gray-600">-</span>;
