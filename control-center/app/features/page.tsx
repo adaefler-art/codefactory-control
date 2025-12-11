@@ -106,10 +106,10 @@ export default function FeaturesPage() {
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
                           issue.state === "open"
                             ? "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300"
-                            : "bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300"
+                            : "bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300"
                         }`}
                       >
-                        {issue.state === "open" ? "Offen" : "Geschlossen"}
+                        {issue.state === "open" ? "OPEN" : "CLOSED"}
                       </span>
                       <span>Erstellt: {formatDate(issue.createdAt)}</span>
                       <span className="text-gray-400 dark:text-gray-500">
