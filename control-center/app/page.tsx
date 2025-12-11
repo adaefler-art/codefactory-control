@@ -32,6 +32,13 @@ export default function Home() {
             description="Übersicht aller durch AFU-9 erstellten Features"
             bgColor="bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-900/30"
           />
+
+          <FeatureCard
+            href="/ninefold"
+            title="Ninefold Architecture"
+            description="Übersicht der 9 Module des AFU-9 Systems"
+            bgColor="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+          />
         </div>
       </div>
     </div>
