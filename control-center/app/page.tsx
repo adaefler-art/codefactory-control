@@ -13,6 +13,13 @@ export default function Home() {
         
         <div className="space-y-4">
           <FeatureCard
+            href="/board"
+            title="Project Board"
+            description="CodeFactory Board-Ansicht im GitHub-Style – Backlog, In Progress, Done"
+            bgColor="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+          />
+
+          <FeatureCard
             href="/new-feature"
             title="Neues Feature erstellen"
             description="Feature-Briefing eingeben und automatisch GitHub-Issue generieren"
