@@ -11,6 +11,26 @@ Control-plane for AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture).
 v0.1 implements a walking skeleton for the flow:
 **Issue → AFU-9 Pipeline → Patch → Branch → Pull Request → CI Feedback**.
 
+## Repository Structure
+
+This repository is organized into two main parts:
+
+### Root: Infrastructure & CDK
+The root directory contains AWS CDK infrastructure and orchestration logic:
+- `bin/` - CDK entry point
+- `infra/` - Lambda function implementations
+- `lib/` - CDK stack definitions
+- `cdk.json` - CDK configuration
+- `package.json` - Infrastructure dependencies (AWS CDK, TypeScript, etc.)
+- `tsconfig.json` - TypeScript configuration for infrastructure
+
+### Subdirectory: Control Center App
+The `control-center/` directory contains a standalone Next.js application:
+- Complete Next.js App Router application
+- TypeScript-based
+- Own `package.json` and dependencies
+- Dedicated README with setup instructions
+
 ## Components
 
 ### Infrastructure (CDK)
