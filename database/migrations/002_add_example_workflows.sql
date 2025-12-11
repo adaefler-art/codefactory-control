@@ -65,7 +65,7 @@ INSERT INTO workflows (name, description, definition, enabled) VALUES (
           "owner": "${repo.owner}",
           "repo": "${repo.name}",
           "title": "Fix: ${input.service} deployment failure",
-          "body": "Automated fix for deployment failure\\n\\n## Analysis\\n${analysis.description}\\n\\n## Root Cause\\n${analysis.root_cause}\\n\\n## Proposed Fix\\n${analysis.fix_description}",
+          "body": "Automated fix for deployment failure\n\n## Analysis\n${analysis.description}\n\n## Root Cause\n${analysis.root_cause}\n\n## Proposed Fix\n${analysis.fix_description}",
           "head": "fix/deploy-${input.service}",
           "base": "${repo.default_branch}",
           "labels": ["automated-fix", "deployment"]
@@ -240,7 +240,7 @@ INSERT INTO workflows (name, description, definition, enabled) VALUES (
           "owner": "${repo.owner}",
           "repo": "${repo.name}",
           "title": "Fix: CI failure in ${workflow_run.name}",
-          "body": "Automated fix for CI failure\\n\\n## Failed Job\\n${failed_jobs[0].name}\\n\\n## Analysis\\n${analysis.description}\\n\\n## Fix Applied\\n${analysis.fix_description}",
+          "body": "Automated fix for CI failure\n\n## Failed Job\n${failed_jobs[0].name}\n\n## Analysis\n${analysis.description}\n\n## Fix Applied\n${analysis.fix_description}",
           "head": "fix/ci-${workflow_run.id}",
           "base": "${workflow_run.head_branch}",
           "labels": ["automated-fix", "ci"]
@@ -254,7 +254,7 @@ INSERT INTO workflows (name, description, definition, enabled) VALUES (
           "owner": "${repo.owner}",
           "repo": "${repo.name}",
           "issueNumber": "${fix_pr.number}",
-          "body": "🤖 Automated CI fix created. Please review the changes before merging.\\n\\nOriginal failure: ${workflow_run.html_url}"
+          "body": "🤖 Automated CI fix created. Please review the changes before merging.\n\nOriginal failure: ${workflow_run.html_url}"
         }
       }
     ]
@@ -318,7 +318,7 @@ INSERT INTO workflows (name, description, definition, enabled) VALUES (
           "owner": "${repo.owner}",
           "repo": "${repo.name}",
           "issueNumber": "${input.issue_number}",
-          "body": "🤖 **Automated Triage**\\n\\n**Type:** ${classification.type}\\n**Priority:** ${classification.priority}\\n**Category:** ${classification.category}\\n\\n${classification.notes}"
+          "body": "🤖 **Automated Triage**\n\n**Type:** ${classification.type}\n**Priority:** ${classification.priority}\n**Category:** ${classification.category}\n\n${classification.notes}"
         }
       }
     ]
@@ -383,7 +383,7 @@ INSERT INTO workflows (name, description, definition, enabled) VALUES (
           "owner": "${repo.owner}",
           "repo": "${repo.name}",
           "title": "chore: Update dependencies",
-          "body": "Automated dependency update\\n\\n## Updated Packages\\n${update_result.summary}\\n\\n## Breaking Changes\\n${update_result.breaking_changes}\\n\\n## Test Results\\nTest run: ${test_run.html_url}",
+          "body": "Automated dependency update\n\n## Updated Packages\n${update_result.summary}\n\n## Breaking Changes\n${update_result.breaking_changes}\n\n## Test Results\nTest run: ${test_run.html_url}",
           "head": "chore/dependency-update-${input.timestamp}",
           "base": "${repo.default_branch}",
           "labels": ["dependencies", "automated"]
