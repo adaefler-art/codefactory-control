@@ -50,12 +50,35 @@ npx cdk bootstrap aws://ACCOUNT-ID/eu-central-1
 
 Replace `ACCOUNT-ID` with your AWS account ID.
 
-### 2. Deploy Network Infrastructure
+### 2. (Optional) Deploy DNS and Certificate Infrastructure
+
+**For production deployments with HTTPS**, deploy the DNS stack first:
+
+```bash
+npx cdk deploy Afu9DnsStack -c afu9-domain=afu9.yourdomain.com
+```
+
+This creates:
+- Route53 hosted zone (or uses existing)
+- ACM certificate with DNS validation
+- Certificate ARN for HTTPS configuration
+
+After deployment, configure name servers at your domain registrar (see output).
+
+**For detailed HTTPS/DNS setup instructions, see [HTTPS-DNS-SETUP.md](./HTTPS-DNS-SETUP.md).**
+
+**For development without HTTPS**, skip this step and proceed to network deployment.
+
+### 3. Deploy Network Infrastructure
 
 Deploy the VPC, subnets, security groups, and ALB:
 
 ```bash
+# With HTTPS (recommended for production)
 npx cdk deploy Afu9NetworkStack
+
+# Without HTTPS (development only)
+npx cdk deploy Afu9NetworkStack -c afu9-enable-https=false
 ```
 
 This creates:
@@ -64,11 +87,14 @@ This creates:
 - Private subnets for ECS and RDS
 - Security groups with least privilege
 - Application Load Balancer
+- HTTPS listener (if DNS stack deployed) with HTTP to HTTPS redirect
+- Route53 A record pointing to ALB (if DNS stack deployed)
 
 **Outputs to note:**
 - `Afu9LoadBalancerDNS` - ALB DNS name for accessing the Control Center
+- `HttpsEnabled` - Whether HTTPS is configured
 
-### 3. Deploy Database
+### 4. Deploy Database
 
 Deploy the RDS PostgreSQL database:
 
@@ -86,7 +112,7 @@ This creates:
 - `Afu9DbSecretArn` - ARN of the database connection secret
 - `Afu9DbEndpoint` - Database endpoint address
 
-### 4. Deploy ECS Infrastructure
+### 5. Deploy ECS Infrastructure
 
 Deploy the ECS cluster, task definition, and service:
 
@@ -109,7 +135,7 @@ This creates:
 - `EcrMcpObservabilityRepo` - URI for MCP Observability repository
 - `ServiceName` - ECS service name
 
-### 5. Configure Secrets
+### 6. Configure Secrets
 
 **IMPORTANT:** The ECS stack creates placeholder secrets that must be updated before the service can start successfully.
 
@@ -161,7 +187,7 @@ aws secretsmanager get-secret-value \
   --region eu-central-1
 ```
 
-### 6. Build and Push Docker Images
+### 7. Build and Push Docker Images
 
 #### Option A: Manual Build and Push
 
@@ -237,7 +263,7 @@ The workflow will:
 - Force new deployment of ECS service
 - Wait for service to stabilize
 
-### 7. Run Database Migrations
+### 8. Run Database Migrations
 
 SSH into a running ECS task or run migrations locally:
 
@@ -271,7 +297,7 @@ DB_SECRET=$(aws secretsmanager get-secret-value \
 # (Add your migration tool command here)
 ```
 
-### 8. Verify Deployment
+### 9. Verify Deployment
 
 Check service status:
 
@@ -286,16 +312,32 @@ aws ecs describe-services \
 Access the Control Center:
 
 ```bash
-# Get ALB DNS name
-ALB_DNS=$(aws cloudformation describe-stacks \
-  --stack-name Afu9NetworkStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
-  --output text --region eu-central-1)
+# If using HTTPS with custom domain
+DOMAIN=$(aws cloudformation describe-stacks \
+  --stack-name Afu9DnsStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`DomainName`].OutputValue' \
+  --output text --region eu-central-1 2>/dev/null)
 
-echo "Control Center: http://$ALB_DNS"
+if [ -n "$DOMAIN" ]; then
+  echo "Control Center: https://$DOMAIN"
+else
+  # Get ALB DNS name for HTTP access
+  ALB_DNS=$(aws cloudformation describe-stacks \
+    --stack-name Afu9NetworkStack \
+    --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
+    --output text --region eu-central-1)
+  echo "Control Center: http://$ALB_DNS"
+fi
 ```
 
 Open the URL in your browser. You should see the AFU-9 Control Center UI.
+
+**URL Mappings:**
+- **HTTPS with custom domain**: `https://afu9.yourdomain.com`
+- **HTTP with ALB DNS**: `http://afu9-alb-xxxxx.eu-central-1.elb.amazonaws.com`
+- **Health Check**: `/api/health`
+- **API Endpoints**: `/api/*`
+- **GitHub Webhooks**: `/api/webhooks/github`
 
 ## Monitoring and Logs
 
@@ -446,14 +488,18 @@ To reduce costs:
 
 ## Security Best Practices
 
-1. **Enable HTTPS**: Configure ACM certificate for ALB HTTPS listener
-2. **Rotate Secrets**: Regularly rotate GitHub tokens and API keys
-3. **Enable MFA**: Require MFA for AWS console and CLI access
-4. **Limit IAM Permissions**: Follow principle of least privilege
-5. **Enable CloudTrail**: Audit all AWS API calls
-6. **Regular Updates**: Keep container images and dependencies up to date
-7. **Network Isolation**: Keep RDS and ECS in private subnets
-8. **Enable VPC Flow Logs**: Monitor network traffic
+1. **Enable HTTPS**: Always use HTTPS in production. See [HTTPS-DNS-SETUP.md](./HTTPS-DNS-SETUP.md) for setup instructions
+2. **Configure Custom Domain**: Use a custom domain with ACM certificate instead of ALB DNS
+3. **HTTP to HTTPS Redirect**: Ensure HTTP traffic is redirected to HTTPS (automatic when using DNS stack)
+4. **Rotate Secrets**: Regularly rotate GitHub tokens and API keys in Secrets Manager
+5. **Enable MFA**: Require MFA for AWS console and CLI access
+6. **Limit IAM Permissions**: Follow principle of least privilege for all IAM roles
+7. **Enable CloudTrail**: Audit all AWS API calls
+8. **Regular Updates**: Keep container images and dependencies up to date
+9. **Network Isolation**: Keep RDS and ECS in private subnets (already configured)
+10. **Enable VPC Flow Logs**: Monitor network traffic for security analysis
+11. **Webhook Security**: Use webhook secrets for GitHub webhook validation
+12. **TLS Policy**: Use modern TLS policies (TLS 1.2+ minimum)
 
 ## Support
 
