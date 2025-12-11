@@ -119,12 +119,15 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - **ECS Fargate**: Control Center + 3 MCP server sidecars
 - **RDS Postgres**: Workflow state and execution history
 - **ALB**: HTTPS termination and load balancing
+- **S3**: Artifacts, logs, and backup storage
 - **CloudWatch**: Centralized logging and monitoring
 - **Secrets Manager**: Secure credential storage
 
 **MCP Pattern**: AFU-9 acts as an MCP-Client, consuming specialized MCP-Servers for different domains (GitHub, Deploy, Observability).
 
-See [docs/architecture/README.md](docs/architecture/README.md) for detailed architecture documentation.
+**📚 Documentation:**
+- [Architecture Overview](docs/architecture/README.md) - Technical architecture details
+- [Complete Architecture Guide (German)](docs/architecture/afu9-v0.2-overview.md) - Comprehensive guide with AWS components, MCP pattern, and development workflow integration
 
 ### v0.1 Architecture (Legacy)
 
