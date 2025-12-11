@@ -11,6 +11,17 @@ Web-Interface für das AFU-9 (Autonomous Fabrication Unit – Ninefold Architect
 
 ## Setup
 
+### Voraussetzungen
+
+- **Node.js**: Version 20.x oder höher
+- **npm**: Version 10.x oder höher (wird mit Node.js installiert)
+
+Um die installierte Version zu überprüfen:
+```bash
+node --version  # sollte v20.x.x oder höher anzeigen
+npm --version   # sollte 10.x.x oder höher anzeigen
+```
+
 ### 1. Dependencies installieren
 
 ```bash
@@ -142,10 +153,30 @@ npm run lint
 npx tsc --noEmit
 ```
 
-## Nächste Schritte (Post v0.1)
+## Zukünftige Erweiterungen (Post v0.1)
 
+Das Control Center wird kontinuierlich ausgebaut. Geplante Erweiterungen umfassen:
+
+### LLM-Provider-Flexibilität
+- [ ] **AWS Bedrock Integration**: Alternative zu OpenAI für LLM-basierte Spezifikationsgenerierung
+  - Ermöglicht Nutzung von Amazon Titan, Anthropic Claude, und anderen Modellen
+  - Verbesserte Datensouveränität und Compliance
+  - Kostenoptimierung durch Modellauswahl
+
+### Multi-Repository-Unterstützung
+- [ ] **Dynamische Repository-Auswahl**: Auswahl des Ziel-Repositories zur Feature-Erstellungszeit
+  - UI-Dropdown für Repository-Auswahl im Feature-Formular
+  - Verwaltung mehrerer Repository-Konfigurationen
+  - Unterstützung für verschiedene GitHub-Organisationen
+
+### Mandantenfähigkeit (Multi-Tenancy)
+- [ ] **Mehrere Kunden/Teams**: Isolierte Workspaces für verschiedene Organisationen
+  - Separate Konfigurationen pro Mandant (GitHub-Token, Repositories, LLM-Keys)
+  - Rollenbasierte Zugriffskontrolle (RBAC)
+  - Mandanten-spezifische Feature-Listen und Dashboards
+
+### Weitere Funktionen
 - [ ] Feature-Liste aus GitHub-Issues abrufen (Label: `source:afu-9`)
 - [ ] Status-Tracking für erstellte Issues
 - [ ] Erweiterte Filtering und Suche
-- [ ] Integration mit AWS Bedrock als LLM-Alternative
-- [ ] Verbindung zum AFU-9 State Machine Pipeline
+- [ ] Vollständige Integration mit AFU-9 State Machine Pipeline (Lambda/Step Functions)
