@@ -60,41 +60,42 @@ Comprehensive alarms for infrastructure health:
 
 ### 2. Structured Logging
 
-JSON-formatted logs with rich context:
+AFU-9 uses structured JSON logging across all components (Control Center, MCP Servers, Lambda Functions) for consistent observability.
 
+**See [Logging Guide](LOGGING.md) for comprehensive documentation on:**
+- Log level conventions (DEBUG, INFO, WARN, ERROR)
+- JSON log format and schema
+- Implementation examples for all components
+- CloudWatch integration and log searching
+- Filter patterns and CloudWatch Insights queries
+- Best practices and troubleshooting
+
+**Quick Example:**
 ```typescript
 import { logger } from '@/lib/logger';
 
-// Component-specific logger
 const log = logger.withComponent('workflow-engine');
 
-// Info logging with context
 log.info('Workflow started', {
   workflowId: 'wf-123',
-  executionId: 'exec-456',
-  userId: 'user-789'
+  executionId: 'exec-456'
 });
 
-// Error logging with full context
-log.error('Workflow failed', error, {
-  workflowId: 'wf-123',
-  executionId: 'exec-456',
-  step: 'create_pr'
-});
-
-// Timed operations
-const start = Date.now();
-// ... operation ...
-log.timed('Operation completed', Date.now() - start, {
-  workflowId: 'wf-123'
-});
+try {
+  await executeWorkflow();
+} catch (error) {
+  log.error('Workflow failed', error, {
+    workflowId: 'wf-123',
+    step: 'create_pr'
+  });
+}
 ```
 
 **Log Format**:
 ```json
 {
   "timestamp": "2025-12-12T16:00:00.000Z",
-  "level": "error",
+  "level": "ERROR",
   "service": "control-center",
   "component": "workflow-engine",
   "message": "Workflow failed",
@@ -107,10 +108,14 @@ log.timed('Operation completed', Date.now() - start, {
     "name": "Error",
     "message": "GitHub API rate limit exceeded",
     "stack": "..."
-  },
-  "durationMs": 1234
+  }
 }
 ```
+
+**Log Groups:**
+- Control Center: `/ecs/afu9/control-center`
+- MCP Servers: `/ecs/afu9/mcp-{github|deploy|observability}`
+- Lambda Functions: `/aws/lambda/afu9-{orchestrator|issue-interpreter|patch-generator|pr-creator}`
 
 ### 3. Observability Dashboard
 
@@ -441,6 +446,7 @@ AWS-provided metrics:
 
 ## References
 
+- [Logging Guide](LOGGING.md) - Comprehensive logging concept and best practices
 - [Observability Deployment Guide](OBSERVABILITY-DEPLOYMENT.md)
 - [Observability Runbook](OBSERVABILITY-RUNBOOK.md)
 - [Security & IAM Guide](SECURITY-IAM.md)
