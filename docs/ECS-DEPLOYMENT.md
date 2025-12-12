@@ -130,7 +130,7 @@ This creates:
 - ECS Fargate cluster
 - ECS task definition with 4 containers
 - ECS service attached to ALB
-- IAM roles for task execution
+- IAM roles for task execution and application runtime
 - CloudWatch log groups
 
 **Outputs to note:**
@@ -139,6 +139,44 @@ This creates:
 - `EcrMcpDeployRepo` - URI for MCP Deploy repository
 - `EcrMcpObservabilityRepo` - URI for MCP Observability repository
 - `ServiceName` - ECS service name
+- `TaskRoleArn` - IAM role used by application containers
+- `TaskExecutionRoleArn` - IAM role used by ECS infrastructure
+
+### 5a. (Optional) Deploy IAM Stack for GitHub Actions
+
+If you want to use GitHub Actions for automated deployments, deploy the IAM stack:
+
+```bash
+npx cdk deploy Afu9IamStack \
+  -c github-org=your-github-org \
+  -c github-repo=your-repo-name
+```
+
+This creates:
+- GitHub OIDC provider for credential-less authentication
+- IAM role for GitHub Actions with permissions to:
+  - Push Docker images to ECR
+  - Trigger ECS service deployments
+  - Pass IAM roles to ECS
+
+**Outputs to note:**
+- `DeployRoleArn` - ARN to configure in GitHub Secrets as `AWS_DEPLOY_ROLE_ARN`
+- `DeployRoleName` - Name of the deployment role
+
+**Configure GitHub Repository:**
+
+After deployment, add the role ARN to your GitHub repository secrets:
+
+1. Go to your repository on GitHub
+2. Navigate to Settings → Secrets and variables → Actions
+3. Click "New repository secret"
+4. Name: `AWS_DEPLOY_ROLE_ARN`
+5. Value: (paste the `DeployRoleArn` from stack outputs)
+6. Click "Add secret"
+
+**📚 For detailed IAM role documentation, see:**
+- [SECURITY-IAM.md](./SECURITY-IAM.md) - IAM roles overview
+- [IAM-ROLES-JUSTIFICATION.md](./IAM-ROLES-JUSTIFICATION.md) - Detailed permissions and justifications
 
 ### 6. Configure Secrets
 
