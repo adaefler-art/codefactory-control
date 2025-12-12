@@ -65,7 +65,7 @@ export async function GET(
     const totalTokens = runs.reduce((sum, r) => sum + (r.total_tokens || 0), 0);
     const avgTokens = totalTokens / totalRuns;
     
-    const totalCost = runs.reduce((sum, r) => sum + parseFloat(r.cost_usd || 0), 0);
+    const totalCost = runs.reduce((sum, r) => sum + Number(r.cost_usd || 0), 0);
 
     // Extract unique tools from tool_calls JSONB
     const toolsSet = new Set<string>();

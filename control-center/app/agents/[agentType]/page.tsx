@@ -37,7 +37,7 @@ interface AgentDetails {
 export default function AgentDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const agentType = decodeURIComponent(params.agentType as string);
+  const agentType = params.agentType ? decodeURIComponent(params.agentType as string) : "";
   
   const [agentDetails, setAgentDetails] = useState<AgentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -54,6 +54,8 @@ export default function AgentDetailPage() {
   const [playgroundError, setPlaygroundError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!agentType) return;
+    
     async function fetchAgentDetails() {
       try {
         const response = await fetch(

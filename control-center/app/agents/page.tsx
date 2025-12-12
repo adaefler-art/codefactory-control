@@ -42,7 +42,7 @@ export default function AgentsPage() {
   useEffect(() => {
     async function fetchAgents() {
       try {
-        const response = await fetch("/api/agents?limit=1000");
+        const response = await fetch("/api/agents?limit=100");
         const data = await response.json();
 
         if (response.ok) {
