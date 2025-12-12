@@ -59,8 +59,11 @@ export async function POST(
     const engine = new WorkflowEngine();
     
     // Execute workflow asynchronously (don't wait for completion)
+    // The workflow engine handles error logging and database persistence
     engine.execute(definition, context).catch(error => {
       console.error('[API /api/workflows/[id]/trigger] Workflow execution failed:', error);
+      // Error is already persisted in the database by workflow engine
+      // Users can view failed executions in the execution history
     });
     
     // Return immediately with execution started status
