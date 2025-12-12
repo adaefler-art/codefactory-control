@@ -209,6 +209,10 @@ export class Afu9EcsStack extends cdk.Stack {
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
+    // Store region and account for ARN construction (reduces repetition)
+    const region = cdk.Stack.of(this).region;
+    const account = cdk.Stack.of(this).account;
+
     // Grant CloudWatch Logs permissions
     // Justification: MCP Observability server needs to query logs for monitoring
     // Note: CloudWatch Logs doesn't support fine-grained resource-level permissions for FilterLogEvents
@@ -225,8 +229,8 @@ export class Afu9EcsStack extends cdk.Stack {
         ],
         resources: [
           // Scope to AFU-9 log groups only
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/ecs/afu9/*`,
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/ecs/afu9/*:log-stream:*`,
+          `arn:aws:logs:${region}:${account}:log-group:/ecs/afu9/*`,
+          `arn:aws:logs:${region}:${account}:log-group:/ecs/afu9/*:log-stream:*`,
         ],
       })
     );
@@ -263,10 +267,10 @@ export class Afu9EcsStack extends cdk.Stack {
         ],
         resources: [
           // Scope to AFU-9 ECS resources only
-          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:cluster/afu9-cluster`,
-          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:service/afu9-cluster/*`,
-          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:task/afu9-cluster/*`,
-          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:task-definition/afu9-*:*`,
+          `arn:aws:ecs:${region}:${account}:cluster/afu9-cluster`,
+          `arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`,
+          `arn:aws:ecs:${region}:${account}:task/afu9-cluster/*`,
+          `arn:aws:ecs:${region}:${account}:task-definition/afu9-*:*`,
         ],
       })
     );
@@ -278,7 +282,7 @@ export class Afu9EcsStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['ecs:UpdateService'],
         resources: [
-          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:service/afu9-cluster/*`,
+          `arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`,
         ],
       })
     );

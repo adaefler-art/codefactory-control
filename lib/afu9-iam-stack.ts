@@ -37,14 +37,19 @@ export class Afu9IamStack extends cdk.Stack {
     // GitHub Actions OIDC Provider
     // ========================================
     // Note: GitHub OIDC provider should be created once per AWS account
-    // If it already exists, import it instead of creating a new one
-    // We'll use a conditional here, but in production you may want to import existing
+    // If it already exists, this will fail. To use an existing provider, replace this with:
+    // const githubProvider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+    //   this, 'GithubOidcProvider',
+    //   'arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com'
+    // );
 
     const githubProvider = new iam.OpenIdConnectProvider(this, 'GithubOidcProvider', {
       url: 'https://token.actions.githubusercontent.com',
       clientIds: ['sts.amazonaws.com'],
       thumbprints: [
         // GitHub's OIDC thumbprint (valid as of 2024)
+        // Reference: https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
+        // If authentication fails, verify thumbprint at: https://github.blog/changelog/2023-06-27-github-actions-update-on-oidc-integration-with-aws/
         '6938fd4d98bab03faadb97b34396831e3780aea1',
         // Backup thumbprint
         '1c58a3a8518e8759bf075b76b750d4f2df264fcd',
@@ -93,7 +98,9 @@ export class Afu9IamStack extends cdk.Stack {
           // Authentication
           'ecr:GetAuthorizationToken',
         ],
-        resources: ['*'], // GetAuthorizationToken doesn't support resource-level permissions
+        // GetAuthorizationToken doesn't support resource-level permissions per AWS documentation:
+        // https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelasticcontainerregistry.html
+        resources: ['*'],
       })
     );
 
