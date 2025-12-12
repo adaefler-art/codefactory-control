@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { MCPLogger } from './logger';
 
 /**
  * Base MCP Server implementation
@@ -38,9 +39,11 @@ export abstract class MCPServer {
   protected app = express();
   protected tools: Map<string, Tool> = new Map();
   protected serverName: string;
+  protected logger: MCPLogger;
 
   constructor(protected port: number, serverName: string) {
     this.serverName = serverName;
+    this.logger = new MCPLogger(serverName);
     this.app.use(express.json());
     this.setupRoutes();
   }
@@ -62,15 +65,22 @@ export abstract class MCPServer {
     this.app.post('/', async (req: Request, res: Response) => {
       const request = req.body as JSONRPCRequest;
       const { jsonrpc, id, method, params } = request;
+      const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      this.logger.debug('Received JSON-RPC request', { requestId, method });
 
       // Validate JSON-RPC version
       if (jsonrpc !== '2.0') {
+        this.logger.warn('Invalid JSON-RPC version', { requestId, jsonrpc });
         return this.sendError(res, id, -32600, 'Invalid JSON-RPC version');
       }
+
+      const startTime = Date.now();
 
       try {
         switch (method) {
           case 'health':
+            this.logger.debug('Health check', { requestId });
             return this.sendResult(res, id, {
               status: 'ok',
               server: this.serverName,
@@ -78,6 +88,7 @@ export abstract class MCPServer {
             });
 
           case 'tools/list':
+            this.logger.debug('List tools', { requestId });
             return this.sendResult(res, id, {
               tools: Array.from(this.tools.values()),
             });
@@ -86,19 +97,35 @@ export abstract class MCPServer {
             const { tool, arguments: args } = params;
             
             if (!this.tools.has(tool)) {
+              this.logger.warn('Tool not found', { requestId, tool });
               return this.sendError(res, id, -32601, `Tool not found: ${tool}`);
             }
 
+            this.logger.info('Executing tool', { requestId, tool });
             const result = await this.handleToolCall(tool, args || {});
+            const duration = Date.now() - startTime;
+            
+            this.logger.info('Tool execution completed', { 
+              requestId, 
+              tool, 
+              duration 
+            });
+
             return this.sendResult(res, id, {
               content: [{ type: 'text', text: JSON.stringify(result) }],
             });
 
           default:
+            this.logger.warn('Method not found', { requestId, method });
             return this.sendError(res, id, -32601, `Method not found: ${method}`);
         }
       } catch (error) {
-        console.error(`[${this.serverName}] Error handling request:`, error);
+        const duration = Date.now() - startTime;
+        this.logger.error('Error handling request', error, { 
+          requestId, 
+          method,
+          duration 
+        });
         return this.sendError(
           res,
           id,
@@ -111,6 +138,7 @@ export abstract class MCPServer {
 
     // Health check endpoint (non-JSON-RPC)
     this.app.get('/health', (req: Request, res: Response) => {
+      this.logger.debug('Health check endpoint accessed');
       res.json({
         status: 'ok',
         server: this.serverName,
@@ -150,8 +178,11 @@ export abstract class MCPServer {
   start() {
     this.registerTools();
     this.app.listen(this.port, '0.0.0.0', () => {
-      console.log(`[${this.serverName}] MCP Server listening on port ${this.port}`);
-      console.log(`[${this.serverName}] Available tools: ${Array.from(this.tools.keys()).join(', ')}`);
+      this.logger.info('MCP Server started', { 
+        port: this.port,
+        tools: Array.from(this.tools.keys()),
+        environment: process.env.NODE_ENV || 'development'
+      });
     });
   }
 }

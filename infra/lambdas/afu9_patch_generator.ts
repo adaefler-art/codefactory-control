@@ -1,3 +1,7 @@
+import { LambdaLogger } from "./logger";
+
+const logger = new LambdaLogger('afu9-patch-generator');
+
 interface IssueContextState {
   repo: string;
   targetBranch: string;
@@ -18,7 +22,11 @@ interface Patch {
 }
 
 export const handler = async (event: IssueContextState): Promise<any> => {
-  console.log("AFU-9 PatchGenerator v0.1", { event });
+  logger.info("AFU-9 PatchGenerator started", { 
+    repo: event.repo,
+    issueNumber: event.issue?.number,
+    targetBranch: event.targetBranch 
+  });
 
   const branchBase = event.issue?.number
     ? `afu9/issue-${event.issue.number}`
@@ -40,6 +48,13 @@ export const handler = async (event: IssueContextState): Promise<any> => {
       }
     ]
   };
+
+  logger.info("Patch generated successfully", {
+    repo: event.repo,
+    branchName: patch.branchName,
+    fileCount: patch.files.length,
+    issueNumber: event.issue?.number
+  });
 
   return {
     ...event,

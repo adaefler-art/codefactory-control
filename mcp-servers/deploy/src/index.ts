@@ -25,21 +25,7 @@ export class DeployMCPServer extends MCPServer {
     
     const region = process.env.AWS_REGION || 'eu-central-1';
     this.ecsClient = new ECSClient({ region });
-    this.log('info', 'DeployMCPServer initialized', { region });
-  }
-
-  /**
-   * Structured logging for deploy actions
-   */
-  private log(level: 'info' | 'error' | 'warn', message: string, data?: any) {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      component: 'mcp-deploy',
-      message,
-      ...(data && { data })
-    };
-    console.log(JSON.stringify(logEntry));
+    this.logger.info('DeployMCPServer initialized', { region });
   }
 
   protected registerTools(): void {
@@ -75,33 +61,23 @@ export class DeployMCPServer extends MCPServer {
   }
 
   protected async handleToolCall(tool: string, args: Record<string, any>): Promise<any> {
-    this.log('info', `Tool called: ${tool}`, { args });
-    
-    try {
-      switch (tool) {
-        case 'updateService':
-          return await this.updateService(args as {
-            cluster: string;
-            service: string;
-            containerName?: string;
-            imageUri?: string;
-            forceNewDeployment?: boolean;
-          });
-        case 'getServiceStatus':
-          return await this.getServiceStatus(args as {
-            cluster: string;
-            service: string;
-            includeTaskDetails?: boolean;
-          });
-        default:
-          throw new Error(`Unknown tool: ${tool}`);
-      }
-    } catch (error) {
-      this.log('error', `Tool execution failed: ${tool}`, {
-        args,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      throw error;
+    switch (tool) {
+      case 'updateService':
+        return await this.updateService(args as {
+          cluster: string;
+          service: string;
+          containerName?: string;
+          imageUri?: string;
+          forceNewDeployment?: boolean;
+        });
+      case 'getServiceStatus':
+        return await this.getServiceStatus(args as {
+          cluster: string;
+          service: string;
+          includeTaskDetails?: boolean;
+        });
+      default:
+        throw new Error(`Unknown tool: ${tool}`);
     }
   }
 
@@ -114,7 +90,7 @@ export class DeployMCPServer extends MCPServer {
   }) {
     const { cluster, service, containerName, imageUri, forceNewDeployment = true } = args;
 
-    this.log('info', 'Starting service update', {
+    this.logger.info('Starting service update', {
       cluster,
       service,
       containerName,
@@ -160,7 +136,7 @@ export class DeployMCPServer extends MCPServer {
       // Update the container image
       const updatedContainers = currentTaskDef.containerDefinitions.map((container) => {
         if (container.name === containerName) {
-          this.log('info', 'Updating container image', {
+          this.logger.info('Updating container image', {
             containerName,
             oldImage: container.image,
             newImage: imageUri
@@ -191,7 +167,7 @@ export class DeployMCPServer extends MCPServer {
       const registerResponse = await this.ecsClient.send(registerCommand);
       taskDefinition = registerResponse.taskDefinition?.taskDefinitionArn;
 
-      this.log('info', 'Registered new task definition', {
+      this.logger.info('Registered new task definition', {
         oldTaskDefinition: currentTaskDef.taskDefinitionArn,
         newTaskDefinition: taskDefinition,
         containerName,
@@ -208,7 +184,7 @@ export class DeployMCPServer extends MCPServer {
 
     const response = await this.ecsClient.send(command);
 
-    this.log('info', 'Service update completed', {
+    this.logger.info('Service update completed', {
       cluster,
       service,
       serviceArn: response.service?.serviceArn,
@@ -257,7 +233,7 @@ export class DeployMCPServer extends MCPServer {
   }) {
     const { cluster, service, includeTaskDetails = true } = args;
 
-    this.log('info', 'Getting service status', { cluster, service, includeTaskDetails });
+    this.logger.info('Getting service status', { cluster, service, includeTaskDetails });
 
     const command = new DescribeServicesCommand({
       cluster,
@@ -268,14 +244,15 @@ export class DeployMCPServer extends MCPServer {
     const serviceData = response.services?.[0];
 
     if (!serviceData) {
-      this.log('error', 'Service not found', { cluster, service });
-      throw new Error(`Service ${service} not found in cluster ${cluster}`);
+      const error = new Error(`Service ${service} not found in cluster ${cluster}`);
+      this.logger.error('Service not found', error, { cluster, service });
+      throw error;
     }
 
     // Get task details if requested
     const tasks = includeTaskDetails ? await this.getServiceTasks(cluster, service) : [];
 
-    this.log('info', 'Service status retrieved', {
+    this.logger.info('Service status retrieved', {
       cluster,
       service,
       status: serviceData.status,
@@ -334,7 +311,7 @@ export class DeployMCPServer extends MCPServer {
       const listResponse = await this.ecsClient.send(listCommand);
       
       if (!listResponse.taskArns || listResponse.taskArns.length === 0) {
-        this.log('info', 'No running tasks found', { cluster, service });
+        this.logger.info('No running tasks found', { cluster, service });
         return [];
       }
 
@@ -371,11 +348,7 @@ export class DeployMCPServer extends MCPServer {
         })),
       })) || [];
     } catch (error) {
-      this.log('error', 'Failed to get task details', {
-        cluster,
-        service,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      this.logger.error('Failed to get task details', error, { cluster, service });
       // Return empty array but error is logged - caller can check logs if task count is 0
       // This allows the main operation to succeed even if task details fail
       return [];

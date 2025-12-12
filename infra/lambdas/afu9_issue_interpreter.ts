@@ -1,5 +1,8 @@
 import { Octokit } from "octokit";
 import { getGithubSecrets } from "../../lib/utils/secrets";
+import { LambdaLogger } from "./logger";
+
+const logger = new LambdaLogger('afu9-issue-interpreter');
 
 interface StateInput {
   repo: string;
@@ -8,7 +11,11 @@ interface StateInput {
 }
 
 export const handler = async (event: StateInput) => {
-  console.log("AFU-9 IssueInterpreter v0.1", { event });
+  logger.info("AFU-9 IssueInterpreter started", { 
+    repo: event.repo,
+    targetBranch: event.targetBranch,
+    issueNumber: event.issueNumber ? String(event.issueNumber) : undefined
+  });
 
   // Load GitHub secrets from AWS Secrets Manager or environment
   const githubSecrets = await getGithubSecrets();
@@ -16,7 +23,7 @@ export const handler = async (event: StateInput) => {
 
   // Validate required credentials
   if (!GITHUB_TOKEN) {
-    console.error("GitHub token not found in secrets");
+    logger.error("GitHub token not found in secrets");
     throw new Error("Configuration error: GitHub token is not configured");
   }
 
@@ -29,7 +36,11 @@ export const handler = async (event: StateInput) => {
       const [owner, repo] = event.repo.split("/");
       const issueNumber = Number(event.issueNumber);
 
-      console.log(`Fetching issue #${issueNumber} from ${owner}/${repo}...`);
+      logger.info("Fetching GitHub issue", { 
+        issueNumber,
+        owner,
+        repo 
+      });
       
       try {
         const { data } = await octokit.rest.issues.get({
@@ -47,10 +58,13 @@ export const handler = async (event: StateInput) => {
           )
         };
         
-        console.log(`Successfully fetched issue #${issueNumber}`);
+        logger.info("Successfully fetched issue", { 
+          issueNumber,
+          title: data.title,
+          labelCount: issue.labels.length 
+        });
       } catch (error) {
-        console.error("Error fetching GitHub issue:", {
-          error: error instanceof Error ? error.message : String(error),
+        logger.error("Failed to fetch GitHub issue", error, {
           issueNumber,
           owner,
           repo,
@@ -64,25 +78,34 @@ export const handler = async (event: StateInput) => {
       }
     }
 
+    const classification = issue
+      ? {
+          type: "bug",
+          confidence: 0.6,
+          reason: "v0.1 stub: treat all issues as bug"
+        }
+      : {
+          type: "ad_hoc",
+          confidence: 0.5,
+          reason: "no issueNumber provided"
+        };
+
+    logger.info("Issue interpretation completed", {
+      repo: event.repo,
+      issueNumber: event.issueNumber ? String(event.issueNumber) : undefined,
+      classificationType: classification.type,
+      confidence: classification.confidence
+    });
+
     return {
       ...event,
       issue,
-      classification: issue
-        ? {
-            type: "bug",
-            confidence: 0.6,
-            reason: "v0.1 stub: treat all issues as bug"
-          }
-        : {
-            type: "ad_hoc",
-            confidence: 0.5,
-            reason: "no issueNumber provided"
-          }
+      classification
     };
   } catch (error) {
-    console.error("Error in IssueInterpreter:", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    logger.error("Error in IssueInterpreter", error, {
+      repo: event.repo,
+      issueNumber: event.issueNumber ? String(event.issueNumber) : undefined
     });
     throw error;
   }

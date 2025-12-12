@@ -1,6 +1,8 @@
 import { SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
+import { LambdaLogger } from "./logger";
 
 const sfn = new SFNClient({});
+const logger = new LambdaLogger('afu9-orchestrator');
 
 const STATE_MACHINE_ARN = process.env.AFU9_STATE_MACHINE_ARN;
 
@@ -13,11 +15,16 @@ interface GithubPayload {
 }
 
 export const handler = async (event: GithubPayload) => {
-  console.log("AFU-9 Orchestrator v0.1 start", { event });
+  logger.info("AFU-9 Orchestrator started", { 
+    repo: event.repo,
+    ref: event.ref,
+    issueNumber: event.issueNumber ? String(event.issueNumber) : undefined,
+    githubRunId: event.githubRunId
+  });
 
   // Validate required environment variables
   if (!STATE_MACHINE_ARN) {
-    console.error("AFU9_STATE_MACHINE_ARN environment variable is not configured");
+    logger.error("Configuration error: AFU9_STATE_MACHINE_ARN is not set");
     return {
       statusCode: 500,
       body: JSON.stringify({
@@ -42,9 +49,11 @@ export const handler = async (event: GithubPayload) => {
     });
 
     const result = await sfn.send(command);
-    console.log("Started AFU-9 State Machine", { 
+    logger.info("AFU-9 State Machine started successfully", { 
       executionArn: result.executionArn,
-      startDate: result.startDate 
+      startDate: result.startDate?.toISOString(),
+      repo: event.repo,
+      issueNumber: event.issueNumber ? String(event.issueNumber) : undefined
     });
 
     return {
@@ -55,9 +64,10 @@ export const handler = async (event: GithubPayload) => {
       })
     };
   } catch (error) {
-    console.error("Error starting AFU-9 State Machine:", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    logger.error("Failed to start AFU-9 State Machine", error, {
+      repo: event.repo,
+      issueNumber: event.issueNumber ? String(event.issueNumber) : undefined,
+      githubRunId: event.githubRunId
     });
 
     return {
