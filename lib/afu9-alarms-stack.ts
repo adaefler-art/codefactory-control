@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { aws_cloudwatch as cloudwatch, aws_sns as sns, aws_sns_subscriptions as subscriptions, aws_cloudwatch_actions as actions } from 'aws-cdk-lib';
+import { aws_cloudwatch as cloudwatch, aws_sns as sns, aws_sns_subscriptions as subscriptions, aws_cloudwatch_actions as actions, aws_lambda as lambda, aws_iam as iam, aws_logs as logs } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 /**
@@ -10,6 +10,7 @@ import { Construct } from 'constructs';
  * - RDS database health (CPU, Connections, Storage)
  * - ALB health (5xx errors, unhealthy targets, response time)
  * - SNS topic for alarm notifications
+ * - Optional email and webhook notifications (Slack, etc.)
  * 
  * This stack creates alarms that trigger when key metrics exceed thresholds,
  * ensuring operators are notified of potential issues before they impact users.
@@ -42,13 +43,20 @@ export interface Afu9AlarmsStackProps extends cdk.StackProps {
 
   /**
    * Email address for alarm notifications
-   * Optional - if not provided, SNS topic will be created without subscriptions
+   * Optional - if not provided, SNS topic will be created without email subscriptions
    */
   alarmEmail?: string;
+
+  /**
+   * Webhook URL for alarm notifications (e.g., Slack webhook)
+   * Optional - if not provided, no webhook notifications will be configured
+   */
+  webhookUrl?: string;
 }
 
 export class Afu9AlarmsStack extends cdk.Stack {
   public readonly alarmTopic: sns.Topic;
+  public readonly webhookFunction?: lambda.Function;
 
   constructor(scope: Construct, id: string, props: Afu9AlarmsStackProps) {
     super(scope, id, props);
@@ -60,6 +68,7 @@ export class Afu9AlarmsStack extends cdk.Stack {
       albFullName,
       targetGroupFullName,
       alarmEmail,
+      webhookUrl,
     } = props;
 
     // ========================================
@@ -75,6 +84,138 @@ export class Afu9AlarmsStack extends cdk.Stack {
     if (alarmEmail) {
       this.alarmTopic.addSubscription(
         new subscriptions.EmailSubscription(alarmEmail)
+      );
+    }
+
+    // Subscribe webhook if provided (e.g., Slack, Teams, custom webhooks)
+    if (webhookUrl) {
+      // Create Lambda function to forward SNS notifications to webhook
+      const webhookLogGroup = new logs.LogGroup(this, 'WebhookLogGroup', {
+        logGroupName: '/aws/lambda/afu9-alarm-webhook',
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+
+      this.webhookFunction = new lambda.Function(this, 'WebhookFunction', {
+        functionName: 'afu9-alarm-webhook',
+        description: 'Forwards CloudWatch alarm notifications to webhook (Slack, Teams, etc.)',
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: 'index.handler',
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        logGroup: webhookLogGroup,
+        environment: {
+          WEBHOOK_URL: webhookUrl,
+        },
+        code: lambda.Code.fromInline(`
+const https = require('https');
+const url = require('url');
+
+exports.handler = async (event) => {
+  console.log('Received SNS event:', JSON.stringify(event, null, 2));
+  
+  const webhookUrl = process.env.WEBHOOK_URL;
+  if (!webhookUrl) {
+    throw new Error('WEBHOOK_URL environment variable not set');
+  }
+  
+  // Parse SNS message
+  const snsMessage = event.Records[0].Sns;
+  const message = JSON.parse(snsMessage.Message);
+  
+  // Format message for webhook (Slack-compatible format)
+  const alarmName = message.AlarmName || 'Unknown Alarm';
+  const newState = message.NewStateValue || 'UNKNOWN';
+  const reason = message.NewStateReason || 'No reason provided';
+  const timestamp = message.StateChangeTime || new Date().toISOString();
+  
+  // Color coding: red for ALARM, green for OK, gray for INSUFFICIENT_DATA
+  const color = newState === 'ALARM' ? '#ff0000' : newState === 'OK' ? '#00ff00' : '#cccccc';
+  const emoji = newState === 'ALARM' ? '🔴' : newState === 'OK' ? '✅' : '⚠️';
+  
+  const payload = {
+    text: \`\${emoji} CloudWatch Alarm: \${alarmName}\`,
+    attachments: [
+      {
+        color: color,
+        fields: [
+          {
+            title: 'Alarm Name',
+            value: alarmName,
+            short: true
+          },
+          {
+            title: 'State',
+            value: newState,
+            short: true
+          },
+          {
+            title: 'Reason',
+            value: reason,
+            short: false
+          },
+          {
+            title: 'Time',
+            value: timestamp,
+            short: false
+          }
+        ],
+        footer: 'AFU-9 CloudWatch Alarms',
+        ts: Math.floor(Date.parse(timestamp) / 1000)
+      }
+    ]
+  };
+  
+  // Send to webhook
+  const parsedUrl = url.parse(webhookUrl);
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port || 443,
+    path: parsedUrl.path,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+  
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      console.log('Webhook response status:', res.statusCode);
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          console.log('Successfully sent to webhook');
+          resolve({ statusCode: 200, body: 'Success' });
+        } else {
+          console.error('Webhook returned error:', res.statusCode, data);
+          reject(new Error(\`Webhook error: \${res.statusCode}\`));
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      console.error('Error sending to webhook:', error);
+      reject(error);
+    });
+    
+    req.write(JSON.stringify(payload));
+    req.end();
+  });
+};
+        `),
+      });
+
+      // Grant Lambda permission to be invoked by SNS
+      this.webhookFunction.addPermission('AllowSNSInvoke', {
+        principal: new iam.ServicePrincipal('sns.amazonaws.com'),
+        action: 'lambda:InvokeFunction',
+        sourceArn: this.alarmTopic.topicArn,
+      });
+
+      // Subscribe Lambda to SNS topic
+      this.alarmTopic.addSubscription(
+        new subscriptions.LambdaSubscription(this.webhookFunction)
       );
     }
 
@@ -293,5 +434,19 @@ export class Afu9AlarmsStack extends cdk.Stack {
       description: 'SNS topic name for CloudWatch alarms',
       exportName: 'Afu9AlarmTopicName',
     });
+
+    if (this.webhookFunction) {
+      new cdk.CfnOutput(this, 'WebhookFunctionArn', {
+        value: this.webhookFunction.functionArn,
+        description: 'Lambda function ARN for webhook notifications',
+        exportName: 'Afu9WebhookFunctionArn',
+      });
+
+      new cdk.CfnOutput(this, 'WebhookFunctionName', {
+        value: this.webhookFunction.functionName,
+        description: 'Lambda function name for webhook notifications',
+        exportName: 'Afu9WebhookFunctionName',
+      });
+    }
   }
 }

@@ -83,16 +83,19 @@ const ecsStack = new Afu9EcsStack(app, 'Afu9EcsStack', {
 
 // CloudWatch Alarms stack (depends on ECS and database)
 // Optional: Set alarm email via context: -c afu9-alarm-email=ops@example.com
+// Optional: Set webhook URL via context: -c afu9-webhook-url=https://hooks.slack.com/services/...
 const alarmEmail = app.node.tryGetContext('afu9-alarm-email');
+const webhookUrl = app.node.tryGetContext('afu9-webhook-url');
 new Afu9AlarmsStack(app, 'Afu9AlarmsStack', {
   env,
-  description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB',
+  description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB with email and webhook notifications',
   ecsClusterName: ecsStack.cluster.clusterName,
   ecsServiceName: ecsStack.service.serviceName,
   dbInstanceIdentifier: databaseStack.dbInstance.instanceIdentifier,
   albFullName: networkStack.loadBalancer.loadBalancerFullName,
   targetGroupFullName: networkStack.targetGroup.targetGroupFullName,
   alarmEmail,
+  webhookUrl,
 });
 
 // IAM stack for deployment automation (independent)

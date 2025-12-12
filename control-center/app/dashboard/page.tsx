@@ -68,11 +68,30 @@ interface InfrastructureHealth {
   message?: string;
 }
 
+interface AlarmSummary {
+  total: number;
+  ok: number;
+  alarm: number;
+  insufficientData: number;
+}
+
+interface AlarmStatus {
+  status: string;
+  data?: {
+    summary: AlarmSummary;
+  };
+  error?: string;
+  message?: string;
+}
+
+type HealthStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentExecutions, setRecentExecutions] = useState<RecentExecution[]>([]);
   const [recentAgents, setRecentAgents] = useState<AgentRun[]>([]);
   const [infrastructureHealth, setInfrastructureHealth] = useState<InfrastructureHealth | null>(null);
+  const [alarmStatus, setAlarmStatus] = useState<AlarmStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +117,10 @@ export default function DashboardPage() {
         // Fetch infrastructure health
         const healthRes = await fetch("/api/infrastructure/health");
         const healthData = await healthRes.json();
+
+        // Fetch alarm status
+        const alarmsRes = await fetch("/api/observability/alarms");
+        const alarmsData = await alarmsRes.json();
 
         // Calculate stats
         const executions = executionsData.executions || [];
@@ -146,6 +169,7 @@ export default function DashboardPage() {
         setRecentExecutions(executions.slice(0, 5));
         setRecentAgents(agents.slice(0, 5));
         setInfrastructureHealth(healthData);
+        setAlarmStatus(alarmsData);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
         setError("Fehler beim Laden der Dashboard-Daten");
@@ -199,6 +223,76 @@ export default function DashboardPage() {
       const currentTime = new Date(current.timestamp).getTime();
       return currentTime > latestTime ? current : latest;
     });
+  };
+
+  const getOverallHealthStatus = (): HealthStatus => {
+    // Determine overall health based on alarms and infrastructure
+    if (!alarmStatus || !infrastructureHealth) {
+      return 'unknown';
+    }
+
+    // Critical if any alarms are in ALARM state
+    if (alarmStatus.status === 'success' && alarmStatus.data?.summary.alarm > 0) {
+      return 'critical';
+    }
+
+    // Warning if infrastructure is unavailable or has issues
+    if (infrastructureHealth.status === 'unavailable' || infrastructureHealth.status === 'error') {
+      return 'warning';
+    }
+
+    // Warning if insufficient data on alarms
+    if (alarmStatus.status === 'success' && alarmStatus.data?.summary.insufficientData > 0) {
+      return 'warning';
+    }
+
+    // Healthy if all alarms OK and infrastructure is OK
+    if (alarmStatus.status === 'success' && infrastructureHealth.status === 'ok') {
+      return 'healthy';
+    }
+
+    return 'unknown';
+  };
+
+  const getHealthStatusColor = (status: HealthStatus) => {
+    switch (status) {
+      case 'healthy':
+        return {
+          bg: 'bg-green-500',
+          text: 'text-green-500',
+          border: 'border-green-500',
+          lightBg: 'bg-green-900/20',
+          label: 'Healthy',
+          icon: '✓',
+        };
+      case 'warning':
+        return {
+          bg: 'bg-yellow-500',
+          text: 'text-yellow-500',
+          border: 'border-yellow-500',
+          lightBg: 'bg-yellow-900/20',
+          label: 'Warning',
+          icon: '⚠',
+        };
+      case 'critical':
+        return {
+          bg: 'bg-red-500',
+          text: 'text-red-500',
+          border: 'border-red-500',
+          lightBg: 'bg-red-900/20',
+          label: 'Critical',
+          icon: '✕',
+        };
+      default:
+        return {
+          bg: 'bg-gray-500',
+          text: 'text-gray-500',
+          border: 'border-gray-500',
+          lightBg: 'bg-gray-900/20',
+          label: 'Unknown',
+          icon: '?',
+        };
+    }
   };
 
   return (
@@ -317,6 +411,120 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </Link>
+            </div>
+
+            {/* System Health Status Card */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-8">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h2 className="text-lg font-semibold text-gray-200 mb-2">System Health Status</h2>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Overall infrastructure and monitoring status
+                  </p>
+                </div>
+                <Link
+                  href="/observability"
+                  className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                >
+                  View Details →
+                </Link>
+              </div>
+
+              {alarmStatus && infrastructureHealth ? (
+                (() => {
+                  const healthStatus = getOverallHealthStatus();
+                  const statusConfig = getHealthStatusColor(healthStatus);
+                  return (
+                    <div className={`${statusConfig.lightBg} border ${statusConfig.border} rounded-lg p-6`}>
+                      <div className="flex items-center gap-6">
+                        {/* Status Indicator */}
+                        <div className="flex flex-col items-center">
+                          <div className={`w-20 h-20 ${statusConfig.bg} rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg`}>
+                            {statusConfig.icon}
+                          </div>
+                          <span className={`text-sm font-semibold mt-2 ${statusConfig.text}`}>
+                            {statusConfig.label}
+                          </span>
+                        </div>
+
+                        {/* Status Details */}
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Alarms */}
+                          <div className="bg-gray-800/50 rounded-lg p-4">
+                            <div className="text-xs text-gray-400 mb-1">CloudWatch Alarms</div>
+                            {alarmStatus.status === 'success' && alarmStatus.data ? (
+                              <div className="space-y-1">
+                                <div className="text-sm text-gray-200">
+                                  <span className={alarmStatus.data.summary.alarm > 0 ? 'text-red-400 font-semibold' : 'text-green-400'}>
+                                    {alarmStatus.data.summary.alarm}
+                                  </span>
+                                  {' '}in ALARM
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {alarmStatus.data.summary.ok} OK · {alarmStatus.data.summary.insufficientData} no data
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-yellow-400">Unavailable</div>
+                            )}
+                          </div>
+
+                          {/* Infrastructure */}
+                          <div className="bg-gray-800/50 rounded-lg p-4">
+                            <div className="text-xs text-gray-400 mb-1">Infrastructure</div>
+                            {infrastructureHealth.status === 'ok' ? (
+                              <div className="space-y-1">
+                                <div className="text-sm text-green-400">Operational</div>
+                                <div className="text-xs text-gray-500">
+                                  {infrastructureHealth.cluster}/{infrastructureHealth.service}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="text-sm text-yellow-400">
+                                  {infrastructureHealth.status === 'unavailable' ? 'Metrics Unavailable' : 'Degraded'}
+                                </div>
+                                {infrastructureHealth.message && (
+                                  <div className="text-xs text-gray-500">{infrastructureHealth.message}</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Recent Metrics */}
+                          <div className="bg-gray-800/50 rounded-lg p-4">
+                            <div className="text-xs text-gray-400 mb-1">Recent Metrics</div>
+                            {infrastructureHealth.metrics ? (
+                              <div className="space-y-1">
+                                {(() => {
+                                  const latestCpu = getLatestMetricValue(infrastructureHealth.metrics.cpu?.datapoints);
+                                  const latestMemory = getLatestMetricValue(infrastructureHealth.metrics.memory?.datapoints);
+                                  return (
+                                    <>
+                                      <div className="text-xs text-gray-300">
+                                        CPU: {latestCpu ? `${latestCpu.average?.toFixed(1)}%` : 'N/A'}
+                                      </div>
+                                      <div className="text-xs text-gray-300">
+                                        Memory: {latestMemory ? `${latestMemory.average?.toFixed(1)}%` : 'N/A'}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-gray-500">No data</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 text-center">
+                  <div className="text-gray-400">Loading system health status...</div>
+                </div>
+              )}
             </div>
 
             {/* Grid layout for detailed sections */}
