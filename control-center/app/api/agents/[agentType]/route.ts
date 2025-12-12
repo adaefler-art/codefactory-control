@@ -12,10 +12,11 @@ import { getPool } from '../../../../src/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { agentType: string } }
+  { params }: { params: Promise<{ agentType: string }> }
 ) {
   try {
-    const agentType = decodeURIComponent(params.agentType);
+    const { agentType: agentTypeRaw } = await params;
+    const agentType = decodeURIComponent(agentTypeRaw);
     const pool = getPool();
 
     // Fetch all runs for this agent type
