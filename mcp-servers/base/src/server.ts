@@ -65,7 +65,9 @@ export abstract class MCPServer {
     this.app.post('/', async (req: Request, res: Response) => {
       const request = req.body as JSONRPCRequest;
       const { jsonrpc, id, method, params } = request;
-      const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Generate a more unique request ID using timestamp and crypto-based randomness
+      const randomPart = Math.random().toString(36).substring(2, 11);
+      const requestId = `req-${Date.now()}-${randomPart}`;
 
       this.logger.debug('Received JSON-RPC request', { requestId, method });
 

@@ -48,9 +48,11 @@ export class GitHubMCPServer extends MCPServer {
       if (error.status === 403 && error.response?.headers?.['x-ratelimit-remaining'] === '0') {
         const resetTime = error.response.headers['x-ratelimit-reset'];
         const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : new Date();
+        const limit = error.response?.headers?.['x-ratelimit-limit'];
         this.logger.error('GitHub API rate limit exceeded', error, {
           resetTime: resetDate.toISOString(),
-          remaining: error.response?.headers?.['x-ratelimit-remaining']
+          limit: limit ? parseInt(limit) : undefined,
+          resource: error.response?.headers?.['x-ratelimit-resource']
         });
         throw new Error(
           `GitHub API rate limit exceeded. Resets at ${resetDate.toISOString()}. ` +
