@@ -39,12 +39,15 @@ export default function SettingsPage() {
 
         if (mcpResponse.ok) {
           const serversObj = mcpData.servers || {};
-          const serversArray = Object.entries(serversObj).map(([name, health]: [string, any]) => ({
-            name,
-            endpoint: health.endpoint || `http://localhost:${3001 + Object.keys(serversObj).indexOf(name)}`,
-            healthy: health.status === 'ok',
-            error: health.error,
-          }));
+          const serversArray = Object.entries(serversObj).map(([name, health]) => {
+            const healthData = health as { status?: string; endpoint?: string; error?: string };
+            return {
+              name,
+              endpoint: healthData.endpoint || `http://localhost:${3001 + Object.keys(serversObj).indexOf(name)}`,
+              healthy: healthData.status === 'ok',
+              error: healthData.error,
+            };
+          });
           setMcpServers(serversArray);
         }
 

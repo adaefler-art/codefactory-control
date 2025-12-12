@@ -324,7 +324,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     // Build update query dynamically
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: (string | boolean | object)[] = [];
     let paramCount = 1;
 
     if (enabled !== undefined) {
