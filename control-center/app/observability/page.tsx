@@ -53,8 +53,12 @@ export default function ObservabilityPage() {
 
   useEffect(() => {
     fetchObservabilityData();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchObservabilityData, 30000);
+    // Refresh every 30 seconds when tab is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchObservabilityData();
+      }
+    }, 30000);
     return () => clearInterval(interval);
   }, [selectedLogGroup, selectedHours]);
 

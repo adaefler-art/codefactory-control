@@ -7,6 +7,9 @@
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+// Cache production check for performance
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 export interface LogContext {
   workflowId?: string;
   executionId?: string;
@@ -45,7 +48,7 @@ class Logger {
    * Log debug information (development only)
    */
   debug(message: string, context?: LogContext, component?: string): void {
-    if (process.env.NODE_ENV === 'production') {
+    if (IS_PRODUCTION) {
       return; // Skip debug logs in production
     }
     this.log('debug', message, context, component);
@@ -145,7 +148,7 @@ class ComponentLogger {
   ) {}
 
   debug(message: string, context?: LogContext): void {
-    if (process.env.NODE_ENV === 'production') {
+    if (IS_PRODUCTION) {
       return;
     }
     this.log('debug', message, context);

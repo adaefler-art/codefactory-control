@@ -17,11 +17,11 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const { searchParams } = new URL(request.url);
   
-  // Parse query parameters
+  // Parse and validate query parameters
   const logGroupName = searchParams.get('logGroup') || '/ecs/afu9/control-center';
   const filterPattern = searchParams.get('filterPattern') || 'ERROR';
-  const hours = parseInt(searchParams.get('hours') || '1', 10);
-  const limit = parseInt(searchParams.get('limit') || '100', 10);
+  const hours = Math.min(Math.max(parseInt(searchParams.get('hours') || '1', 10), 1), 72); // 1-72 hours
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100', 10), 1), 1000); // 1-1000 events
 
   try {
     log.info('Fetching CloudWatch logs', {
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
           limit,
         },
         {
-          timeoutMs: 15000, // 15 second timeout
+          timeoutMs: 10000, // 10 second timeout
         }
       );
 
