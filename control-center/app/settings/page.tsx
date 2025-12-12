@@ -21,9 +21,32 @@ interface Repository {
   updatedAt: string;
 }
 
+interface SystemConfig {
+  integrations: {
+    github: {
+      configured: boolean;
+      owner: string | null;
+    };
+    aws: {
+      region: string;
+    };
+    llm: {
+      provider: string;
+      configured: boolean;
+    };
+  };
+  system: {
+    version: string;
+    architecture: string;
+    environment: string;
+    database: string;
+  };
+}
+
 export default function SettingsPage() {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddRepo, setShowAddRepo] = useState(false);
@@ -57,6 +80,14 @@ export default function SettingsPage() {
 
         if (repoResponse.ok) {
           setRepositories(repoData.repositories || []);
+        }
+
+        // Fetch system configuration
+        const configResponse = await fetch("/api/system/config");
+        const configData = await configResponse.json();
+
+        if (configResponse.ok) {
+          setSystemConfig(configData);
         }
       } catch (err) {
         console.error("Error fetching settings data:", err);
@@ -191,8 +222,8 @@ export default function SettingsPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-medium text-gray-200 capitalize">
-                              {server.name}
+                            <h3 className="text-lg font-medium text-gray-200">
+                              {server.name.charAt(0).toUpperCase() + server.name.slice(1)}
                             </h3>
                             <span
                               className={`text-xs px-2 py-1 rounded ${
@@ -322,58 +353,62 @@ export default function SettingsPage() {
               </div>
               
               <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="text-sm font-medium text-gray-200 mb-1">GitHub Integration</div>
-                      <div className="text-xs text-gray-400">
-                        Owner: {process.env.NEXT_PUBLIC_GITHUB_OWNER || "Nicht konfiguriert"}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      <span className="text-xs text-gray-400">Aktiv</span>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t border-gray-800 pt-4">
+                {systemConfig ? (
+                  <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <div>
-                        <div className="text-sm font-medium text-gray-200 mb-1">AWS Region</div>
+                        <div className="text-sm font-medium text-gray-200 mb-1">GitHub Integration</div>
                         <div className="text-xs text-gray-400">
-                          {process.env.NEXT_PUBLIC_AWS_REGION || process.env.AWS_REGION || "eu-central-1"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span className="text-xs text-gray-400">Konfiguriert</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-800 pt-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-sm font-medium text-gray-200 mb-1">LLM Provider</div>
-                        <div className="text-xs text-gray-400">
-                          {process.env.OPENAI_API_KEY ? "OpenAI" : 
-                           process.env.ANTHROPIC_API_KEY ? "Anthropic" :
-                           process.env.DEEPSEEK_API_KEY ? "DeepSeek" : "Nicht konfiguriert"}
+                          Owner: {systemConfig.integrations.github.owner || "Nicht konfiguriert"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${
-                          process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY
-                            ? "bg-green-500" : "bg-gray-500"
+                          systemConfig.integrations.github.configured ? "bg-green-500" : "bg-gray-500"
                         }`} />
                         <span className="text-xs text-gray-400">
-                          {process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY
-                            ? "Aktiv" : "Inaktiv"}
+                          {systemConfig.integrations.github.configured ? "Aktiv" : "Inaktiv"}
                         </span>
                       </div>
                     </div>
+                    
+                    <div className="border-t border-gray-800 pt-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="text-sm font-medium text-gray-200 mb-1">AWS Region</div>
+                          <div className="text-xs text-gray-400">
+                            {systemConfig.integrations.aws.region}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span className="text-xs text-gray-400">Konfiguriert</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-800 pt-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="text-sm font-medium text-gray-200 mb-1">LLM Provider</div>
+                          <div className="text-xs text-gray-400">
+                            {systemConfig.integrations.llm.provider}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            systemConfig.integrations.llm.configured ? "bg-green-500" : "bg-gray-500"
+                          }`} />
+                          <span className="text-xs text-gray-400">
+                            {systemConfig.integrations.llm.configured ? "Aktiv" : "Inaktiv"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-400">Lädt Konfiguration...</div>
+                )}
               </div>
 
               <div className="mt-4 bg-blue-900/20 border border-blue-800 rounded-lg p-4">
@@ -402,28 +437,28 @@ export default function SettingsPage() {
               </div>
               
               <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Version</span>
-                    <span className="text-gray-200">v0.2 (ECS)</span>
+                {systemConfig ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Version</span>
+                      <span className="text-gray-200">{systemConfig.system.version}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Architektur</span>
+                      <span className="text-gray-200">{systemConfig.system.architecture}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Umgebung</span>
+                      <span className="text-gray-200">{systemConfig.system.environment}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Database</span>
+                      <span className="text-gray-200 font-mono">{systemConfig.system.database}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Architektur</span>
-                    <span className="text-gray-200">AFU-9 (Ninefold)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Umgebung</span>
-                    <span className="text-gray-200">
-                      {process.env.NODE_ENV || "development"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Database</span>
-                    <span className="text-gray-200 font-mono">
-                      {process.env.DATABASE_NAME || "afu9"}
-                    </span>
-                  </div>
-                </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-400">Lädt System-Informationen...</div>
+                )}
               </div>
             </div>
           </>

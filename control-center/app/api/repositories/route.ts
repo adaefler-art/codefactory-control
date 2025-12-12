@@ -87,10 +87,11 @@ export async function POST(request: Request) {
     }
 
     // Insert new repository
+    // Note: full_name is a generated column (owner || '/' || name)
     const insertQuery = `
       INSERT INTO repositories (owner, name, default_branch, enabled, config)
       VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, owner, name, full_name, default_branch, enabled, config, created_at, updated_at
+      RETURNING *
     `;
 
     const result = await pool.query(insertQuery, [
