@@ -39,6 +39,13 @@ export default function Home() {
             description="Übersicht der 9 Module des AFU-9 Systems"
             bgColor="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30"
           />
+
+          <FeatureCard
+            href="/webhooks"
+            title="GitHub Webhooks"
+            description="Monitor und Debug-Ansicht für eingehende GitHub Webhook Events"
+            bgColor="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30"
+          />
         </div>
       </div>
     </div>
