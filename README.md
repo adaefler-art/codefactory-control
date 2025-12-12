@@ -15,7 +15,7 @@ Control-plane for AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture).
   **Flow**: Issue → AFU-9 Pipeline → Patch → Branch → Pull Request → CI Feedback
   
 - **v0.2**: Production-ready architecture on ECS with MCP pattern  
-  **Features**: Control Center UI, MCP-based tool architecture, RDS persistence, scalable infrastructure
+  **Features**: Control Center UI, MCP-based tool architecture, RDS persistence, scalable infrastructure, comprehensive alerting and monitoring with Red/Yellow/Green health indicators
 
 ## Repository Structure
 
@@ -179,6 +179,8 @@ Features:
 - Automatic GitHub issue creation
 - Workflow execution dashboard
 - MCP server status monitoring
+- **System Health Dashboard**: Red/Yellow/Green health status indicators
+- **Real-time Alerting**: CloudWatch alarms visualization and monitoring
 
 See [`control-center/README.md`](control-center/README.md) for details.
 
@@ -191,3 +193,23 @@ Specialized microservices providing domain-specific tools:
 - **Observability** (port 3003): CloudWatch logs/metrics
 
 See [`mcp-servers/README.md`](mcp-servers/README.md) for details.
+
+## Alerting & Monitoring
+
+AFU-9 includes comprehensive infrastructure monitoring with CloudWatch alarms and visual health indicators:
+
+**Dashboard Features**:
+- 🟢 **Green (Healthy)**: All systems operational
+- 🟡 **Yellow (Warning)**: Degraded performance or insufficient data
+- 🔴 **Red (Critical)**: Active alarms requiring attention
+
+**Notification Channels**:
+- Email notifications via Amazon SNS
+- Slack/Teams/webhook notifications via Lambda function
+
+**Monitored Metrics**:
+- ECS service health (CPU, Memory, Task count)
+- RDS database performance (CPU, Storage, Connections)
+- ALB health (5xx errors, Response time, Unhealthy targets)
+
+See [`docs/ALERTING.md`](docs/ALERTING.md) for complete setup guide.
