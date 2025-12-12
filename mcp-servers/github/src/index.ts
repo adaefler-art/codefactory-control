@@ -335,11 +335,16 @@ export class GitHubMCPServer extends MCPServer {
       // Create blobs for each file
       const tree = await Promise.all(
         files.map(async (file) => {
+          // Auto-detect encoding: if content looks like base64, use base64, otherwise utf-8
+          // Base64 content typically doesn't contain newlines and uses base64 character set
+          const isBase64 = /^[A-Za-z0-9+/=]+$/.test(file.content.replace(/\s/g, ''));
+          const encoding = isBase64 && file.content.length > 100 ? 'base64' : 'utf-8';
+          
           const { data: blob } = await this.octokit.rest.git.createBlob({
             owner,
             repo,
             content: file.content,
-            encoding: 'utf-8',
+            encoding: encoding as 'utf-8' | 'base64',
           });
 
           return {
@@ -376,9 +381,12 @@ export class GitHubMCPServer extends MCPServer {
         sha: newCommit.sha,
       });
 
+      // Construct the commit URL manually since the Git API doesn't provide html_url
+      const commit_url = `https://github.com/${owner}/${repo}/commit/${newCommit.sha}`;
+
       return {
         commit_sha: newCommit.sha,
-        commit_url: newCommit.html_url,
+        commit_url,
         message: newCommit.message,
         files_changed: files.length,
       };
