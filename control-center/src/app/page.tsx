@@ -1,66 +1,68 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-8 py-16">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            AFU-9 Control Center
+          </h1>
+          <p className="text-xl text-gray-600">
+            Autonomous Fabrication Unit – Ninefold Architecture
           </p>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <Link
+            href="/workflows"
+            className="bg-white rounded-lg shadow-lg p-8 hover:shadow-xl transition-shadow"
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <div className="text-3xl mb-4">🔄</div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Workflows
+            </h2>
+            <p className="text-gray-600">
+              View and manage AFU-9 workflows. Trigger executions and monitor progress.
+            </p>
+          </Link>
+
+          <Link
+            href="/new-feature"
+            className="bg-white rounded-lg shadow-lg p-8 hover:shadow-xl transition-shadow"
           >
-            Documentation
-          </a>
+            <div className="text-3xl mb-4">✨</div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              New Feature
+            </h2>
+            <p className="text-gray-600">
+              Create a new feature briefing and generate a GitHub issue.
+            </p>
+          </Link>
+
+          <Link
+            href="/features"
+            className="bg-white rounded-lg shadow-lg p-8 hover:shadow-xl transition-shadow"
+          >
+            <div className="text-3xl mb-4">📋</div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Features
+            </h2>
+            <p className="text-gray-600">
+              View all features created by AFU-9.
+            </p>
+          </Link>
         </div>
-      </main>
+
+        <div className="mt-16 text-center">
+          <div className="inline-block bg-blue-50 rounded-lg px-6 py-4">
+            <p className="text-sm text-gray-600 mb-2">Version 0.2</p>
+            <p className="text-xs text-gray-500">
+              Control Center + MCP Servers on ECS
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
