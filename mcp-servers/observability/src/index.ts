@@ -186,39 +186,34 @@ export class ObservabilityMCPServer extends MCPServer {
     ];
 
     // Get ALB 5xx metrics if load balancer information is provided
-    let alb5xxCommand;
-    if (targetGroupArn) {
-      // Extract target group name from ARN
+    let hasAlbMetrics = false;
+    if (targetGroupArn && loadBalancerName) {
+      // Extract the targetgroup/name/id part from the full ARN
       // ARN format: arn:aws:elasticloadbalancing:region:account-id:targetgroup/name/id
-      const targetGroupMatch = targetGroupArn.match(/targetgroup\/([^\/]+)\//);
-      const targetGroupName = targetGroupMatch ? targetGroupMatch[1] : null;
-      
-      if (targetGroupName && loadBalancerName) {
-        // Extract load balancer name parts from full name
-        // ALB name format: app/name/id
-        const lbMatch = loadBalancerName.match(/app\/([^\/]+)\//);
-        const lbName = lbMatch ? lbMatch[1] : loadBalancerName;
+      const targetGroupDimension = targetGroupArn.includes('targetgroup/')
+        ? targetGroupArn.split('targetgroup/')[1]
+        : targetGroupArn;
 
-        alb5xxCommand = new GetMetricStatisticsCommand({
-          Namespace: 'AWS/ApplicationELB',
-          MetricName: 'HTTPCode_Target_5XX_Count',
-          Dimensions: [
-            { Name: 'LoadBalancer', Value: loadBalancerName },
-            { Name: 'TargetGroup', Value: targetGroupArn.split(':').pop() || '' },
-          ],
-          StartTime: startTime,
-          EndTime: endTime,
-          Period: period,
-          Statistics: ['Sum', 'Average'],
-        });
-        promises.push(this.cloudwatchClient.send(alb5xxCommand));
-      }
+      const alb5xxCommand = new GetMetricStatisticsCommand({
+        Namespace: 'AWS/ApplicationELB',
+        MetricName: 'HTTPCode_Target_5XX_Count',
+        Dimensions: [
+          { Name: 'LoadBalancer', Value: loadBalancerName },
+          { Name: 'TargetGroup', Value: `targetgroup/${targetGroupDimension}` },
+        ],
+        StartTime: startTime,
+        EndTime: endTime,
+        Period: period,
+        Statistics: ['Sum', 'Average'],
+      });
+      promises.push(this.cloudwatchClient.send(alb5xxCommand));
+      hasAlbMetrics = true;
     }
 
     const responses = await Promise.all(promises);
     const cpuResponse = responses[0];
     const memoryResponse = responses[1];
-    const alb5xxResponse = responses[2];
+    const alb5xxResponse = hasAlbMetrics ? responses[2] : undefined;
 
     const result: any = {
       cluster,
