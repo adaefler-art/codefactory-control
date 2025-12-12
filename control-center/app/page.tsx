@@ -8,10 +8,45 @@ export default function Home() {
           AFU-9 Control Center
         </h1>
         <p className="text-xl mb-8 text-gray-600 dark:text-gray-400">
-          Autonomous Fabrication Unit – Ninefold Architecture v0.1
+          Autonomous Fabrication Unit – Ninefold Architecture v0.2
         </p>
         
         <div className="space-y-4">
+          <FeatureCard
+            href="/dashboard"
+            title="Dashboard"
+            description="Übersicht über Workflows, Agents, Repositories und System-Status"
+            bgColor="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+          />
+
+          <FeatureCard
+            href="/workflows"
+            title="Workflows"
+            description="Workflow-Definitionen verwalten und Workflows auslösen"
+            bgColor="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30"
+          />
+
+          <FeatureCard
+            href="/agents"
+            title="Agents"
+            description="LLM-basierte Agent Runs und Token-Statistiken überwachen"
+            bgColor="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+          />
+
+          <FeatureCard
+            href="/repositories"
+            title="Repositories"
+            description="Verbundene GitHub-Repositories verwalten"
+            bgColor="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+          />
+
+          <FeatureCard
+            href="/settings"
+            title="Settings"
+            description="System-Konfiguration und MCP Server-Status"
+            bgColor="bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-900/30"
+          />
+
           <FeatureCard
             href="/board"
             title="Project Board"
