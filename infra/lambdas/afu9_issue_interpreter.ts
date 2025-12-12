@@ -1,6 +1,5 @@
 import { Octokit } from "octokit";
-
-const GITHUB_TOKEN = process.env.AFU9_GITHUB_TOKEN;
+import { getGithubSecrets } from "../../lib/utils/secrets";
 
 interface StateInput {
   repo: string;
@@ -11,10 +10,14 @@ interface StateInput {
 export const handler = async (event: StateInput) => {
   console.log("AFU-9 IssueInterpreter v0.1", { event });
 
-  // Validate required environment variables
+  // Load GitHub secrets from AWS Secrets Manager or environment
+  const githubSecrets = await getGithubSecrets();
+  const GITHUB_TOKEN = githubSecrets.token;
+
+  // Validate required credentials
   if (!GITHUB_TOKEN) {
-    console.error("AFU9_GITHUB_TOKEN environment variable is not configured");
-    throw new Error("Configuration error: AFU9_GITHUB_TOKEN is not set");
+    console.error("GitHub token not found in secrets");
+    throw new Error("Configuration error: GitHub token is not configured");
   }
 
   try {

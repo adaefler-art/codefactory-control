@@ -3,8 +3,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-
-const GITHUB_TOKEN = process.env.AFU9_GITHUB_TOKEN;
+import { getGithubSecrets } from "../../lib/utils/secrets";
 
 interface PatchState {
   repo: string;
@@ -27,10 +26,14 @@ interface PatchState {
 export const handler = async (event: PatchState) => {
   console.log("AFU-9 PRCreator v0.1", { event });
 
-  // Validate required environment variables
+  // Load GitHub secrets from AWS Secrets Manager or environment
+  const githubSecrets = await getGithubSecrets();
+  const GITHUB_TOKEN = githubSecrets.token;
+
+  // Validate required credentials
   if (!GITHUB_TOKEN) {
-    console.error("AFU9_GITHUB_TOKEN environment variable is not configured");
-    throw new Error("Configuration error: AFU9_GITHUB_TOKEN is not set");
+    console.error("GitHub token not found in secrets");
+    throw new Error("Configuration error: GitHub token is not configured");
   }
 
   const [owner, repo] = event.repo.split("/");

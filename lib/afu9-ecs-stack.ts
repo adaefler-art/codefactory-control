@@ -139,13 +139,15 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // LLM API keys secret - create with placeholder that must be updated manually
     // Note: This creates a new secret. Update it after deployment with:
-    // aws secretsmanager update-secret --secret-id afu9/llm --secret-string '{"openai_api_key":"sk-..."}'
+    // aws secretsmanager update-secret --secret-id afu9/llm --secret-string '{"openai_api_key":"sk-...","anthropic_api_key":"sk-ant-...","deepseek_api_key":"sk-..."}'
     const llmSecret = new secretsmanager.Secret(this, 'LlmSecret', {
       secretName: 'afu9/llm',
-      description: 'AFU-9 LLM API keys (UPDATE AFTER DEPLOYMENT)',
+      description: 'AFU-9 LLM API keys for OpenAI, Anthropic, DeepSeek (UPDATE AFTER DEPLOYMENT)',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({
           openai_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
+          anthropic_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
+          deepseek_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
         }),
         generateStringKey: 'dummy', // Required but not used
       },
@@ -374,6 +376,8 @@ export class Afu9EcsStack extends cdk.Stack {
         GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
         GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
         OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
+        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
+        DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
       },
       essential: true,
       healthCheck: {

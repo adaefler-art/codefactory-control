@@ -25,6 +25,7 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.950.0",
     "@aws-sdk/client-sfn": "^3.726.0",
     "octokit": "^4.0.0"
   }
