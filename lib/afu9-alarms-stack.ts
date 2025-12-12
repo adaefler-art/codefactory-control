@@ -109,7 +109,6 @@ export class Afu9AlarmsStack extends cdk.Stack {
         },
         code: lambda.Code.fromInline(`
 const https = require('https');
-const url = require('url');
 
 exports.handler = async (event) => {
   console.log('Received SNS event:', JSON.stringify(event, null, 2));
@@ -119,9 +118,20 @@ exports.handler = async (event) => {
     throw new Error('WEBHOOK_URL environment variable not set');
   }
   
-  // Parse SNS message
-  const snsMessage = event.Records[0].Sns;
-  const message = JSON.parse(snsMessage.Message);
+  // Validate SNS event structure
+  if (!event.Records || event.Records.length === 0) {
+    throw new Error('Invalid SNS event: no records found');
+  }
+  
+  // Parse SNS message with error handling
+  let message;
+  try {
+    const snsMessage = event.Records[0].Sns;
+    message = JSON.parse(snsMessage.Message);
+  } catch (error) {
+    console.error('Failed to parse SNS message:', error);
+    throw new Error('Failed to parse SNS message: ' + error.message);
+  }
   
   // Format message for webhook (Slack-compatible format)
   const alarmName = message.AlarmName || 'Unknown Alarm';
@@ -134,7 +144,7 @@ exports.handler = async (event) => {
   const emoji = newState === 'ALARM' ? '🔴' : newState === 'OK' ? '✅' : '⚠️';
   
   const payload = {
-    text: \`\${emoji} CloudWatch Alarm: \${alarmName}\`,
+    text: emoji + ' CloudWatch Alarm: ' + alarmName,
     attachments: [
       {
         color: color,
@@ -166,12 +176,18 @@ exports.handler = async (event) => {
     ]
   };
   
-  // Send to webhook
-  const parsedUrl = url.parse(webhookUrl);
+  // Send to webhook using modern URL API
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(webhookUrl);
+  } catch (error) {
+    throw new Error('Invalid webhook URL: ' + error.message);
+  }
+  
   const options = {
     hostname: parsedUrl.hostname,
     port: parsedUrl.port || 443,
-    path: parsedUrl.path,
+    path: parsedUrl.pathname + parsedUrl.search,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -189,7 +205,7 @@ exports.handler = async (event) => {
           resolve({ statusCode: 200, body: 'Success' });
         } else {
           console.error('Webhook returned error:', res.statusCode, data);
-          reject(new Error(\`Webhook error: \${res.statusCode}\`));
+          reject(new Error('Webhook error: ' + res.statusCode));
         }
       });
     });
