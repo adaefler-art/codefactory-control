@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse payload
-    let payload: any;
+    let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(rawBody);
-    } catch (error) {
+    } catch {
       console.error('[Webhook] Invalid JSON payload');
       return NextResponse.json(
         { error: 'Invalid JSON payload' },

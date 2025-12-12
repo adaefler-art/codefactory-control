@@ -13,7 +13,7 @@ interface WebhookEvent {
   processed_at?: string;
   workflow_execution_id?: string;
   error?: string;
-  payload: any;
+  payload: Record<string, unknown>;
 }
 
 interface WebhookStats {

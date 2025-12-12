@@ -7,7 +7,7 @@ export interface WebhookEvent {
   event_id: string;
   event_type: string;
   event_action?: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   signature: string;
   delivery_id?: string;
   received_at: Date;

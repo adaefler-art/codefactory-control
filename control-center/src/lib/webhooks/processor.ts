@@ -118,7 +118,8 @@ export async function processWebhookEvent(
  * Build workflow context from webhook event
  */
 function buildWorkflowContext(event: WebhookEvent): WorkflowContext {
-  const payload = event.payload;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload = event.payload as any;
   
   // Extract repository information
   const repo = payload.repository
@@ -136,7 +137,7 @@ function buildWorkflowContext(event: WebhookEvent): WorkflowContext {
         title: payload.issue.title,
         body: payload.issue.body,
         state: payload.issue.state,
-        labels: payload.issue.labels?.map((l: any) => l.name) || [],
+        labels: payload.issue.labels?.map((l: { name: string }) => l.name) || [],
       }
     : undefined;
 

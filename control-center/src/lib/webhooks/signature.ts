@@ -56,10 +56,10 @@ export function verifyGitHubSignature(
  */
 export function parseGitHubEvent(
   eventHeader: string,
-  payload: any
+  payload: Record<string, unknown>
 ): { event_type: string; event_action?: string } {
   const event_type = eventHeader;
-  const event_action = payload.action;
+  const event_action = typeof payload.action === 'string' ? payload.action : undefined;
 
   return {
     event_type,
