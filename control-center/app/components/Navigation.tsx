@@ -8,6 +8,7 @@ export default function Navigation() {
 
   const navItems = [
     { href: "/workflows", label: "Workflows" },
+    { href: "/agents", label: "Agents" },
     { href: "/features", label: "Features" },
     { href: "/new-feature", label: "New Feature" },
     { href: "/ninefold", label: "Ninefold" },
