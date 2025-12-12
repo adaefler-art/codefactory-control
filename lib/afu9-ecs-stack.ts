@@ -170,63 +170,140 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
 
     // Task execution role (used by ECS to pull images and write logs)
+    // This role is used by the ECS service itself, not by the application code
+    // It includes the standard AWS managed policy for ECS task execution
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
       roleName: 'afu9-ecs-task-execution-role',
+      description: 'IAM role for ECS to pull container images and manage logs',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
+        // AWS managed policy providing:
+        // - ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage
+        // - logs:CreateLogStream, logs:PutLogEvents
         iam.ManagedPolicy.fromAwsManagedPolicyName(
           'service-role/AmazonECSTaskExecutionRolePolicy'
         ),
       ],
     });
 
-    // Grant access to secrets
+    // Grant access to secrets for injecting them as environment variables
+    // Justification: ECS needs to read secrets to inject them into containers at startup
     dbSecret.grantRead(taskExecutionRole);
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
     // Task role (used by application code for AWS API calls)
+    // This role follows the principle of least privilege by:
+    // 1. Only granting permissions needed by the application
+    // 2. Scoping permissions to specific resources where possible
+    // 3. Using read-only permissions where write access is not needed
     const taskRole = new iam.Role(this, 'TaskRole', {
       roleName: 'afu9-ecs-task-role',
+      description: 'IAM role for AFU-9 ECS tasks to access AWS services',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
     // Grant task role access to secrets
+    // Justification: Application needs to read database credentials, GitHub tokens, and LLM API keys
     dbSecret.grantRead(taskRole);
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
-    // Grant CloudWatch permissions
+    // Grant CloudWatch Logs permissions
+    // Justification: MCP Observability server needs to query logs for monitoring
+    // Note: CloudWatch Logs doesn't support fine-grained resource-level permissions for FilterLogEvents
     taskRole.addToPolicy(
       new iam.PolicyStatement({
+        sid: 'CloudWatchLogsAccess',
         effect: iam.Effect.ALLOW,
         actions: [
           'logs:CreateLogStream',
           'logs:PutLogEvents',
           'logs:FilterLogEvents',
           'logs:DescribeLogStreams',
+          'logs:DescribeLogGroups',
+        ],
+        resources: [
+          // Scope to AFU-9 log groups only
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/ecs/afu9/*`,
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/ecs/afu9/*:log-stream:*`,
+        ],
+      })
+    );
+
+    // Grant CloudWatch Metrics permissions
+    // Justification: MCP Observability server needs to read metrics and alarms for monitoring
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchMetricsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
           'cloudwatch:GetMetricStatistics',
+          'cloudwatch:GetMetricData',
+          'cloudwatch:ListMetrics',
           'cloudwatch:DescribeAlarms',
           'cloudwatch:PutMetricData',
         ],
-        resources: ['*'],
+        resources: ['*'], // CloudWatch Metrics doesn't support resource-level permissions
       })
     );
 
     // Grant ECS permissions for deploy MCP server
+    // Justification: MCP Deploy server needs to query and update ECS services for deployments
     taskRole.addToPolicy(
       new iam.PolicyStatement({
+        sid: 'ECSServiceManagement',
         effect: iam.Effect.ALLOW,
         actions: [
           'ecs:DescribeServices',
-          'ecs:UpdateService',
           'ecs:DescribeTasks',
           'ecs:ListTasks',
           'ecs:DescribeTaskDefinition',
+          'ecs:ListTaskDefinitions',
         ],
-        resources: ['*'],
+        resources: [
+          // Scope to AFU-9 ECS resources only
+          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:cluster/afu9-cluster`,
+          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:service/afu9-cluster/*`,
+          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:task/afu9-cluster/*`,
+          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:task-definition/afu9-*:*`,
+        ],
       })
     );
+
+    // UpdateService requires cluster ARN in resources
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ECSServiceUpdate',
+        effect: iam.Effect.ALLOW,
+        actions: ['ecs:UpdateService'],
+        resources: [
+          `arn:aws:ecs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:service/afu9-cluster/*`,
+        ],
+      })
+    );
+
+    // Optional: Grant RDS Data API access if using RDS Data API instead of direct connections
+    // This is commented out by default but can be enabled if needed
+    // Justification: Allows querying RDS via Data API for enhanced security (no direct DB connections)
+    /*
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'RDSDataAPIAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'rds-data:ExecuteStatement',
+          'rds-data:BatchExecuteStatement',
+          'rds-data:BeginTransaction',
+          'rds-data:CommitTransaction',
+          'rds-data:RollbackTransaction',
+        ],
+        resources: [
+          `arn:aws:rds:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:cluster:afu9-*`,
+        ],
+      })
+    );
+    */
 
     // ========================================
     // CloudWatch Log Groups

@@ -15,12 +15,20 @@ This document describes the security architecture, IAM roles, secrets management
 
 ## IAM Roles & Policies
 
-### Task Execution Role
+AFU-9 follows the principle of **least privilege** with separate IAM roles for different purposes:
 
-**Purpose**: Used by ECS to pull container images, write logs, and access secrets.
+1. **Task Execution Role** - Used by ECS infrastructure
+2. **Task Role** - Used by application containers
+3. **GitHub Actions Deploy Role** - Used by CI/CD pipelines
 
-**Managed Policies**:
-- `AmazonECSTaskExecutionRolePolicy`
+### 1. Task Execution Role
+
+**Role Name**: `afu9-ecs-task-execution-role`
+
+**Purpose**: Used by the ECS service infrastructure to pull container images from ECR, write logs to CloudWatch, and inject secrets as environment variables.
+
+**AWS Managed Policies**:
+- `AmazonECSTaskExecutionRolePolicy` - Standard ECS task execution permissions
 
 **Custom Permissions**:
 ```json
@@ -28,6 +36,7 @@ This document describes the security architecture, IAM roles, secrets management
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "SecretsManagerAccess",
       "Effect": "Allow",
       "Action": [
         "secretsmanager:GetSecretValue"
@@ -40,68 +49,285 @@ This document describes the security architecture, IAM roles, secrets management
 }
 ```
 
+**Justification**:
+- **ECR Access**: Required to pull Docker images at task startup
+- **CloudWatch Logs**: Required to create log streams and send container logs
+- **Secrets Manager**: Required to inject database credentials, GitHub tokens, and API keys as environment variables
+
 **Created in**: `lib/afu9-ecs-stack.ts`
 
-### Task Role
+**Resource Scoping**: Secrets are scoped to `afu9/*` prefix only
 
-**Purpose**: Used by application code running in containers to access AWS services.
+---
 
-**Permissions**:
-- CloudWatch Logs (write logs, query logs)
-- CloudWatch Metrics (put metrics, get statistics, describe alarms)
-- Secrets Manager (read secrets)
-- ECS (describe services, update services for deploy MCP server)
+### 2. Task Role
 
-**Custom Policy**:
+**Role Name**: `afu9-ecs-task-role`
+
+**Purpose**: Used by application code running inside containers to access AWS services (RDS, CloudWatch, ECS).
+
+**Permissions by Service**:
+
+#### CloudWatch Logs
+```json
+{
+  "Sid": "CloudWatchLogsAccess",
+  "Effect": "Allow",
+  "Action": [
+    "logs:CreateLogStream",
+    "logs:PutLogEvents",
+    "logs:FilterLogEvents",
+    "logs:DescribeLogStreams",
+    "logs:DescribeLogGroups"
+  ],
+  "Resource": [
+    "arn:aws:logs:region:account:log-group:/ecs/afu9/*",
+    "arn:aws:logs:region:account:log-group:/ecs/afu9/*:log-stream:*"
+  ]
+}
+```
+
+**Justification**: MCP Observability server queries logs for monitoring and debugging. Scoped to AFU-9 log groups only.
+
+#### CloudWatch Metrics
+```json
+{
+  "Sid": "CloudWatchMetricsAccess",
+  "Effect": "Allow",
+  "Action": [
+    "cloudwatch:GetMetricStatistics",
+    "cloudwatch:GetMetricData",
+    "cloudwatch:ListMetrics",
+    "cloudwatch:DescribeAlarms",
+    "cloudwatch:PutMetricData"
+  ],
+  "Resource": "*"
+}
+```
+
+**Justification**: MCP Observability server reads metrics and alarms. CloudWatch Metrics doesn't support resource-level permissions.
+
+#### ECS Service Management
+```json
+{
+  "Sid": "ECSServiceManagement",
+  "Effect": "Allow",
+  "Action": [
+    "ecs:DescribeServices",
+    "ecs:DescribeTasks",
+    "ecs:ListTasks",
+    "ecs:DescribeTaskDefinition",
+    "ecs:ListTaskDefinitions"
+  ],
+  "Resource": [
+    "arn:aws:ecs:region:account:cluster/afu9-cluster",
+    "arn:aws:ecs:region:account:service/afu9-cluster/*",
+    "arn:aws:ecs:region:account:task/afu9-cluster/*",
+    "arn:aws:ecs:region:account:task-definition/afu9-*:*"
+  ]
+}
+```
+
+**Justification**: MCP Deploy server needs to query ECS services and tasks. Scoped to AFU-9 cluster and resources only.
+
+#### ECS Service Updates
+```json
+{
+  "Sid": "ECSServiceUpdate",
+  "Effect": "Allow",
+  "Action": [
+    "ecs:UpdateService"
+  ],
+  "Resource": [
+    "arn:aws:ecs:region:account:service/afu9-cluster/*"
+  ]
+}
+```
+
+**Justification**: MCP Deploy server triggers deployments. Scoped to AFU-9 services only.
+
+#### Secrets Manager (Application Access)
+```json
+{
+  "Sid": "SecretsManagerRead",
+  "Effect": "Allow",
+  "Action": [
+    "secretsmanager:GetSecretValue"
+  ],
+  "Resource": [
+    "arn:aws:secretsmanager:*:*:secret:afu9/*"
+  ]
+}
+```
+
+**Justification**: Application code may need to refresh secrets at runtime. Scoped to AFU-9 secrets only.
+
+**Created in**: `lib/afu9-ecs-stack.ts`
+
+---
+
+### 3. GitHub Actions Deploy Role
+
+**Role Name**: `afu9-github-actions-deploy-role`
+
+**Purpose**: Used by GitHub Actions workflows to deploy container images and trigger ECS deployments.
+
+**Authentication**: Uses OpenID Connect (OIDC) for secure, credential-less authentication from GitHub Actions.
+
+**Trust Policy**:
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:FilterLogEvents",
-        "logs:DescribeLogStreams",
-        "cloudwatch:GetMetricStatistics",
-        "cloudwatch:DescribeAlarms",
-        "cloudwatch:PutMetricData"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecs:DescribeServices",
-        "ecs:UpdateService",
-        "ecs:DescribeTasks",
-        "ecs:ListTasks",
-        "ecs:DescribeTaskDefinition"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "secretsmanager:GetSecretValue"
-      ],
-      "Resource": [
-        "arn:aws:secretsmanager:*:*:secret:afu9/*"
-      ]
+      "Principal": {
+        "Federated": "arn:aws:iam::account:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:org/repo:*"
+        }
+      }
     }
   ]
 }
 ```
 
-**Created in**: `lib/afu9-ecs-stack.ts`
+**Permissions by Service**:
+
+#### ECR (Container Registry)
+```json
+{
+  "Sid": "ECRAuthenticationAndImagePush",
+  "Effect": "Allow",
+  "Action": [
+    "ecr:GetAuthorizationToken"
+  ],
+  "Resource": "*"
+}
+```
+
+```json
+{
+  "Sid": "ECRRepositoryAccess",
+  "Effect": "Allow",
+  "Action": [
+    "ecr:DescribeRepositories",
+    "ecr:ListImages",
+    "ecr:DescribeImages",
+    "ecr:BatchCheckLayerAvailability",
+    "ecr:GetDownloadUrlForLayer",
+    "ecr:BatchGetImage",
+    "ecr:InitiateLayerUpload",
+    "ecr:UploadLayerPart",
+    "ecr:CompleteLayerUpload",
+    "ecr:PutImage"
+  ],
+  "Resource": [
+    "arn:aws:ecr:region:account:repository/afu9/*"
+  ]
+}
+```
+
+**Justification**: GitHub Actions builds and pushes Docker images. Scoped to AFU-9 repositories only.
+
+#### ECS (Deployment Trigger)
+```json
+{
+  "Sid": "ECSServiceUpdate",
+  "Effect": "Allow",
+  "Action": [
+    "ecs:DescribeServices",
+    "ecs:DescribeTasks",
+    "ecs:DescribeTaskDefinition",
+    "ecs:ListTasks",
+    "ecs:UpdateService"
+  ],
+  "Resource": [
+    "arn:aws:ecs:region:account:cluster/afu9-cluster",
+    "arn:aws:ecs:region:account:service/afu9-cluster/*",
+    "arn:aws:ecs:region:account:task/afu9-cluster/*",
+    "arn:aws:ecs:region:account:task-definition/afu9-*:*"
+  ]
+}
+```
+
+**Justification**: GitHub Actions triggers ECS service updates after pushing images. Scoped to AFU-9 cluster only.
+
+#### IAM (Pass Role)
+```json
+{
+  "Sid": "IAMPassRole",
+  "Effect": "Allow",
+  "Action": [
+    "iam:PassRole"
+  ],
+  "Resource": [
+    "arn:aws:iam::account:role/afu9-ecs-task-role",
+    "arn:aws:iam::account:role/afu9-ecs-task-execution-role"
+  ],
+  "Condition": {
+    "StringEquals": {
+      "iam:PassedToService": "ecs-tasks.amazonaws.com"
+    }
+  }
+}
+```
+
+**Justification**: ECS needs permission to assume task roles. Scoped to AFU-9 roles and ECS service only.
+
+**Created in**: `lib/afu9-iam-stack.ts`
+
+**Deployment**:
+```bash
+# Deploy the IAM stack
+npx cdk deploy Afu9IamStack \
+  -c github-org=your-org \
+  -c github-repo=your-repo
+
+# Add the role ARN to GitHub Secrets as AWS_DEPLOY_ROLE_ARN
+# Get the ARN from stack outputs
+```
+
+---
 
 ### Least Privilege Principles
 
-1. **Separation of Concerns**: Task Execution Role only for ECS operations, Task Role only for application operations
-2. **Resource-Specific**: IAM policies scoped to specific resources (e.g., `afu9/*` secrets)
-3. **Read-Only by Default**: Only write permissions where absolutely necessary
-4. **Service-Specific**: Each MCP server only gets permissions it needs
+AFU-9 IAM implementation follows these security best practices:
+
+#### 1. Separation of Concerns
+- **Task Execution Role**: Only ECS infrastructure operations (pull images, write logs)
+- **Task Role**: Only application operations (query AWS services)
+- **Deploy Role**: Only CI/CD operations (push images, trigger deployments)
+
+#### 2. Resource-Level Scoping
+- Secrets: Scoped to `afu9/*` prefix
+- ECR: Scoped to `afu9/*` repositories
+- ECS: Scoped to `afu9-cluster` and its resources
+- CloudWatch Logs: Scoped to `/ecs/afu9/*` log groups
+
+#### 3. Action Minimization
+- Read-only permissions by default
+- Write permissions only where necessary (e.g., `ecs:UpdateService`)
+- No `*` actions or wildcard permissions
+
+#### 4. Condition Keys
+- IAM PassRole: Conditioned on `iam:PassedToService` = `ecs-tasks.amazonaws.com`
+- GitHub OIDC: Conditioned on specific repository
+
+#### 5. Time-Based Restrictions
+- Deploy role: 1-hour maximum session duration
+- Prevents long-lived credential exposure
+
+#### 6. No Long-Term Credentials
+- GitHub Actions uses OIDC (no access keys)
+- Application uses IAM roles (no credentials in code)
+- Secrets in AWS Secrets Manager (encrypted at rest)
 
 ## Secrets Management
 
