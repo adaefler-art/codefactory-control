@@ -13,6 +13,7 @@ import {
   MCPToolCallResult,
   MCPTool,
   MCPServerHealth,
+  MCPCallOptions,
 } from './types/mcp';
 
 /**
@@ -24,18 +25,30 @@ const DEFAULT_SERVERS: MCPServerConfig[] = [
     endpoint: process.env.MCP_GITHUB_ENDPOINT || 'http://localhost:3001',
     enabled: true,
     healthCheckUrl: 'http://localhost:3001/health',
+    timeoutMs: 30000, // 30 seconds
+    maxRetries: 2,
+    retryDelayMs: 1000, // 1 second
+    backoffMultiplier: 2,
   },
   {
     name: 'deploy',
     endpoint: process.env.MCP_DEPLOY_ENDPOINT || 'http://localhost:3002',
     enabled: true,
     healthCheckUrl: 'http://localhost:3002/health',
+    timeoutMs: 60000, // 60 seconds for deployments
+    maxRetries: 2,
+    retryDelayMs: 1000,
+    backoffMultiplier: 2,
   },
   {
     name: 'observability',
     endpoint: process.env.MCP_OBSERVABILITY_ENDPOINT || 'http://localhost:3003',
     enabled: true,
     healthCheckUrl: 'http://localhost:3003/health',
+    timeoutMs: 30000,
+    maxRetries: 2,
+    retryDelayMs: 1000,
+    backoffMultiplier: 2,
   },
 ];
 
@@ -60,12 +73,14 @@ export class MCPClient {
    * @param serverName - Name of the MCP server (e.g., "github")
    * @param toolName - Name of the tool to call (e.g., "getIssue")
    * @param args - Arguments for the tool
+   * @param options - Optional call options (timeout, retries, etc.)
    * @returns Tool execution result
    */
   async callTool(
     serverName: string,
     toolName: string,
-    args: Record<string, any>
+    args: Record<string, any>,
+    options?: MCPCallOptions
   ): Promise<any> {
     const server = this.servers.get(serverName);
     
@@ -76,6 +91,12 @@ export class MCPClient {
     if (!server.enabled) {
       throw new Error(`MCP server is disabled: ${serverName}`);
     }
+
+    // Merge options with server defaults
+    const timeoutMs = options?.timeoutMs ?? server.timeoutMs ?? 30000;
+    const maxRetries = options?.maxRetries ?? server.maxRetries ?? 2;
+    const retryDelayMs = options?.retryDelayMs ?? server.retryDelayMs ?? 1000;
+    const backoffMultiplier = options?.backoffMultiplier ?? server.backoffMultiplier ?? 2;
 
     const requestId = `req-${++this.requestIdCounter}-${Date.now()}`;
     
@@ -92,7 +113,64 @@ export class MCPClient {
     console.log(`[MCP Client] Calling tool ${serverName}.${toolName}`, {
       requestId,
       args,
+      timeoutMs,
+      maxRetries,
     });
+
+    // Retry loop with exponential backoff
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = retryDelayMs * Math.pow(backoffMultiplier, attempt - 1);
+        console.log(
+          `[MCP Client] Retrying ${serverName}.${toolName} (attempt ${attempt + 1}/${maxRetries + 1}) after ${delay}ms`
+        );
+        await this.sleep(delay);
+      }
+
+      try {
+        return await this.executeToolCall(server, request, serverName, toolName, timeoutMs);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Check if error is retryable
+        const isRetryable = this.isRetryableError(lastError);
+        
+        if (!isRetryable || attempt === maxRetries) {
+          console.error(`[MCP Client] Tool call failed ${isRetryable ? 'after all retries' : '(non-retryable error)'}`, {
+            serverName,
+            toolName,
+            attempt: attempt + 1,
+            error: lastError.message,
+          });
+          throw lastError;
+        }
+        
+        console.warn(`[MCP Client] Tool call failed (retryable error)`, {
+          serverName,
+          toolName,
+          attempt: attempt + 1,
+          error: lastError.message,
+        });
+      }
+    }
+
+    // Should not reach here, but TypeScript needs it
+    throw lastError || new Error('Unknown error during tool call');
+  }
+
+  /**
+   * Execute a single tool call with timeout
+   */
+  private async executeToolCall(
+    server: MCPServerConfig,
+    request: JSONRPCRequest,
+    serverName: string,
+    toolName: string,
+    timeoutMs: number
+  ): Promise<any> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(server.endpoint, {
@@ -101,7 +179,10 @@ export class MCPClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => 'Unable to read error body');
@@ -144,26 +225,69 @@ export class MCPClient {
 
       return result;
     } catch (error) {
-      console.error(`[MCP Client] Error calling tool`, {
-        serverName,
-        toolName,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      clearTimeout(timeoutId);
+      
+      // Handle abort (timeout) specially
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`MCP tool call timed out after ${timeoutMs}ms`);
+      }
+      
       throw error;
     }
   }
 
   /**
+   * Check if an error is retryable
+   */
+  private isRetryableError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    
+    // Network errors and timeouts are retryable
+    if (
+      message.includes('timeout') ||
+      message.includes('network') ||
+      message.includes('econnrefused') ||
+      message.includes('econnreset') ||
+      message.includes('fetch failed')
+    ) {
+      return true;
+    }
+    
+    // HTTP 5xx errors are retryable
+    if (message.includes('http 5')) {
+      return true;
+    }
+    
+    // HTTP 429 (rate limit) is retryable
+    if (message.includes('http 429')) {
+      return true;
+    }
+    
+    // Other errors (4xx, invalid params, etc.) are not retryable
+    return false;
+  }
+
+  /**
+   * Sleep for a given number of milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
    * List available tools on an MCP server
    * @param serverName - Name of the MCP server
+   * @param options - Optional call options (timeout)
    * @returns Array of available tools
    */
-  async listTools(serverName: string): Promise<MCPTool[]> {
+  async listTools(serverName: string, options?: MCPCallOptions): Promise<MCPTool[]> {
     const server = this.servers.get(serverName);
     
     if (!server) {
       throw new Error(`MCP server not found: ${serverName}`);
     }
+
+    const timeoutMs = options?.timeoutMs ?? server.timeoutMs ?? 30000;
 
     const requestId = `req-${++this.requestIdCounter}-${Date.now()}`;
     
@@ -174,6 +298,9 @@ export class MCPClient {
       params: {},
     };
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const response = await fetch(server.endpoint, {
         method: 'POST',
@@ -181,7 +308,10 @@ export class MCPClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(
@@ -199,6 +329,12 @@ export class MCPClient {
 
       return jsonResponse.result?.tools || [];
     } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`List tools request timed out after ${timeoutMs}ms`);
+      }
+      
       console.error(`[MCP Client] Error listing tools`, {
         serverName,
         error: error instanceof Error ? error.message : String(error),
@@ -210,21 +346,29 @@ export class MCPClient {
   /**
    * Check health of an MCP server
    * @param serverName - Name of the MCP server
+   * @param options - Optional call options (timeout)
    * @returns Health status
    */
-  async checkHealth(serverName: string): Promise<MCPServerHealth> {
+  async checkHealth(serverName: string, options?: MCPCallOptions): Promise<MCPServerHealth> {
     const server = this.servers.get(serverName);
     
     if (!server) {
       throw new Error(`MCP server not found: ${serverName}`);
     }
 
+    const timeoutMs = options?.timeoutMs ?? server.timeoutMs ?? 10000; // 10s default for health checks
     const healthUrl = server.healthCheckUrl || `${server.endpoint}/health`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(healthUrl, {
         method: 'GET',
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         return {
@@ -243,6 +387,17 @@ export class MCPClient {
         timestamp: health.timestamp || new Date().toISOString(),
       };
     } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          status: 'error',
+          server: serverName,
+          timestamp: new Date().toISOString(),
+          error: `Health check timed out after ${timeoutMs}ms`,
+        };
+      }
+      
       return {
         status: 'error',
         server: serverName,

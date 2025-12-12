@@ -60,6 +60,9 @@ The MCP Client handles all communication with MCP servers using the JSON-RPC 2.0
 - **Tool Discovery**: List available tools from servers
 - **Health Checking**: Monitor server availability
 - **Server Management**: Add/remove servers dynamically
+- **Timeout Handling**: Configurable timeouts with AbortController
+- **Retry Logic**: Automatic retries with exponential backoff
+- **Error Classification**: Distinguishes retryable from non-retryable errors
 
 #### Usage
 
@@ -84,13 +87,52 @@ const health = await client.checkHealth('github');
 
 #### Configuration
 
-MCP servers are configured via environment variables:
+MCP servers are configured via environment variables and support timeout/retry settings:
 
 ```bash
 MCP_GITHUB_ENDPOINT=http://localhost:3001
 MCP_DEPLOY_ENDPOINT=http://localhost:3002
 MCP_OBSERVABILITY_ENDPOINT=http://localhost:3003
 ```
+
+**Default Server Configuration:**
+
+```typescript
+const serverConfig: MCPServerConfig = {
+  name: 'github',
+  endpoint: 'http://localhost:3001',
+  enabled: true,
+  healthCheckUrl: 'http://localhost:3001/health',
+  timeoutMs: 30000,        // 30 seconds timeout
+  maxRetries: 2,           // Retry up to 2 times (3 total attempts)
+  retryDelayMs: 1000,      // Initial retry delay: 1 second
+  backoffMultiplier: 2,    // Exponential backoff: 1s, 2s, 4s...
+};
+```
+
+**Per-Call Options:**
+
+You can override timeout and retry settings on a per-call basis:
+
+```typescript
+// Override timeout for a long-running operation
+const result = await client.callTool('github', 'generateReport', params, {
+  timeoutMs: 120000,  // 2 minutes
+  maxRetries: 5,
+  retryDelayMs: 2000,
+  backoffMultiplier: 2,
+});
+```
+
+**Retry Behavior:**
+
+- **Retryable Errors**: Network errors, timeouts, HTTP 5xx, HTTP 429 (rate limit)
+- **Non-Retryable Errors**: HTTP 4xx (except 429), invalid parameters
+- **Backoff Strategy**: Exponential - delay doubles with each retry by default
+  - Attempt 1: Immediate
+  - Attempt 2: Wait 1 second
+  - Attempt 3: Wait 2 seconds
+  - Attempt 4: Wait 4 seconds (if maxRetries=3)
 
 ### 2. Workflow Engine
 
