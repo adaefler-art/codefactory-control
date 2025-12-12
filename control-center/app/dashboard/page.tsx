@@ -14,6 +14,7 @@ interface DashboardStats {
     total: number;
     totalTokens: number;
     avgDuration: number;
+    errorRate: number;
   };
   workflows: {
     total: number;
@@ -32,11 +33,46 @@ interface RecentExecution {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  currentStep?: string;
+  totalSteps?: number;
+}
+
+interface AgentRun {
+  id: string;
+  executionId: string;
+  agentType: string;
+  model: string;
+  totalTokens: number;
+  durationMs: number;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+}
+
+interface InfrastructureHealth {
+  status: string;
+  cluster?: string;
+  service?: string;
+  metrics?: {
+    cpu?: {
+      datapoints?: Array<{ timestamp: Date; average?: number; maximum?: number }>;
+    };
+    memory?: {
+      datapoints?: Array<{ timestamp: Date; average?: number; maximum?: number }>;
+    };
+    alb5xx?: {
+      datapoints?: Array<{ timestamp: Date; sum?: number; average?: number }>;
+    };
+  };
+  error?: string;
+  message?: string;
 }
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentExecutions, setRecentExecutions] = useState<RecentExecution[]>([]);
+  const [recentAgents, setRecentAgents] = useState<AgentRun[]>([]);
+  const [infrastructureHealth, setInfrastructureHealth] = useState<InfrastructureHealth | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +95,10 @@ export default function DashboardPage() {
         const reposRes = await fetch("/api/repositories");
         const reposData = await reposRes.json();
 
+        // Fetch infrastructure health
+        const healthRes = await fetch("/api/infrastructure/health");
+        const healthData = await healthRes.json();
+
         // Calculate stats
         const executions = executionsData.executions || [];
         const workflows = workflowsData.workflows || [];
@@ -72,12 +112,17 @@ export default function DashboardPage() {
           failed: executions.filter((e: { status: string }) => e.status === 'failed').length,
         };
 
+        // Calculate agent error rate
+        const agentsWithErrors = agents.filter((a: { error?: string }) => a.error).length;
+        const errorRate = agents.length > 0 ? (agentsWithErrors / agents.length) * 100 : 0;
+
         const agentStats = {
           total: agents.length,
           totalTokens: agents.reduce((sum: number, a: { totalTokens?: number }) => sum + (a.totalTokens || 0), 0),
           avgDuration: agents.length > 0 
             ? Math.round(agents.reduce((sum: number, a: { durationMs?: number }) => sum + (a.durationMs || 0), 0) / agents.length)
             : 0,
+          errorRate: Math.round(errorRate * 10) / 10, // Round to 1 decimal place
         };
 
         const workflowStats = {
@@ -98,6 +143,8 @@ export default function DashboardPage() {
         });
 
         setRecentExecutions(executions.slice(0, 5));
+        setRecentAgents(agents.slice(0, 5));
+        setInfrastructureHealth(healthData);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
         setError("Fehler beim Laden der Dashboard-Daten");
@@ -114,6 +161,22 @@ export default function DashboardPage() {
     return date.toLocaleString("de-DE");
   };
 
+  const formatDuration = (startedAt: string, completedAt?: string) => {
+    const start = new Date(startedAt).getTime();
+    const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+    const durationMs = end - start;
+    
+    if (durationMs < 1000) {
+      return `${durationMs}ms`;
+    } else if (durationMs < 60000) {
+      return `${Math.round(durationMs / 1000)}s`;
+    } else if (durationMs < 3600000) {
+      return `${Math.round(durationMs / 60000)}m`;
+    } else {
+      return `${Math.round(durationMs / 3600000)}h`;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "running":
@@ -125,6 +188,14 @@ export default function DashboardPage() {
       default:
         return "bg-gray-500";
     }
+  };
+
+  const getLatestMetricValue = (datapoints?: Array<{ timestamp: Date; average?: number; maximum?: number }>) => {
+    if (!datapoints || datapoints.length === 0) return null;
+    const sorted = [...datapoints].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    return sorted[0];
   };
 
   return (
@@ -185,9 +256,11 @@ export default function DashboardPage() {
                     </svg>
                   </div>
                   <div className="text-3xl font-bold text-gray-200 mb-2">{stats.agents.total}</div>
-                  <div className="flex gap-4 text-xs text-gray-400">
-                    <span>{stats.agents.totalTokens.toLocaleString()} tokens</span>
-                    <span>{stats.agents.avgDuration}ms avg</span>
+                  <div className="flex flex-col gap-1 text-xs text-gray-400">
+                    <span>{stats.agents.totalTokens.toLocaleString()} tokens · {stats.agents.avgDuration}ms avg</span>
+                    <span className={stats.agents.errorRate > 10 ? "text-red-400" : "text-green-400"}>
+                      {stats.agents.errorRate}% error rate
+                    </span>
                   </div>
                 </div>
               </Link>
@@ -225,48 +298,197 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            {/* Recent Executions */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
-              <h2 className="text-lg font-semibold text-gray-200 mb-4">Recent Executions</h2>
-              {recentExecutions.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">Keine Executions gefunden</p>
-              ) : (
-                <div className="space-y-3">
-                  {recentExecutions.map((execution) => (
-                    <div
-                      key={execution.id}
-                      className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
-                    >
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className={`w-2 h-2 rounded-full ${getStatusColor(execution.status)}`} />
-                        <div className="flex-1">
-                          <div className="text-sm text-gray-300 font-medium">
-                            {execution.workflowId || "Unknown Workflow"}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            Started: {formatDate(execution.startedAt)}
+            {/* Grid layout for detailed sections */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Active & Recent Workflows */}
+              <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
+                <h2 className="text-lg font-semibold text-gray-200 mb-4">Active & Recent Workflows</h2>
+                {recentExecutions.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">Keine Executions gefunden</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentExecutions.map((execution) => (
+                      <div
+                        key={execution.id}
+                        className="flex items-start justify-between p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
+                      >
+                        <div className="flex items-start gap-3 flex-1">
+                          <div className={`w-2 h-2 rounded-full mt-1.5 ${getStatusColor(execution.status)}`} />
+                          <div className="flex-1">
+                            <div className="text-sm text-gray-300 font-medium">
+                              {execution.workflowId || "Unknown Workflow"}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Started: {formatDate(execution.startedAt)}
+                            </div>
+                            <div className="flex gap-3 mt-2 text-xs">
+                              <span className={`px-2 py-0.5 rounded ${
+                                execution.status === "completed"
+                                  ? "bg-green-900/30 text-green-400"
+                                  : execution.status === "failed"
+                                  ? "bg-red-900/30 text-red-400"
+                                  : "bg-blue-900/30 text-blue-400"
+                              }`}>
+                                {execution.status}
+                              </span>
+                              {execution.status === "running" && execution.currentStep && (
+                                <span className="text-gray-500">
+                                  Step {execution.currentStep}/{execution.totalSteps}
+                                </span>
+                              )}
+                              {(execution.completedAt || execution.status === "running") && (
+                                <span className="text-gray-500">
+                                  {formatDuration(execution.startedAt, execution.completedAt)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          execution.status === "completed"
-                            ? "bg-green-900/30 text-green-400"
-                            : execution.status === "failed"
-                            ? "bg-red-900/30 text-red-400"
-                            : "bg-blue-900/30 text-blue-400"
-                        }`}>
-                          {execution.status}
-                        </span>
                         <Link
                           href={`/workflow/execution/${execution.id}`}
-                          className="text-xs text-blue-400 hover:text-blue-300"
+                          className="text-xs text-blue-400 hover:text-blue-300 flex-shrink-0 ml-2"
                         >
                           View →
                         </Link>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Agent Activity */}
+              <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
+                <h2 className="text-lg font-semibold text-gray-200 mb-4">Agent Activity</h2>
+                {recentAgents.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">Keine Agent Runs gefunden</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentAgents.map((agent) => (
+                      <div
+                        key={agent.id}
+                        className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-300 font-medium">
+                                {agent.agentType}
+                              </span>
+                              {agent.error && (
+                                <span className="w-2 h-2 rounded-full bg-red-500" title="Error" />
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {agent.model}
+                            </div>
+                            <div className="flex gap-3 mt-2 text-xs text-gray-400">
+                              <span>{agent.totalTokens.toLocaleString()} tokens</span>
+                              <span>{agent.durationMs}ms</span>
+                              <span className="text-gray-500">
+                                {formatDate(agent.startedAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Infrastructure Health */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
+              <h2 className="text-lg font-semibold text-gray-200 mb-4">Infrastructure Health</h2>
+              {infrastructureHealth ? (
+                <div>
+                  {infrastructureHealth.status === "ok" && infrastructureHealth.metrics ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* CPU Usage */}
+                      <div className="p-4 bg-gray-800/50 rounded-lg">
+                        <div className="text-sm text-gray-400 mb-2">CPU Utilization</div>
+                        {(() => {
+                          const latest = getLatestMetricValue(infrastructureHealth.metrics.cpu?.datapoints);
+                          return latest ? (
+                            <div>
+                              <div className="text-2xl font-bold text-gray-200">
+                                {latest.average?.toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Max: {latest.maximum?.toFixed(1)}%
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-gray-500 text-sm">No data</div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Memory Usage */}
+                      <div className="p-4 bg-gray-800/50 rounded-lg">
+                        <div className="text-sm text-gray-400 mb-2">Memory Utilization</div>
+                        {(() => {
+                          const latest = getLatestMetricValue(infrastructureHealth.metrics.memory?.datapoints);
+                          return latest ? (
+                            <div>
+                              <div className="text-2xl font-bold text-gray-200">
+                                {latest.average?.toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Max: {latest.maximum?.toFixed(1)}%
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-gray-500 text-sm">No data</div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* ALB 5xx Errors */}
+                      <div className="p-4 bg-gray-800/50 rounded-lg">
+                        <div className="text-sm text-gray-400 mb-2">ALB 5xx Errors</div>
+                        {infrastructureHealth.metrics.alb5xx?.datapoints?.length ? (
+                          (() => {
+                            const latest = getLatestMetricValue(infrastructureHealth.metrics.alb5xx.datapoints);
+                            return latest ? (
+                              <div>
+                                <div className="text-2xl font-bold text-gray-200">
+                                  {(latest as any).sum || 0}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  Last period
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-gray-500 text-sm">No data</div>
+                            );
+                          })()
+                        ) : (
+                          <div className="text-gray-500 text-sm">Not configured</div>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="text-yellow-400 mb-2">
+                        <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-400">
+                        {infrastructureHealth.error || "Metrics unavailable"}
+                      </p>
+                      {infrastructureHealth.message && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          {infrastructureHealth.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-400">Loading infrastructure metrics...</p>
                 </div>
               )}
             </div>
