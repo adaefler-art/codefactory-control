@@ -49,10 +49,22 @@ interface Repository {
   executionsCount: number;
 }
 
+interface WorkflowExecution {
+  id: string;
+  workflowId: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  error: string | null;
+  triggeredBy: string | null;
+  githubRunId: string | null;
+}
+
 interface RepositoryDetails {
   repository: Repository;
   pullRequests: PullRequest[];
   issues: Issue[];
+  recentExecutions: WorkflowExecution[];
 }
 
 export default function RepositoryDetailsPage() {
@@ -139,9 +151,53 @@ export default function RepositoryDetailsPage() {
     );
   }
 
-  const { repository, pullRequests, issues } = data;
+  const { repository, pullRequests, issues, recentExecutions } = data;
   const automatedPRs = pullRequests.filter((pr) => pr.automated);
   const importantIssues = issues.filter((issue) => issue.important);
+  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'text-green-400';
+      case 'failed':
+        return 'text-red-400';
+      case 'running':
+        return 'text-blue-400';
+      case 'pending':
+        return 'text-yellow-400';
+      default:
+        return 'text-gray-400';
+    }
+  };
+  
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return (
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+        );
+      case 'failed':
+        return (
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+        );
+      case 'running':
+        return (
+          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        );
+      default:
+        return (
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+          </svg>
+        );
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-gray-200">
@@ -382,6 +438,70 @@ export default function RepositoryDetailsPage() {
                         </svg>
                       </div>
                     </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Pipeline Status Section */}
+            {recentExecutions && recentExecutions.length > 0 && (
+              <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                  </svg>
+                  Letzte Workflow-Ausführungen
+                </h3>
+                <div className="space-y-3">
+                  {recentExecutions.map((execution) => (
+                    <div
+                      key={execution.id}
+                      className="bg-gray-800/50 border border-gray-700 rounded-lg p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className={getStatusColor(execution.status)}>
+                            {getStatusIcon(execution.status)}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium text-gray-200 capitalize">
+                                {execution.status}
+                              </span>
+                              {execution.triggeredBy && (
+                                <>
+                                  <span className="text-gray-500">•</span>
+                                  <span className="text-xs text-gray-500">
+                                    von {execution.triggeredBy}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {formatRelativeTime(execution.startedAt)}
+                              {execution.completedAt && (
+                                <span> • Abgeschlossen {formatRelativeTime(execution.completedAt)}</span>
+                              )}
+                            </div>
+                            {execution.error && (
+                              <div className="text-xs text-red-400 mt-1 truncate">
+                                Error: {execution.error}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {execution.githubRunId && (
+                          <a
+                            href={`https://github.com/${repository.fullName}/actions/runs/${execution.githubRunId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                          >
+                            Actions anzeigen
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

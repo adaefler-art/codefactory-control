@@ -163,6 +163,39 @@ export async function GET(_request: Request, { params }: RouteParams) {
       console.error('[API] Error fetching executions count:', error);
     }
     
+    // Get recent workflow executions for pipeline status
+    let recentExecutions: any[] = [];
+    try {
+      const recentQuery = `
+        SELECT 
+          id,
+          workflow_id,
+          status,
+          started_at,
+          completed_at,
+          error,
+          triggered_by,
+          github_run_id
+        FROM workflow_executions
+        WHERE context->>'repository' = $1
+        ORDER BY started_at DESC
+        LIMIT 5
+      `;
+      const recentResult = await pool.query(recentQuery, [repo.full_name]);
+      recentExecutions = recentResult.rows.map((row) => ({
+        id: row.id,
+        workflowId: row.workflow_id,
+        status: row.status,
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        error: row.error,
+        triggeredBy: row.triggered_by,
+        githubRunId: row.github_run_id,
+      }));
+    } catch (error) {
+      console.error('[API] Error fetching recent executions:', error);
+    }
+    
     return NextResponse.json({
       repository: {
         id: repo.id,
@@ -178,6 +211,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
       },
       pullRequests,
       issues,
+      recentExecutions,
     });
   } catch (error) {
     console.error('[API] Error fetching repository details:', error);
