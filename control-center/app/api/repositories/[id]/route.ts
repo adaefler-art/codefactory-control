@@ -71,8 +71,23 @@ export async function GET(_request: Request, { params }: RouteParams) {
     // Fetch data from GitHub
     const octokit = new Octokit({ auth: GITHUB_TOKEN });
     
+    interface PullRequestData {
+      number: number;
+      title: string;
+      state: string;
+      htmlUrl: string;
+      createdAt: string;
+      updatedAt: string;
+      author: string;
+      draft: boolean;
+      head: string;
+      base: string;
+      labels: { name: string; color: string | null }[];
+      automated: boolean;
+    }
+    
     // Fetch open pull requests
-    let pullRequests: any[] = [];
+    let pullRequests: PullRequestData[] = [];
     try {
       const { data: prs } = await octokit.rest.pulls.list({
         owner: repo.owner,
@@ -91,12 +106,12 @@ export async function GET(_request: Request, { params }: RouteParams) {
         createdAt: pr.created_at,
         updatedAt: pr.updated_at,
         author: pr.user?.login || 'unknown',
-        draft: pr.draft,
+        draft: pr.draft || false,
         head: pr.head.ref,
         base: pr.base.ref,
         labels: pr.labels.map((label) => ({
           name: typeof label === 'string' ? label : label.name || '',
-          color: typeof label === 'object' && label !== null ? label.color : null,
+          color: typeof label === 'object' && label !== null ? (label.color || null) : null,
         })),
         // Mark as automated if created by known bots or has specific labels
         automated: pr.user?.type === 'Bot' || 
@@ -110,8 +125,21 @@ export async function GET(_request: Request, { params }: RouteParams) {
       // Continue with empty array
     }
     
+    interface IssueData {
+      number: number;
+      title: string;
+      state: string;
+      htmlUrl: string;
+      createdAt: string;
+      updatedAt: string;
+      author: string;
+      labels: { name: string; color: string | null }[];
+      comments: number;
+      important: boolean;
+    }
+    
     // Fetch open issues (exclude PRs)
-    let issues: any[] = [];
+    let issues: IssueData[] = [];
     try {
       const { data: issuesData } = await octokit.rest.issues.listForRepo({
         owner: repo.owner,
@@ -135,7 +163,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
           author: issue.user?.login || 'unknown',
           labels: issue.labels.map((label) => ({
             name: typeof label === 'string' ? label : label.name || '',
-            color: typeof label === 'object' && label !== null ? label.color : null,
+            color: typeof label === 'object' && label !== null ? (label.color || null) : null,
           })),
           comments: issue.comments,
           // Mark as important if it has high priority labels or many comments
@@ -163,8 +191,19 @@ export async function GET(_request: Request, { params }: RouteParams) {
       console.error('[API] Error fetching executions count:', error);
     }
     
+    interface ExecutionData {
+      id: string;
+      workflowId: string;
+      status: string;
+      startedAt: string;
+      completedAt: string | null;
+      error: string | null;
+      triggeredBy: string | null;
+      githubRunId: string | null;
+    }
+    
     // Get recent workflow executions for pipeline status
-    let recentExecutions: any[] = [];
+    let recentExecutions: ExecutionData[] = [];
     try {
       const recentQuery = `
         SELECT 
