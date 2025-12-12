@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+// Version should match control-center package.json
+// In a production system, this could be read from process.env.APP_VERSION
+const VERSION = '0.2.5';
+
 /**
  * Readiness check endpoint for Kubernetes-style readiness probes
  * 
@@ -20,17 +24,24 @@ export async function GET() {
       service: { status: 'ok' },
     };
 
-    // Check database connectivity (optional - depends on if DB is required for serving traffic)
-    // For now, we'll do a basic check. In production, you might want to add:
-    // - Database connection pool health
-    // - MCP server connectivity
-    // - Essential service dependencies
-    
+    // Check database connectivity
     const dbUrl = process.env.DATABASE_URL;
     if (dbUrl) {
-      // Database is configured, mark as ready
-      // In a production system, you'd do an actual connectivity check here
-      checks.database = { status: 'ok', message: 'configured' };
+      try {
+        // In staging/production, attempt actual database connection
+        // For now, we verify the URL is configured and parseable
+        const url = new URL(dbUrl);
+        if (url.protocol === 'postgresql:' || url.protocol === 'postgres:') {
+          checks.database = { status: 'ok', message: 'connection_configured' };
+        } else {
+          checks.database = { status: 'warning', message: 'invalid_protocol' };
+        }
+      } catch (error) {
+        checks.database = { 
+          status: 'error', 
+          message: error instanceof Error ? error.message : 'invalid_url'
+        };
+      }
     } else {
       // Database not configured - this is okay for development
       checks.database = { status: 'not_configured' };
@@ -59,7 +70,7 @@ export async function GET() {
         {
           ready: false,
           service: 'afu9-control-center',
-          version: '0.2.5',
+          version: VERSION,
           timestamp: new Date().toISOString(),
           checks,
         },
@@ -71,7 +82,7 @@ export async function GET() {
       {
         ready: true,
         service: 'afu9-control-center',
-        version: '0.2.5',
+        version: VERSION,
         timestamp: new Date().toISOString(),
         checks,
       },
@@ -83,7 +94,7 @@ export async function GET() {
       {
         ready: false,
         service: 'afu9-control-center',
-        version: '0.2.5',
+        version: VERSION,
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
       },
