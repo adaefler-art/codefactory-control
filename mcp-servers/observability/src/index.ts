@@ -115,6 +115,13 @@ export class ObservabilityMCPServer extends MCPServer {
       nextToken,
     } = args;
 
+    this.logger.info('Searching CloudWatch logs', { 
+      logGroupName, 
+      filterPattern,
+      timeRange: `${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`,
+      limit 
+    });
+
     const command = new FilterLogEventsCommand({
       logGroupName,
       filterPattern,
@@ -125,6 +132,12 @@ export class ObservabilityMCPServer extends MCPServer {
     });
 
     const response = await this.logsClient.send(command);
+
+    this.logger.info('Log search completed', { 
+      logGroupName,
+      eventsFound: response.events?.length || 0,
+      hasMore: !!response.nextToken 
+    });
 
     return {
       events: response.events?.map((e) => ({
@@ -150,6 +163,13 @@ export class ObservabilityMCPServer extends MCPServer {
     const { cluster, service, loadBalancerName, targetGroupArn, period = 300 } = args;
     const endTime = new Date();
     const startTime = new Date(endTime.getTime() - 3600000); // 1 hour ago
+
+    this.logger.info('Fetching service health metrics', { 
+      cluster, 
+      service, 
+      period,
+      hasAlbMetrics: !!(loadBalancerName && targetGroupArn)
+    });
 
     // Get CPU utilization
     const cpuCommand = new GetMetricStatisticsCommand({
@@ -258,12 +278,21 @@ export class ObservabilityMCPServer extends MCPServer {
   }) {
     const { alarmNames, stateValue } = args;
 
+    this.logger.info('Fetching alarm status', { 
+      alarmCount: alarmNames?.length || 'all',
+      stateFilter: stateValue 
+    });
+
     const command = new DescribeAlarmsCommand({
       AlarmNames: alarmNames,
       StateValue: stateValue,
     });
 
     const response = await this.cloudwatchClient.send(command);
+
+    this.logger.info('Alarm status retrieved', { 
+      alarmsFound: response.MetricAlarms?.length || 0 
+    });
 
     return {
       alarms: response.MetricAlarms?.map((a) => ({

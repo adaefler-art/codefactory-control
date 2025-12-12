@@ -48,6 +48,12 @@ export class GitHubMCPServer extends MCPServer {
       if (error.status === 403 && error.response?.headers?.['x-ratelimit-remaining'] === '0') {
         const resetTime = error.response.headers['x-ratelimit-reset'];
         const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : new Date();
+        const limit = error.response?.headers?.['x-ratelimit-limit'];
+        this.logger.error('GitHub API rate limit exceeded', error, {
+          resetTime: resetDate.toISOString(),
+          limit: limit ? parseInt(limit) : undefined,
+          resource: error.response?.headers?.['x-ratelimit-resource']
+        });
         throw new Error(
           `GitHub API rate limit exceeded. Resets at ${resetDate.toISOString()}. ` +
           `Consider using a GitHub App for higher rate limits.`
@@ -56,6 +62,7 @@ export class GitHubMCPServer extends MCPServer {
 
       // Handle authentication errors
       if (error.status === 401) {
+        this.logger.error('GitHub authentication failed', error);
         throw new Error(
           'Invalid GitHub credentials. Please check your GITHUB_TOKEN. ' +
           'The token may be expired or invalid.'
@@ -64,6 +71,7 @@ export class GitHubMCPServer extends MCPServer {
 
       // Handle permission errors
       if (error.status === 403) {
+        this.logger.error('GitHub permission denied', error);
         throw new Error(
           `Insufficient permissions for this operation. ` +
           `Please ensure your GitHub token has the required scopes. ` +
@@ -73,6 +81,10 @@ export class GitHubMCPServer extends MCPServer {
 
       // Handle not found errors
       if (error.status === 404) {
+        this.logger.warn('GitHub resource not found', { 
+          status: error.status,
+          message: error.message 
+        });
         throw new Error(
           `Resource not found. Please verify the repository owner, name, and resource identifier. ` +
           `Details: ${error.message}`
@@ -80,6 +92,7 @@ export class GitHubMCPServer extends MCPServer {
       }
 
       // Handle other errors
+      this.logger.error('GitHub API error', error, { status: error.status });
       throw new Error(
         `GitHub API error (${error.status || 'unknown'}): ${error.message}`
       );
@@ -233,10 +246,19 @@ export class GitHubMCPServer extends MCPServer {
     return this.handleGitHubAPICall(async () => {
       const { owner, repo, number } = args;
       
+      this.logger.info('Fetching GitHub issue', { owner, repo, issueNumber: number });
+
       const { data } = await this.octokit.rest.issues.get({
         owner,
         repo,
         issue_number: number,
+      });
+
+      this.logger.info('Successfully fetched issue', { 
+        owner, 
+        repo, 
+        issueNumber: number,
+        state: data.state 
       });
 
       return {
@@ -279,6 +301,8 @@ export class GitHubMCPServer extends MCPServer {
     return this.handleGitHubAPICall(async () => {
       const { owner, repo, branch, from } = args;
 
+      this.logger.info('Creating branch', { owner, repo, branch, from });
+
       // Get the SHA of the base ref
       const { data: refData } = await this.octokit.rest.git.getRef({
         owner,
@@ -294,6 +318,13 @@ export class GitHubMCPServer extends MCPServer {
         repo,
         ref: `refs/heads/${branch}`,
         sha,
+      });
+
+      this.logger.info('Successfully created branch', { 
+        owner, 
+        repo, 
+        branch, 
+        sha: data.object.sha 
       });
 
       return {
@@ -404,6 +435,8 @@ export class GitHubMCPServer extends MCPServer {
     return this.handleGitHubAPICall(async () => {
       const { owner, repo, title, body, head, base } = args;
 
+      this.logger.info('Creating pull request', { owner, repo, title, head, base });
+
       const { data } = await this.octokit.rest.pulls.create({
         owner,
         repo,
@@ -411,6 +444,13 @@ export class GitHubMCPServer extends MCPServer {
         body: body || '',
         head,
         base,
+      });
+
+      this.logger.info('Successfully created pull request', { 
+        owner, 
+        repo, 
+        prNumber: data.number,
+        htmlUrl: data.html_url 
       });
 
       return {

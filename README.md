@@ -146,6 +146,8 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - [Workflow Schema](docs/WORKFLOW-SCHEMA.md) - Complete workflow model and JSON format specification
 - [Workflow Engine](docs/WORKFLOW-ENGINE.md) - Workflow execution and agent runner documentation
 - [Database Schema](docs/architecture/database-schema.md) - Database structure and workflow persistence
+- [Logging Concept](docs/LOGGING.md) - Structured logging, CloudWatch integration, and log searching
+- [Observability](docs/OBSERVABILITY.md) - Monitoring, alarms, and observability features
 
 ### v0.1 Architecture (Legacy)
 

@@ -4,6 +4,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { getGithubSecrets } from "../../lib/utils/secrets";
+import { LambdaLogger } from "./logger";
+
+const logger = new LambdaLogger('afu9-pr-creator');
 
 interface PatchState {
   repo: string;
@@ -24,7 +27,12 @@ interface PatchState {
 }
 
 export const handler = async (event: PatchState) => {
-  console.log("AFU-9 PRCreator v0.1", { event });
+  logger.info("AFU-9 PRCreator started", { 
+    repo: event.repo,
+    targetBranch: event.targetBranch,
+    branchName: event.patch.branchName,
+    issueNumber: event.issue?.number 
+  });
 
   // Load GitHub secrets from AWS Secrets Manager or environment
   const githubSecrets = await getGithubSecrets();
@@ -32,14 +40,14 @@ export const handler = async (event: PatchState) => {
 
   // Validate required credentials
   if (!GITHUB_TOKEN) {
-    console.error("GitHub token not found in secrets");
+    logger.error("GitHub token not found in secrets");
     throw new Error("Configuration error: GitHub token is not configured");
   }
 
   const [owner, repo] = event.repo.split("/");
   
   if (!owner || !repo || event.repo.split("/").length !== 2) {
-    console.error("Invalid repo format", { repo: event.repo });
+    logger.error("Invalid repo format", undefined, { repo: event.repo });
     throw new Error(`Invalid repo format: ${event.repo}. Expected format: owner/repo`);
   }
 
@@ -49,52 +57,47 @@ export const handler = async (event: PatchState) => {
     const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), "afu9-"));
-    console.log("Working directory:", workdir);
+    logger.debug("Working directory created", { workdir });
 
-    console.log(`Cloning repository ${owner}/${repo}...`);
+    logger.info("Cloning repository", { owner, repo });
     try {
       execSync(`git clone https://github.com/${owner}/${repo}.git .`, {
         cwd: workdir,
         stdio: "inherit"
       });
     } catch (error) {
-      console.error("Error cloning repository:", {
-        error: error instanceof Error ? error.message : String(error),
-        repo: `${owner}/${repo}`,
-      });
+      logger.error("Failed to clone repository", error, { owner, repo });
       throw new Error(`Failed to clone repository ${owner}/${repo}`);
     }
 
-    console.log(`Checking out branch ${event.targetBranch}...`);
+    logger.info("Checking out target branch", { branch: event.targetBranch });
     try {
       execSync(`git checkout ${event.targetBranch}`, {
         cwd: workdir,
         stdio: "inherit"
       });
     } catch (error) {
-      console.error("Error checking out target branch:", {
-        error: error instanceof Error ? error.message : String(error),
-        branch: event.targetBranch,
+      logger.error("Failed to checkout target branch", error, { 
+        branch: event.targetBranch 
       });
       throw new Error(`Failed to checkout branch ${event.targetBranch}`);
     }
 
     const branchName = event.patch.branchName;
-    console.log(`Creating new branch ${branchName}...`);
+    logger.info("Creating new branch", { branchName });
     try {
       execSync(`git checkout -b ${branchName}`, {
         cwd: workdir,
         stdio: "inherit"
       });
     } catch (error) {
-      console.error("Error creating new branch:", {
-        error: error instanceof Error ? error.message : String(error),
-        branch: branchName,
-      });
+      logger.error("Failed to create branch", error, { branchName });
       throw new Error(`Failed to create branch ${branchName}`);
     }
 
-    console.log("Writing patch files...");
+    logger.info("Writing patch files", { 
+      fileCount: event.patch.files.length 
+    });
     for (const file of event.patch.files) {
       const filePath = path.join(workdir, file.path);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -107,15 +110,13 @@ export const handler = async (event: PatchState) => {
         cwd: workdir,
         stdio: "inherit"
       });
-      console.log("Pushing branch to remote...");
+      logger.info("Pushing branch to remote", { branchName });
       execSync(`git push origin ${branchName}`, {
         cwd: workdir,
         stdio: "inherit"
       });
     } catch (error) {
-      console.error("Error committing and pushing changes:", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error("Failed to commit and push changes", error);
       throw new Error("Failed to commit and push changes");
     }
 
@@ -130,7 +131,11 @@ export const handler = async (event: PatchState) => {
       `Beschreibung:\n${event.patch.description}\n\n` +
       `Hinweis: v0.1 ist ein Walking Skeleton und generiert nur einfache Änderungen.`;
 
-    console.log("Creating pull request...");
+    logger.info("Creating pull request", { 
+      title: prTitle,
+      head: branchName,
+      base: event.targetBranch 
+    });
     try {
       const { data: pr } = await octokit.rest.pulls.create({
         owner,
@@ -141,7 +146,10 @@ export const handler = async (event: PatchState) => {
         body: prBody
       });
 
-      console.log("Created PR:", pr.html_url);
+      logger.info("Pull request created successfully", { 
+        prNumber: pr.number,
+        prUrl: pr.html_url 
+      });
 
       return {
         ...event,
@@ -149,8 +157,7 @@ export const handler = async (event: PatchState) => {
         prNumber: pr.number
       };
     } catch (error) {
-      console.error("Error creating pull request:", {
-        error: error instanceof Error ? error.message : String(error),
+      logger.error("Failed to create pull request", error, {
         branch: branchName,
         base: event.targetBranch,
       });
@@ -168,9 +175,10 @@ export const handler = async (event: PatchState) => {
       throw new Error("Failed to create pull request");
     }
   } catch (error) {
-    console.error("Error in PRCreator:", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    logger.error("Error in PRCreator", error, {
+      repo: event.repo,
+      branchName: event.patch.branchName,
+      issueNumber: event.issue?.number
     });
     throw error;
   } finally {
@@ -178,11 +186,10 @@ export const handler = async (event: PatchState) => {
     if (workdir && fs.existsSync(workdir)) {
       try {
         fs.rmSync(workdir, { recursive: true, force: true });
-        console.log("Cleaned up working directory");
+        logger.debug("Cleaned up working directory", { workdir });
       } catch (cleanupError) {
-        console.warn("Failed to clean up working directory:", {
-          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-          workdir,
+        logger.warn("Failed to clean up working directory", { 
+          workdir 
         });
       }
     }
