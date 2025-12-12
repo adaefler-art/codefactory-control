@@ -1,5 +1,14 @@
 import { MCPServer } from '../../base/src/server';
-import { ECSClient, UpdateServiceCommand, DescribeServicesCommand } from '@aws-sdk/client-ecs';
+import {
+  ECSClient,
+  UpdateServiceCommand,
+  DescribeServicesCommand,
+  DescribeTasksCommand,
+  ListTasksCommand,
+  DescribeTaskDefinitionCommand,
+  RegisterTaskDefinitionCommand,
+  ContainerDefinition
+} from '@aws-sdk/client-ecs';
 
 /**
  * AWS Deploy MCP Server
@@ -16,18 +25,35 @@ export class DeployMCPServer extends MCPServer {
     
     const region = process.env.AWS_REGION || 'eu-central-1';
     this.ecsClient = new ECSClient({ region });
+    this.log('info', 'DeployMCPServer initialized', { region });
+  }
+
+  /**
+   * Structured logging for deploy actions
+   */
+  private log(level: 'info' | 'error' | 'warn', message: string, data?: any) {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      component: 'mcp-deploy',
+      message,
+      ...(data && { data })
+    };
+    console.log(JSON.stringify(logEntry));
   }
 
   protected registerTools(): void {
     this.tools.set('updateService', {
       name: 'updateService',
-      description: 'Update an ECS service with a new image',
+      description: 'Update an ECS service with a new image tag or force a new deployment. Supports updating specific container images within the task definition.',
       inputSchema: {
         type: 'object',
         properties: {
           cluster: { type: 'string', description: 'ECS cluster name' },
           service: { type: 'string', description: 'ECS service name' },
-          forceNewDeployment: { type: 'boolean', description: 'Force new deployment', default: true },
+          containerName: { type: 'string', description: 'Container name to update (optional, required if imageUri is provided)' },
+          imageUri: { type: 'string', description: 'New image URI with tag (e.g., 123456789.dkr.ecr.eu-central-1.amazonaws.com/my-app:v1.2.3). If omitted, forces new deployment with existing task definition.' },
+          forceNewDeployment: { type: 'boolean', description: 'Force new deployment even without task definition changes', default: true },
         },
         required: ['cluster', 'service'],
       },
@@ -35,12 +61,13 @@ export class DeployMCPServer extends MCPServer {
 
     this.tools.set('getServiceStatus', {
       name: 'getServiceStatus',
-      description: 'Get the status of an ECS service',
+      description: 'Get comprehensive status of an ECS service including deployments, tasks, and recent events',
       inputSchema: {
         type: 'object',
         properties: {
           cluster: { type: 'string', description: 'ECS cluster name' },
           service: { type: 'string', description: 'ECS service name' },
+          includeTaskDetails: { type: 'boolean', description: 'Include detailed information about running tasks', default: true },
         },
         required: ['cluster', 'service'],
       },
@@ -48,49 +75,184 @@ export class DeployMCPServer extends MCPServer {
   }
 
   protected async handleToolCall(tool: string, args: Record<string, any>): Promise<any> {
-    switch (tool) {
-      case 'updateService':
-        return this.updateService(args as { cluster: string; service: string; forceNewDeployment?: boolean });
-      case 'getServiceStatus':
-        return this.getServiceStatus(args as { cluster: string; service: string });
-      default:
-        throw new Error(`Unknown tool: ${tool}`);
+    this.log('info', `Tool called: ${tool}`, { args });
+    
+    try {
+      switch (tool) {
+        case 'updateService':
+          return await this.updateService(args as {
+            cluster: string;
+            service: string;
+            containerName?: string;
+            imageUri?: string;
+            forceNewDeployment?: boolean;
+          });
+        case 'getServiceStatus':
+          return await this.getServiceStatus(args as {
+            cluster: string;
+            service: string;
+            includeTaskDetails?: boolean;
+          });
+        default:
+          throw new Error(`Unknown tool: ${tool}`);
+      }
+    } catch (error) {
+      this.log('error', `Tool execution failed: ${tool}`, {
+        args,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     }
   }
 
   private async updateService(args: {
     cluster: string;
     service: string;
+    containerName?: string;
+    imageUri?: string;
     forceNewDeployment?: boolean;
   }) {
-    const { cluster, service, forceNewDeployment = true } = args;
+    const { cluster, service, containerName, imageUri, forceNewDeployment = true } = args;
+
+    this.log('info', 'Starting service update', {
+      cluster,
+      service,
+      containerName,
+      imageUri,
+      forceNewDeployment
+    });
+
+    // If imageUri is provided, we need to create a new task definition
+    let taskDefinition: string | undefined;
+    if (imageUri) {
+      if (!containerName) {
+        throw new Error('containerName is required when imageUri is provided');
+      }
+
+      // Get current service to find its task definition
+      const describeCommand = new DescribeServicesCommand({
+        cluster,
+        services: [service],
+      });
+      const describeResponse = await this.ecsClient.send(describeCommand);
+      const currentService = describeResponse.services?.[0];
+
+      if (!currentService?.taskDefinition) {
+        throw new Error(`Service ${service} not found or has no task definition`);
+      }
+
+      // Get current task definition
+      const taskDefCommand = new DescribeTaskDefinitionCommand({
+        taskDefinition: currentService.taskDefinition,
+      });
+      const taskDefResponse = await this.ecsClient.send(taskDefCommand);
+      const currentTaskDef = taskDefResponse.taskDefinition;
+
+      if (!currentTaskDef) {
+        throw new Error('Could not retrieve current task definition');
+      }
+
+      // Update the container image
+      const updatedContainers = currentTaskDef.containerDefinitions?.map((container) => {
+        if (container.name === containerName) {
+          this.log('info', 'Updating container image', {
+            containerName,
+            oldImage: container.image,
+            newImage: imageUri
+          });
+          return { ...container, image: imageUri };
+        }
+        return container;
+      }) as ContainerDefinition[];
+
+      if (!updatedContainers.some(c => c.name === containerName)) {
+        throw new Error(`Container ${containerName} not found in task definition`);
+      }
+
+      // Register new task definition with updated image
+      const registerCommand = new RegisterTaskDefinitionCommand({
+        family: currentTaskDef.family!,
+        taskRoleArn: currentTaskDef.taskRoleArn,
+        executionRoleArn: currentTaskDef.executionRoleArn,
+        networkMode: currentTaskDef.networkMode,
+        containerDefinitions: updatedContainers,
+        volumes: currentTaskDef.volumes,
+        requiresCompatibilities: currentTaskDef.requiresCompatibilities,
+        cpu: currentTaskDef.cpu,
+        memory: currentTaskDef.memory,
+        runtimePlatform: currentTaskDef.runtimePlatform,
+      });
+
+      const registerResponse = await this.ecsClient.send(registerCommand);
+      taskDefinition = registerResponse.taskDefinition?.taskDefinitionArn;
+
+      this.log('info', 'Registered new task definition', {
+        oldTaskDefinition: currentTaskDef.taskDefinitionArn,
+        newTaskDefinition: taskDefinition,
+        containerName,
+        imageUri
+      });
+    }
 
     const command = new UpdateServiceCommand({
       cluster,
       service,
       forceNewDeployment,
+      ...(taskDefinition && { taskDefinition }),
     });
 
     const response = await this.ecsClient.send(command);
 
+    this.log('info', 'Service update completed', {
+      cluster,
+      service,
+      serviceArn: response.service?.serviceArn,
+      status: response.service?.status,
+      deployments: response.service?.deployments?.length
+    });
+
+    // Get task information for the new deployment
+    const tasks = await this.getServiceTasks(cluster, service);
+
     return {
       serviceArn: response.service?.serviceArn,
       serviceName: response.service?.serviceName,
+      clusterArn: response.service?.clusterArn,
       status: response.service?.status,
       desiredCount: response.service?.desiredCount,
       runningCount: response.service?.runningCount,
+      pendingCount: response.service?.pendingCount,
+      taskDefinition: response.service?.taskDefinition,
       deployments: response.service?.deployments?.map((d) => ({
         id: d.id,
         status: d.status,
+        taskDefinition: d.taskDefinition,
         desiredCount: d.desiredCount,
         runningCount: d.runningCount,
+        pendingCount: d.pendingCount,
+        failedTasks: d.failedTasks,
         createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        rolloutState: d.rolloutState,
+        rolloutStateReason: d.rolloutStateReason,
       })),
+      events: response.service?.events?.slice(0, 10).map((e) => ({
+        id: e.id,
+        message: e.message,
+        createdAt: e.createdAt,
+      })),
+      tasks: tasks,
     };
   }
 
-  private async getServiceStatus(args: { cluster: string; service: string }) {
-    const { cluster, service } = args;
+  private async getServiceStatus(args: {
+    cluster: string;
+    service: string;
+    includeTaskDetails?: boolean;
+  }) {
+    const { cluster, service, includeTaskDetails = true } = args;
+
+    this.log('info', 'Getting service status', { cluster, service, includeTaskDetails });
 
     const command = new DescribeServicesCommand({
       cluster,
@@ -101,30 +263,115 @@ export class DeployMCPServer extends MCPServer {
     const serviceData = response.services?.[0];
 
     if (!serviceData) {
+      this.log('error', 'Service not found', { cluster, service });
       throw new Error(`Service ${service} not found in cluster ${cluster}`);
     }
+
+    // Get task details if requested
+    const tasks = includeTaskDetails ? await this.getServiceTasks(cluster, service) : [];
+
+    this.log('info', 'Service status retrieved', {
+      cluster,
+      service,
+      status: serviceData.status,
+      runningCount: serviceData.runningCount,
+      desiredCount: serviceData.desiredCount,
+      taskCount: tasks.length
+    });
 
     return {
       serviceArn: serviceData.serviceArn,
       serviceName: serviceData.serviceName,
+      clusterArn: serviceData.clusterArn,
       status: serviceData.status,
       desiredCount: serviceData.desiredCount,
       runningCount: serviceData.runningCount,
       pendingCount: serviceData.pendingCount,
+      taskDefinition: serviceData.taskDefinition,
+      createdAt: serviceData.createdAt,
+      launchType: serviceData.launchType,
+      platformVersion: serviceData.platformVersion,
       deployments: serviceData.deployments?.map((d) => ({
         id: d.id,
         status: d.status,
         taskDefinition: d.taskDefinition,
         desiredCount: d.desiredCount,
         runningCount: d.runningCount,
+        pendingCount: d.pendingCount,
+        failedTasks: d.failedTasks,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
+        rolloutState: d.rolloutState,
+        rolloutStateReason: d.rolloutStateReason,
       })),
-      events: serviceData.events?.slice(0, 5).map((e) => ({
+      events: serviceData.events?.slice(0, 10).map((e) => ({
+        id: e.id,
         message: e.message,
         createdAt: e.createdAt,
       })),
+      tasks: tasks,
     };
+  }
+
+  /**
+   * Get detailed information about tasks running in a service
+   */
+  private async getServiceTasks(cluster: string, service: string) {
+    try {
+      // List tasks for the service
+      const listCommand = new ListTasksCommand({
+        cluster,
+        serviceName: service,
+        desiredStatus: 'RUNNING',
+      });
+
+      const listResponse = await this.ecsClient.send(listCommand);
+      
+      if (!listResponse.taskArns || listResponse.taskArns.length === 0) {
+        this.log('info', 'No running tasks found', { cluster, service });
+        return [];
+      }
+
+      // Describe the tasks to get detailed information
+      const describeCommand = new DescribeTasksCommand({
+        cluster,
+        tasks: listResponse.taskArns,
+      });
+
+      const describeResponse = await this.ecsClient.send(describeCommand);
+
+      return describeResponse.tasks?.map((task) => ({
+        taskArn: task.taskArn,
+        taskDefinitionArn: task.taskDefinitionArn,
+        lastStatus: task.lastStatus,
+        desiredStatus: task.desiredStatus,
+        healthStatus: task.healthStatus,
+        cpu: task.cpu,
+        memory: task.memory,
+        createdAt: task.createdAt,
+        startedAt: task.startedAt,
+        stoppedAt: task.stoppedAt,
+        stoppedReason: task.stoppedReason,
+        connectivity: task.connectivity,
+        connectivityAt: task.connectivityAt,
+        containers: task.containers?.map((c) => ({
+          name: c.name,
+          image: c.image,
+          lastStatus: c.lastStatus,
+          healthStatus: c.healthStatus,
+          exitCode: c.exitCode,
+          reason: c.reason,
+          networkBindings: c.networkBindings,
+        })),
+      })) || [];
+    } catch (error) {
+      this.log('error', 'Failed to get task details', {
+        cluster,
+        service,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    }
   }
 }
 
