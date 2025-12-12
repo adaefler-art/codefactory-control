@@ -152,8 +152,13 @@ export class DeployMCPServer extends MCPServer {
         throw new Error('Could not retrieve current task definition');
       }
 
+      // Validate container exists before updating
+      if (!currentTaskDef.containerDefinitions?.some(c => c.name === containerName)) {
+        throw new Error(`Container ${containerName} not found in task definition`);
+      }
+
       // Update the container image
-      const updatedContainers = currentTaskDef.containerDefinitions?.map((container) => {
+      const updatedContainers = currentTaskDef.containerDefinitions.map((container) => {
         if (container.name === containerName) {
           this.log('info', 'Updating container image', {
             containerName,
@@ -165,23 +170,23 @@ export class DeployMCPServer extends MCPServer {
         return container;
       }) as ContainerDefinition[];
 
-      if (!updatedContainers.some(c => c.name === containerName)) {
-        throw new Error(`Container ${containerName} not found in task definition`);
-      }
-
       // Register new task definition with updated image
-      const registerCommand = new RegisterTaskDefinitionCommand({
+      const registerParams: any = {
         family: currentTaskDef.family!,
-        taskRoleArn: currentTaskDef.taskRoleArn,
-        executionRoleArn: currentTaskDef.executionRoleArn,
-        networkMode: currentTaskDef.networkMode,
         containerDefinitions: updatedContainers,
-        volumes: currentTaskDef.volumes,
-        requiresCompatibilities: currentTaskDef.requiresCompatibilities,
-        cpu: currentTaskDef.cpu,
-        memory: currentTaskDef.memory,
-        runtimePlatform: currentTaskDef.runtimePlatform,
-      });
+      };
+
+      // Only include defined optional properties
+      if (currentTaskDef.taskRoleArn) registerParams.taskRoleArn = currentTaskDef.taskRoleArn;
+      if (currentTaskDef.executionRoleArn) registerParams.executionRoleArn = currentTaskDef.executionRoleArn;
+      if (currentTaskDef.networkMode) registerParams.networkMode = currentTaskDef.networkMode;
+      if (currentTaskDef.volumes) registerParams.volumes = currentTaskDef.volumes;
+      if (currentTaskDef.requiresCompatibilities) registerParams.requiresCompatibilities = currentTaskDef.requiresCompatibilities;
+      if (currentTaskDef.cpu) registerParams.cpu = currentTaskDef.cpu;
+      if (currentTaskDef.memory) registerParams.memory = currentTaskDef.memory;
+      if (currentTaskDef.runtimePlatform) registerParams.runtimePlatform = currentTaskDef.runtimePlatform;
+
+      const registerCommand = new RegisterTaskDefinitionCommand(registerParams);
 
       const registerResponse = await this.ecsClient.send(registerCommand);
       taskDefinition = registerResponse.taskDefinition?.taskDefinitionArn;
@@ -315,10 +320,11 @@ export class DeployMCPServer extends MCPServer {
 
   /**
    * Get detailed information about tasks running in a service
+   * Note: Only retrieves RUNNING tasks. To see stopped/failed tasks, query with different desiredStatus.
    */
   private async getServiceTasks(cluster: string, service: string) {
     try {
-      // List tasks for the service
+      // List tasks for the service (only RUNNING tasks to show current deployment state)
       const listCommand = new ListTasksCommand({
         cluster,
         serviceName: service,
@@ -370,6 +376,8 @@ export class DeployMCPServer extends MCPServer {
         service,
         error: error instanceof Error ? error.message : String(error)
       });
+      // Return empty array but error is logged - caller can check logs if task count is 0
+      // This allows the main operation to succeed even if task details fail
       return [];
     }
   }
