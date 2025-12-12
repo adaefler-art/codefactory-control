@@ -91,13 +91,13 @@ export class GitHubMCPServer extends MCPServer {
   protected async handleToolCall(tool: string, args: Record<string, any>): Promise<any> {
     switch (tool) {
       case 'getIssue':
-        return this.getIssue(args);
+        return this.getIssue(args as { owner: string; repo: string; number: number });
       case 'listIssues':
-        return this.listIssues(args);
+        return this.listIssues(args as { owner: string; repo: string; state?: string; labels?: string });
       case 'createBranch':
-        return this.createBranch(args);
+        return this.createBranch(args as { owner: string; repo: string; branch: string; from: string });
       case 'createPullRequest':
-        return this.createPullRequest(args);
+        return this.createPullRequest(args as { owner: string; repo: string; title: string; body?: string; head: string; base: string });
       default:
         throw new Error(`Unknown tool: ${tool}`);
     }
@@ -135,7 +135,7 @@ export class GitHubMCPServer extends MCPServer {
       per_page: 30,
     });
 
-    return data.map((issue) => ({
+    return data.map((issue: any) => ({
       number: issue.number,
       title: issue.title,
       state: issue.state,

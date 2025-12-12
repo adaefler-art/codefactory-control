@@ -85,11 +85,11 @@ export class ObservabilityMCPServer extends MCPServer {
   protected async handleToolCall(tool: string, args: Record<string, any>): Promise<any> {
     switch (tool) {
       case 'searchLogs':
-        return this.searchLogs(args);
+        return this.searchLogs(args as { logGroupName: string; filterPattern?: string; startTime?: number; endTime?: number; limit?: number });
       case 'getServiceHealth':
-        return this.getServiceHealth(args);
+        return this.getServiceHealth(args as { cluster: string; service: string; period?: number });
       case 'getAlarmStatus':
-        return this.getAlarmStatus(args);
+        return this.getAlarmStatus(args as { alarmNames?: string[]; stateValue?: 'OK' | 'ALARM' | 'INSUFFICIENT_DATA' });
       default:
         throw new Error(`Unknown tool: ${tool}`);
     }
