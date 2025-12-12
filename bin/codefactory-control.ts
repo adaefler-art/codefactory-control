@@ -8,6 +8,7 @@ import { Afu9DnsStack } from '../lib/afu9-dns-stack';
 import { Afu9NetworkStack } from '../lib/afu9-network-stack';
 import { Afu9DatabaseStack } from '../lib/afu9-database-stack';
 import { Afu9EcsStack } from '../lib/afu9-ecs-stack';
+import { Afu9AlarmsStack } from '../lib/afu9-alarms-stack';
 
 const app = new cdk.App();
 
@@ -70,11 +71,25 @@ const databaseStack = new Afu9DatabaseStack(app, 'Afu9DatabaseStack', {
 });
 
 // ECS stack (depends on network and database)
-new Afu9EcsStack(app, 'Afu9EcsStack', {
+const ecsStack = new Afu9EcsStack(app, 'Afu9EcsStack', {
   env,
   description: 'AFU-9 v0.2 ECS: Fargate service with Control Center and MCP servers',
   vpc: networkStack.vpc,
   ecsSecurityGroup: networkStack.ecsSecurityGroup,
   targetGroup: networkStack.targetGroup,
   dbSecretArn: databaseStack.dbSecret.secretArn,
+});
+
+// CloudWatch Alarms stack (depends on ECS and database)
+// Optional: Set alarm email via context: -c afu9-alarm-email=ops@example.com
+const alarmEmail = app.node.tryGetContext('afu9-alarm-email');
+new Afu9AlarmsStack(app, 'Afu9AlarmsStack', {
+  env,
+  description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB',
+  ecsClusterName: ecsStack.cluster.clusterName,
+  ecsServiceName: ecsStack.service.serviceName,
+  dbInstanceIdentifier: databaseStack.dbInstance.instanceIdentifier,
+  albFullName: networkStack.loadBalancer.loadBalancerFullName,
+  targetGroupFullName: networkStack.targetGroup.targetGroupFullName,
+  alarmEmail,
 });
