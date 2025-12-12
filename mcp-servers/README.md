@@ -32,11 +32,26 @@ Common base implementation for all MCP servers. Provides:
 - `getIssue(owner, repo, number)` - Get issue details
 - `listIssues(owner, repo, state?, labels?)` - List repository issues
 - `createBranch(owner, repo, branch, from)` - Create a new branch
+- `commitFileChanges(owner, repo, branch, message, files)` - Commit file changes to a branch
 - `createPullRequest(owner, repo, title, body, head, base)` - Create PR
+- `mergePullRequest(owner, repo, pull_number, commit_title?, commit_message?, merge_method?)` - Merge PR
 
 **Environment Variables**:
-- `GITHUB_TOKEN` - GitHub personal access token or App token
+- `GITHUB_TOKEN` - GitHub personal access token or App token (supports PAT and GitHub App tokens)
 - `PORT` - Server port (default: 3001)
+
+**Authentication**:
+The server supports both GitHub Personal Access Tokens (PAT) and GitHub App tokens. In production environments, tokens are loaded from AWS Secrets Manager (secret: `afu9/github`). The token must have appropriate permissions for the operations being performed (see [ADDING-TOOLS.md](github/ADDING-TOOLS.md) for required scopes).
+
+**Error Handling**:
+The server provides comprehensive error handling for common GitHub API issues:
+- Rate limit errors (403 with rate limit exceeded) - includes reset time
+- Authentication errors (401) - indicates invalid or expired token
+- Permission errors (403) - explains missing scopes or permissions
+- Resource not found (404) - suggests verifying identifiers
+
+**Adding New Tools**:
+See [github/ADDING-TOOLS.md](github/ADDING-TOOLS.md) for a comprehensive guide on how to add new GitHub tools to the server.
 
 ### Deploy Server (`deploy/`)
 
