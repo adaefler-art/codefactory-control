@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # AFU-9 Staging Smoke Tests
 # 
