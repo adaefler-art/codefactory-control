@@ -78,8 +78,8 @@ See [github/ADDING-TOOLS.md](github/ADDING-TOOLS.md) for a comprehensive guide o
 **Purpose**: CloudWatch logs and metrics
 
 **Tools**:
-- `searchLogs(logGroupName, filterPattern?, startTime?, endTime?, limit?)` - Search CloudWatch logs
-- `getServiceHealth(cluster, service, period?)` - Get ECS service health metrics
+- `logs.search(logGroupName, filterPattern?, startTime?, endTime?, limit?, nextToken?)` - Search CloudWatch logs by pattern (e.g., ERROR, RequestId, TaskId) with pagination support
+- `metrics.getServiceHealth(cluster, service, loadBalancerName?, targetGroupArn?, period?)` - Get ECS service health metrics (CPU, Memory, ALB 5xx rate)
 - `getAlarmStatus(alarmNames?, stateValue?)` - Get CloudWatch alarm status
 
 **Environment Variables**:
@@ -91,6 +91,8 @@ See [github/ADDING-TOOLS.md](github/ADDING-TOOLS.md) for a comprehensive guide o
 - `logs:DescribeLogGroups`
 - `cloudwatch:GetMetricStatistics`
 - `cloudwatch:DescribeAlarms`
+- `elasticloadbalancing:DescribeLoadBalancers` (for ALB metrics)
+- `elasticloadbalancing:DescribeTargetGroups` (for ALB metrics)
 
 ## Development
 
