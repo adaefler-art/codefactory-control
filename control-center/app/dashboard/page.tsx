@@ -67,27 +67,27 @@ export default function DashboardPage() {
 
         const executionStats = {
           total: executions.length,
-          running: executions.filter((e: any) => e.status === 'running').length,
-          completed: executions.filter((e: any) => e.status === 'completed').length,
-          failed: executions.filter((e: any) => e.status === 'failed').length,
+          running: executions.filter((e: { status: string }) => e.status === 'running').length,
+          completed: executions.filter((e: { status: string }) => e.status === 'completed').length,
+          failed: executions.filter((e: { status: string }) => e.status === 'failed').length,
         };
 
         const agentStats = {
           total: agents.length,
-          totalTokens: agents.reduce((sum: number, a: any) => sum + (a.totalTokens || 0), 0),
+          totalTokens: agents.reduce((sum: number, a: { totalTokens?: number }) => sum + (a.totalTokens || 0), 0),
           avgDuration: agents.length > 0 
-            ? Math.round(agents.reduce((sum: number, a: any) => sum + (a.durationMs || 0), 0) / agents.length)
+            ? Math.round(agents.reduce((sum: number, a: { durationMs?: number }) => sum + (a.durationMs || 0), 0) / agents.length)
             : 0,
         };
 
         const workflowStats = {
           total: workflows.length,
-          enabled: workflows.filter((w: any) => w.enabled).length,
+          enabled: workflows.filter((w: { enabled: boolean }) => w.enabled).length,
         };
 
         const repoStats = {
           total: repositories.length,
-          enabled: repositories.filter((r: any) => r.enabled).length,
+          enabled: repositories.filter((r: { enabled: boolean }) => r.enabled).length,
         };
 
         setStats({

@@ -9,7 +9,7 @@ interface Repository {
   fullName: string;
   defaultBranch: string;
   enabled: boolean;
-  config: any;
+  config: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
