@@ -6,6 +6,7 @@
 
 import { Pool } from 'pg';
 import { WebhookEvent, WebhookConfig, WebhookProcessingResult } from './types';
+import { GitHubWebhookPayload } from './github-types';
 import { markWebhookProcessed } from './persistence';
 import { getWorkflowEngine } from '../workflow-engine';
 import { WorkflowDefinition, WorkflowContext } from '../types/workflow';
@@ -118,13 +119,12 @@ export async function processWebhookEvent(
  * Build workflow context from webhook event
  */
 function buildWorkflowContext(event: WebhookEvent): WorkflowContext {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const payload = event.payload as any;
+  const payload = event.payload as unknown as GitHubWebhookPayload;
   
   // Extract repository information
-  const repo = payload.repository
+  const repo = payload.repository && payload.repository.owner?.login
     ? {
-        owner: payload.repository.owner?.login,
+        owner: payload.repository.owner.login,
         name: payload.repository.name,
         default_branch: payload.repository.default_branch,
       }
