@@ -4,6 +4,7 @@ import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export class CodefactoryControlStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -35,6 +36,21 @@ export class CodefactoryControlStack extends cdk.Stack {
       entry: 'infra/lambdas/afu9_orchestrator.ts',
       ...lambdaDefaults
     });
+
+    // Grant Secrets Manager access to Lambda functions
+    // Lambdas need to read GitHub credentials and LLM API keys from Secrets Manager
+    const secretsPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/*`,
+      ],
+    });
+
+    issueInterpreterFn.addToRolePolicy(secretsPolicy);
+    patchGeneratorFn.addToRolePolicy(secretsPolicy);
+    prCreatorFn.addToRolePolicy(secretsPolicy);
+    orchestratorFn.addToRolePolicy(secretsPolicy);
 
     // Step Functions definition
     const issueInterpreterTask = new tasks.LambdaInvoke(this, 'IssueInterpreter', {
