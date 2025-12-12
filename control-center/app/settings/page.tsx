@@ -21,7 +21,15 @@ export default function SettingsPage() {
         const data = await response.json();
 
         if (response.ok) {
-          setMcpServers(data.servers || []);
+          // Convert servers object to array
+          const serversObj = data.servers || {};
+          const serversArray = Object.entries(serversObj).map(([name, health]: [string, any]) => ({
+            name,
+            endpoint: health.endpoint || `http://localhost:${3001 + Object.keys(serversObj).indexOf(name)}`,
+            healthy: health.status === 'ok',
+            error: health.error,
+          }));
+          setMcpServers(serversArray);
         } else {
           setError(data.error || "Fehler beim Laden der MCP Server Status");
         }
