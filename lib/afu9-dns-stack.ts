@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
-import { aws_certificatemanager as acm, aws_route53 as route53 } from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
 import { Construct } from 'constructs';
 
 /**

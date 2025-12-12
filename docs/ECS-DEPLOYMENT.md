@@ -2,6 +2,9 @@
 
 This guide covers deploying AFU-9 Control Center and MCP servers to AWS ECS Fargate.
 
+> **📖 For Staging Deployments:**  
+> See the **[AWS Deployment Runbook](./AWS_DEPLOY_RUNBOOK.md)** for the complete, step-by-step staging deployment process with troubleshooting and maintenance procedures.
+
 ## Overview
 
 The AFU-9 v0.2 deployment consists of:
@@ -16,6 +19,7 @@ The AFU-9 v0.2 deployment consists of:
 - **CloudWatch**: Centralized logging and monitoring
 
 **📚 Additional Resources:**
+- [AWS Deployment Runbook](./AWS_DEPLOY_RUNBOOK.md) - Complete staging deployment guide (Source of Truth)
 - [HTTPS & DNS Setup Guide](./HTTPS-DNS-SETUP.md) - Configure custom domain and HTTPS
 - [URL Mappings](./URL-MAPPINGS.md) - Complete URL reference for all endpoints
 
@@ -79,11 +83,28 @@ After deployment, configure name servers at your domain registrar (see output).
 Deploy the VPC, subnets, security groups, and ALB:
 
 ```bash
-# With HTTPS (recommended for production)
-npx cdk deploy Afu9NetworkStack
+# Staging: Deploy without HTTPS (uses cdk.context.json)
+npx cdk deploy Afu9NetworkStack \
+  --context environment=staging \
+  --context afu9-enable-https=false
 
-# Without HTTPS (development only)
-npx cdk deploy Afu9NetworkStack -c afu9-enable-https=false
+# Production: Deploy with HTTPS (after DNS stack)
+npx cdk deploy Afu9NetworkStack \
+  --context environment=production
+
+# Or without context (defaults to HTTPS enabled)
+npx cdk deploy Afu9NetworkStack
+```
+
+**Staging vs Production Configuration:**
+
+The `cdk.context.json` file defines environment-specific settings:
+- **Staging**: HTTPS disabled, single-AZ, cost-optimized
+- **Production**: HTTPS enabled, multi-AZ, high availability
+
+To use staging configuration:
+```bash
+npx cdk deploy <stack-name> --context environment=staging
 ```
 
 This creates:
@@ -342,6 +363,37 @@ DB_SECRET=$(aws secretsmanager get-secret-value \
 
 ### 9. Verify Deployment
 
+#### Automated Smoke Tests
+
+Run the automated smoke test script to verify all components:
+
+```bash
+# Get ALB DNS name
+ALB_DNS=$(aws cloudformation describe-stacks \
+  --stack-name Afu9NetworkStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
+  --output text --region eu-central-1)
+
+# Run smoke tests
+./scripts/smoke-test-staging.sh $ALB_DNS
+```
+
+**Expected output:**
+```
+Testing AFU-9 Staging Environment
+=== Smoke Tests ===
+Testing Health endpoint... PASSED
+Testing Readiness endpoint... PASSED
+Testing Root page... PASSED
+Verifying service identity... PASSED
+Verifying version info... PASSED
+
+✓ All smoke tests passed!
+✓ Staging environment is operational
+```
+
+#### Manual Verification
+
 Check service status:
 
 ```bash
@@ -378,7 +430,8 @@ Open the URL in your browser. You should see the AFU-9 Control Center UI.
 **URL Mappings:**
 - **HTTPS with custom domain**: `https://afu9.yourdomain.com`
 - **HTTP with ALB DNS**: `http://afu9-alb-xxxxx.eu-central-1.elb.amazonaws.com`
-- **Health Check**: `/api/health`
+- **Health Check**: `/api/health` - Basic liveness check
+- **Readiness Check**: `/api/ready` - Comprehensive readiness check (used by ALB)
 - **API Endpoints**: `/api/*`
 - **GitHub Webhooks**: `/api/webhooks/github`
 

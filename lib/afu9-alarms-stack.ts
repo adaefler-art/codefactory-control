@@ -1,5 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
-import { aws_cloudwatch as cloudwatch, aws_sns as sns, aws_sns_subscriptions as subscriptions, aws_cloudwatch_actions as actions, aws_lambda as lambda, aws_iam as iam, aws_logs as logs } from 'aws-cdk-lib';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as actions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 
 /**
