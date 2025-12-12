@@ -14,9 +14,9 @@ import {
  * Observability MCP Server
  * 
  * Provides CloudWatch observability operations as MCP tools:
- * - logs.search
- * - metrics.getServiceHealth
- * - metrics.getAlarmStatus
+ * - logs.search: Search CloudWatch Logs by pattern (ERROR, RequestId, TaskId, etc.)
+ * - metrics.getServiceHealth: Get ECS service health metrics (CPU, Memory, ALB 5xx rate)
+ * - getAlarmStatus: Get CloudWatch alarm status (bonus feature)
  */
 export class ObservabilityMCPServer extends MCPServer {
   private logsClient: CloudWatchLogsClient;
@@ -31,30 +31,33 @@ export class ObservabilityMCPServer extends MCPServer {
   }
 
   protected registerTools(): void {
-    this.tools.set('searchLogs', {
-      name: 'searchLogs',
-      description: 'Search CloudWatch logs',
+    this.tools.set('logs.search', {
+      name: 'logs.search',
+      description: 'Search CloudWatch logs by pattern (e.g., ERROR, RequestId, TaskId)',
       inputSchema: {
         type: 'object',
         properties: {
           logGroupName: { type: 'string', description: 'Log group name' },
-          filterPattern: { type: 'string', description: 'Filter pattern (e.g., "ERROR")' },
+          filterPattern: { type: 'string', description: 'Filter pattern (e.g., "ERROR", "RequestId", "TaskId")' },
           startTime: { type: 'number', description: 'Start time (Unix timestamp in ms)' },
           endTime: { type: 'number', description: 'End time (Unix timestamp in ms)' },
           limit: { type: 'number', description: 'Maximum number of events', default: 100 },
+          nextToken: { type: 'string', description: 'Token for pagination (from previous response)' },
         },
         required: ['logGroupName'],
       },
     });
 
-    this.tools.set('getServiceHealth', {
-      name: 'getServiceHealth',
-      description: 'Get ECS service health metrics',
+    this.tools.set('metrics.getServiceHealth', {
+      name: 'metrics.getServiceHealth',
+      description: 'Get ECS service health metrics including CPU, Memory, and ALB 5xx rate',
       inputSchema: {
         type: 'object',
         properties: {
           cluster: { type: 'string', description: 'ECS cluster name' },
           service: { type: 'string', description: 'ECS service name' },
+          loadBalancerName: { type: 'string', description: 'ALB name (optional, for 5xx metrics)' },
+          targetGroupArn: { type: 'string', description: 'Target Group ARN (optional, for 5xx metrics)' },
           period: { type: 'number', description: 'Period in seconds', default: 300 },
         },
         required: ['cluster', 'service'],
@@ -84,10 +87,10 @@ export class ObservabilityMCPServer extends MCPServer {
 
   protected async handleToolCall(tool: string, args: Record<string, any>): Promise<any> {
     switch (tool) {
-      case 'searchLogs':
-        return this.searchLogs(args as { logGroupName: string; filterPattern?: string; startTime?: number; endTime?: number; limit?: number });
-      case 'getServiceHealth':
-        return this.getServiceHealth(args as { cluster: string; service: string; period?: number });
+      case 'logs.search':
+        return this.searchLogs(args as { logGroupName: string; filterPattern?: string; startTime?: number; endTime?: number; limit?: number; nextToken?: string });
+      case 'metrics.getServiceHealth':
+        return this.getServiceHealth(args as { cluster: string; service: string; loadBalancerName?: string; targetGroupArn?: string; period?: number });
       case 'getAlarmStatus':
         return this.getAlarmStatus(args as { alarmNames?: string[]; stateValue?: 'OK' | 'ALARM' | 'INSUFFICIENT_DATA' });
       default:
@@ -101,6 +104,7 @@ export class ObservabilityMCPServer extends MCPServer {
     startTime?: number;
     endTime?: number;
     limit?: number;
+    nextToken?: string;
   }) {
     const {
       logGroupName,
@@ -108,6 +112,7 @@ export class ObservabilityMCPServer extends MCPServer {
       startTime = Date.now() - 3600000, // Default: 1 hour ago
       endTime = Date.now(),
       limit = 100,
+      nextToken,
     } = args;
 
     const command = new FilterLogEventsCommand({
@@ -116,6 +121,7 @@ export class ObservabilityMCPServer extends MCPServer {
       startTime,
       endTime,
       limit,
+      nextToken,
     });
 
     const response = await this.logsClient.send(command);
@@ -130,15 +136,18 @@ export class ObservabilityMCPServer extends MCPServer {
         logStreamName: s.logStreamName,
         searchedCompletely: s.searchedCompletely,
       })),
+      nextToken: response.nextToken, // Return nextToken for pagination
     };
   }
 
   private async getServiceHealth(args: {
     cluster: string;
     service: string;
+    loadBalancerName?: string;
+    targetGroupArn?: string;
     period?: number;
   }) {
-    const { cluster, service, period = 300 } = args;
+    const { cluster, service, loadBalancerName, targetGroupArn, period = 300 } = args;
     const endTime = new Date();
     const startTime = new Date(endTime.getTime() - 3600000); // 1 hour ago
 
@@ -170,12 +179,43 @@ export class ObservabilityMCPServer extends MCPServer {
       Statistics: ['Average', 'Maximum'],
     });
 
-    const [cpuResponse, memoryResponse] = await Promise.all([
+    // Prepare promises for parallel execution
+    const promises = [
       this.cloudwatchClient.send(cpuCommand),
       this.cloudwatchClient.send(memoryCommand),
-    ]);
+    ];
 
-    return {
+    // Get ALB 5xx metrics if load balancer information is provided
+    let hasAlbMetrics = false;
+    if (targetGroupArn && loadBalancerName) {
+      // Extract the targetgroup/name/id part from the full ARN
+      // ARN format: arn:aws:elasticloadbalancing:region:account-id:targetgroup/name/id
+      const targetGroupDimension = targetGroupArn.includes('targetgroup/')
+        ? targetGroupArn.split('targetgroup/')[1]
+        : targetGroupArn;
+
+      const alb5xxCommand = new GetMetricStatisticsCommand({
+        Namespace: 'AWS/ApplicationELB',
+        MetricName: 'HTTPCode_Target_5XX_Count',
+        Dimensions: [
+          { Name: 'LoadBalancer', Value: loadBalancerName },
+          { Name: 'TargetGroup', Value: `targetgroup/${targetGroupDimension}` },
+        ],
+        StartTime: startTime,
+        EndTime: endTime,
+        Period: period,
+        Statistics: ['Sum', 'Average'],
+      });
+      promises.push(this.cloudwatchClient.send(alb5xxCommand));
+      hasAlbMetrics = true;
+    }
+
+    const responses = await Promise.all(promises);
+    const cpuResponse = responses[0];
+    const memoryResponse = responses[1];
+    const alb5xxResponse = hasAlbMetrics ? responses[2] : undefined;
+
+    const result: any = {
       cluster,
       service,
       period,
@@ -196,6 +236,20 @@ export class ObservabilityMCPServer extends MCPServer {
         unit: memoryResponse.Datapoints?.[0]?.Unit,
       },
     };
+
+    // Add ALB 5xx metrics if available
+    if (alb5xxResponse) {
+      result.alb5xx = {
+        datapoints: alb5xxResponse.Datapoints?.map((d) => ({
+          timestamp: d.Timestamp,
+          sum: d.Sum,
+          average: d.Average,
+        })),
+        unit: alb5xxResponse.Datapoints?.[0]?.Unit,
+      };
+    }
+
+    return result;
   }
 
   private async getAlarmStatus(args: {
