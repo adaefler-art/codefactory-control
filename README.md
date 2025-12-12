@@ -97,28 +97,31 @@ npm install && npm run dev
 
 **v0.2 ECS Deployment (Recommended):**
 
-See [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) for complete ECS deployment guide.
+See [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) for the **complete staging deployment runbook** (Source of Truth).
 
-Quick deploy:
+Also available:
+- [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) - Detailed ECS deployment guide
+- [docs/HTTPS-DNS-SETUP.md](docs/HTTPS-DNS-SETUP.md) - HTTPS/DNS configuration
+
+**Quick Staging Deploy:**
 
 ```bash
 # 1. Bootstrap CDK (first time only)
 npx cdk bootstrap
 
-# 2. (Optional) Deploy DNS and certificate for HTTPS
-npx cdk deploy Afu9DnsStack -c afu9-domain=afu9.yourdomain.com
-# See docs/HTTPS-DNS-SETUP.md for detailed HTTPS configuration
+# 2. Deploy infrastructure stacks (staging config)
+npx cdk deploy Afu9NetworkStack --context environment=staging --context afu9-enable-https=false
+npx cdk deploy Afu9DatabaseStack --context environment=staging
+npx cdk deploy Afu9EcsStack --context environment=staging
 
-# 3. Deploy infrastructure stacks
-npx cdk deploy Afu9NetworkStack
-npx cdk deploy Afu9DatabaseStack
-npx cdk deploy Afu9EcsStack
+# 3. Configure secrets in AWS Secrets Manager
+# (See AWS_DEPLOY_RUNBOOK.md for details)
 
-# 4. Configure secrets in AWS Secrets Manager
-# (See ECS deployment guide for details)
+# 4. Build and push Docker images
+# (Use GitHub Actions or manual build - see runbook)
 
-# 5. Build and push Docker images
-# (Use GitHub Actions or manual build - see deployment guide)
+# 5. Run smoke tests
+./scripts/smoke-test-staging.sh <ALB_DNS>
 ```
 
 **v0.1 Lambda Deployment (Legacy):**
