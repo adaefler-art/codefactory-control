@@ -1,7 +1,9 @@
 /**
  * API Route: Repository Details with GitHub Data
  * 
- * GET /api/repositories/[id]
+ * GET /api/repositories/[id] - Fetches repository details
+ * DELETE /api/repositories/[id] - Removes a repository
+ * PATCH /api/repositories/[id] - Updates repository configuration
  * 
  * Fetches repository details from database along with PRs and issues from GitHub.
  */
@@ -258,6 +260,127 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json(
       {
         error: 'Failed to fetch repository details',
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(_request: Request, { params }: RouteParams) {
+  const { id } = await params;
+  
+  try {
+    const pool = getPool();
+    
+    // Check if repository exists
+    const checkQuery = `SELECT id FROM repositories WHERE id = $1`;
+    const checkResult = await pool.query(checkQuery, [id]);
+    
+    if (checkResult.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'Repository not found' },
+        { status: 404 }
+      );
+    }
+
+    // Delete repository
+    const deleteQuery = `DELETE FROM repositories WHERE id = $1`;
+    await pool.query(deleteQuery, [id]);
+
+    return NextResponse.json({ success: true, message: 'Repository deleted' });
+  } catch (error) {
+    console.error('[API] Error deleting repository:', error);
+    
+    return NextResponse.json(
+      {
+        error: 'Failed to delete repository',
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request, { params }: RouteParams) {
+  const { id } = await params;
+  
+  try {
+    const body = await request.json();
+    const { enabled, config, defaultBranch } = body;
+
+    const pool = getPool();
+    
+    // Check if repository exists
+    const checkQuery = `SELECT id FROM repositories WHERE id = $1`;
+    const checkResult = await pool.query(checkQuery, [id]);
+    
+    if (checkResult.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'Repository not found' },
+        { status: 404 }
+      );
+    }
+
+    // Build update query dynamically
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (enabled !== undefined) {
+      updates.push(`enabled = $${paramCount++}`);
+      values.push(enabled);
+    }
+
+    if (config !== undefined) {
+      updates.push(`config = $${paramCount++}`);
+      values.push(JSON.stringify(config));
+    }
+
+    if (defaultBranch !== undefined) {
+      updates.push(`default_branch = $${paramCount++}`);
+      values.push(defaultBranch);
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update' },
+        { status: 400 }
+      );
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(id);
+
+    const updateQuery = `
+      UPDATE repositories
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING id, owner, name, full_name, default_branch, enabled, config, created_at, updated_at
+    `;
+
+    const result = await pool.query(updateQuery, values);
+    const repo = result.rows[0];
+
+    return NextResponse.json({
+      repository: {
+        id: repo.id,
+        owner: repo.owner,
+        name: repo.name,
+        fullName: repo.full_name,
+        defaultBranch: repo.default_branch,
+        enabled: repo.enabled,
+        config: repo.config,
+        createdAt: repo.created_at,
+        updatedAt: repo.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error('[API] Error updating repository:', error);
+    
+    return NextResponse.json(
+      {
+        error: 'Failed to update repository',
         message: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
