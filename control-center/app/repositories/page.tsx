@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface Repository {
   id: string;
@@ -15,6 +16,7 @@ interface Repository {
 }
 
 export default function RepositoriesPage() {
+  const router = useRouter();
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,10 +140,16 @@ export default function RepositoriesPage() {
                   </div>
                   <div className="flex gap-2">
                     <button
+                      onClick={() => router.push(`/repositories/${repo.id}`)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors"
+                    >
+                      Details & PRs
+                    </button>
+                    <button
                       onClick={() => setSelectedRepo(repo)}
                       className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm font-medium transition-colors"
                     >
-                      Details
+                      Info
                     </button>
                     <a
                       href={`https://github.com/${repo.fullName}`}
