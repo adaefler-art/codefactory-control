@@ -539,6 +539,13 @@ if [ -z "$TARGET_REVISION" ]; then
   exit 1
 fi
 
+# Validate that target revision is a number
+if ! [[ "$TARGET_REVISION" =~ ^[0-9]+$ ]]; then
+  echo "❌ Error: Target revision must be a positive number"
+  echo "Example: $0 41"
+  exit 1
+fi
+
 echo "🔄 Starting rollback to revision $TARGET_REVISION..."
 
 # Verify target revision exists
