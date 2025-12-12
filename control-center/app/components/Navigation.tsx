@@ -7,6 +7,7 @@ export default function Navigation() {
   const pathname = usePathname();
 
   const navItems = [
+    { href: "/workflows", label: "Workflows" },
     { href: "/features", label: "Features" },
     { href: "/new-feature", label: "New Feature" },
     { href: "/ninefold", label: "Ninefold" },
