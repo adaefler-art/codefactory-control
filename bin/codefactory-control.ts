@@ -9,6 +9,7 @@ import { Afu9NetworkStack } from '../lib/afu9-network-stack';
 import { Afu9DatabaseStack } from '../lib/afu9-database-stack';
 import { Afu9EcsStack } from '../lib/afu9-ecs-stack';
 import { Afu9AlarmsStack } from '../lib/afu9-alarms-stack';
+import { Afu9IamStack } from '../lib/afu9-iam-stack';
 
 const app = new cdk.App();
 
@@ -92,4 +93,16 @@ new Afu9AlarmsStack(app, 'Afu9AlarmsStack', {
   albFullName: networkStack.loadBalancer.loadBalancerFullName,
   targetGroupFullName: networkStack.targetGroup.targetGroupFullName,
   alarmEmail,
+});
+
+// IAM stack for deployment automation (independent)
+// Provide GitHub org and repo via context:
+// npx cdk deploy Afu9IamStack -c github-org=your-org -c github-repo=your-repo
+const githubOrg = app.node.tryGetContext('github-org') || 'adaefler-art';
+const githubRepo = app.node.tryGetContext('github-repo') || 'codefactory-control';
+new Afu9IamStack(app, 'Afu9IamStack', {
+  env,
+  description: 'AFU-9 v0.2 IAM: Deployment roles for GitHub Actions',
+  githubOrg,
+  githubRepo,
 });
