@@ -2,11 +2,11 @@
   "name": "@afu9/mcp-observability",
   "version": "0.2.0",
   "private": true,
-  "main": "dist/index.js",
+  "main": "dist/observability/src/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "ts-node-dev --respawn src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/observability/src/index.js"
   },
   "dependencies": {
     "@afu9/mcp-base": "file:../base",
