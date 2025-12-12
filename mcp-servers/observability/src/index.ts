@@ -14,9 +14,9 @@ import {
  * Observability MCP Server
  * 
  * Provides CloudWatch observability operations as MCP tools:
- * - logs.search
- * - metrics.getServiceHealth
- * - metrics.getAlarmStatus
+ * - logs.search: Search CloudWatch Logs by pattern (ERROR, RequestId, TaskId, etc.)
+ * - metrics.getServiceHealth: Get ECS service health metrics (CPU, Memory, ALB 5xx rate)
+ * - getAlarmStatus: Get CloudWatch alarm status (bonus feature)
  */
 export class ObservabilityMCPServer extends MCPServer {
   private logsClient: CloudWatchLogsClient;
