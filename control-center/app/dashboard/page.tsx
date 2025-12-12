@@ -115,6 +115,7 @@ export default function DashboardPage() {
         // Calculate agent error rate
         const agentsWithErrors = agents.filter((a: { error?: string }) => a.error).length;
         const errorRate = agents.length > 0 ? (agentsWithErrors / agents.length) * 100 : 0;
+        const DECIMAL_PLACES = 10; // Multiplier for rounding to 1 decimal place
 
         const agentStats = {
           total: agents.length,
@@ -122,7 +123,7 @@ export default function DashboardPage() {
           avgDuration: agents.length > 0 
             ? Math.round(agents.reduce((sum: number, a: { durationMs?: number }) => sum + (a.durationMs || 0), 0) / agents.length)
             : 0,
-          errorRate: Math.round(errorRate * 10) / 10, // Round to 1 decimal place
+          errorRate: Math.round(errorRate * DECIMAL_PLACES) / DECIMAL_PLACES,
         };
 
         const workflowStats = {
@@ -192,10 +193,12 @@ export default function DashboardPage() {
 
   const getLatestMetricValue = (datapoints?: Array<{ timestamp: Date; average?: number; maximum?: number }>) => {
     if (!datapoints || datapoints.length === 0) return null;
-    const sorted = [...datapoints].sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-    return sorted[0];
+    // Find the datapoint with the most recent timestamp without sorting
+    return datapoints.reduce((latest, current) => {
+      const latestTime = new Date(latest.timestamp).getTime();
+      const currentTime = new Date(current.timestamp).getTime();
+      return currentTime > latestTime ? current : latest;
+    });
   };
 
   return (
@@ -449,11 +452,16 @@ export default function DashboardPage() {
                         <div className="text-sm text-gray-400 mb-2">ALB 5xx Errors</div>
                         {infrastructureHealth.metrics.alb5xx?.datapoints?.length ? (
                           (() => {
-                            const latest = getLatestMetricValue(infrastructureHealth.metrics.alb5xx.datapoints);
+                            const alb5xxDatapoints = infrastructureHealth.metrics.alb5xx.datapoints as Array<{ timestamp: Date; sum?: number; average?: number }>;
+                            const latest = alb5xxDatapoints.reduce((latest, current) => {
+                              const latestTime = new Date(latest.timestamp).getTime();
+                              const currentTime = new Date(current.timestamp).getTime();
+                              return currentTime > latestTime ? current : latest;
+                            });
                             return latest ? (
                               <div>
                                 <div className="text-2xl font-bold text-gray-200">
-                                  {(latest as any).sum || 0}
+                                  {latest.sum || 0}
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1">
                                   Last period
