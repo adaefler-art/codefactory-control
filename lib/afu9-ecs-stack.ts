@@ -296,7 +296,7 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'curl -f http://localhost:3000/api/health || exit 1'],
+        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1'],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -326,6 +326,13 @@ export class Afu9EcsStack extends cdk.Stack {
         GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
       },
       essential: true,
+      healthCheck: {
+        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/health || exit 1'],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(60),
+      },
     });
 
     mcpGithubContainer.addPortMappings({
@@ -348,6 +355,13 @@ export class Afu9EcsStack extends cdk.Stack {
         AWS_REGION: cdk.Stack.of(this).region,
       },
       essential: true,
+      healthCheck: {
+        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3002/health || exit 1'],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(60),
+      },
     });
 
     mcpDeployContainer.addPortMappings({
@@ -370,6 +384,13 @@ export class Afu9EcsStack extends cdk.Stack {
         AWS_REGION: cdk.Stack.of(this).region,
       },
       essential: true,
+      healthCheck: {
+        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3003/health || exit 1'],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(60),
+      },
     });
 
     mcpObservabilityContainer.addPortMappings({
