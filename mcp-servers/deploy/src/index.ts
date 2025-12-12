@@ -50,9 +50,9 @@ export class DeployMCPServer extends MCPServer {
   protected async handleToolCall(tool: string, args: Record<string, any>): Promise<any> {
     switch (tool) {
       case 'updateService':
-        return this.updateService(args);
+        return this.updateService(args as { cluster: string; service: string; forceNewDeployment?: boolean });
       case 'getServiceStatus':
-        return this.getServiceStatus(args);
+        return this.getServiceStatus(args as { cluster: string; service: string });
       default:
         throw new Error(`Unknown tool: ${tool}`);
     }
