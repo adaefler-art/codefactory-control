@@ -38,6 +38,12 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * ARN of the database connection secret
    */
   dbSecretArn: string;
+
+  /**
+   * Image tag to use for deployments
+   * @default 'staging-latest'
+   */
+  imageTag?: string;
 }
 
 export class Afu9EcsStack extends cdk.Stack {
@@ -51,7 +57,7 @@ export class Afu9EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
 
-    const { vpc, ecsSecurityGroup, targetGroup, dbSecretArn } = props;
+    const { vpc, ecsSecurityGroup, targetGroup, dbSecretArn, imageTag = 'staging-latest' } = props;
 
     // ========================================
     // ECR Repositories
@@ -342,6 +348,16 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
     // ECS Task Definition
     // ========================================
+    // 
+    // Image Tagging Strategy:
+    // - Primary tag: Git commit SHA (7 chars, e.g., 'a1b2c3d') - immutable, production deployments
+    // - Secondary tag: Timestamp (e.g., '20251212-143000') - immutable, audit trail
+    // - Convenience tag: 'staging-latest' - mutable, for development/staging
+    // 
+    // GitHub Actions deployments create new task definitions with SHA tags.
+    // CDK deployments use 'staging-latest' by default (can be overridden via imageTag prop).
+    // 
+    // For rollback procedures, see docs/ROLLBACK.md
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
       family: 'afu9-control-center',
@@ -353,7 +369,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Control Center container
     const controlCenterContainer = taskDefinition.addContainer('control-center', {
-      image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, 'latest'),
+      image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, imageTag),
       containerName: 'control-center',
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'control-center',
@@ -397,7 +413,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // MCP GitHub Server container
     const mcpGithubContainer = taskDefinition.addContainer('mcp-github', {
-      image: ecs.ContainerImage.fromEcrRepository(this.mcpGithubRepo, 'latest'),
+      image: ecs.ContainerImage.fromEcrRepository(this.mcpGithubRepo, imageTag),
       containerName: 'mcp-github',
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'mcp-github',
@@ -428,7 +444,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // MCP Deploy Server container
     const mcpDeployContainer = taskDefinition.addContainer('mcp-deploy', {
-      image: ecs.ContainerImage.fromEcrRepository(this.mcpDeployRepo, 'latest'),
+      image: ecs.ContainerImage.fromEcrRepository(this.mcpDeployRepo, imageTag),
       containerName: 'mcp-deploy',
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'mcp-deploy',
@@ -457,7 +473,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // MCP Observability Server container
     const mcpObservabilityContainer = taskDefinition.addContainer('mcp-observability', {
-      image: ecs.ContainerImage.fromEcrRepository(this.mcpObservabilityRepo, 'latest'),
+      image: ecs.ContainerImage.fromEcrRepository(this.mcpObservabilityRepo, imageTag),
       containerName: 'mcp-observability',
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'mcp-observability',

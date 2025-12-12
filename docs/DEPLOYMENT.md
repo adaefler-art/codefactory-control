@@ -303,6 +303,21 @@ psql -h $DB_HOST -U afu9_admin -d afu9 -c "\dt"
 
 ## Step 7: Build and Push Docker Images
 
+### Image Tagging Strategy
+
+AFU-9 uses a deterministic versioning strategy with immutable image tags:
+
+**Tag Types:**
+- **Primary (Immutable)**: Git commit SHA (7 chars, e.g., `a1b2c3d`) - used for production
+- **Secondary (Immutable)**: Timestamp (e.g., `20251212-143000`) - audit trail
+- **Convenience (Mutable)**: `staging-latest` - for development/staging only
+
+**Best Practices:**
+- Production deployments MUST use SHA tags
+- Never use `latest` tag for production
+- GitHub Actions automatically creates SHA-tagged images
+- For rollback procedures, see [ROLLBACK.md](ROLLBACK.md)
+
 ### Build Control Center
 
 ```bash
@@ -313,15 +328,29 @@ aws ecr get-login-password --region $AWS_REGION | \
   docker login --username AWS --password-stdin \
   $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
+# Get current git SHA
+GIT_SHA=$(git rev-parse --short=7 HEAD)
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
 # Build image
-docker build -t afu9/control-center:latest .
+docker build -t afu9/control-center:$GIT_SHA .
 
-# Tag for ECR
-docker tag afu9/control-center:latest \
-  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:latest
+# Tag for ECR with multiple tags
+docker tag afu9/control-center:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:$GIT_SHA
 
-# Push to ECR
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:latest
+docker tag afu9/control-center:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:$TIMESTAMP
+
+docker tag afu9/control-center:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:staging-latest
+
+# Push all tags to ECR
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:$GIT_SHA
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:$TIMESTAMP
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/control-center:staging-latest
+
+echo "Images pushed with SHA: $GIT_SHA"
 
 cd ..
 ```
@@ -331,23 +360,47 @@ cd ..
 ```bash
 cd mcp-servers
 
+# Get versioning info
+GIT_SHA=$(git rev-parse --short=7 HEAD)
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
 # Build and push GitHub server
-docker build -t afu9/mcp-github:latest -f github/Dockerfile .
-docker tag afu9/mcp-github:latest \
-  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:latest
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:latest
+docker build -t afu9/mcp-github:$GIT_SHA -f github/Dockerfile .
+docker tag afu9/mcp-github:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:$GIT_SHA
+docker tag afu9/mcp-github:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:$TIMESTAMP
+docker tag afu9/mcp-github:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:staging-latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:$GIT_SHA
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:$TIMESTAMP
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-github:staging-latest
 
 # Build and push Deploy server
-docker build -t afu9/mcp-deploy:latest -f deploy/Dockerfile .
-docker tag afu9/mcp-deploy:latest \
-  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:latest
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:latest
+docker build -t afu9/mcp-deploy:$GIT_SHA -f deploy/Dockerfile .
+docker tag afu9/mcp-deploy:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:$GIT_SHA
+docker tag afu9/mcp-deploy:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:$TIMESTAMP
+docker tag afu9/mcp-deploy:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:staging-latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:$GIT_SHA
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:$TIMESTAMP
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-deploy:staging-latest
 
 # Build and push Observability server
-docker build -t afu9/mcp-observability:latest -f observability/Dockerfile .
-docker tag afu9/mcp-observability:latest \
-  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:latest
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:latest
+docker build -t afu9/mcp-observability:$GIT_SHA -f observability/Dockerfile .
+docker tag afu9/mcp-observability:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:$GIT_SHA
+docker tag afu9/mcp-observability:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:$TIMESTAMP
+docker tag afu9/mcp-observability:$GIT_SHA \
+  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:staging-latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:$GIT_SHA
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:$TIMESTAMP
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/afu9/mcp-observability:staging-latest
+
+echo "All MCP servers pushed with SHA: $GIT_SHA"
 
 cd ..
 ```
@@ -511,11 +564,17 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           cd control-center
-          docker build -t $ECR_REGISTRY/afu9/control-center:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/afu9/control-center:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/afu9/control-center:$IMAGE_TAG \
-            $ECR_REGISTRY/afu9/control-center:latest
-          docker push $ECR_REGISTRY/afu9/control-center:latest
+          SHORT_SHA=$(echo $IMAGE_TAG | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          
+          docker build -t $ECR_REGISTRY/afu9/control-center:$SHORT_SHA .
+          docker push $ECR_REGISTRY/afu9/control-center:$SHORT_SHA
+          docker tag $ECR_REGISTRY/afu9/control-center:$SHORT_SHA \
+            $ECR_REGISTRY/afu9/control-center:$TIMESTAMP
+          docker push $ECR_REGISTRY/afu9/control-center:$TIMESTAMP
+          docker tag $ECR_REGISTRY/afu9/control-center:$SHORT_SHA \
+            $ECR_REGISTRY/afu9/control-center:staging-latest
+          docker push $ECR_REGISTRY/afu9/control-center:staging-latest
 
       - name: Build and push MCP servers
         env:
@@ -523,27 +582,87 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           cd mcp-servers
+          SHORT_SHA=$(echo $IMAGE_TAG | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           
           # GitHub server
-          docker build -t $ECR_REGISTRY/afu9/mcp-github:$IMAGE_TAG -f github/Dockerfile .
-          docker push $ECR_REGISTRY/afu9/mcp-github:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/afu9/mcp-github:$SHORT_SHA -f github/Dockerfile .
+          docker push $ECR_REGISTRY/afu9/mcp-github:$SHORT_SHA
+          docker tag $ECR_REGISTRY/afu9/mcp-github:$SHORT_SHA $ECR_REGISTRY/afu9/mcp-github:$TIMESTAMP
+          docker push $ECR_REGISTRY/afu9/mcp-github:$TIMESTAMP
+          docker tag $ECR_REGISTRY/afu9/mcp-github:$SHORT_SHA $ECR_REGISTRY/afu9/mcp-github:staging-latest
+          docker push $ECR_REGISTRY/afu9/mcp-github:staging-latest
           
           # Deploy server
-          docker build -t $ECR_REGISTRY/afu9/mcp-deploy:$IMAGE_TAG -f deploy/Dockerfile .
-          docker push $ECR_REGISTRY/afu9/mcp-deploy:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/afu9/mcp-deploy:$SHORT_SHA -f deploy/Dockerfile .
+          docker push $ECR_REGISTRY/afu9/mcp-deploy:$SHORT_SHA
+          docker tag $ECR_REGISTRY/afu9/mcp-deploy:$SHORT_SHA $ECR_REGISTRY/afu9/mcp-deploy:$TIMESTAMP
+          docker push $ECR_REGISTRY/afu9/mcp-deploy:$TIMESTAMP
+          docker tag $ECR_REGISTRY/afu9/mcp-deploy:$SHORT_SHA $ECR_REGISTRY/afu9/mcp-deploy:staging-latest
+          docker push $ECR_REGISTRY/afu9/mcp-deploy:staging-latest
           
           # Observability server
-          docker build -t $ECR_REGISTRY/afu9/mcp-observability:$IMAGE_TAG -f observability/Dockerfile .
-          docker push $ECR_REGISTRY/afu9/mcp-observability:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/afu9/mcp-observability:$SHORT_SHA -f observability/Dockerfile .
+          docker push $ECR_REGISTRY/afu9/mcp-observability:$SHORT_SHA
+          docker tag $ECR_REGISTRY/afu9/mcp-observability:$SHORT_SHA $ECR_REGISTRY/afu9/mcp-observability:$TIMESTAMP
+          docker push $ECR_REGISTRY/afu9/mcp-observability:$TIMESTAMP
+          docker tag $ECR_REGISTRY/afu9/mcp-observability:$SHORT_SHA $ECR_REGISTRY/afu9/mcp-observability:staging-latest
+          docker push $ECR_REGISTRY/afu9/mcp-observability:staging-latest
 
       - name: Deploy to ECS
         run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          
+          # Update service with new task definition using SHA tags
+          # See .github/workflows/deploy-ecs.yml for complete deployment logic
           aws ecs update-service \
             --cluster afu9-cluster \
             --service afu9-control-center \
             --force-new-deployment \
             --region eu-central-1
 ```
+
+## Rollback Procedures
+
+For detailed rollback instructions, see **[ROLLBACK.md](ROLLBACK.md)**.
+
+### Quick Rollback Summary
+
+If a deployment fails or causes issues, you can quickly rollback to a previous stable version:
+
+```bash
+# List recent task definition revisions
+aws ecs list-task-definitions \
+  --family-prefix afu9-control-center \
+  --sort DESC \
+  --max-items 5 \
+  --region eu-central-1
+
+# Rollback to a specific revision (e.g., revision 41)
+aws ecs update-service \
+  --cluster afu9-cluster \
+  --service afu9-control-center \
+  --task-definition afu9-control-center:41 \
+  --region eu-central-1
+
+# Wait for service to stabilize
+aws ecs wait services-stable \
+  --cluster afu9-cluster \
+  --services afu9-control-center \
+  --region eu-central-1
+```
+
+**Key Points:**
+- Each deployment creates a new task definition revision
+- Revisions are immutable and contain specific image SHA tags
+- Rollback typically completes in 2-3 minutes
+- Always verify health after rollback
+
+See [ROLLBACK.md](ROLLBACK.md) for:
+- Step-by-step rollback procedures
+- Common rollback scenarios
+- Verification checklists
+- Emergency rollback commands
 
 ## Troubleshooting
 

@@ -72,9 +72,9 @@ jobs:
           file: ./control-center/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.control_center }}:latest
             ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.short_sha }}
             ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.control_center }}:staging-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -86,9 +86,9 @@ jobs:
           file: ./mcp-servers/github/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_github }}:latest
             ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.short_sha }}
             ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:staging-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -100,9 +100,9 @@ jobs:
           file: ./mcp-servers/deploy/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:latest
             ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.short_sha }}
             ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:staging-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -114,19 +114,65 @@ jobs:
           file: ./mcp-servers/observability/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:latest
             ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.short_sha }}
             ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:staging-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Create new task definition with SHA tags
+        id: task-def
+        run: |
+          echo "Creating new task definition with SHA-tagged images..."
+          
+          # Get current task definition
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          
+          echo "Current task definition: $TASK_DEF_ARN"
+          
+          # Get task definition JSON
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def.json
+          
+          # Update container images with SHA tags
+          jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.short_sha }}" \
+             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.short_sha }}" \
+             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.short_sha }}" \
+             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.short_sha }}" \
+             '.containerDefinitions |= map(
+               if .name == "control-center" then .image = $cc_image
+               elif .name == "mcp-github" then .image = $gh_image
+               elif .name == "mcp-deploy" then .image = $dp_image
+               elif .name == "mcp-observability" then .image = $ob_image
+               else . end
+             ) | 
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+             task-def.json > new-task-def.json
+          
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "New task definition: $NEW_TASK_DEF_ARN"
+
       - name: Update ECS service
         run: |
-          echo "Forcing new deployment of ECS service..."
+          echo "Updating ECS service with new task definition..."
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
-            --force-new-deployment \
+            --task-definition ${{ steps.task-def.outputs.new_task_def_arn }} \
             --region ${{ env.AWS_REGION }}
 
       - name: Wait for service stability
@@ -160,7 +206,13 @@ jobs:
           echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ECS Service:" >> $GITHUB_STEP_SUMMARY
+          echo "### ECS Configuration:" >> $GITHUB_STEP_SUMMARY
           echo "- Cluster: \`${{ env.ECS_CLUSTER }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Service: \`${{ env.ECS_SERVICE }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Region: \`${{ env.AWS_REGION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rollback Information:" >> $GITHUB_STEP_SUMMARY
+          echo "- Git SHA: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- See [ROLLBACK.md](../docs/ROLLBACK.md) for rollback procedures" >> $GITHUB_STEP_SUMMARY
