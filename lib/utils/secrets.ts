@@ -112,7 +112,7 @@ interface CacheEntry<T> {
  * In-memory cache for secrets
  * Maps secret name to cached value with expiration
  */
-const secretCache = new Map<string, CacheEntry<any>>();
+const secretCache = new Map<string, CacheEntry<unknown>>();
 
 /**
  * Get a cached secret if it exists and hasn't expired
@@ -265,7 +265,7 @@ async function loadSecretWithEnvFallback<T extends Record<string, any>>(
       for (const [key, envVar] of Object.entries(envMapping)) {
         const value = process.env[envVar];
         if (value) {
-          (envSecret as any)[key] = value;
+          (envSecret as Record<string, string>)[key as string] = value;
           hasAnyValue = true;
         }
       }
