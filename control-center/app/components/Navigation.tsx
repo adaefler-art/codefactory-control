@@ -12,6 +12,7 @@ export default function Navigation() {
     { href: "/features", label: "Features" },
     { href: "/new-feature", label: "New Feature" },
     { href: "/ninefold", label: "Ninefold" },
+    { href: "/settings", label: "Settings" },
   ];
 
   const isActive = (href: string) => {
