@@ -1,5 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
-import { aws_ec2 as ec2, aws_elasticloadbalancingv2 as elbv2, aws_certificatemanager as acm } from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
 
 /**
