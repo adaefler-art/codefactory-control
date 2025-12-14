@@ -1,0 +1,35 @@
+policy_version: aegis.policy.v1
+
+defaults:
+  learning_mode: false
+
+rules:
+  - id: P01
+    when: "ci.status != \"success\""
+    then: "KILL_AND_ROLLBACK"
+    severity: BLOCK
+    reason: "CI must be green"
+
+  - id: P02
+    when: "security.critical_count > 0 || security.high_count > 2"
+    then: "HOLD_FOR_HUMAN"
+    severity: HIGH
+    reason: "Security findings too high"
+
+  - id: P03
+    when: "change_flags.infra_change == true || change_flags.db_migration == true"
+    then: "REQUIRE_APPROVAL"
+    severity: HIGH
+    reason: "Infra/DB changes require approval"
+
+  - id: P04
+    when: "canary.error_rate > 0.02 || canary.latency_delta > 100"
+    then: "HOLD_FOR_HUMAN"
+    severity: HIGH
+    reason: "Canary degradation detected"
+
+  - id: P05
+    when: "ci.status == \"success\" && security.critical_count == 0 && security.high_count == 0"
+    then: "ALLOW"
+    severity: INFO
+    reason: "Happy path"

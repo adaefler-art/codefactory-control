@@ -11,9 +11,11 @@
     "cdk": "cdk",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
-    "destroy": "cdk destroy"
+    "destroy": "cdk destroy",
+    "test": "node --test -r ts-node/register \"aegis/**/__tests__/*.test.ts\""
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
     "@types/node": "^22.10.2",
     "ajv-cli": "^5.0.0",
     "ajv-formats": "^3.0.1",
