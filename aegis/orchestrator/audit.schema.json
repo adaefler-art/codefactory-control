@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AEGIS Orchestrator Audit v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "timestamp_utc",
+    "action_request_id",
+    "verdict_hash",
+    "plan",
+    "status_transitions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "aegis.orchestrator.audit.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "action_request_id": { "type": "string", "minLength": 1 },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "verdict_hash": { "type": "string", "minLength": 6 },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["final_action", "proposed_action", "confidence", "learning_mode", "approved_for_execution"],
+      "properties": {
+        "proposed_action": {
+          "type": "string",
+          "enum": ["APPROVE_AUTOMERGE_DEPLOY", "HOLD_FOR_HUMAN", "KILL_AND_ROLLBACK"]
+        },
+        "final_action": {
+          "type": "string",
+          "enum": ["APPROVE_AUTOMERGE_DEPLOY", "HOLD_FOR_HUMAN", "KILL_AND_ROLLBACK"]
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "learning_mode": { "type": "boolean" },
+        "approved_for_execution": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "status_transitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "timestamp_utc"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "timestamp_utc": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "adapter_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["adapter", "status", "timestamp_utc"],
+        "properties": {
+          "adapter": { "type": "string" },
+          "status": { "type": "string", "enum": ["SUCCESS", "SKIPPED", "FAILED"] },
+          "timestamp_utc": { "type": "string", "format": "date-time" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actor", "reason", "previous_action", "new_action", "timestamp_utc"],
+        "properties": {
+          "actor": { "type": "string" },
+          "reason": { "type": "string" },
+          "previous_action": { "type": "string" },
+          "new_action": { "type": "string" },
+          "timestamp_utc": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
