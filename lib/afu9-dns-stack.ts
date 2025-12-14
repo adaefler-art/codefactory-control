@@ -5,45 +5,39 @@ import { Construct } from 'constructs';
 
 /**
  * AFU-9 DNS and Certificate Stack
- * 
- * Manages DNS and TLS certificates for AFU-9 v0.2:
- * - Route53 hosted zone (optional, can use existing)
- * - ACM certificate for the domain with DNS validation
- * - Exports certificate ARN for use by ALB
- * 
- * Domain Configuration:
- * - Default domain: afu9.example.com (must be configured via context)
- * - Supports both apex domains and subdomains
- * - Uses DNS validation for automatic certificate issuance
- * 
- * Usage:
- * Configure the domain via CDK context in cdk.json or command line:
- * 
- *   {
- *     "context": {
- *       "afu9-domain": "afu9.yourdomain.com",
- *       "afu9-hosted-zone-id": "Z1234567890ABC" // Optional, if using existing zone
- *     }
- *   }
- * 
- * Or via command line:
- *   npx cdk deploy Afu9DnsStack -c afu9-domain=afu9.yourdomain.com
+ *
+ * Manages DNS and TLS certificates for AFU-9:
+ * - Optional Route53 hosted zone (can use existing)
+ * - ACM certificate with DNS validation
+ * - Exports certificate ARN for ALB usage
+ *
+ * IMPORTANT:
+ * - There is NO default domain.
+ * - A domainName MUST be provided explicitly via props or CDK context.
+ *
+ * Supported CDK context keys:
+ * - domainName
+ * - afu9-domain
+ *
+ * Example:
+ *   npx cdk deploy Afu9DnsStack \
+ *     -c enableDns=true \
+ *     -c domainName=afu-9.com
  */
 export interface Afu9DnsStackProps extends cdk.StackProps {
   /**
-   * The domain name for AFU-9 Control Center
-   * @default 'afu9.example.com'
+   * Fully qualified domain name for AFU-9 Control Center
+   * Example: afu-9.com or control.afu-9.com
    */
   domainName?: string;
 
   /**
    * Optional: Use an existing Route53 hosted zone
-   * If not provided, a new hosted zone will be created
    */
   hostedZoneId?: string;
 
   /**
-   * Optional: The name of the existing hosted zone
+   * Optional: Name of the existing hosted zone
    * Required if hostedZoneId is provided
    */
   hostedZoneName?: string;
@@ -57,45 +51,62 @@ export class Afu9DnsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: Afu9DnsStackProps) {
     super(scope, id, props);
 
-    // Get domain name from props, context, or use default
-    this.domainName = props?.domainName || 
-                      this.node.tryGetContext('afu9-domain') || 
-                      'afu9.example.com';
+    // ------------------------------------------------------------
+    // Resolve domain name (NO DEFAULTS)
+    // ------------------------------------------------------------
+    this.domainName =
+      props?.domainName ??
+      this.node.tryGetContext('domainName') ??
+      this.node.tryGetContext('afu9-domain');
 
-    // Check for existing hosted zone configuration
-    const hostedZoneId = props?.hostedZoneId || this.node.tryGetContext('afu9-hosted-zone-id');
-    const hostedZoneName = props?.hostedZoneName || this.node.tryGetContext('afu9-hosted-zone-name');
+    if (!this.domainName) {
+      throw new Error(
+        'Afu9DnsStack: DNS is enabled but no domainName provided. ' +
+          'Provide it via props or CDK context: -c domainName=your-domain.com'
+      );
+    }
 
-    // ========================================
-    // Route53 Hosted Zone
-    // ========================================
+    // ------------------------------------------------------------
+    // Hosted Zone Resolution
+    // ------------------------------------------------------------
+    const hostedZoneId =
+      props?.hostedZoneId ??
+      this.node.tryGetContext('afu9-hosted-zone-id');
+
+    const hostedZoneName =
+      props?.hostedZoneName ??
+      this.node.tryGetContext('afu9-hosted-zone-name');
 
     if (hostedZoneId && hostedZoneName) {
       // Use existing hosted zone
-      this.hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
-        hostedZoneId,
-        zoneName: hostedZoneName,
-      });
+      this.hostedZone = route53.HostedZone.fromHostedZoneAttributes(
+        this,
+        'HostedZone',
+        {
+          hostedZoneId,
+          zoneName: hostedZoneName,
+        }
+      );
     } else {
-      // Create new hosted zone
-      // Extract the zone name (e.g., "yourdomain.com" from "afu9.yourdomain.com")
+      // Create new hosted zone from domain name
       const zoneName = this.extractZoneName(this.domainName);
-      
+
       this.hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
         zoneName,
-        comment: `Hosted zone for AFU-9 Control Center (${this.domainName})`,
+        comment: `Hosted zone for AFU-9 (${this.domainName})`,
       });
 
-      cdk.Tags.of(this.hostedZone).add('Name', `afu9-hosted-zone-${zoneName}`);
+      cdk.Tags.of(this.hostedZone).add(
+        'Name',
+        `afu9-hosted-zone-${zoneName}`
+      );
       cdk.Tags.of(this.hostedZone).add('Environment', 'production');
       cdk.Tags.of(this.hostedZone).add('Project', 'AFU-9');
     }
 
-    // ========================================
+    // ------------------------------------------------------------
     // ACM Certificate
-    // ========================================
-
-    // Create ACM certificate with DNS validation
+    // ------------------------------------------------------------
     this.certificate = new acm.Certificate(this, 'Certificate', {
       domainName: this.domainName,
       validation: acm.CertificateValidation.fromDns(this.hostedZone),
@@ -106,10 +117,9 @@ export class Afu9DnsStack extends cdk.Stack {
     cdk.Tags.of(this.certificate).add('Environment', 'production');
     cdk.Tags.of(this.certificate).add('Project', 'AFU-9');
 
-    // ========================================
+    // ------------------------------------------------------------
     // Stack Outputs
-    // ========================================
-
+    // ------------------------------------------------------------
     new cdk.CfnOutput(this, 'DomainName', {
       value: this.domainName,
       description: 'Domain name for AFU-9 Control Center',
@@ -129,8 +139,12 @@ export class Afu9DnsStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'HostedZoneNameServers', {
-      value: cdk.Fn.join(', ', this.hostedZone.hostedZoneNameServers || []),
-      description: 'Name servers for the hosted zone (configure these with your domain registrar)',
+      value: cdk.Fn.join(
+        ', ',
+        this.hostedZone.hostedZoneNameServers ?? []
+      ),
+      description:
+        'Name servers for the hosted zone (configure these with your registrar)',
       exportName: 'Afu9HostedZoneNameServers',
     });
 
@@ -141,50 +155,45 @@ export class Afu9DnsStack extends cdk.Stack {
   }
 
   /**
-   * Extract the zone name from a full domain name
-   * 
+   * Extract hosted zone name from a full domain name.
+   *
    * Examples:
-   * - "afu9.example.com" -> "example.com"
-   * - "example.com" -> "example.com"
-   * - "afu9.subdomain.example.com" -> "subdomain.example.com"
-   * 
-   * Limitations:
-   * - This method assumes standard TLDs (e.g., .com, .org, .net)
-   * - For multi-part TLDs like .co.uk, .com.au, or .ac.uk, the extraction will be incorrect
-   * - In these cases, use the hostedZoneId and hostedZoneName props to specify an existing zone
-   * 
-   * Example for .co.uk domain:
-   *   new Afu9DnsStack(app, 'Afu9DnsStack', {
-   *     domainName: 'afu9.example.co.uk',
-   *     hostedZoneId: 'Z1234567890ABC',
-   *     hostedZoneName: 'example.co.uk',
-   *   });
+   * - "control.afu-9.com" -> "afu-9.com"
+   * - "afu-9.com" -> "afu-9.com"
+   *
+   * For multi-part TLDs (e.g. .co.uk), an existing hosted zone
+   * must be provided explicitly.
    */
   private extractZoneName(domainName: string): string {
     const parts = domainName.split('.');
-    
-    // If it's just a domain (e.g., "example.com"), return as-is
+
     if (parts.length <= 2) {
       return domainName;
     }
-    
-    // Check for known multi-part TLDs that require special handling
+
     const multiPartTlds = [
-      'co.uk', 'com.au', 'co.nz', 'co.za', 'com.br', 'co.jp',
-      'ac.uk', 'gov.uk', 'org.uk', 'com.mx', 'com.ar', 'co.in',
+      'co.uk',
+      'com.au',
+      'co.nz',
+      'co.za',
+      'com.br',
+      'co.jp',
+      'ac.uk',
+      'gov.uk',
+      'org.uk',
+      'com.mx',
+      'com.ar',
+      'co.in',
     ];
-    
+
     const lastTwoParts = parts.slice(-2).join('.');
     if (multiPartTlds.includes(lastTwoParts)) {
-      // Multi-part TLD detected - provide helpful error message
       throw new Error(
         `Multi-part TLD detected (.${lastTwoParts}) in domain "${domainName}". ` +
-        `Please provide an existing hosted zone using hostedZoneId and hostedZoneName props. ` +
-        `Example: { domainName: "${domainName}", hostedZoneId: "Z123...", hostedZoneName: "${parts.slice(-3).join('.')}" }`
+          'Provide hostedZoneId and hostedZoneName explicitly.'
       );
     }
-    
-    // Otherwise, return the last two parts (e.g., "example.com")
-    return parts.slice(-2).join('.');
+
+    return lastTwoParts;
   }
 }
