@@ -45,3 +45,13 @@ terraform.rc
 # OS
 .DS_Store
 Thumbs.db
+
+
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+cdk.out/
+**/cdk.out/
+dist/
+**/dist/
