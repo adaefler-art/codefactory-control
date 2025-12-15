@@ -39,7 +39,7 @@ interface CognitoJWTPayload extends JWTPayload {
 
 /**
  * Verify JWT token and extract user information
- * @param token - The JWT token to verify
+ * @param token - The JWT token to verify (ID token)
  * @returns Verified JWT payload or null if invalid
  */
 async function verifyToken(token: string): Promise<CognitoJWTPayload | null> {

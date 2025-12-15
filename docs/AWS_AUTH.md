@@ -366,3 +366,64 @@ For issues or questions:
 2. Verify environment variables are correctly set
 3. Test authentication flow with curl/PowerShell
 4. Review Cognito User Pool configuration in AWS Console
+
+## Local Testing Guide
+
+For detailed local testing instructions with curl and PowerShell examples, see the testing steps below.
+
+### Quick Test Setup
+
+1. Deploy the auth stack and get outputs:
+   ```bash
+   npx cdk deploy Afu9AuthStack --region eu-central-1
+   aws cloudformation describe-stacks --stack-name Afu9AuthStack --region eu-central-1 --query 'Stacks[0].Outputs'
+   ```
+
+2. Update `control-center/.env.local` with the CloudFormation outputs
+
+3. Create a test user and group:
+   ```bash
+   # Create user
+   aws cognito-idp admin-create-user \
+     --user-pool-id <UserPoolId> \
+     --username testuser \
+     --temporary-password TestPass123! \
+     --region eu-central-1
+
+   # Set permanent password
+   aws cognito-idp admin-set-user-password \
+     --user-pool-id <UserPoolId> \
+     --username testuser \
+     --password TestPass123! \
+     --permanent \
+     --region eu-central-1
+
+   # Create group
+   aws cognito-idp create-group \
+     --user-pool-id <UserPoolId> \
+     --group-name afu9-engineer-stage \
+     --region eu-central-1
+
+   # Add user to group
+   aws cognito-idp admin-add-user-to-group \
+     --user-pool-id <UserPoolId> \
+     --username testuser \
+     --group-name afu9-engineer-stage \
+     --region eu-central-1
+   ```
+
+4. Start dev server:
+   ```bash
+   cd control-center
+   npm run dev
+   ```
+
+5. Test login (see examples in "Login Endpoint Usage" section above)
+
+### Expected Test Results
+
+- ✓ Login returns `{"success": true, "message": "Login successful"}`
+- ✓ Three HttpOnly cookies set: `afu9_id`, `afu9_access`, `afu9_refresh`
+- ✓ Protected routes accessible with valid cookies
+- ✓ Unauthenticated requests redirect to landing page
+- ✓ Invalid/expired tokens redirect to landing page
