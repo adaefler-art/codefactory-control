@@ -87,7 +87,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     // Custom parameter group for performance tuning
     const parameterGroup = new rds.ParameterGroup(this, 'DbParameterGroup', {
       engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_15_5,
+        version: rds.PostgresEngineVersion.VER_15_15,
       }),
       description: 'Custom parameter group for AFU-9 database',
       parameters: {
@@ -95,13 +95,14 @@ export class Afu9DatabaseStack extends cdk.Stack {
         'max_connections': '100',
         
         // Memory settings (for db.t4g.micro: 1GB RAM)
-        'shared_buffers': '256MB',
-        'effective_cache_size': '768MB',
-        'work_mem': '4MB',
-        'maintenance_work_mem': '64MB',
+        'shared_buffers': '32768',
+        'effective_cache_size': '98304',
+        'work_mem': '4096',
+        'maintenance_work_mem': '65536',
         
         // Write-ahead log settings
-        'wal_buffers': '8MB',
+        // TODO(AFU9): wal_buffers unit assumed 8kB blocks; verify
+        'wal_buffers': '1024',
         'checkpoint_completion_target': '0.9',
         
         // Query planning
@@ -122,7 +123,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     this.dbInstance = new rds.DatabaseInstance(this, 'DbInstance', {
       // Engine configuration
       engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_15_5,
+        version: rds.PostgresEngineVersion.VER_15_15,
       }),
       
       // Instance configuration

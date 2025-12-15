@@ -25,18 +25,40 @@ const env = {
   region: 'eu-central-1',
 };
 
-// DNS and Certificate stack (optional, for HTTPS)
-// To enable HTTPS, provide domain name via context:
-// npx cdk deploy --all -c afu9-domain=afu9.yourdomain.com
-// To disable HTTPS explicitly, set: -c afu9-enable-https=false
-const enableHttpsContext = app.node.tryGetContext('afu9-enable-https');
-const enableHttps = enableHttpsContext === undefined ? true : enableHttpsContext !== false && enableHttpsContext !== 'false';
+// DNS and Certificate stack (optional)
+//
+// ✅ New explicit DNS config (preferred):
+//   npx cdk deploy Afu9DnsStack --profile codefactory -c enableDns=true -c domainName=afu-9.com
+//
+// 🧩 Legacy config (supported for backwards-compat):
+//   -c afu9-enable-https=true -c afu9-domain=afu-9.com
+//
+// DNS must be a no-op unless explicitly enabled AND a non-empty domain is provided.
+const enableDnsCtx = app.node.tryGetContext('enableDns');
+const domainNameCtx = app.node.tryGetContext('domainName') ?? app.node.tryGetContext('afu9-domain');
+
+const legacyEnableHttpsCtx = app.node.tryGetContext('afu9-enable-https');
+
+const enableDns =
+  enableDnsCtx === true || enableDnsCtx === 'true' || enableDnsCtx === 1 || enableDnsCtx === '1';
+
+const legacyEnableHttps =
+  legacyEnableHttpsCtx === true ||
+  legacyEnableHttpsCtx === 'true' ||
+  legacyEnableHttpsCtx === 1 ||
+  legacyEnableHttpsCtx === '1';
+
+const domainName = typeof domainNameCtx === 'string' ? domainNameCtx.trim() : '';
+const dnsEnabled = (enableDns || legacyEnableHttps) && domainName.length > 0;
+
 let dnsStack: Afu9DnsStack | undefined;
 
-if (enableHttps) {
+if (dnsEnabled) {
   dnsStack = new Afu9DnsStack(app, 'Afu9DnsStack', {
     env,
     description: 'AFU-9 v0.2 DNS and Certificate: Route53 and ACM certificate for HTTPS',
+    // If Afu9DnsStack supports domainName as a prop, pass it through:
+    // domainName,
   });
 }
 
@@ -44,19 +66,19 @@ if (enableHttps) {
 const networkStack = new Afu9NetworkStack(app, 'Afu9NetworkStack', {
   env,
   description: 'AFU-9 v0.2 Network Foundation: VPC, Subnets, Security Groups, and ALB',
-  certificateArn: dnsStack?.certificate.certificateArn,
+  ...(dnsEnabled ? { certificateArn: dnsStack!.certificate.certificateArn } : {}),
 });
 
 // If DNS stack exists, add Route53 A record to point to ALB
-if (dnsStack) {
-  networkStack.addDependency(dnsStack);
-  
+if (dnsEnabled) {
+  networkStack.addDependency(dnsStack!);
+
   // Add A record to point domain to ALB
   new route53.ARecord(networkStack, 'AliasRecord', {
-    zone: dnsStack.hostedZone,
-    recordName: dnsStack.domainName,
+    zone: dnsStack!.hostedZone,
+    recordName: dnsStack!.domainName,
     target: route53.RecordTarget.fromAlias(
-      new route53Targets.LoadBalancerTarget(networkStack.loadBalancer)
+      new route53Targets.LoadBalancerTarget(networkStack.loadBalancer),
     ),
     comment: 'A record for AFU-9 Control Center pointing to ALB',
   });
@@ -88,7 +110,8 @@ const alarmEmail = app.node.tryGetContext('afu9-alarm-email');
 const webhookUrl = app.node.tryGetContext('afu9-webhook-url');
 new Afu9AlarmsStack(app, 'Afu9AlarmsStack', {
   env,
-  description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB with email and webhook notifications',
+  description:
+    'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB with email and webhook notifications',
   ecsClusterName: ecsStack.cluster.clusterName,
   ecsServiceName: ecsStack.service.serviceName,
   dbInstanceIdentifier: databaseStack.dbInstance.instanceIdentifier,

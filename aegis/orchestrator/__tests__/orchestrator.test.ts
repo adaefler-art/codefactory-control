@@ -40,7 +40,10 @@ const baseVerdict: VerdictDocument = buildVerdict({
 });
 
 function makePlanOptions(): PlanOptions {
-  return { autoExecuteMinConfidence: 0.85 };
+  return {
+    autoExecuteMinConfidence: 0.85,
+    now: () => '2025-01-01T00:00:00.000Z',
+  };
 }
 
 describe('orchestrator planning', () => {

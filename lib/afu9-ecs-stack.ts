@@ -10,7 +10,7 @@ import { Construct } from 'constructs';
 
 /**
  * AFU-9 ECS Infrastructure Stack
- * 
+ *
  * Deploys AFU-9 Control Center and MCP servers on ECS Fargate:
  * - ECR repositories for all container images
  * - ECS Cluster with Container Insights
@@ -19,7 +19,7 @@ import { Construct } from 'constructs';
  * - IAM roles and policies for task execution and application
  * - CloudWatch log groups for centralized logging
  * - Secrets Manager integration for secure credentials
- * 
+ *
  * This stack depends on:
  * - Afu9NetworkStack: VPC, security groups, ALB, target group
  * - Afu9DatabaseStack: RDS database and connection secrets
@@ -50,120 +50,80 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * @default 'staging-latest'
    */
   imageTag?: string;
+
+  /**
+   * Desired task count; can be overridden via CDK context desiredCount
+   * @default 1 (staging-safe)
+   */
+  desiredCount?: number;
 }
 
 export class Afu9EcsStack extends cdk.Stack {
   public readonly cluster: ecs.Cluster;
   public readonly service: ecs.FargateService;
-  public readonly controlCenterRepo: ecr.Repository;
-  public readonly mcpGithubRepo: ecr.Repository;
-  public readonly mcpDeployRepo: ecr.Repository;
-  public readonly mcpObservabilityRepo: ecr.Repository;
+
+  public readonly controlCenterRepo: ecr.IRepository;
+  public readonly mcpGithubRepo: ecr.IRepository;
+  public readonly mcpDeployRepo: ecr.IRepository;
+  public readonly mcpObservabilityRepo: ecr.IRepository;
 
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
 
-    const { vpc, ecsSecurityGroup, targetGroup, dbSecretArn, imageTag = 'staging-latest' } = props;
+    const { vpc, ecsSecurityGroup, targetGroup, dbSecretArn } = props;
+
+    const contextImageTag = this.node.tryGetContext('imageTag');
+    const contextDesiredCount = this.node.tryGetContext('desiredCount');
+
+    // IMPORTANT: make imageTag available for env + image selection consistently
+    const imageTag = (contextImageTag as string) ?? props.imageTag ?? 'staging-latest';
+
+    const desiredCountRaw = contextDesiredCount ?? props.desiredCount ?? 1;
+    let desiredCountNormalized = Number.parseInt(String(desiredCountRaw), 10);
+    if (!Number.isFinite(desiredCountNormalized) || Number.isNaN(desiredCountNormalized)) {
+      desiredCountNormalized = 1;
+    }
+    if (desiredCountNormalized < 0) {
+      desiredCountNormalized = 0;
+    }
 
     // ========================================
-    // ECR Repositories
+    // ECR Repositories (IMPORT, do not create)
     // ========================================
 
-    // Control Center repository
-    this.controlCenterRepo = new ecr.Repository(this, 'ControlCenterRepo', {
-      repositoryName: 'afu9/control-center',
-      imageScanOnPush: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [
-        {
-          description: 'Keep last 10 images',
-          maxImageCount: 10,
-        },
-      ],
-    });
-
-    // MCP GitHub Server repository
-    this.mcpGithubRepo = new ecr.Repository(this, 'McpGithubRepo', {
-      repositoryName: 'afu9/mcp-github',
-      imageScanOnPush: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [
-        {
-          description: 'Keep last 10 images',
-          maxImageCount: 10,
-        },
-      ],
-    });
-
-    // MCP Deploy Server repository
-    this.mcpDeployRepo = new ecr.Repository(this, 'McpDeployRepo', {
-      repositoryName: 'afu9/mcp-deploy',
-      imageScanOnPush: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [
-        {
-          description: 'Keep last 10 images',
-          maxImageCount: 10,
-        },
-      ],
-    });
-
-    // MCP Observability Server repository
-    this.mcpObservabilityRepo = new ecr.Repository(this, 'McpObservabilityRepo', {
-      repositoryName: 'afu9/mcp-observability',
-      imageScanOnPush: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [
-        {
-          description: 'Keep last 10 images',
-          maxImageCount: 10,
-        },
-      ],
-    });
-
-    // ========================================
-    // Secrets Manager
-    // ========================================
-
-    // Import database secret (connection details for application)
-    // This is the comprehensive secret created by Afu9DatabaseStack
-    const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
+    this.controlCenterRepo = ecr.Repository.fromRepositoryName(
       this,
-      'DatabaseSecret',
-      dbSecretArn
+      'ControlCenterRepo',
+      'afu9/control-center'
     );
 
-    // GitHub credentials secret - create with placeholder that must be updated manually
-    // Note: This creates a new secret. Update it after deployment with:
-    // aws secretsmanager update-secret --secret-id afu9/github --secret-string '{"token":"ghp_...","owner":"org","repo":"repo"}'
-    const githubSecret = new secretsmanager.Secret(this, 'GithubSecret', {
-      secretName: 'afu9/github',
-      description: 'AFU-9 GitHub credentials (UPDATE AFTER DEPLOYMENT)',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          token: 'PLACEHOLDER_UPDATE_MANUALLY',
-          owner: 'your-github-org',
-          repo: 'your-repo',
-        }),
-        generateStringKey: 'dummy', // Required but not used
-      },
-    });
+    this.mcpGithubRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpGithubRepo',
+      'afu9/mcp-github'
+    );
 
-    // LLM API keys secret - create with placeholder that must be updated manually
-    // Note: This creates a new secret. Update it after deployment with:
-    // aws secretsmanager update-secret --secret-id afu9/llm --secret-string '{"openai_api_key":"sk-...","anthropic_api_key":"sk-ant-...","deepseek_api_key":"sk-..."}'
-    const llmSecret = new secretsmanager.Secret(this, 'LlmSecret', {
-      secretName: 'afu9/llm',
-      description: 'AFU-9 LLM API keys for OpenAI, Anthropic, DeepSeek (UPDATE AFTER DEPLOYMENT)',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          openai_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
-          anthropic_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
-          deepseek_api_key: 'PLACEHOLDER_UPDATE_MANUALLY',
-        }),
-        generateStringKey: 'dummy', // Required but not used
-      },
-    });
+    this.mcpDeployRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpDeployRepo',
+      'afu9/mcp-deploy'
+    );
+
+    this.mcpObservabilityRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpObservabilityRepo',
+      'afu9/mcp-observability'
+    );
+
+    // ========================================
+    // Secrets Manager (IMPORT, do not create)
+    // ========================================
+
+    const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'DatabaseSecret', dbSecretArn);
+
+    const githubSecret = secretsmanager.Secret.fromSecretNameV2(this, 'GithubSecret', 'afu9/github');
+
+    const llmSecret = secretsmanager.Secret.fromSecretNameV2(this, 'LlmSecret', 'afu9/llm');
 
     // ========================================
     // ECS Cluster
@@ -183,53 +143,32 @@ export class Afu9EcsStack extends cdk.Stack {
     // IAM Roles
     // ========================================
 
-    // Task execution role (used by ECS to pull images and write logs)
-    // This role is used by the ECS service itself, not by the application code
-    // It includes the standard AWS managed policy for ECS task execution
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
       roleName: 'afu9-ecs-task-execution-role',
       description: 'IAM role for ECS to pull container images and manage logs',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
-        // AWS managed policy providing:
-        // - ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage
-        // - logs:CreateLogStream, logs:PutLogEvents
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          'service-role/AmazonECSTaskExecutionRolePolicy'
-        ),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
       ],
     });
 
-    // Grant access to secrets for injecting them as environment variables
-    // Justification: ECS needs to read secrets to inject them into containers at startup
     dbSecret.grantRead(taskExecutionRole);
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
-    // Task role (used by application code for AWS API calls)
-    // This role follows the principle of least privilege by:
-    // 1. Only granting permissions needed by the application
-    // 2. Scoping permissions to specific resources where possible
-    // 3. Using read-only permissions where write access is not needed
     const taskRole = new iam.Role(this, 'TaskRole', {
       roleName: 'afu9-ecs-task-role',
       description: 'IAM role for AFU-9 ECS tasks to access AWS services',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
-    // Grant task role access to secrets
-    // Justification: Application needs to read database credentials, GitHub tokens, and LLM API keys
     dbSecret.grantRead(taskRole);
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
-    // Store region and account for ARN construction (reduces repetition)
     const region = cdk.Stack.of(this).region;
     const account = cdk.Stack.of(this).account;
 
-    // Grant CloudWatch Logs permissions
-    // Justification: MCP Observability server needs to query logs for monitoring
-    // Note: CloudWatch Logs doesn't support fine-grained resource-level permissions for FilterLogEvents
     taskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'CloudWatchLogsAccess',
@@ -242,15 +181,12 @@ export class Afu9EcsStack extends cdk.Stack {
           'logs:DescribeLogGroups',
         ],
         resources: [
-          // Scope to AFU-9 log groups only
           `arn:aws:logs:${region}:${account}:log-group:/ecs/afu9/*`,
           `arn:aws:logs:${region}:${account}:log-group:/ecs/afu9/*:log-stream:*`,
         ],
       })
     );
 
-    // Grant CloudWatch Metrics permissions
-    // Justification: MCP Observability server needs to read metrics and alarms for monitoring
     taskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'CloudWatchMetricsAccess',
@@ -262,12 +198,10 @@ export class Afu9EcsStack extends cdk.Stack {
           'cloudwatch:DescribeAlarms',
           'cloudwatch:PutMetricData',
         ],
-        resources: ['*'], // CloudWatch Metrics doesn't support resource-level permissions
+        resources: ['*'],
       })
     );
 
-    // Grant ECS permissions for deploy MCP server
-    // Justification: MCP Deploy server needs to query and update ECS services for deployments
     taskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'ECSServiceManagement',
@@ -280,7 +214,6 @@ export class Afu9EcsStack extends cdk.Stack {
           'ecs:ListTaskDefinitions',
         ],
         resources: [
-          // Scope to AFU-9 ECS resources only
           `arn:aws:ecs:${region}:${account}:cluster/afu9-cluster`,
           `arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`,
           `arn:aws:ecs:${region}:${account}:task/afu9-cluster/*`,
@@ -289,39 +222,14 @@ export class Afu9EcsStack extends cdk.Stack {
       })
     );
 
-    // UpdateService requires cluster ARN in resources
     taskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'ECSServiceUpdate',
         effect: iam.Effect.ALLOW,
         actions: ['ecs:UpdateService'],
-        resources: [
-          `arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`,
-        ],
+        resources: [`arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`],
       })
     );
-
-    // Optional: Grant RDS Data API access if using RDS Data API instead of direct connections
-    // This is commented out by default but can be enabled if needed
-    // Justification: Allows querying RDS via Data API for enhanced security (no direct DB connections)
-    /*
-    taskRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'RDSDataAPIAccess',
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'rds-data:ExecuteStatement',
-          'rds-data:BatchExecuteStatement',
-          'rds-data:BeginTransaction',
-          'rds-data:CommitTransaction',
-          'rds-data:RollbackTransaction',
-        ],
-        resources: [
-          `arn:aws:rds:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:cluster:afu9-*`,
-        ],
-      })
-    );
-    */
 
     // ========================================
     // CloudWatch Log Groups
@@ -354,26 +262,15 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
     // ECS Task Definition
     // ========================================
-    // 
-    // Image Tagging Strategy:
-    // - Primary tag: Git commit SHA (7 chars, e.g., 'a1b2c3d') - immutable, production deployments
-    // - Secondary tag: Timestamp (e.g., '20251212-143000') - immutable, audit trail
-    // - Convenience tag: 'staging-latest' - mutable, for development/staging
-    // 
-    // GitHub Actions deployments create new task definitions with SHA tags.
-    // CDK deployments use 'staging-latest' by default (can be overridden via imageTag prop).
-    // 
-    // For rollback procedures, see docs/ROLLBACK.md
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
       family: 'afu9-control-center',
-      cpu: 1024, // 1 vCPU
-      memoryLimitMiB: 2048, // 2 GB
+      cpu: 1024,
+      memoryLimitMiB: 2048,
       executionRole: taskExecutionRole,
       taskRole: taskRole,
     });
 
-    // Control Center container
     const controlCenterContainer = taskDefinition.addContainer('control-center', {
       image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, imageTag),
       containerName: 'control-center',
@@ -384,6 +281,10 @@ export class Afu9EcsStack extends cdk.Stack {
       environment: {
         NODE_ENV: 'production',
         PORT: '3000',
+        // NEW: surface version/tag directly to the app (for /api/health + /api/ready)
+        APP_VERSION: imageTag,
+        IMAGE_TAG: imageTag,
+
         MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
         MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
@@ -391,7 +292,7 @@ export class Afu9EcsStack extends cdk.Stack {
       secrets: {
         DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
         DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-        DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+        DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'dbname'),
         DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
         DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
         GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
@@ -402,13 +303,6 @@ export class Afu9EcsStack extends cdk.Stack {
         DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
       },
       essential: true,
-      healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1'],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
     });
 
     controlCenterContainer.addPortMappings({
@@ -417,7 +311,6 @@ export class Afu9EcsStack extends cdk.Stack {
       name: 'control-center-http',
     });
 
-    // MCP GitHub Server container
     const mcpGithubContainer = taskDefinition.addContainer('mcp-github', {
       image: ecs.ContainerImage.fromEcrRepository(this.mcpGithubRepo, imageTag),
       containerName: 'mcp-github',
@@ -428,18 +321,14 @@ export class Afu9EcsStack extends cdk.Stack {
       environment: {
         NODE_ENV: 'production',
         PORT: '3001',
+        // optional but useful for debugging
+        APP_VERSION: imageTag,
+        IMAGE_TAG: imageTag,
       },
       secrets: {
         GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
       },
       essential: true,
-      healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/health || exit 1'],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
     });
 
     mcpGithubContainer.addPortMappings({
@@ -448,7 +337,6 @@ export class Afu9EcsStack extends cdk.Stack {
       name: 'mcp-github-http',
     });
 
-    // MCP Deploy Server container
     const mcpDeployContainer = taskDefinition.addContainer('mcp-deploy', {
       image: ecs.ContainerImage.fromEcrRepository(this.mcpDeployRepo, imageTag),
       containerName: 'mcp-deploy',
@@ -460,15 +348,11 @@ export class Afu9EcsStack extends cdk.Stack {
         NODE_ENV: 'production',
         PORT: '3002',
         AWS_REGION: cdk.Stack.of(this).region,
+        // optional
+        APP_VERSION: imageTag,
+        IMAGE_TAG: imageTag,
       },
       essential: true,
-      healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3002/health || exit 1'],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
     });
 
     mcpDeployContainer.addPortMappings({
@@ -477,7 +361,6 @@ export class Afu9EcsStack extends cdk.Stack {
       name: 'mcp-deploy-http',
     });
 
-    // MCP Observability Server container
     const mcpObservabilityContainer = taskDefinition.addContainer('mcp-observability', {
       image: ecs.ContainerImage.fromEcrRepository(this.mcpObservabilityRepo, imageTag),
       containerName: 'mcp-observability',
@@ -489,15 +372,11 @@ export class Afu9EcsStack extends cdk.Stack {
         NODE_ENV: 'production',
         PORT: '3003',
         AWS_REGION: cdk.Stack.of(this).region,
+        // optional
+        APP_VERSION: imageTag,
+        IMAGE_TAG: imageTag,
       },
       essential: true,
-      healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3003/health || exit 1'],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
     });
 
     mcpObservabilityContainer.addPortMappings({
@@ -514,9 +393,7 @@ export class Afu9EcsStack extends cdk.Stack {
       cluster: this.cluster,
       taskDefinition,
       serviceName: 'afu9-control-center',
-      desiredCount: 1,
-      // For single-task deployments, allow zero tasks during updates
-      // This enables rolling deployments even with only 1 task
+      desiredCount: desiredCountNormalized,
       minHealthyPercent: 0,
       maxHealthyPercent: 200,
       securityGroups: [ecsSecurityGroup],
@@ -524,14 +401,19 @@ export class Afu9EcsStack extends cdk.Stack {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
       },
       assignPublicIp: false,
-      healthCheckGracePeriod: cdk.Duration.seconds(60),
-      enableExecuteCommand: true, // Enable ECS Exec for debugging
+      healthCheckGracePeriod: cdk.Duration.seconds(180),
+      enableExecuteCommand: true,
     });
 
-    // Attach service to ALB target group
     this.service.attachToApplicationTargetGroup(targetGroup);
 
-    // Enable circuit breaker for automatic rollback on deployment failures
+    targetGroup.addTarget(
+      this.service.loadBalancerTarget({
+        containerName: controlCenterContainer.containerName,
+        containerPort: 3000,
+      })
+    );
+
     const cfnService = this.service.node.defaultChild as ecs.CfnService;
     cfnService.deploymentConfiguration = {
       ...cfnService.deploymentConfiguration,
@@ -546,7 +428,7 @@ export class Afu9EcsStack extends cdk.Stack {
     cdk.Tags.of(this.service).add('Project', 'AFU-9');
 
     // ========================================
-    // Stack Outputs
+    // Outputs
     // ========================================
 
     new cdk.CfnOutput(this, 'ClusterName', {

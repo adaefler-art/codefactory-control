@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAppVersion } from '../version';
 
 /**
  * Health check endpoint for ALB health checks
@@ -10,7 +11,7 @@ export async function GET() {
     {
       status: 'ok',
       service: 'afu9-control-center',
-      version: '0.2.0',
+      version: getAppVersion(),
       timestamp: new Date().toISOString(),
     },
     { status: 200 }

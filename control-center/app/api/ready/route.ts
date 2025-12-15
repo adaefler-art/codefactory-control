@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-
-// Version should match control-center package.json
-// In a production system, this could be read from process.env.APP_VERSION
-const VERSION = '0.2.5';
+import { getAppVersion } from '../version';
 
 /**
  * Readiness check endpoint for Kubernetes-style readiness probes
@@ -70,7 +67,7 @@ export async function GET() {
         {
           ready: false,
           service: 'afu9-control-center',
-          version: VERSION,
+          version: getAppVersion(),
           timestamp: new Date().toISOString(),
           checks,
         },
@@ -82,7 +79,7 @@ export async function GET() {
       {
         ready: true,
         service: 'afu9-control-center',
-        version: VERSION,
+        version: getAppVersion(),
         timestamp: new Date().toISOString(),
         checks,
       },
@@ -94,7 +91,7 @@ export async function GET() {
       {
         ready: false,
         service: 'afu9-control-center',
-        version: VERSION,
+        version: getAppVersion(),
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
       },

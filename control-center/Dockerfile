@@ -7,8 +7,8 @@ WORKDIR /app
 
 # Install dependencies based on package-lock.json
 COPY package.json package-lock.json ./
-RUN npm ci --only=production && \
-    npm cache clean --force
+RUN npm ci && npm cache clean --force
+
 
 # Stage 2: Build
 FROM node:20-alpine AS builder
@@ -18,7 +18,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+
 # Build Next.js application
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV TURBOPACK=0
+
 RUN npm run build
 
 # Stage 3: Production

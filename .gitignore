@@ -55,3 +55,7 @@ cdk.out/
 **/cdk.out/
 dist/
 **/dist/
+
+# AEGIS orchestrator local audit artifacts
+aegis_audit.log.jsonl
+audit-test-*/

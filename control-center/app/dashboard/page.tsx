@@ -78,13 +78,13 @@ interface AlarmSummary {
 interface AlarmStatus {
   status: string;
   data?: {
-    summary: AlarmSummary;
+    summary?: AlarmSummary;
   };
   error?: string;
   message?: string;
 }
 
-type HealthStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
+type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -101,15 +101,15 @@ export default function DashboardPage() {
         // Fetch executions
         const executionsRes = await fetch("/api/workflow/executions?limit=10");
         const executionsData = await executionsRes.json();
-        
+
         // Fetch workflows
         const workflowsRes = await fetch("/api/workflows");
         const workflowsData = await workflowsRes.json();
-        
+
         // Fetch agents
         const agentsRes = await fetch("/api/agents?limit=100");
         const agentsData = await agentsRes.json();
-        
+
         // Fetch repositories
         const reposRes = await fetch("/api/repositories");
         const reposData = await reposRes.json();
@@ -130,9 +130,9 @@ export default function DashboardPage() {
 
         const executionStats = {
           total: executions.length,
-          running: executions.filter((e: { status: string }) => e.status === 'running').length,
-          completed: executions.filter((e: { status: string }) => e.status === 'completed').length,
-          failed: executions.filter((e: { status: string }) => e.status === 'failed').length,
+          running: executions.filter((e: { status: string }) => e.status === "running").length,
+          completed: executions.filter((e: { status: string }) => e.status === "completed").length,
+          failed: executions.filter((e: { status: string }) => e.status === "failed").length,
         };
 
         // Calculate agent error rate
@@ -143,9 +143,10 @@ export default function DashboardPage() {
         const agentStats = {
           total: agents.length,
           totalTokens: agents.reduce((sum: number, a: { totalTokens?: number }) => sum + (a.totalTokens || 0), 0),
-          avgDuration: agents.length > 0 
-            ? Math.round(agents.reduce((sum: number, a: { durationMs?: number }) => sum + (a.durationMs || 0), 0) / agents.length)
-            : 0,
+          avgDuration:
+            agents.length > 0
+              ? Math.round(agents.reduce((sum: number, a: { durationMs?: number }) => sum + (a.durationMs || 0), 0) / agents.length)
+              : 0,
           errorRate: Math.round(errorRate * DECIMAL_PLACES) / DECIMAL_PLACES,
         };
 
@@ -190,7 +191,7 @@ export default function DashboardPage() {
     const start = new Date(startedAt).getTime();
     const end = completedAt ? new Date(completedAt).getTime() : Date.now();
     const durationMs = end - start;
-    
+
     if (durationMs < 1000) {
       return `${durationMs}ms`;
     } else if (durationMs < 60000) {
@@ -228,69 +229,73 @@ export default function DashboardPage() {
   const getOverallHealthStatus = (): HealthStatus => {
     // Determine overall health based on alarms and infrastructure
     if (!alarmStatus || !infrastructureHealth) {
-      return 'unknown';
+      return "unknown";
     }
 
+    const summary = alarmStatus.data?.summary;
+    const alarmCount = summary?.alarm ?? 0;
+    const insufficientCount = summary?.insufficientData ?? 0;
+
     // Critical if any alarms are in ALARM state
-    if (alarmStatus.status === 'success' && alarmStatus.data?.summary.alarm > 0) {
-      return 'critical';
+    if (alarmStatus.status === "success" && alarmCount > 0) {
+      return "critical";
     }
 
     // Warning if infrastructure is unavailable or has issues
-    if (infrastructureHealth.status === 'unavailable' || infrastructureHealth.status === 'error') {
-      return 'warning';
+    if (infrastructureHealth.status === "unavailable" || infrastructureHealth.status === "error") {
+      return "warning";
     }
 
     // Warning if insufficient data on alarms
-    if (alarmStatus.status === 'success' && alarmStatus.data?.summary.insufficientData > 0) {
-      return 'warning';
+    if (alarmStatus.status === "success" && insufficientCount > 0) {
+      return "warning";
     }
 
     // Healthy if all alarms OK and infrastructure is OK
-    if (alarmStatus.status === 'success' && infrastructureHealth.status === 'ok') {
-      return 'healthy';
+    if (alarmStatus.status === "success" && infrastructureHealth.status === "ok") {
+      return "healthy";
     }
 
-    return 'unknown';
+    return "unknown";
   };
 
   const getHealthStatusColor = (status: HealthStatus) => {
     switch (status) {
-      case 'healthy':
+      case "healthy":
         return {
-          bg: 'bg-green-500',
-          text: 'text-green-500',
-          border: 'border-green-500',
-          lightBg: 'bg-green-900/20',
-          label: 'Healthy',
-          icon: '✓',
+          bg: "bg-green-500",
+          text: "text-green-500",
+          border: "border-green-500",
+          lightBg: "bg-green-900/20",
+          label: "Healthy",
+          icon: "✓",
         };
-      case 'warning':
+      case "warning":
         return {
-          bg: 'bg-yellow-500',
-          text: 'text-yellow-500',
-          border: 'border-yellow-500',
-          lightBg: 'bg-yellow-900/20',
-          label: 'Warning',
-          icon: '⚠',
+          bg: "bg-yellow-500",
+          text: "text-yellow-500",
+          border: "border-yellow-500",
+          lightBg: "bg-yellow-900/20",
+          label: "Warning",
+          icon: "⚠",
         };
-      case 'critical':
+      case "critical":
         return {
-          bg: 'bg-red-500',
-          text: 'text-red-500',
-          border: 'border-red-500',
-          lightBg: 'bg-red-900/20',
-          label: 'Critical',
-          icon: '✕',
+          bg: "bg-red-500",
+          text: "text-red-500",
+          border: "border-red-500",
+          lightBg: "bg-red-900/20",
+          label: "Critical",
+          icon: "✕",
         };
       default:
         return {
-          bg: 'bg-gray-500',
-          text: 'text-gray-500',
-          border: 'border-gray-500',
-          lightBg: 'bg-gray-900/20',
-          label: 'Unknown',
-          icon: '?',
+          bg: "bg-gray-500",
+          text: "text-gray-500",
+          border: "border-gray-500",
+          lightBg: "bg-gray-900/20",
+          label: "Unknown",
+          icon: "?",
         };
     }
   };
@@ -301,12 +306,8 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-200">
-                AFU-9 Dashboard
-              </h1>
-              <p className="text-sm text-gray-400 mt-1">
-                Übersicht über Workflows, Agents und System-Status
-              </p>
+              <h1 className="text-2xl font-semibold text-gray-200">AFU-9 Dashboard</h1>
+              <p className="text-sm text-gray-400 mt-1">Übersicht über Workflows, Agents und System-Status</p>
             </div>
             <div className="flex gap-3">
               <Link
@@ -367,12 +368,19 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-gray-400">Agent Runs</h3>
                     <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
                     </svg>
                   </div>
                   <div className="text-3xl font-bold text-gray-200 mb-2">{stats.agents.total}</div>
                   <div className="flex flex-col gap-1 text-xs text-gray-400">
-                    <span>{stats.agents.totalTokens.toLocaleString()} tokens · {stats.agents.avgDuration}ms avg</span>
+                    <span>
+                      {stats.agents.totalTokens.toLocaleString()} tokens · {stats.agents.avgDuration}ms avg
+                    </span>
                     <span className={stats.agents.errorRate > 10 ? "text-red-400" : "text-green-400"}>
                       {stats.agents.errorRate}% error rate
                     </span>
@@ -386,13 +394,16 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-gray-400">Workflows</h3>
                     <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                      />
                     </svg>
                   </div>
                   <div className="text-3xl font-bold text-gray-200 mb-2">{stats.workflows.total}</div>
-                  <div className="text-xs text-gray-400">
-                    {stats.workflows.enabled} enabled
-                  </div>
+                  <div className="text-xs text-gray-400">{stats.workflows.enabled} enabled</div>
                 </div>
               </Link>
 
@@ -406,9 +417,7 @@ export default function DashboardPage() {
                     </svg>
                   </div>
                   <div className="text-3xl font-bold text-gray-200 mb-2">{stats.repositories.total}</div>
-                  <div className="text-xs text-gray-400">
-                    {stats.repositories.enabled} enabled
-                  </div>
+                  <div className="text-xs text-gray-400">{stats.repositories.enabled} enabled</div>
                 </div>
               </Link>
             </div>
@@ -418,14 +427,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <h2 className="text-lg font-semibold text-gray-200 mb-2">System Health Status</h2>
-                  <p className="text-sm text-gray-400 mb-4">
-                    Overall infrastructure and monitoring status
-                  </p>
+                  <p className="text-sm text-gray-400 mb-4">Overall infrastructure and monitoring status</p>
                 </div>
-                <Link
-                  href="/observability"
-                  className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                >
+                <Link href="/observability" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
                   View Details →
                 </Link>
               </div>
@@ -434,6 +438,12 @@ export default function DashboardPage() {
                 (() => {
                   const healthStatus = getOverallHealthStatus();
                   const statusConfig = getHealthStatusColor(healthStatus);
+
+                  const summary = alarmStatus.data?.summary;
+                  const alarmCount = summary?.alarm ?? 0;
+                  const okCount = summary?.ok ?? 0;
+                  const insufficientCount = summary?.insufficientData ?? 0;
+
                   return (
                     <div className={`${statusConfig.lightBg} border ${statusConfig.border} rounded-lg p-6`}>
                       <div className="flex items-center gap-6">
@@ -442,9 +452,7 @@ export default function DashboardPage() {
                           <div className={`w-20 h-20 ${statusConfig.bg} rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg`}>
                             {statusConfig.icon}
                           </div>
-                          <span className={`text-sm font-semibold mt-2 ${statusConfig.text}`}>
-                            {statusConfig.label}
-                          </span>
+                          <span className={`text-sm font-semibold mt-2 ${statusConfig.text}`}>{statusConfig.label}</span>
                         </div>
 
                         {/* Status Details */}
@@ -452,16 +460,14 @@ export default function DashboardPage() {
                           {/* Alarms */}
                           <div className="bg-gray-800/50 rounded-lg p-4">
                             <div className="text-xs text-gray-400 mb-1">CloudWatch Alarms</div>
-                            {alarmStatus.status === 'success' && alarmStatus.data ? (
+                            {alarmStatus.status === "success" && alarmStatus.data ? (
                               <div className="space-y-1">
                                 <div className="text-sm text-gray-200">
-                                  <span className={alarmStatus.data.summary.alarm > 0 ? 'text-red-400 font-semibold' : 'text-green-400'}>
-                                    {alarmStatus.data.summary.alarm}
-                                  </span>
-                                  {' '}in ALARM
+                                  <span className={alarmCount > 0 ? "text-red-400 font-semibold" : "text-green-400"}>{alarmCount}</span>{" "}
+                                  in ALARM
                                 </div>
                                 <div className="text-xs text-gray-500">
-                                  {alarmStatus.data.summary.ok} OK · {alarmStatus.data.summary.insufficientData} no data
+                                  {okCount} OK · {insufficientCount} no data
                                 </div>
                               </div>
                             ) : (
@@ -472,7 +478,7 @@ export default function DashboardPage() {
                           {/* Infrastructure */}
                           <div className="bg-gray-800/50 rounded-lg p-4">
                             <div className="text-xs text-gray-400 mb-1">Infrastructure</div>
-                            {infrastructureHealth.status === 'ok' ? (
+                            {infrastructureHealth.status === "ok" ? (
                               <div className="space-y-1">
                                 <div className="text-sm text-green-400">Operational</div>
                                 <div className="text-xs text-gray-500">
@@ -482,11 +488,9 @@ export default function DashboardPage() {
                             ) : (
                               <div className="space-y-1">
                                 <div className="text-sm text-yellow-400">
-                                  {infrastructureHealth.status === 'unavailable' ? 'Metrics Unavailable' : 'Degraded'}
+                                  {infrastructureHealth.status === "unavailable" ? "Metrics Unavailable" : "Degraded"}
                                 </div>
-                                {infrastructureHealth.message && (
-                                  <div className="text-xs text-gray-500">{infrastructureHealth.message}</div>
-                                )}
+                                {infrastructureHealth.message && <div className="text-xs text-gray-500">{infrastructureHealth.message}</div>}
                               </div>
                             )}
                           </div>
@@ -501,12 +505,8 @@ export default function DashboardPage() {
                                   const latestMemory = getLatestMetricValue(infrastructureHealth.metrics.memory?.datapoints);
                                   return (
                                     <>
-                                      <div className="text-xs text-gray-300">
-                                        CPU: {latestCpu ? `${latestCpu.average?.toFixed(1)}%` : 'N/A'}
-                                      </div>
-                                      <div className="text-xs text-gray-300">
-                                        Memory: {latestMemory ? `${latestMemory.average?.toFixed(1)}%` : 'N/A'}
-                                      </div>
+                                      <div className="text-xs text-gray-300">CPU: {latestCpu ? `${latestCpu.average?.toFixed(1)}%` : "N/A"}</div>
+                                      <div className="text-xs text-gray-300">Memory: {latestMemory ? `${latestMemory.average?.toFixed(1)}%` : "N/A"}</div>
                                     </>
                                   );
                                 })()}
@@ -525,6 +525,7 @@ export default function DashboardPage() {
                   <div className="text-gray-400">Loading system health status...</div>
                 </div>
               )}
+
             </div>
 
             {/* Grid layout for detailed sections */}
@@ -544,20 +545,18 @@ export default function DashboardPage() {
                         <div className="flex items-start gap-3 flex-1">
                           <div className={`w-2 h-2 rounded-full mt-1.5 ${getStatusColor(execution.status)}`} />
                           <div className="flex-1">
-                            <div className="text-sm text-gray-300 font-medium">
-                              {execution.workflowId || "Unknown Workflow"}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              Started: {formatDate(execution.startedAt)}
-                            </div>
+                            <div className="text-sm text-gray-300 font-medium">{execution.workflowId || "Unknown Workflow"}</div>
+                            <div className="text-xs text-gray-500 mt-1">Started: {formatDate(execution.startedAt)}</div>
                             <div className="flex gap-3 mt-2 text-xs">
-                              <span className={`px-2 py-0.5 rounded ${
-                                execution.status === "completed"
-                                  ? "bg-green-900/30 text-green-400"
-                                  : execution.status === "failed"
-                                  ? "bg-red-900/30 text-red-400"
-                                  : "bg-blue-900/30 text-blue-400"
-                              }`}>
+                              <span
+                                className={`px-2 py-0.5 rounded ${
+                                  execution.status === "completed"
+                                    ? "bg-green-900/30 text-green-400"
+                                    : execution.status === "failed"
+                                    ? "bg-red-900/30 text-red-400"
+                                    : "bg-blue-900/30 text-blue-400"
+                                }`}
+                              >
                                 {execution.status}
                               </span>
                               {execution.status === "running" && execution.currentStep && (
@@ -566,17 +565,12 @@ export default function DashboardPage() {
                                 </span>
                               )}
                               {(execution.completedAt || execution.status === "running") && (
-                                <span className="text-gray-500">
-                                  {formatDuration(execution.startedAt, execution.completedAt)}
-                                </span>
+                                <span className="text-gray-500">{formatDuration(execution.startedAt, execution.completedAt)}</span>
                               )}
                             </div>
                           </div>
                         </div>
-                        <Link
-                          href={`/workflow/execution/${execution.id}`}
-                          className="text-xs text-blue-400 hover:text-blue-300 flex-shrink-0 ml-2"
-                        >
+                        <Link href={`/workflow/execution/${execution.id}`} className="text-xs text-blue-400 hover:text-blue-300 flex-shrink-0 ml-2">
                           View →
                         </Link>
                       </div>
@@ -593,29 +587,18 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-3">
                     {recentAgents.map((agent) => (
-                      <div
-                        key={agent.id}
-                        className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
-                      >
+                      <div key={agent.id} className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-300 font-medium">
-                                {agent.agentType}
-                              </span>
-                              {agent.error && (
-                                <span className="w-2 h-2 rounded-full bg-red-500" title="Error" />
-                              )}
+                              <span className="text-sm text-gray-300 font-medium">{agent.agentType}</span>
+                              {agent.error && <span className="w-2 h-2 rounded-full bg-red-500" title="Error" />}
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {agent.model}
-                            </div>
+                            <div className="text-xs text-gray-500 mt-1">{agent.model}</div>
                             <div className="flex gap-3 mt-2 text-xs text-gray-400">
                               <span>{agent.totalTokens.toLocaleString()} tokens</span>
                               <span>{agent.durationMs}ms</span>
-                              <span className="text-gray-500">
-                                {formatDate(agent.startedAt)}
-                              </span>
+                              <span className="text-gray-500">{formatDate(agent.startedAt)}</span>
                             </div>
                           </div>
                         </div>
@@ -640,12 +623,8 @@ export default function DashboardPage() {
                           const latest = getLatestMetricValue(infrastructureHealth.metrics.cpu?.datapoints);
                           return latest ? (
                             <div>
-                              <div className="text-2xl font-bold text-gray-200">
-                                {latest.average?.toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                Max: {latest.maximum?.toFixed(1)}%
-                              </div>
+                              <div className="text-2xl font-bold text-gray-200">{latest.average?.toFixed(1)}%</div>
+                              <div className="text-xs text-gray-500 mt-1">Max: {latest.maximum?.toFixed(1)}%</div>
                             </div>
                           ) : (
                             <div className="text-gray-500 text-sm">No data</div>
@@ -660,12 +639,8 @@ export default function DashboardPage() {
                           const latest = getLatestMetricValue(infrastructureHealth.metrics.memory?.datapoints);
                           return latest ? (
                             <div>
-                              <div className="text-2xl font-bold text-gray-200">
-                                {latest.average?.toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                Max: {latest.maximum?.toFixed(1)}%
-                              </div>
+                              <div className="text-2xl font-bold text-gray-200">{latest.average?.toFixed(1)}%</div>
+                              <div className="text-xs text-gray-500 mt-1">Max: {latest.maximum?.toFixed(1)}%</div>
                             </div>
                           ) : (
                             <div className="text-gray-500 text-sm">No data</div>
@@ -678,7 +653,8 @@ export default function DashboardPage() {
                         <div className="text-sm text-gray-400 mb-2">ALB 5xx Errors</div>
                         {infrastructureHealth.metrics.alb5xx?.datapoints?.length ? (
                           (() => {
-                            const alb5xxDatapoints = infrastructureHealth.metrics.alb5xx.datapoints as Array<{ timestamp: Date; sum?: number; average?: number }>;
+                            const alb5xxDatapoints = infrastructureHealth.metrics.alb5xx
+                              ?.datapoints as Array<{ timestamp: Date; sum?: number; average?: number }>;
                             const latest = alb5xxDatapoints.reduce((latest, current) => {
                               const latestTime = new Date(latest.timestamp).getTime();
                               const currentTime = new Date(current.timestamp).getTime();
@@ -686,12 +662,8 @@ export default function DashboardPage() {
                             });
                             return latest ? (
                               <div>
-                                <div className="text-2xl font-bold text-gray-200">
-                                  {latest.sum || 0}
-                                </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  Last period
-                                </div>
+                                <div className="text-2xl font-bold text-gray-200">{latest.sum || 0}</div>
+                                <div className="text-xs text-gray-500 mt-1">Last period</div>
                               </div>
                             ) : (
                               <div className="text-gray-500 text-sm">No data</div>
@@ -706,17 +678,16 @@ export default function DashboardPage() {
                     <div className="text-center py-8">
                       <div className="text-yellow-400 mb-2">
                         <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                          />
                         </svg>
                       </div>
-                      <p className="text-gray-400">
-                        {infrastructureHealth.error || "Metrics unavailable"}
-                      </p>
-                      {infrastructureHealth.message && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          {infrastructureHealth.message}
-                        </p>
-                      )}
+                      <p className="text-gray-400">{infrastructureHealth.error || "Metrics unavailable"}</p>
+                      {infrastructureHealth.message && <p className="text-xs text-gray-500 mt-2">{infrastructureHealth.message}</p>}
                     </div>
                   )}
                 </div>
@@ -732,3 +703,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
