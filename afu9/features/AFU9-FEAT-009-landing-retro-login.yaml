@@ -1,0 +1,56 @@
+feature_id: AFU9-FEAT-009
+name: Landing Retro Login on afu-9.com
+mode: FACTORY
+priority: P0
+target_repo: codefactory-control
+target_branch: main
+depends_on: []
+owner: afu9
+
+goal:
+  Serve a retro terminal login screen on afu-9.com (root domain) that authenticates via Cognito and redirects to stage/prod.
+
+deliverables:
+  - path: apps/landing
+    type: directory
+    must_exist: true
+  - path: apps/landing/app/page.tsx
+    type: file
+    must_exist: true
+  - path: apps/landing/app/api/login/route.ts
+    type: file
+    must_exist: true
+  - path: apps/landing/README.md
+    type: file
+    must_exist: true
+
+requirements:
+  ui:
+    - black full-screen background
+    - centered terminal region
+    - blinking white block cursor
+    - prompt sequence: "username:" then "password:"
+    - password input masked
+    - Enter creates new line
+    - no buttons, no links, keyboard-driven only
+    - on auth failure: reset without revealing which field was wrong
+  auth:
+    - POST /api/login calls Cognito InitiateAuth (USER_PASSWORD_AUTH)
+    - on success: set HttpOnly secure cookie(s) and return { redirectUrl }
+    - redirectUrl must be either https://stage.afu-9.com/ or https://prod.afu-9.com/ based on groups/claims
+  security:
+    - no secrets in client code
+    - cookies: HttpOnly, Secure, SameSite=Lax (or Strict if feasible)
+    - no verbose error messages to user
+
+acceptance_criteria:
+  - opening afu-9.com shows only the retro terminal screen
+  - a valid username+password returns redirectUrl and sets cookies
+  - invalid creds do not reveal whether username or password was wrong
+  - code changes are minimal and isolated to landing app
+  - docs explain env vars needed for Cognito integration
+
+out_of_scope:
+  - MFA
+  - hosted UI
+  - password reset flows

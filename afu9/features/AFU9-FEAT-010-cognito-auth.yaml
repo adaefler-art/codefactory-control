@@ -1,0 +1,59 @@
+feature_id: AFU9-FEAT-010
+name: Cognito Auth for Control Center
+mode: FACTORY
+priority: P0
+target_repo: codefactory-control
+target_branch: main
+depends_on:
+  - AFU9-FEAT-009
+owner: afu9
+
+goal:
+  Add Amazon Cognito authentication to the Control Center app (stage and prod), using JWT validation and role/env mapping via Cognito groups.
+
+deliverables:
+  - path: infra/stacks/afu9-auth-stack.ts
+    type: file
+    must_exist: true
+  - path: apps/control-center
+    type: directory
+    must_exist: true
+  - path: apps/control-center/middleware.ts
+    type: file
+    must_exist: true
+  - path: apps/control-center/app/api/auth/login/route.ts
+    type: file
+    must_exist: true
+  - path: docs/AWS_AUTH.md
+    type: file
+    must_exist: true
+
+requirements:
+  cognito:
+    - create User Pool
+    - create App Client
+    - output UserPoolId, ClientId, IssuerUrl
+    - group-based authorization using cognito:groups claim
+    - groups map to env access:
+        - afu9-admin-prod -> prod
+        - afu9-engineer-stage -> stage
+        - afu9-readonly-stage -> stage
+  app_auth:
+    - login endpoint uses InitiateAuth (USER_PASSWORD_AUTH)
+    - set HttpOnly secure cookies for tokens
+    - middleware validates JWT via Cognito JWKS and issuer
+    - unauthorized requests redirect to https://afu-9.com/
+  security:
+    - fail closed if JWKS fetch fails
+    - secrets via env vars / Secrets Manager (no hardcoding)
+
+acceptance_criteria:
+  - unauthenticated access to control-center routes redirects to afu-9.com
+  - authenticated users can access allowed env only (based on groups)
+  - JWT validation checks issuer, signature, exp
+  - Cognito outputs are available for stage/prod stacks to consume
+  - docs describe how to create users, assign groups, and login
+
+out_of_scope:
+  - fine-grained RBAC beyond groups
+  - audit logging

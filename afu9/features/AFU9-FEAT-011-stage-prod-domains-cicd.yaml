@@ -1,0 +1,59 @@
+feature_id: AFU9-FEAT-011
+name: Stage/Prod Environments with Domains and CI/CD
+mode: FACTORY
+priority: P0
+target_repo: codefactory-control
+target_branch: main
+depends_on:
+  - AFU9-FEAT-010
+owner: afu9
+
+goal:
+  Provide stage and prod environments reachable via stage.afu-9.com and prod.afu-9.com, plus root afu-9.com landing, with automated stage deploys and gated prod deploys.
+
+deliverables:
+  - path: infra/stacks/afu9-routing-stack.ts
+    type: file
+    must_exist: true
+  - path: .github/workflows/deploy-stage.yml
+    type: file
+    must_exist: true
+  - path: .github/workflows/deploy-prod.yml
+    type: file
+    must_exist: true
+  - path: docs/DEPLOYMENT.md
+    type: file
+    must_exist: true
+
+requirements:
+  dns_tls:
+    - Route53 hosted zone: afu-9.com (use existing or create)
+    - ACM cert for afu-9.com and *.afu-9.com in eu-central-1
+    - records:
+        - afu-9.com -> ALB
+        - stage.afu-9.com -> ALB
+        - prod.afu-9.com -> ALB
+  alb_routing:
+    - host-based routing:
+        - afu-9.com -> landing target group
+        - stage.afu-9.com -> stage target group
+        - prod.afu-9.com -> prod target group
+  ecs:
+    - separate services (or task sets) for stage and prod control-center
+    - landing service separate
+  cicd:
+    - deploy-stage on push to main (auto)
+    - deploy-prod on workflow_dispatch or tag (manual gate)
+    - environment-specific config/vars
+
+acceptance_criteria:
+  - stage.afu-9.com routes to stage service and is reachable via HTTPS
+  - prod.afu-9.com routes to prod service and is reachable via HTTPS
+  - afu-9.com serves landing
+  - merge to main triggers stage deploy workflow successfully
+  - prod deploy requires explicit manual trigger
+  - docs explain how to deploy and how to roll back
+
+out_of_scope:
+  - blue/green deployments
+  - WAF
