@@ -1,6 +1,18 @@
 # AFU-9 v0.2 Deployment Guide
 
-This guide covers deploying AFU-9 Control Center on AWS ECS Fargate.
+This guide covers deploying AFU-9 Control Center on AWS ECS Fargate with multi-environment support.
+
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Architecture Overview](#architecture-overview)
+3. [Multi-Environment Setup](#multi-environment-setup)
+4. [Stage Environment Deployment](#stage-environment-deployment)
+5. [Production Environment Deployment](#production-environment-deployment)
+6. [DNS Configuration](#dns-configuration)
+7. [Environment Variables](#environment-variables)
+8. [Rollback Procedures](#rollback-procedures)
+9. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -9,16 +21,52 @@ This guide covers deploying AFU-9 Control Center on AWS ECS Fargate.
 - Node.js 20+ and npm
 - Docker installed
 - GitHub account and Personal Access Token
+- Domain name configured in Route53 (e.g., afu-9.com)
 
 ## Architecture Overview
 
-AFU-9 v0.2 deploys as:
+AFU-9 v0.2 supports two deployment modes:
+
+### Single Environment (Legacy)
 - **ECS Fargate**: 4 containers in a single task (Control Center + 3 MCP servers)
-- **RDS Postgres**: Database for workflows and state
-- **ALB**: Application Load Balancer for HTTPS termination
-- **Secrets Manager**: For GitHub tokens, API keys, database credentials
-- **CloudWatch**: Logs and metrics
-- **ECR**: Container image registry
+- **RDS Postgres**: Shared database
+- **ALB**: Single target group
+- **DNS**: Single domain (e.g., afu-9.com)
+
+### Multi-Environment (FEAT-011)
+- **Stage Environment**: 
+  - Domain: stage.afu-9.com
+  - ECS Service: afu9-control-center-stage (1 task)
+  - Auto-deploys on main branch push
+  - Lower resource allocation
+- **Production Environment**:
+  - Domain: prod.afu-9.com
+  - ECS Service: afu9-control-center-prod (2+ tasks)
+  - Manual deployment only
+  - Production resource allocation
+- **Landing Page**: afu-9.com → redirects to prod.afu-9.com
+- **Shared Resources**: ALB, VPC, RDS, ECR repositories
+
+**Architecture Diagram:**
+```
+Internet
+    ↓
+Route53 DNS
+    ├─ stage.afu-9.com → ALB
+    ├─ prod.afu-9.com → ALB
+    └─ afu-9.com → ALB (redirects to prod)
+    ↓
+ALB (HTTPS:443) [Shared, ACM Certificate]
+    ├─ Host: stage.afu-9.com → Stage Target Group → ECS Stage Service
+    ├─ Host: prod.afu-9.com → Prod Target Group → ECS Prod Service
+    └─ Host: afu-9.com → Redirect to prod.afu-9.com
+    ↓
+ECS Cluster (Shared)
+    ├─ afu9-control-center-stage (1 task)
+    └─ afu9-control-center-prod (2+ tasks)
+    ↓
+RDS Postgres (Shared)
+```
 
 ## Step 1: Configure AWS Credentials
 
@@ -29,6 +77,45 @@ aws configure
 # Verify access
 aws sts get-caller-identity
 ```
+
+## Multi-Environment Setup
+
+### Enabling Multi-Environment Mode
+
+To deploy stage and production environments separately with domain-based routing:
+
+```bash
+# Set context flag for multi-environment mode
+export AFU9_MULTI_ENV=true
+
+# Deploy infrastructure with multi-env enabled
+npx cdk deploy --all \
+  -c afu9-multi-env=true \
+  -c afu9-domain=afu-9.com \
+  -c afu9-enable-https=true
+```
+
+### Infrastructure Deployment Order
+
+1. **DNS Stack** (creates Route53 hosted zone and wildcard certificate)
+2. **Network Stack** (creates VPC, ALB, security groups)
+3. **Database Stack** (creates shared RDS instance)
+4. **ECS Stage Stack** (creates stage ECS service and target group)
+5. **ECS Prod Stack** (creates prod ECS service and target group)
+6. **Routing Stack** (configures ALB listener rules and DNS records)
+7. **Alarms Stacks** (creates CloudWatch alarms for each environment)
+
+### Required CDK Context Variables
+
+- `afu9-multi-env`: Set to `true` to enable multi-environment deployment
+- `afu9-domain`: Base domain name (e.g., `afu-9.com`)
+- `afu9-enable-https`: Set to `true` to enable HTTPS (default: true)
+- `github-org`: GitHub organization (default: `adaefler-art`)
+- `github-repo`: GitHub repository (default: `codefactory-control`)
+
+## Step 1: Configure AWS Credentials (Legacy Section - Merged Above)
+
+
 
 ## Step 2: Set Environment Variables
 
@@ -50,6 +137,394 @@ OPENAI_API_KEY=sk-your-key-here
 # Database (will be auto-generated if using Secrets Manager)
 # DB_PASSWORD=random-secure-password
 ```
+
+## Stage Environment Deployment
+
+### Automatic Deployment via GitHub Actions
+
+Stage environment automatically deploys when code is pushed to the `main` branch.
+
+**Workflow File:** `.github/workflows/deploy-stage.yml`
+
+**Trigger:** Push to `main` branch with changes in:
+- `control-center/**`
+- `mcp-servers/**`
+- `.github/workflows/deploy-stage.yml`
+
+**Process:**
+1. Builds Docker images with `stage-{sha}` and `stage-latest` tags
+2. Pushes images to ECR
+3. Updates ECS service `afu9-control-center-stage`
+4. Waits for service to stabilize
+5. Generates deployment summary
+
+**Monitoring Deployment:**
+```bash
+# Watch GitHub Actions workflow
+# Go to: https://github.com/{org}/{repo}/actions
+
+# Or watch ECS service directly
+aws ecs describe-services \
+  --cluster afu9-cluster \
+  --services afu9-control-center-stage \
+  --region eu-central-1 \
+  --query 'services[0].deployments'
+```
+
+**Accessing Stage:**
+- URL: https://stage.afu-9.com
+- Logs: `/ecs/afu9/control-center-stage`
+
+### Manual Stage Deployment
+
+To manually trigger a stage deployment:
+
+```bash
+# Build and push stage images
+./scripts/deploy-stage.sh
+
+# Or manually with Docker
+cd control-center
+docker build -t ${ACCOUNT_ID}.dkr.ecr.eu-central-1.amazonaws.com/afu9/control-center:stage-latest .
+docker push ${ACCOUNT_ID}.dkr.ecr.eu-central-1.amazonaws.com/afu9/control-center:stage-latest
+
+# Force ECS service update
+aws ecs update-service \
+  --cluster afu9-cluster \
+  --service afu9-control-center-stage \
+  --force-new-deployment \
+  --region eu-central-1
+```
+
+## Production Environment Deployment
+
+### Manual Deployment via GitHub Actions
+
+Production deploys **ONLY** via manual workflow dispatch for safety.
+
+**Workflow File:** `.github/workflows/deploy-prod.yml`
+
+**Trigger:** Manual only (`workflow_dispatch`)
+
+**Steps to Deploy:**
+
+1. **Navigate to GitHub Actions:**
+   ```
+   https://github.com/{org}/{repo}/actions/workflows/deploy-prod.yml
+   ```
+
+2. **Click "Run workflow"**
+
+3. **Enter Confirmation:**
+   - Type `deploy` in the confirmation field
+   - Select the branch (usually `main`)
+
+4. **Click "Run workflow"**
+
+5. **Monitor Progress:**
+   - Watch the workflow execution
+   - Review deployment summary after completion
+
+**Process:**
+1. Validates deployment confirmation
+2. Builds Docker images with `prod-{sha}` and `prod-latest` tags
+3. Pushes images to ECR
+4. Updates ECS service `afu9-control-center-prod`
+5. Waits for service to stabilize (all 2+ tasks healthy)
+6. Generates deployment summary
+
+**Accessing Production:**
+- URL: https://prod.afu-9.com
+- Landing page: https://afu-9.com (redirects to prod)
+- Logs: `/ecs/afu9/control-center-prod`
+
+### Production Deployment Checklist
+
+Before deploying to production:
+
+- [ ] Verify stage deployment is stable and tested
+- [ ] Review all changes in the deployment
+- [ ] Ensure database migrations are applied
+- [ ] Check current production health metrics
+- [ ] Notify team of upcoming deployment
+- [ ] Have rollback plan ready
+- [ ] Monitor during deployment
+
+### Production Deployment Verification
+
+After deployment:
+
+```bash
+# Check service health
+aws ecs describe-services \
+  --cluster afu9-cluster \
+  --services afu9-control-center-prod \
+  --region eu-central-1
+
+# Check all tasks are running
+aws ecs list-tasks \
+  --cluster afu9-cluster \
+  --service-name afu9-control-center-prod \
+  --desired-status RUNNING \
+  --region eu-central-1
+
+# Test the endpoint
+curl https://prod.afu-9.com/api/health
+
+# Check CloudWatch logs
+aws logs tail /ecs/afu9/control-center-prod --follow
+```
+
+## DNS Configuration
+
+### Route53 Setup
+
+The multi-environment deployment creates three DNS records:
+
+1. **stage.afu-9.com** → ALB (Stage target group)
+2. **prod.afu-9.com** → ALB (Prod target group)
+3. **afu-9.com** → ALB (Redirects to prod)
+
+All records are A records using Route53 alias to the ALB.
+
+### Certificate Configuration
+
+The ACM certificate is created with:
+- Primary domain: `afu-9.com`
+- Subject Alternative Name: `*.afu-9.com` (wildcard for all subdomains)
+
+This single certificate covers all three domains:
+- `afu-9.com`
+- `stage.afu-9.com`
+- `prod.afu-9.com`
+
+### Verifying DNS
+
+```bash
+# Check DNS resolution
+dig stage.afu-9.com
+dig prod.afu-9.com
+dig afu-9.com
+
+# Test HTTPS certificate
+curl -v https://stage.afu-9.com
+curl -v https://prod.afu-9.com
+curl -v https://afu-9.com
+```
+
+## Environment Variables
+
+### Environment-Specific Variables
+
+Each environment has these variables set:
+
+**Stage:**
+```bash
+NODE_ENV=production
+ENVIRONMENT=stage
+PORT=3000
+```
+
+**Production:**
+```bash
+NODE_ENV=production
+ENVIRONMENT=prod
+PORT=3000
+```
+
+### Shared Variables
+
+These are shared across environments (from Secrets Manager):
+- Database credentials (same RDS instance)
+- GitHub token
+- LLM API keys
+
+### Setting Custom Environment Variables
+
+To add environment-specific configuration:
+
+1. Update the ECS task definition in `lib/afu9-ecs-stack.ts`
+2. Add new environment variables in the container definition
+3. Deploy infrastructure update:
+   ```bash
+   npx cdk deploy Afu9EcsStageStack
+   npx cdk deploy Afu9EcsProdStack
+   ```
+
+## Rollback Procedures
+
+### Quick Rollback (Stage)
+
+```bash
+# List recent task definitions
+aws ecs list-task-definitions \
+  --family-prefix afu9-control-center-stage \
+  --sort DESC \
+  --max-items 5
+
+# Rollback to previous revision
+aws ecs update-service \
+  --cluster afu9-cluster \
+  --service afu9-control-center-stage \
+  --task-definition afu9-control-center-stage:PREVIOUS_REVISION \
+  --region eu-central-1
+
+# Wait for rollback to complete
+aws ecs wait services-stable \
+  --cluster afu9-cluster \
+  --services afu9-control-center-stage
+```
+
+### Quick Rollback (Production)
+
+```bash
+# List recent task definitions
+aws ecs list-task-definitions \
+  --family-prefix afu9-control-center-prod \
+  --sort DESC \
+  --max-items 5
+
+# Rollback to previous revision
+aws ecs update-service \
+  --cluster afu9-cluster \
+  --service afu9-control-center-prod \
+  --task-definition afu9-control-center-prod:PREVIOUS_REVISION \
+  --region eu-central-1
+
+# Wait for rollback to complete
+aws ecs wait services-stable \
+  --cluster afu9-cluster \
+  --services afu9-control-center-prod
+```
+
+### Rollback to Specific Image Tag
+
+```bash
+# Find the SHA tag you want to rollback to
+aws ecr list-images \
+  --repository-name afu9/control-center \
+  --filter tagStatus=TAGGED \
+  --query 'imageIds[?starts_with(imageTag, `prod-`)].imageTag' \
+  --output table
+
+# Update task definition with specific image tags
+# This requires creating a new task definition with the old image tags
+# See docs/ROLLBACK.md for detailed procedures
+```
+
+### Rollback Verification
+
+After rollback:
+```bash
+# Verify service is stable
+aws ecs describe-services \
+  --cluster afu9-cluster \
+  --services afu9-control-center-{stage|prod} \
+  --region eu-central-1
+
+# Test endpoint
+curl https://{stage|prod}.afu-9.com/api/health
+
+# Check logs for errors
+aws logs tail /ecs/afu9/control-center-{stage|prod} --follow
+```
+
+For detailed rollback procedures, see **[ROLLBACK.md](ROLLBACK.md)**.
+
+## Troubleshooting
+
+### Stage Deployment Failures
+
+**Problem:** GitHub Actions workflow fails to deploy stage
+
+**Solutions:**
+1. Check AWS credentials are configured correctly
+2. Verify IAM role has necessary permissions
+3. Check ECR repositories exist
+4. Review CloudWatch logs for container errors
+
+```bash
+# Check workflow logs in GitHub Actions UI
+
+# Verify ECS service events
+aws ecs describe-services \
+  --cluster afu9-cluster \
+  --services afu9-control-center-stage \
+  --query 'services[0].events[0:10]'
+```
+
+### Production Deployment Hangs
+
+**Problem:** Production deployment stuck in progress
+
+**Solutions:**
+1. Check ECS service events for errors
+2. Verify health checks are passing
+3. Check security group allows ALB → ECS traffic
+4. Review task definition for errors
+
+```bash
+# Check deployment status
+aws ecs describe-services \
+  --cluster afu9-cluster \
+  --services afu9-control-center-prod \
+  --query 'services[0].deployments'
+
+# Check task health
+aws ecs describe-tasks \
+  --cluster afu9-cluster \
+  --tasks $(aws ecs list-tasks \
+    --cluster afu9-cluster \
+    --service-name afu9-control-center-prod \
+    --query 'taskArns[0]' \
+    --output text)
+```
+
+### DNS Not Resolving
+
+**Problem:** Domains not resolving or showing certificate errors
+
+**Solutions:**
+1. Verify Route53 records exist
+2. Check ACM certificate is validated
+3. Wait for DNS propagation (up to 48 hours)
+4. Verify nameservers are configured correctly
+
+```bash
+# Check Route53 records
+aws route53 list-resource-record-sets \
+  --hosted-zone-id YOUR_ZONE_ID
+
+# Check certificate status
+aws acm describe-certificate \
+  --certificate-arn YOUR_CERT_ARN
+
+# Test DNS resolution
+nslookup stage.afu-9.com
+nslookup prod.afu-9.com
+```
+
+### Environment Variables Not Available
+
+**Problem:** Application can't access environment-specific variables
+
+**Solutions:**
+1. Verify task definition has correct environment variables
+2. Check Secrets Manager has required secrets
+3. Verify IAM task execution role has permission to read secrets
+
+```bash
+# Check task definition environment variables
+aws ecs describe-task-definition \
+  --task-definition afu9-control-center-{stage|prod} \
+  --query 'taskDefinition.containerDefinitions[0].environment'
+
+# List secrets
+aws secretsmanager list-secrets \
+  --query 'SecretList[?starts_with(Name, `afu9/`)].Name'
+```
+
+### Old Legacy Deployment Guide Sections Continue Below...
 
 ## Step 3: Create AWS Secrets
 

@@ -105,10 +105,13 @@ export class Afu9DnsStack extends cdk.Stack {
     }
 
     // ------------------------------------------------------------
-    // ACM Certificate
+    // ACM Certificate (with wildcard for subdomains)
     // ------------------------------------------------------------
     this.certificate = new acm.Certificate(this, 'Certificate', {
       domainName: this.domainName,
+      subjectAlternativeNames: [
+        `*.${this.domainName}`, // Wildcard for stage.afu-9.com, prod.afu-9.com, etc.
+      ],
       validation: acm.CertificateValidation.fromDns(this.hostedZone),
       certificateName: 'afu9-control-center-cert',
     });
