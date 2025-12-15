@@ -27,6 +27,11 @@ export async function GET() {
     }
     
     const llmConfigured = llmProvider !== 'Nicht konfiguriert';
+    
+    // Check debug mode status
+    const debugMode = process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || 
+                      process.env.AFU9_DEBUG_MODE === '1' ||
+                      (process.env.NODE_ENV !== 'production' && process.env.AFU9_DEBUG_MODE !== 'false');
 
     return NextResponse.json({
       integrations: {
@@ -47,6 +52,7 @@ export async function GET() {
         architecture: 'AFU-9 (Ninefold)',
         environment: process.env.NODE_ENV || 'development',
         database: process.env.DATABASE_NAME || 'afu9',
+        debugMode,
       },
     });
   } catch (error) {

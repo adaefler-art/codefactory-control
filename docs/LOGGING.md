@@ -18,11 +18,13 @@ AFU-9 verwendet standardisierte Log Level gemäß Best Practices:
 
 ### DEBUG
 - **Verwendung**: Detaillierte Diagnoseinformationen für Entwicklung und Debugging
-- **Produktion**: Automatisch deaktiviert (nicht geloggt)
+- **Produktion**: Kann über `AFU9_DEBUG_MODE` aktiviert werden
 - **Beispiele**: 
   - Variablenwerte bei der Fehlersuche
   - Detaillierte Request/Response-Details
   - Interne Zustandsänderungen
+  - MCP JSON-RPC Kommunikation
+  - Workflow-Schritt Parameter-Substitution
 
 ```typescript
 logger.debug('Processing workflow step', { 
@@ -30,6 +32,26 @@ logger.debug('Processing workflow step', {
   inputData: {...}
 });
 ```
+
+**Debug Mode aktivieren**:
+```bash
+# Umgebungsvariable setzen
+AFU9_DEBUG_MODE=true
+
+# Debug Mode kann auch in Production aktiviert werden für Troubleshooting
+# Standardmäßig: an in development, aus in production
+```
+
+**Debug Mode über API abfragen**:
+```bash
+curl http://localhost:3000/api/system/config
+# Zeigt: { "system": { "debugMode": true, ... } }
+```
+
+**Was wird im Debug Mode geloggt**:
+- **Workflow Engine**: Step-Parameter vor/nach Substitution, Condition-Evaluierung, Context-Updates
+- **Agent Runner**: LLM Requests/Responses, Tool-Call Details, Iterationen
+- **MCP Client**: Raw JSON-RPC Requests/Responses, Retry-Versuche, Fehlerdetails
 
 ### INFO
 - **Verwendung**: Allgemeine Informationen über normale Operationen
