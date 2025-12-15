@@ -2,7 +2,8 @@ param(
   [string]$Tag,
   [int]$DesiredCount = 1,
   [switch]$DeployCdk,
-  [string]$Profile
+  [string]$Profile,
+  [switch]$DebugMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,13 @@ $LogGroups = @(
 function Write-Section {
   param([string]$Message)
   Write-Host "`n=== $Message ===" -ForegroundColor Cyan
+}
+
+function Write-DebugLog {
+  param([string]$Message)
+  if ($DebugMode) {
+    Write-Host $Message -ForegroundColor DarkGray
+  }
 }
 
 function Get-ImageTag {
@@ -55,8 +63,8 @@ function Invoke-AwsJson {
     [string]$Caller = 'Invoke-AwsJson'
   )
 
-  Write-Host "[Invoke-AwsJson] caller=${Caller} args=$($AwsArgs -join ' ')" -ForegroundColor Gray
-  Write-Host "[Invoke-AwsJson] bound=$(ConvertTo-Json $PSBoundParameters -Compress)" -ForegroundColor DarkGray
+  Write-DebugLog "[Invoke-AwsJson] caller=${Caller} args=$($AwsArgs -join ' ')"
+  Write-DebugLog "[Invoke-AwsJson] bound=$(ConvertTo-Json $PSBoundParameters -Compress)"
 
   if (-not $AwsArgs -or -not $AwsArgs[0]) {
     throw "Invoke-AwsJson called with empty args (would run 'aws' with no command). Caller=${Caller}"
@@ -73,7 +81,7 @@ function Invoke-AwsJson {
     $finalArgs += @('--profile', $Profile)
   }
 
-  Write-Host "aws $($finalArgs -join ' ')" -ForegroundColor DarkGray
+  Write-DebugLog "aws $($finalArgs -join ' ')"
 
   $previousEap = $ErrorActionPreference
   try {
@@ -232,8 +240,17 @@ function Invoke-HttpJson {
   param([string]$Path)
   $uri = "http://${AlbHost}${Path}"
   Write-Host "GET ${uri}" -ForegroundColor Gray
-  $resp = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 15
-  return $resp.Content | ConvertFrom-Json
+  try {
+    $resp = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 15
+  } catch {
+    throw "HTTP check failed for ${uri}: $($_.Exception.Message)"
+  }
+
+  try {
+    return $resp.Content | ConvertFrom-Json
+  } catch {
+    throw "HTTP response from ${uri} was not valid JSON: $($_.Exception.Message)"
+  }
 }
 
 function Dump-Diagnostics {
@@ -358,7 +375,7 @@ try {
     '--output', 'json'
   )
 
-  Write-Host "DEBUG update-service updateArgs.count=$($updateArgs.Count) updateArgs=$($updateArgs -join ' | ')" -ForegroundColor DarkGray
+  Write-DebugLog "update-service args count=$($updateArgs.Count) args=$($updateArgs -join ' | ')"
 
   Invoke-AwsJson -AwsArgs $updateArgs -Caller 'update-service' | Out-Null
 
