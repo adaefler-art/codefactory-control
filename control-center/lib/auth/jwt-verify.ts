@@ -1,17 +1,8 @@
 import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
 
-// Environment configuration with fail-safe defaults
-const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
-const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
-const COGNITO_ISSUER_URL = process.env.COGNITO_ISSUER_URL || 
-  (COGNITO_USER_POOL_ID ? `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}` : '');
-const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
-
-// Construct JWKS URL from issuer
-const JWKS_URL = COGNITO_ISSUER_URL ? `${COGNITO_ISSUER_URL}/.well-known/jwks.json` : '';
-
 // Cache JWKS fetcher (edge runtime compatible)
 let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
+let cachedJwksUrl: string | null = null;
 
 export interface CognitoJWTPayload extends JWTPayload {
   'cognito:groups'?: string[];
@@ -32,11 +23,32 @@ export interface JWTVerifyFailure {
 export type JWTVerifyResult = JWTVerifySuccess | JWTVerifyFailure;
 
 /**
+ * Get environment configuration (re-read on each call for testability)
+ */
+function getConfig() {
+  const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
+  const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
+  const COGNITO_ISSUER_URL = process.env.COGNITO_ISSUER_URL || 
+    (COGNITO_USER_POOL_ID ? `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}` : '');
+  const JWKS_URL = COGNITO_ISSUER_URL ? `${COGNITO_ISSUER_URL}/.well-known/jwks.json` : '';
+  
+  return { COGNITO_ISSUER_URL, JWKS_URL };
+}
+
+/**
  * Get or create JWKS fetcher with fail-closed error handling
  * @returns JWKS fetcher or null if configuration is invalid
  */
 function getJWKS(): ReturnType<typeof createRemoteJWKSet> | null {
   try {
+    const { JWKS_URL } = getConfig();
+    
+    // Recreate cache if URL changed (for testing)
+    if (cachedJwksUrl !== JWKS_URL) {
+      jwksCache = null;
+      cachedJwksUrl = JWKS_URL;
+    }
+    
     if (!jwksCache) {
       if (!JWKS_URL) {
         console.error('[JWT-VERIFY] JWKS URL not configured. Set COGNITO_USER_POOL_ID and COGNITO_REGION environment variables.');
@@ -70,6 +82,9 @@ export async function verifyJWT(token: string): Promise<JWTVerifyResult> {
     console.error('[JWT-VERIFY] Empty token provided');
     return { success: false, error: 'Empty token' };
   }
+
+  // Get configuration (re-read for testability)
+  const { COGNITO_ISSUER_URL } = getConfig();
 
   // Fail closed: missing configuration
   if (!COGNITO_ISSUER_URL) {
