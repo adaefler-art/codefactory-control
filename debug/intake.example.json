@@ -1,0 +1,15 @@
+{
+  "mode": "DEBUG",
+  "component": "deploy-script",
+  "expected_state": "ECS service reaches desiredCount and /api/ready returns ready=true",
+  "artifacts": {
+    "raw_log": "=== Resolve image tag ===\nUsing tag: 0b3c1f2\n=== Force ECS deployment ===\nService status: status=ACTIVE desired=1 running=1 pending=0 deployments=1\nGET http://afu9-alb-376872021.eu-central-1.elb.amazonaws.com/api/ready\nReadiness check returned ready=True\nGET http://afu9-alb-376872021.eu-central-1.elb.amazonaws.com/api/health\nHealth check returned status=ok\nTarget group healthy; /api/ready and /api/health aligned."
+  },
+  "metadata": {
+    "timestamp": "2025-12-15T10:24:36Z",
+    "env": "staging",
+    "repo": "github.com/adaefler-art/codefactory-control",
+    "branch": "feat/afu9-debug-mode",
+    "commit": "f89485a"
+  }
+}

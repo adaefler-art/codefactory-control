@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AFU-9 Debug Intake",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "const": "DEBUG",
+      "type": "string"
+    },
+    "component": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "raw_log": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["raw_log"]
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": ["mode", "component", "expected_state", "artifacts"]
+}
