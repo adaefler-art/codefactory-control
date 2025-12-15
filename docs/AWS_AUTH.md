@@ -1,373 +1,368 @@
-# AWS Authentication Guide for AFU-9
+# AWS Cognito Authentication for AFU-9 Control Center
 
-This guide explains how to properly configure AWS authentication for AFU-9 automation, with emphasis on security best practices.
+This guide explains how to configure and use AWS Cognito authentication for the AFU-9 Control Center.
 
-## Quick Start
+## Overview
 
-### Step 1: Run the Authentication Doctor
-
-Before using any AFU-9 scripts that interact with AWS, run the authentication doctor to diagnose your setup:
-
-```powershell
-.\scripts\aws-auth-doctor.ps1
-```
-
-This will analyze your current AWS authentication and provide specific guidance for your situation.
-
-### Step 2: Set Up AWS SSO (Recommended)
-
-AWS SSO provides temporary credentials that are more secure than long-term IAM user credentials:
-
-```bash
-# Configure SSO profile
-aws configure sso
-
-# Follow the prompts:
-# - SSO start URL: Your organization's SSO portal URL
-# - SSO region: Your SSO region (e.g., us-east-1)
-# - SSO account: Select your AWS account
-# - SSO role: Select your role
-# - CLI profile name: Choose a name (e.g., "codefactory")
-# - Default region: Your preferred region
-# - Output format: json (recommended)
-```
-
-### Step 3: Log In to Your Profile
-
-```bash
-aws sso login --profile codefactory
-```
-
-This will open a browser for authentication and provide temporary credentials.
-
-### Step 4: Verify Your Identity
-
-Confirm that your identity is an assumed role (not root):
-
-```bash
-aws sts get-caller-identity --profile codefactory
-```
-
-Expected output (assumed role):
-```json
-{
-    "UserId": "AROA...:user@example.com",
-    "Account": "123456789012",
-    "Arn": "arn:aws:sts::123456789012:assumed-role/RoleName/user@example.com"
-}
-```
-
-❌ **NEVER use root credentials** (Arn ending with `:root`)
-
-### Step 5: Use the Profile with AFU-9 Scripts
-
-```powershell
-# Run debug uploader with profile
-.\scripts\run-debug.ps1 -Profile codefactory
-
-# Or set environment variable
-$env:AWS_PROFILE = "codefactory"
-.\scripts\run-debug.ps1
-```
-
-## Security: Why Not Root?
-
-### Root Account Risks
-
-The AWS root account has **unrestricted access** to all resources and actions in your AWS account:
-- Cannot be restricted by IAM policies
-- Can delete or modify any resource
-- Can change billing and close the account
-- Credential compromise = complete account takeover
-
-### AFU-9 Safety Mechanisms
-
-AFU-9 scripts include automatic safety checks:
-
-1. **`run-debug.ps1`**: Refuses to run if AWS identity is root
-2. **`aws-auth-doctor.ps1`**: Alerts you if using root credentials
-3. **Clear error messages**: Guides you to fix authentication issues
-
-If you attempt to run with root credentials, you'll see:
-
-```
-ERROR: Refusing to run with AWS root credentials!
-
-Running AFU-9 automation with root credentials is a security risk.
-Root credentials have unrestricted access and should never be used for automation.
-
-Required action:
-  1. Clear any AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY environment variables
-  2. Set up AWS SSO:
-       aws configure sso
-  3. Log in to your SSO profile:
-       aws sso login --profile <profile-name>
-  4. Rerun this script with the profile:
-       .\run-debug.ps1 -Profile <profile-name>
-```
-
-## Authentication Methods
-
-### 1. SSO / Assumed Role (✅ Recommended)
-
-**Pros:**
-- Temporary credentials (expire automatically)
-- No long-term secrets to manage
-- Easy credential rotation
-- Auditable via CloudTrail
-
-**Setup:**
-```bash
-aws configure sso
-aws sso login --profile codefactory
-```
-
-**Identity ARN pattern:**
-```
-arn:aws:sts::123456789012:assumed-role/RoleName/user@example.com
-```
-
-### 2. IAM User (⚠️ Acceptable)
-
-**Pros:**
-- Works without SSO setup
-- Simple to configure
-
-**Cons:**
-- Long-term credentials
-- Manual rotation required
-- Less auditable
-
-**Setup:**
-```bash
-aws configure
-```
-
-**Identity ARN pattern:**
-```
-arn:aws:iam::123456789012:user/username
-```
-
-### 3. Root Account (❌ Never Use)
-
-**DO NOT USE for automation or daily operations.**
-
-**Identity ARN pattern:**
-```
-arn:aws:iam::123456789012:root
-```
-
-## Troubleshooting
-
-### Issue: "Unable to locate credentials"
-
-**Cause:** No AWS credentials configured.
-
-**Solution:**
-```bash
-# Option 1: Configure SSO (recommended)
-aws configure sso
-aws sso login --profile codefactory
-
-# Option 2: Configure IAM user
-aws configure
-```
-
-### Issue: "Token expired"
-
-**Cause:** SSO session expired (typical lifetime: 12 hours).
-
-**Solution:**
-```bash
-aws sso login --profile codefactory
-```
-
-### Issue: "Access Denied"
-
-**Cause:** Your role/user lacks necessary permissions.
-
-**Solution:**
-- Verify your identity: `aws sts get-caller-identity --profile codefactory`
-- Check required permissions with your AWS administrator
-- See [IAM-QUICK-REFERENCE.md](./IAM-QUICK-REFERENCE.md) for AFU-9 role permissions
-
-### Issue: Root credentials detected
-
-**Cause:** Using AWS root account access keys.
-
-**Solution:**
-1. **Clear environment variables:**
-   ```powershell
-   # PowerShell
-   Remove-Item Env:AWS_ACCESS_KEY_ID -ErrorAction SilentlyContinue
-   Remove-Item Env:AWS_SECRET_ACCESS_KEY -ErrorAction SilentlyContinue
-   ```
-   ```bash
-   # Bash
-   unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-   ```
-
-2. **Delete root access keys** (if they exist):
-   - Log in to AWS Console as root
-   - Go to IAM → My Security Credentials
-   - Delete all access keys
-   - Set up MFA instead
-
-3. **Configure SSO:**
-   ```bash
-   aws configure sso
-   aws sso login --profile codefactory
-   ```
+The Control Center uses AWS Cognito User Pool for authentication with the following features:
+- Username/password authentication (USER_PASSWORD_AUTH flow)
+- JWT-based session management with HttpOnly cookies
+- Environment-based access control via Cognito groups
+- Automatic token verification and validation
 
 ## Environment Variables
 
-### Checked by AFU-9 Scripts
-
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `AWS_PROFILE` | Active AWS profile | `codefactory` |
-| `AWS_ACCESS_KEY_ID` | IAM access key (avoid using) | `AKIA...` |
-| `AWS_SECRET_ACCESS_KEY` | IAM secret key (avoid using) | `***` |
-| `AWS_DEFAULT_REGION` | Default AWS region | `us-east-1` |
-
-### Best Practice
-
-**Prefer `AWS_PROFILE` over access key environment variables:**
-
-```powershell
-# Good: Use profile
-$env:AWS_PROFILE = "codefactory"
-
-# Avoid: Setting access keys directly
-# $env:AWS_ACCESS_KEY_ID = "..."  # Don't do this
-```
-
-## Commands Reference
-
-### Authentication Doctor
-
-```powershell
-# Run full diagnostic
-.\scripts\aws-auth-doctor.ps1
-```
-
-**Output includes:**
-- AWS CLI status
-- Environment variables
-- Current identity
-- Configuration details
-- Available profiles
-- Authentication classification
-- Actionable recommendations
-
-### Debug Script
-
-```powershell
-# Run with default credentials
-.\scripts\run-debug.ps1
-
-# Run with specific profile
-.\scripts\run-debug.ps1 -Profile codefactory
-
-# Run with verbose output
-.\scripts\run-debug.ps1 -Profile codefactory -Verbose
-
-# Run with debug mode
-.\scripts\run-debug.ps1 -DebugMode
-```
-
-### AWS STS Commands
+Configure the following environment variables in `.env.local` (based on `.env.local.template`):
 
 ```bash
-# Check current identity
-aws sts get-caller-identity
-
-# Check with specific profile
-aws sts get-caller-identity --profile codefactory
-
-# Get session token (for MFA)
-aws sts get-session-token --serial-number arn:aws:iam::123456789012:mfa/username
+# Cognito Configuration
+COGNITO_REGION=eu-central-1
+COGNITO_USER_POOL_ID=eu-central-1_XXXXXXXXX
+COGNITO_CLIENT_ID=your_client_id_here
+COGNITO_ISSUER_URL=https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_XXXXXXXXX
 ```
 
-### AWS Configure Commands
+### Getting Configuration Values
+
+After deploying the `Afu9AuthStack`, retrieve the values from CloudFormation outputs:
 
 ```bash
-# Interactive configuration
-aws configure
+# Deploy the auth stack
+npx cdk deploy Afu9AuthStack
 
-# SSO configuration
-aws configure sso
-
-# List all profiles
-aws configure list-profiles
-
-# View current configuration
-aws configure list
-
-# Set specific values
-aws configure set region us-east-1 --profile codefactory
+# View outputs
+aws cloudformation describe-stacks \
+  --stack-name Afu9AuthStack \
+  --region eu-central-1 \
+  --query 'Stacks[0].Outputs'
 ```
 
-## Profile Configuration Files
+The outputs will include:
+- `UserPoolId` - Use for `COGNITO_USER_POOL_ID`
+- `UserPoolClientId` - Use for `COGNITO_CLIENT_ID`
+- `IssuerUrl` - Use for `COGNITO_ISSUER_URL`
+- `Region` - Use for `COGNITO_REGION`
 
-### Location
+## Deploying Cognito Stack
 
-- **Linux/macOS:** `~/.aws/config` and `~/.aws/credentials`
-- **Windows:** `%USERPROFILE%\.aws\config` and `%USERPROFILE%\.aws\credentials`
+Deploy the authentication stack using AWS CDK:
 
-### Example SSO Profile
+```bash
+# Navigate to the repository root
+cd /path/to/codefactory-control
 
-`~/.aws/config`:
-```ini
-[profile codefactory]
-sso_start_url = https://my-org.awsapps.com/start
-sso_region = us-east-1
-sso_account_id = 123456789012
-sso_role_name = DeveloperAccess
-region = us-east-1
-output = json
+# Deploy the auth stack
+npx cdk deploy Afu9AuthStack --region eu-central-1
+
+# Optional: Create a Cognito domain for hosted UI
+npx cdk deploy Afu9AuthStack \
+  -c afu9-cognito-domain-prefix=afu9-control-center
 ```
 
-### Example IAM User Profile
+## Creating Users and Assigning Groups
 
-`~/.aws/config`:
-```ini
-[profile myprofile]
-region = us-east-1
-output = json
+### Console Steps
+
+1. **Create a User:**
+   - Open AWS Console → Cognito → User Pools
+   - Select `afu9-control-center` user pool
+   - Go to "Users" tab → "Create user"
+   - Enter username (e.g., `engineer1`)
+   - Set temporary password or send invitation
+   - Mark user as confirmed (skip email verification)
+
+2. **Create Groups:**
+   - In the same user pool, go to "Groups" tab
+   - Create the following groups:
+     - `afu9-admin-prod` - Full access to production environment
+     - `afu9-engineer-stage` - Full access to stage environment
+     - `afu9-readonly-stage` - Read-only access to stage environment
+
+3. **Assign User to Group:**
+   - Go to "Users" tab → Select user
+   - Click "Add user to group"
+   - Select appropriate group(s)
+   - Save changes
+
+### CLI Commands
+
+```bash
+# Create a user
+aws cognito-idp admin-create-user \
+  --user-pool-id eu-central-1_XXXXXXXXX \
+  --username engineer1 \
+  --temporary-password TempPass123! \
+  --region eu-central-1
+
+# Confirm user (skip email verification)
+aws cognito-idp admin-confirm-sign-up \
+  --user-pool-id eu-central-1_XXXXXXXXX \
+  --username engineer1 \
+  --region eu-central-1
+
+# Create groups
+aws cognito-idp create-group \
+  --user-pool-id eu-central-1_XXXXXXXXX \
+  --group-name afu9-engineer-stage \
+  --description "Engineers with stage environment access" \
+  --region eu-central-1
+
+# Add user to group
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id eu-central-1_XXXXXXXXX \
+  --username engineer1 \
+  --group-name afu9-engineer-stage \
+  --region eu-central-1
+
+# Set permanent password
+aws cognito-idp admin-set-user-password \
+  --user-pool-id eu-central-1_XXXXXXXXX \
+  --username engineer1 \
+  --password SecurePass123! \
+  --permanent \
+  --region eu-central-1
 ```
 
-`~/.aws/credentials`:
-```ini
-[myprofile]
-aws_access_key_id = AKIA...
-aws_secret_access_key = ...
+## Login Endpoint Usage
+
+### API Endpoint
+
+**POST** `/api/auth/login`
+
+**Request:**
+```json
+{
+  "username": "engineer1",
+  "password": "SecurePass123!"
+}
 ```
 
-## Security Checklist
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "Login successful"
+}
+```
 
-Before running AFU-9 automation:
+The response sets three HttpOnly, Secure cookies:
+- `afu9_id` - ID token (contains user info and groups) - 1 hour expiry
+- `afu9_access` - Access token (for API calls) - 1 hour expiry
+- `afu9_refresh` - Refresh token (for token renewal) - 30 days expiry
 
-- [ ] **NOT using root account** (verify with `aws sts get-caller-identity`)
-- [ ] Using SSO or IAM user with appropriate permissions
-- [ ] MFA enabled on root account (even if not using it)
-- [ ] Root access keys deleted
-- [ ] SSO session is active (if using SSO)
-- [ ] Profile correctly specified (if not using default)
-- [ ] No AWS credentials in source code or committed files
+**Error Response (401):**
+```json
+{
+  "success": false,
+  "error": "Invalid username or password"
+}
+```
+
+### Testing with cURL (Linux/macOS/PowerShell Core)
+
+```bash
+# Login request
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"engineer1","password":"SecurePass123!"}' \
+  -c cookies.txt
+
+# Access protected route with cookies
+curl http://localhost:3000/api/features \
+  -b cookies.txt
+```
+
+### Testing with PowerShell
+
+```powershell
+# Login request
+$body = @{
+    username = "engineer1"
+    password = "SecurePass123!"
+} | ConvertTo-Json
+
+$response = Invoke-RestMethod `
+  -Uri "http://localhost:3000/api/auth/login" `
+  -Method POST `
+  -Body $body `
+  -ContentType "application/json" `
+  -SessionVariable session
+
+Write-Host "Login successful: $($response.success)"
+
+# Access protected route with session cookies
+$features = Invoke-RestMethod `
+  -Uri "http://localhost:3000/api/features" `
+  -WebSession $session
+
+$features
+```
+
+## Environment-Based Access Control
+
+Access to the Control Center is controlled by Cognito groups and request hostname:
+
+### Group to Environment Mapping
+
+| Cognito Group | Environment Access |
+|---------------|-------------------|
+| `afu9-admin-prod` | Production (`afu-9.com`, `prod.afu-9.com`) |
+| `afu9-engineer-stage` | Stage (`stage.afu-9.com`, `localhost`) |
+| `afu9-readonly-stage` | Stage (`stage.afu-9.com`, `localhost`) |
+
+### Access Flow
+
+1. User authenticates via `/api/auth/login`
+2. JWT tokens are stored in HttpOnly cookies
+3. Middleware verifies JWT on each request:
+   - Checks signature using JWKS
+   - Validates issuer and expiration
+   - Extracts `cognito:groups` from ID token
+4. Hostname determines required environment:
+   - `stage.afu-9.com` → requires stage access
+   - `prod.afu-9.com` or `afu-9.com` → requires prod access
+5. If user's groups don't match required environment → 403 redirect to landing page
+
+## Token Verification and Troubleshooting
+
+### JWT Token Structure
+
+The ID token contains:
+```json
+{
+  "sub": "user-uuid",
+  "cognito:groups": ["afu9-engineer-stage"],
+  "email_verified": false,
+  "iss": "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_XXXXXXXXX",
+  "cognito:username": "engineer1",
+  "aud": "client-id",
+  "token_use": "id",
+  "exp": 1234567890,
+  "iat": 1234567800
+}
+```
+
+### Common Issues
+
+#### 1. "Authentication service not configured"
+
+**Cause:** Missing or invalid environment variables.
+
+**Solution:**
+- Verify `COGNITO_USER_POOL_ID` and `COGNITO_CLIENT_ID` are set
+- Check values match CloudFormation outputs
+- Restart Next.js dev server after updating `.env.local`
+
+#### 2. "Invalid username or password"
+
+**Cause:** Incorrect credentials or user not confirmed.
+
+**Solution:**
+- Verify username and password are correct
+- Check user status in Cognito console
+- Confirm user if necessary:
+  ```bash
+  aws cognito-idp admin-confirm-sign-up \
+    --user-pool-id eu-central-1_XXXXXXXXX \
+    --username engineer1 \
+    --region eu-central-1
+  ```
+
+#### 3. "JWT verification failed" or "Token expired"
+
+**Cause:** Invalid token, expired token, or JWKS fetch failure.
+
+**Solution:**
+- Log in again to get fresh tokens
+- Check JWKS URL is accessible: `https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/jwks.json`
+- Verify `COGNITO_ISSUER_URL` matches the issuer in the JWT
+- Check server clock is synchronized (JWT exp validation)
+
+#### 4. 403 Forbidden or redirect to landing page
+
+**Cause:** User doesn't have access to the requested environment.
+
+**Solution:**
+- Check user's Cognito groups in AWS Console
+- Verify group names match the expected format (e.g., `afu9-engineer-stage`)
+- Add user to appropriate group
+- Log out and log in again to refresh token with new groups
+
+#### 5. JWKS fetch error or invalid token
+
+**Cause:** Network issues, incorrect configuration, or fail-closed security.
+
+**Solution:**
+- The middleware fails closed on JWKS errors for security
+- Check network connectivity to AWS Cognito
+- Verify `COGNITO_REGION` and `COGNITO_USER_POOL_ID` are correct
+- Check CloudWatch logs for detailed error messages
+
+### Debugging Tips
+
+1. **Check browser cookies:**
+   - Open DevTools → Application → Cookies
+   - Look for `afu9_id`, `afu9_access`, `afu9_refresh`
+   - Verify they're HttpOnly and Secure
+
+2. **Decode JWT tokens:**
+   ```bash
+   # Copy token from cookie and decode (don't verify online for security)
+   echo "eyJ..." | base64 -d
+   ```
+
+3. **Check server logs:**
+   ```bash
+   # Look for middleware and login route logs
+   npm run dev
+   # Check console output for JWT verification errors
+   ```
+
+4. **Verify JWKS endpoint:**
+   ```bash
+   curl https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_XXXXXXXXX/.well-known/jwks.json
+   ```
+
+## Security Best Practices
+
+### ⚠️ Never Use AWS Root Credentials
+
+- **Do not** create IAM access keys for the root user
+- **Do not** set `AWS_ACCESS_KEY_ID` for root in environment variables
+- Use IAM users or roles with least privilege
+- Enable MFA on root account
+
+### Cognito Security
+
+- Use strong password policy (configured in stack)
+- Rotate user passwords regularly
+- Monitor failed login attempts
+- Use CloudWatch Logs for audit trail
+- Keep refresh tokens secure (HttpOnly cookies)
+
+### Development vs Production
+
+```bash
+# Development (localhost)
+# - Cookies set with Secure=false for HTTP
+# - Accepts stage environment access
+
+# Production
+# - Cookies set with Secure=true for HTTPS
+# - Hostname-based environment checks
+# - Fail closed on errors
+```
 
 ## Related Documentation
 
-- [IAM-QUICK-REFERENCE.md](./IAM-QUICK-REFERENCE.md) - AFU-9 IAM roles and permissions
-- [SECURITY-IAM.md](./SECURITY-IAM.md) - Comprehensive IAM security guide
-- [AWS SSO Documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)
-- [AWS Security Best Practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
+- [AWS Cognito User Pools](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-identity-pools.html)
+- [JWT Verification](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-verifying-a-jwt.html)
+- [Next.js Middleware](https://nextjs.org/docs/app/building-your-application/routing/middleware)
 
-## Getting Help
+## Support
 
-If you encounter issues not covered here:
-
-1. Run the authentication doctor: `.\scripts\aws-auth-doctor.ps1`
-2. Check [IAM-QUICK-REFERENCE.md](./IAM-QUICK-REFERENCE.md) for permission details
-3. Review CloudTrail logs for authentication events
-4. Contact your AWS administrator for account-specific guidance
+For issues or questions:
+1. Check CloudWatch Logs for error details
+2. Verify environment variables are correctly set
+3. Test authentication flow with curl/PowerShell
+4. Review Cognito User Pool configuration in AWS Console

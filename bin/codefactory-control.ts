@@ -10,6 +10,7 @@ import { Afu9DatabaseStack } from '../lib/afu9-database-stack';
 import { Afu9EcsStack } from '../lib/afu9-ecs-stack';
 import { Afu9AlarmsStack } from '../lib/afu9-alarms-stack';
 import { Afu9IamStack } from '../lib/afu9-iam-stack';
+import { Afu9AuthStack } from '../infra/stacks/afu9-auth-stack';
 
 const app = new cdk.App();
 
@@ -108,4 +109,14 @@ new Afu9IamStack(app, 'Afu9IamStack', {
   description: 'AFU-9 v0.2 IAM: Deployment roles for GitHub Actions',
   githubOrg,
   githubRepo,
+});
+
+// Authentication stack (independent)
+// Optional: Provide domain prefix via context for Cognito hosted UI:
+// npx cdk deploy Afu9AuthStack -c afu9-cognito-domain-prefix=afu9-control-center
+const cognitoDomainPrefix = app.node.tryGetContext('afu9-cognito-domain-prefix');
+new Afu9AuthStack(app, 'Afu9AuthStack', {
+  env,
+  description: 'AFU-9 v0.2 Authentication: Cognito User Pool for Control Center',
+  domainPrefix: cognitoDomainPrefix,
 });
