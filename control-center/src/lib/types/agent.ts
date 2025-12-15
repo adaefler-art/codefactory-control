@@ -30,6 +30,9 @@ export interface AgentConfig {
   
   /** Maximum number of tool call iterations */
   maxIterations?: number;
+  
+  /** Enable verbose debug logging */
+  debugMode?: boolean;
 }
 
 /**

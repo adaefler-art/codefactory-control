@@ -24,6 +24,7 @@ import {
   incrementStepRetry,
 } from './workflow-persistence';
 import { checkDatabase } from './db';
+import { logger } from './logger';
 
 /**
  * Step execution result
@@ -45,10 +46,12 @@ interface StepExecutionResult {
 export class WorkflowEngine {
   private mcpClient: MCPClient;
   private persistenceEnabled: boolean;
+  private debugMode: boolean;
 
   constructor(mcpClient?: MCPClient, enablePersistence: boolean = true) {
     this.mcpClient = mcpClient || getMCPClient();
     this.persistenceEnabled = enablePersistence;
+    this.debugMode = process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || process.env.AFU9_DEBUG_MODE === '1';
   }
 
   /**
@@ -69,7 +72,11 @@ export class WorkflowEngine {
       timeoutMs: config?.timeoutMs || 300000, // 5 minutes default
       maxRetries: config?.maxRetries || 0,
       continueOnError: config?.continueOnError || false,
+      debugMode: config?.debugMode ?? this.debugMode,
     };
+
+    // Enable debug mode if specified in config
+    const isDebugEnabled = mergedConfig.debugMode;
 
     // Check if database persistence is available
     let dbAvailable = false;
@@ -90,6 +97,13 @@ export class WorkflowEngine {
           context
         );
         console.log(`[Workflow Engine] Created database execution record: ${executionId}`);
+        if (isDebugEnabled) {
+          logger.debug('Created execution record in database', {
+            executionId,
+            workflowStepsCount: workflow.steps.length,
+            initialContext: context,
+          }, 'WorkflowEngine');
+        }
       } catch (error) {
         console.error('[Workflow Engine] Failed to create execution record:', error);
         // Fall back to in-memory execution ID
@@ -105,6 +119,15 @@ export class WorkflowEngine {
       config: mergedConfig,
       persistenceEnabled: dbAvailable,
     });
+    
+    if (isDebugEnabled) {
+      logger.debug('Workflow execution starting', {
+        executionId,
+        workflowSteps: workflow.steps.map(s => s.name),
+        config: mergedConfig,
+        initialVariables: context.variables,
+      }, 'WorkflowEngine');
+    }
 
     const stepResults: StepExecutionResult[] = [];
     let status: WorkflowStatus = 'running';
@@ -116,11 +139,31 @@ export class WorkflowEngine {
         const step = workflow.steps[i];
         
         console.log(`[Workflow Engine] Executing step ${i + 1}/${workflow.steps.length}: ${step.name}`);
+        
+        if (isDebugEnabled) {
+          logger.debug('Executing workflow step', {
+            executionId,
+            stepIndex: i,
+            stepName: step.name,
+            stepTool: step.tool,
+            stepParams: step.params,
+            currentVariables: context.variables,
+          }, 'WorkflowEngine');
+        }
 
         // Check if step should be executed based on condition (supports both "condition" and "if" fields)
         const conditionField = step.condition || (step as any).if;
         if (conditionField && !this.evaluateCondition(conditionField, context)) {
           console.log(`[Workflow Engine] Skipping step ${step.name} (condition not met: ${conditionField})`);
+          
+          if (isDebugEnabled) {
+            logger.debug('Step condition not met, skipping', {
+              executionId,
+              stepName: step.name,
+              condition: conditionField,
+              currentVariables: context.variables,
+            }, 'WorkflowEngine');
+          }
           
           // Log skipped step to database
           if (dbAvailable) {
@@ -149,9 +192,20 @@ export class WorkflowEngine {
           mergedConfig.maxRetries,
           executionId,
           i,
-          dbAvailable
+          dbAvailable,
+          isDebugEnabled
         );
         stepResults.push(stepResult);
+        
+        if (isDebugEnabled) {
+          logger.debug('Step execution completed', {
+            executionId,
+            stepName: step.name,
+            status: stepResult.status,
+            durationMs: stepResult.durationMs,
+            output: stepResult.output,
+          }, 'WorkflowEngine');
+        }
 
         // Handle step failure
         if (stepResult.status === 'failed') {
@@ -168,6 +222,16 @@ export class WorkflowEngine {
         // Assign result to context if specified
         if (step.assign && stepResult.output !== undefined) {
           context.variables[step.assign] = stepResult.output;
+          
+          if (isDebugEnabled) {
+            logger.debug('Assigned step result to variable', {
+              executionId,
+              stepName: step.name,
+              variableName: step.assign,
+              value: stepResult.output,
+              updatedVariables: context.variables,
+            }, 'WorkflowEngine');
+          }
           
           // Update context in database
           if (dbAvailable) {
@@ -234,7 +298,8 @@ export class WorkflowEngine {
     maxRetries: number,
     executionId: string,
     stepIndex: number,
-    dbAvailable: boolean
+    dbAvailable: boolean,
+    debugMode: boolean = false
   ): Promise<StepExecutionResult> {
     const startedAt = new Date();
     let lastError: Error | undefined;
@@ -246,6 +311,15 @@ export class WorkflowEngine {
         const substitutedParams = this.substituteVariables(step.params, context);
         stepId = await createStep(executionId, step.name, stepIndex, substitutedParams);
         console.log(`[Workflow Engine] Created database step record: ${stepId}`);
+        
+        if (debugMode) {
+          logger.debug('Created step record in database', {
+            executionId,
+            stepId,
+            stepName: step.name,
+            substitutedParams,
+          }, 'WorkflowEngine');
+        }
       } catch (error) {
         console.error('[Workflow Engine] Failed to create step record:', error);
       }
@@ -278,9 +352,21 @@ export class WorkflowEngine {
         const substitutedParams = this.substituteVariables(step.params, context);
 
         console.log(`[Workflow Engine] Calling tool ${step.tool} with params:`, substitutedParams);
+        
+        if (debugMode) {
+          logger.debug('Calling MCP tool for step', {
+            executionId,
+            stepId,
+            stepName: step.name,
+            tool: step.tool,
+            originalParams: step.params,
+            substitutedParams,
+            attempt: attempt + 1,
+          }, 'WorkflowEngine');
+        }
 
         // Call the MCP tool
-        const output = await this.mcpClient.callTool(serverName, toolName, substitutedParams);
+        const output = await this.mcpClient.callTool(serverName, toolName, substitutedParams, { debugMode });
 
         const completedAt = new Date();
         const durationMs = completedAt.getTime() - startedAt.getTime();

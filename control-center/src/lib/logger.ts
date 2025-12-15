@@ -10,6 +10,13 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 // Cache production check for performance
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
+// Check if debug mode is enabled via environment variable
+// Debug mode can be enabled in production for troubleshooting
+const isDebugModeEnabled = (): boolean => {
+  const debugMode = process.env.AFU9_DEBUG_MODE?.toLowerCase();
+  return debugMode === 'true' || debugMode === '1' || (!IS_PRODUCTION && debugMode !== 'false');
+};
+
 export interface LogContext {
   workflowId?: string;
   executionId?: string;
@@ -45,11 +52,11 @@ class Logger {
   }
 
   /**
-   * Log debug information (development only)
+   * Log debug information (when debug mode is enabled)
    */
   debug(message: string, context?: LogContext, component?: string): void {
-    if (IS_PRODUCTION) {
-      return; // Skip debug logs in production
+    if (!isDebugModeEnabled()) {
+      return; // Skip debug logs when debug mode is disabled
     }
     this.log('debug', message, context, component);
   }
@@ -148,7 +155,7 @@ class ComponentLogger {
   ) {}
 
   debug(message: string, context?: LogContext): void {
-    if (IS_PRODUCTION) {
+    if (!isDebugModeEnabled()) {
       return;
     }
     this.log('debug', message, context);

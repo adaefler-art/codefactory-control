@@ -15,6 +15,7 @@ import {
   MCPServerHealth,
   MCPCallOptions,
 } from './types/mcp';
+import { logger } from './logger';
 
 /**
  * Default MCP server configurations
@@ -97,6 +98,7 @@ export class MCPClient {
     const maxRetries = options?.maxRetries ?? server.maxRetries ?? 2;
     const retryDelayMs = options?.retryDelayMs ?? server.retryDelayMs ?? 1000;
     const backoffMultiplier = options?.backoffMultiplier ?? server.backoffMultiplier ?? 2;
+    const debugMode = options?.debugMode ?? (process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || process.env.AFU9_DEBUG_MODE === '1');
 
     const requestId = `req-${++this.requestIdCounter}-${Date.now()}`;
     
@@ -116,6 +118,17 @@ export class MCPClient {
       timeoutMs,
       maxRetries,
     });
+    
+    if (debugMode) {
+      logger.debug('MCP tool call initiated', {
+        mcpServer: serverName,
+        mcpTool: toolName,
+        requestId,
+        request,
+        timeoutMs,
+        maxRetries,
+      }, 'MCPClient');
+    }
 
     // Retry loop with exponential backoff
     let lastError: Error | undefined;
@@ -125,11 +138,20 @@ export class MCPClient {
         console.log(
           `[MCP Client] Retrying ${serverName}.${toolName} (attempt ${attempt + 1}/${maxRetries + 1}) after ${delay}ms`
         );
+        if (debugMode) {
+          logger.debug('Retrying MCP tool call', {
+            mcpServer: serverName,
+            mcpTool: toolName,
+            attempt: attempt + 1,
+            maxRetries: maxRetries + 1,
+            delayMs: delay,
+          }, 'MCPClient');
+        }
         await this.sleep(delay);
       }
 
       try {
-        return await this.executeToolCall(server, request, serverName, toolName, timeoutMs);
+        return await this.executeToolCall(server, request, serverName, toolName, timeoutMs, debugMode);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         
@@ -143,6 +165,16 @@ export class MCPClient {
             attempt: attempt + 1,
             error: lastError.message,
           });
+          if (debugMode) {
+            logger.debug('MCP tool call failed permanently', {
+              mcpServer: serverName,
+              mcpTool: toolName,
+              attempt: attempt + 1,
+              isRetryable,
+              error: lastError.message,
+              errorStack: lastError.stack,
+            }, 'MCPClient');
+          }
           throw lastError;
         }
         
@@ -152,6 +184,14 @@ export class MCPClient {
           attempt: attempt + 1,
           error: lastError.message,
         });
+        if (debugMode) {
+          logger.debug('MCP tool call failed, will retry', {
+            mcpServer: serverName,
+            mcpTool: toolName,
+            attempt: attempt + 1,
+            error: lastError.message,
+          }, 'MCPClient');
+        }
       }
     }
 
@@ -167,12 +207,22 @@ export class MCPClient {
     request: JSONRPCRequest,
     serverName: string,
     toolName: string,
-    timeoutMs: number
+    timeoutMs: number,
+    debugMode: boolean = false
   ): Promise<any> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      if (debugMode) {
+        logger.debug('Sending JSON-RPC request to MCP server', {
+          mcpServer: serverName,
+          mcpTool: toolName,
+          endpoint: server.endpoint,
+          request,
+        }, 'MCPClient');
+      }
+      
       const response = await fetch(server.endpoint, {
         method: 'POST',
         headers: {
@@ -192,6 +242,14 @@ export class MCPClient {
       }
 
       const jsonResponse: JSONRPCResponse = await response.json();
+      
+      if (debugMode) {
+        logger.debug('Received JSON-RPC response from MCP server', {
+          mcpServer: serverName,
+          mcpTool: toolName,
+          response: jsonResponse,
+        }, 'MCPClient');
+      }
 
       if (jsonResponse.error) {
         console.error(`[MCP Client] Tool call failed`, {

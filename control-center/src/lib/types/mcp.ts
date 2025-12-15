@@ -96,4 +96,5 @@ export interface MCPCallOptions {
   maxRetries?: number;
   retryDelayMs?: number;
   backoffMultiplier?: number;
+  debugMode?: boolean;
 }
