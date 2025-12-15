@@ -29,9 +29,14 @@ $ErrorActionPreference = "Continue"
 function Write-ColorOutput {
     param(
         [string]$Message,
-        [string]$Color = "White"
+        [string]$Color = "White",
+        [switch]$NoNewline
     )
-    Write-Host $Message -ForegroundColor $Color
+    if ($NoNewline) {
+        Write-Host $Message -ForegroundColor $Color -NoNewline
+    } else {
+        Write-Host $Message -ForegroundColor $Color
+    }
 }
 
 # Helper function to write section headers
