@@ -124,8 +124,8 @@ export async function verifyJWT(token: string): Promise<JWTVerifyResult> {
     } else if (error.code === 'ERR_JWT_CLAIM_VALIDATION_FAILED') {
       console.error('[JWT-VERIFY] Claim validation failed:', error.message);
       return { success: false, error: 'Invalid claims' };
-    } else if (error.message?.includes('fetch')) {
-      // JWKS fetch error - explicit fail-closed handling
+    } else if (error.name === 'TypeError' || error.cause?.code === 'ENOTFOUND' || error.cause?.code === 'ECONNREFUSED') {
+      // JWKS fetch error - explicit fail-closed handling for network errors
       console.error('[JWT-VERIFY] JWKS fetch error (fail-closed):', error.message);
       return { success: false, error: 'JWKS fetch failed' };
     } else {

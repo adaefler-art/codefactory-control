@@ -23,6 +23,18 @@ const DEV_GROUPS = AFU9_STAGE_GROUP_DEV.split(',').map(g => g.trim()).filter(g =
 export type Stage = 'prod' | 'staging' | 'dev';
 
 /**
+ * Validate and convert a string to a Stage type
+ * @param stage - Stage string to validate
+ * @param fallback - Fallback stage if validation fails
+ * @returns Valid Stage
+ */
+function validateStage(stage: string, fallback: Stage): Stage {
+  return (stage === 'prod' || stage === 'staging' || stage === 'dev') 
+    ? stage as Stage 
+    : fallback;
+}
+
+/**
  * Get the stage from a hostname
  * 
  * Maps hostnames to stages:
@@ -56,16 +68,12 @@ export function getStageFromHostname(hostname: string): Stage {
       normalizedHost.startsWith('localhost:') ||
       normalizedHost.startsWith('127.0.0.1:')) {
     // Use default stage for local dev (typically 'dev' or 'stage')
-    return (AFU9_DEFAULT_STAGE === 'prod' || AFU9_DEFAULT_STAGE === 'staging' || AFU9_DEFAULT_STAGE === 'dev') 
-      ? AFU9_DEFAULT_STAGE as Stage 
-      : 'dev';
+    return validateStage(AFU9_DEFAULT_STAGE, 'dev');
   }
 
   // Unknown hostname - use default stage
   console.log(`[STAGE-ENFORCEMENT] Unknown hostname "${hostname}", using default stage: ${AFU9_DEFAULT_STAGE}`);
-  return (AFU9_DEFAULT_STAGE === 'prod' || AFU9_DEFAULT_STAGE === 'staging' || AFU9_DEFAULT_STAGE === 'dev') 
-    ? AFU9_DEFAULT_STAGE as Stage 
-    : 'staging';
+  return validateStage(AFU9_DEFAULT_STAGE, 'staging');
 }
 
 /**
