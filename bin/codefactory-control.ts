@@ -16,6 +16,14 @@ import { Afu9RoutingStack } from '../lib/afu9-routing-stack';
 
 const app = new cdk.App();
 
+/**
+ * Helper function to check if multi-environment mode is enabled
+ */
+function isMultiEnvEnabled(app: cdk.App): boolean {
+  const contextValue = app.node.tryGetContext('afu9-multi-env');
+  return contextValue === true || contextValue === 'true';
+}
+
 // v0.1 Lambda-based stack (existing)
 new CodefactoryControlStack(app, 'CodefactoryControlStack', {
   /* You can specify env here if you want:
@@ -30,8 +38,7 @@ const env = {
 
 // Check if multi-environment deployment is enabled
 // Use context: -c afu9-multi-env=true to enable stage/prod routing
-const multiEnvEnabled = app.node.tryGetContext('afu9-multi-env') === true ||
-                        app.node.tryGetContext('afu9-multi-env') === 'true';
+const multiEnvEnabled = isMultiEnvEnabled(app);
 
 // DNS and Certificate stack (optional, for HTTPS)
 const enableHttpsContext = app.node.tryGetContext('afu9-enable-https');

@@ -9,6 +9,17 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 /**
+ * Supported deployment environments
+ */
+export const ENVIRONMENT = {
+  STAGE: 'stage',
+  PROD: 'prod',
+  LEGACY: 'legacy', // For backward compatibility with single-environment deployments
+} as const;
+
+export type Environment = typeof ENVIRONMENT[keyof typeof ENVIRONMENT];
+
+/**
  * AFU-9 ECS Infrastructure Stack
  * 
  * Deploys AFU-9 Control Center and MCP servers on ECS Fargate:
@@ -78,12 +89,12 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
 }
 
 export class Afu9EcsStack extends cdk.Stack {
-  public readonly cluster: ecs.Cluster;
+  public readonly cluster: ecs.ICluster;
   public readonly service: ecs.FargateService;
-  public readonly controlCenterRepo: ecr.Repository;
-  public readonly mcpGithubRepo: ecr.Repository;
-  public readonly mcpDeployRepo: ecr.Repository;
-  public readonly mcpObservabilityRepo: ecr.Repository;
+  public readonly controlCenterRepo: ecr.IRepository;
+  public readonly mcpGithubRepo: ecr.IRepository;
+  public readonly mcpDeployRepo: ecr.IRepository;
+  public readonly mcpObservabilityRepo: ecr.IRepository;
 
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
@@ -113,7 +124,7 @@ export class Afu9EcsStack extends cdk.Stack {
     // Create repositories only once (in stage stack), import in other environments
     // This prevents resource conflicts and simplifies image management
 
-    if (environment === 'stage') {
+    if (environment === ENVIRONMENT.STAGE) {
       // Create ECR repositories in stage environment
       this.controlCenterRepo = new ecr.Repository(this, 'ControlCenterRepo', {
         repositoryName: 'afu9/control-center',
@@ -168,25 +179,25 @@ export class Afu9EcsStack extends cdk.Stack {
         this,
         'ControlCenterRepo',
         'afu9/control-center'
-      ) as ecr.Repository;
+      );
 
       this.mcpGithubRepo = ecr.Repository.fromRepositoryName(
         this,
         'McpGithubRepo',
         'afu9/mcp-github'
-      ) as ecr.Repository;
+      );
 
       this.mcpDeployRepo = ecr.Repository.fromRepositoryName(
         this,
         'McpDeployRepo',
         'afu9/mcp-deploy'
-      ) as ecr.Repository;
+      );
 
       this.mcpObservabilityRepo = ecr.Repository.fromRepositoryName(
         this,
         'McpObservabilityRepo',
         'afu9/mcp-observability'
-      ) as ecr.Repository;
+      );
     }
 
     // ========================================
@@ -219,7 +230,7 @@ export class Afu9EcsStack extends cdk.Stack {
     // ECS Cluster (Shared across environments)
     // ========================================
     // Create cluster only in stage environment, import in others
-    if (environment === 'stage') {
+    if (environment === ENVIRONMENT.STAGE) {
       this.cluster = new ecs.Cluster(this, 'Afu9Cluster', {
         clusterName: 'afu9-cluster',
         vpc,

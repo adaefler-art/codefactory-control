@@ -70,6 +70,13 @@ export class Afu9RoutingStack extends cdk.Stack {
       baseDomainName,
     } = props;
 
+    // Validate baseDomainName if routing rules are being created
+    if (!baseDomainName) {
+      throw new Error(
+        'Afu9RoutingStack: baseDomainName is required for creating routing rules'
+      );
+    }
+
     // ========================================
     // ALB Listener Rules - HTTPS
     // ========================================
@@ -100,7 +107,7 @@ export class Afu9RoutingStack extends cdk.Stack {
         listener: httpsListener,
         priority: 100,
         conditions: [
-          elbv2.ListenerCondition.hostHeaders([baseDomainName!]),
+          elbv2.ListenerCondition.hostHeaders([baseDomainName]),
         ],
         action: elbv2.ListenerAction.redirect({
           host: `prod.${baseDomainName}`,
@@ -151,7 +158,7 @@ export class Afu9RoutingStack extends cdk.Stack {
         listener: httpListener,
         priority: 100,
         conditions: [
-          elbv2.ListenerCondition.hostHeaders([baseDomainName!]),
+          elbv2.ListenerCondition.hostHeaders([baseDomainName]),
         ],
         action: elbv2.ListenerAction.redirect({
           protocol: 'HTTPS',
@@ -184,7 +191,7 @@ export class Afu9RoutingStack extends cdk.Stack {
         listener: httpListener,
         priority: 100,
         conditions: [
-          elbv2.ListenerCondition.hostHeaders([baseDomainName!]),
+          elbv2.ListenerCondition.hostHeaders([baseDomainName]),
         ],
         action: elbv2.ListenerAction.redirect({
           host: `prod.${baseDomainName}`,
