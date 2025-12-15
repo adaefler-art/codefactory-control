@@ -463,7 +463,7 @@ export class AgentRunner {
             }
 
             // Call the MCP tool
-            const result = await this.mcpClient.callTool(serverName, mcpToolName, args);
+            const result = await this.mcpClient.callTool(serverName, mcpToolName, args, { debugMode });
 
             // Track tool call
             allToolCalls.push({
