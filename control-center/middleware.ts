@@ -62,7 +62,7 @@ export async function middleware(request: NextRequest) {
   
   if (!verifyResult.success) {
     // Fail closed: invalid or expired token
-    console.log('[MIDDLEWARE] Token verification failed:', verifyResult.error);
+    console.log('[MIDDLEWARE] Token verification failed');
     
     if (isApiRoute) {
       // API routes: return 401 JSON
