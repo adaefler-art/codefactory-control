@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { isDebugModeEnabled } from '@/lib/debug-mode';
 
 export async function GET() {
   try {
@@ -28,10 +29,8 @@ export async function GET() {
     
     const llmConfigured = llmProvider !== 'Nicht konfiguriert';
     
-    // Check debug mode status
-    const debugMode = process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || 
-                      process.env.AFU9_DEBUG_MODE === '1' ||
-                      (process.env.NODE_ENV !== 'production' && process.env.AFU9_DEBUG_MODE !== 'false');
+    // Check debug mode status using centralized utility
+    const debugMode = isDebugModeEnabled();
 
     return NextResponse.json({
       integrations: {

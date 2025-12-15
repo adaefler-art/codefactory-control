@@ -25,6 +25,7 @@ import {
 } from './workflow-persistence';
 import { checkDatabase } from './db';
 import { logger } from './logger';
+import { isDebugModeEnabled } from './debug-mode';
 
 /**
  * Step execution result
@@ -51,7 +52,7 @@ export class WorkflowEngine {
   constructor(mcpClient?: MCPClient, enablePersistence: boolean = true) {
     this.mcpClient = mcpClient || getMCPClient();
     this.persistenceEnabled = enablePersistence;
-    this.debugMode = process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || process.env.AFU9_DEBUG_MODE === '1';
+    this.debugMode = isDebugModeEnabled();
   }
 
   /**

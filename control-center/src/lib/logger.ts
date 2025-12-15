@@ -5,17 +5,9 @@
  * All logs include timestamp, service name, and optional trace context.
  */
 
+import { isDebugModeEnabled } from './debug-mode';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-// Cache production check for performance
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-
-// Check if debug mode is enabled via environment variable
-// Debug mode can be enabled in production for troubleshooting
-const isDebugModeEnabled = (): boolean => {
-  const debugMode = process.env.AFU9_DEBUG_MODE?.toLowerCase();
-  return debugMode === 'true' || debugMode === '1' || (!IS_PRODUCTION && debugMode !== 'false');
-};
 
 export interface LogContext {
   workflowId?: string;

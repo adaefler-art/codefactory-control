@@ -17,6 +17,7 @@ import {
 } from './types/agent';
 import { MCPTool } from './types/mcp';
 import { logger } from './logger';
+import { isDebugModeEnabled } from './debug-mode';
 
 /**
  * Agent Runner for executing LLM-based agents with tool calling
@@ -42,7 +43,7 @@ export class AgentRunner {
     config: AgentConfig
   ): Promise<AgentExecutionResult> {
     const startTime = Date.now();
-    const debugMode = config.debugMode ?? (process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || process.env.AFU9_DEBUG_MODE === '1');
+    const debugMode = config.debugMode ?? isDebugModeEnabled();
     
     console.log(`[Agent Runner] Starting agent execution`, {
       provider: config.provider,

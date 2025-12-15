@@ -16,6 +16,7 @@ import {
   MCPCallOptions,
 } from './types/mcp';
 import { logger } from './logger';
+import { isDebugModeEnabled } from './debug-mode';
 
 /**
  * Default MCP server configurations
@@ -98,7 +99,7 @@ export class MCPClient {
     const maxRetries = options?.maxRetries ?? server.maxRetries ?? 2;
     const retryDelayMs = options?.retryDelayMs ?? server.retryDelayMs ?? 1000;
     const backoffMultiplier = options?.backoffMultiplier ?? server.backoffMultiplier ?? 2;
-    const debugMode = options?.debugMode ?? (process.env.AFU9_DEBUG_MODE?.toLowerCase() === 'true' || process.env.AFU9_DEBUG_MODE === '1');
+    const debugMode = options?.debugMode ?? isDebugModeEnabled();
 
     const requestId = `req-${++this.requestIdCounter}-${Date.now()}`;
     
