@@ -4,16 +4,45 @@ import {
   InitiateAuthCommand,
   InitiateAuthCommandInput,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { verifyJWT } from '../../../../lib/auth/jwt-verify';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
+const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
+const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || 'https://afu-9.com/';
 
 // Initialize Cognito client
 const cognitoClient = new CognitoIdentityProviderClient({
   region: COGNITO_REGION,
 });
+
+/**
+ * GET /api/auth/login
+ * 
+ * Check if user is already authenticated
+ * - If authenticated: redirect to /dashboard (or ?redirectTo= query param)
+ * - If not authenticated: redirect to AFU9_UNAUTH_REDIRECT
+ */
+export async function GET(request: NextRequest) {
+  // Check if user already has valid authentication cookie
+  const idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
+
+  if (idToken) {
+    // Verify the token
+    const verifyResult = await verifyJWT(idToken);
+    
+    if (verifyResult.success) {
+      // User is authenticated, redirect to dashboard or redirectTo param
+      const redirectTo = request.nextUrl.searchParams.get('redirectTo') || '/dashboard';
+      return NextResponse.redirect(new URL(redirectTo, request.url));
+    }
+  }
+
+  // Not authenticated, redirect to unauth page
+  return NextResponse.redirect(AFU9_UNAUTH_REDIRECT);
+}
 
 /**
  * POST /api/auth/login
@@ -27,11 +56,14 @@ const cognitoClient = new CognitoIdentityProviderClient({
  *   "password": "password123"
  * }
  * 
- * Response:
+ * Response (API clients):
  * {
  *   "success": true,
  *   "message": "Login successful"
  * }
+ * 
+ * Response (Browser clients with Accept: text/html):
+ * 302 redirect to /dashboard or ?redirectTo= param
  * 
  * Error response:
  * {
@@ -108,15 +140,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create response with success message
-    const response = NextResponse.json({
-      success: true,
-      message: 'Login successful',
-    });
+    // Determine redirect URL for browser clients
+    const redirectTo = request.nextUrl.searchParams.get('redirectTo') || '/dashboard';
+    const referer = request.headers.get('referer');
+    const acceptHeader = request.headers.get('accept') || '';
+    const isBrowserClient = acceptHeader.includes('text/html');
 
-    // Set HttpOnly, Secure cookies with SameSite=Lax
+    // Create response (redirect for browser, JSON for API)
+    let response: NextResponse;
+    
+    if (isBrowserClient) {
+      // Browser client: redirect to dashboard or redirectTo
+      response = NextResponse.redirect(new URL(redirectTo, request.url));
+    } else {
+      // API client: return JSON response
+      response = NextResponse.json({
+        success: true,
+        message: 'Login successful',
+      });
+    }
+
+    // Set HttpOnly, Secure cookies with SameSite=Lax (using configurable cookie name)
     // ID Token (contains user info and groups)
-    response.cookies.set('afu9_id', IdToken, {
+    response.cookies.set(AFU9_AUTH_COOKIE, IdToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
