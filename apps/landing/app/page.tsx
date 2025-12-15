@@ -23,6 +23,13 @@ export default function Home() {
     inputRef.current?.focus();
   }, []);
 
+  const resetTerminal = () => {
+    setLines(['username:']);
+    setCurrentInput('');
+    setStep('username');
+    setUsername('');
+  };
+
   const handleSubmit = async () => {
     if (step === 'username') {
       if (currentInput.trim()) {
@@ -55,17 +62,11 @@ export default function Home() {
             }, 1000);
           } else {
             // Reset on failure without revealing whether username or password was wrong
-            setLines(['username:']);
-            setCurrentInput('');
-            setStep('username');
-            setUsername('');
+            resetTerminal();
           }
         } catch (error) {
           // Reset on error
-          setLines(['username:']);
-          setCurrentInput('');
-          setStep('username');
-          setUsername('');
+          resetTerminal();
         }
       }
     }

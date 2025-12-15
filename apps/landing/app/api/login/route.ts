@@ -13,9 +13,12 @@ const cognitoClient = new CognitoIdentityProviderClient({
   region: COGNITO_REGION,
 });
 
-function parseJWT(token: string): any {
+function parseJWT(token: string): unknown {
   try {
     const base64Url = token.split('.')[1];
+    if (!base64Url) {
+      return null;
+    }
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(
       Buffer.from(base64, 'base64')
@@ -31,7 +34,7 @@ function parseJWT(token: string): any {
 }
 
 function determineRedirectUrl(idToken: string): string {
-  const claims = parseJWT(idToken);
+  const claims = parseJWT(idToken) as Record<string, unknown> | null;
   
   if (claims && claims['cognito:groups']) {
     const groups = claims['cognito:groups'];
@@ -118,7 +121,7 @@ export async function POST(request: NextRequest) {
     });
 
     return jsonResponse;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Authentication error:', error);
     
     // Return generic error message without details
