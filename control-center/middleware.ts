@@ -5,16 +5,20 @@ import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
 const COGNITO_ISSUER_URL = process.env.COGNITO_ISSUER_URL || 
-  `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`;
+  (COGNITO_USER_POOL_ID ? `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}` : '');
+const LANDING_PAGE_URL = process.env.LANDING_PAGE_URL || 'https://afu-9.com/';
 
 // Construct JWKS URL from issuer
-const JWKS_URL = `${COGNITO_ISSUER_URL}/.well-known/jwks.json`;
+const JWKS_URL = COGNITO_ISSUER_URL ? `${COGNITO_ISSUER_URL}/.well-known/jwks.json` : '';
 
 // Cache JWKS fetcher
 let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getJWKS() {
   if (!jwksCache) {
+    if (!JWKS_URL) {
+      throw new Error('JWKS URL not configured. Set COGNITO_USER_POOL_ID and COGNITO_REGION environment variables.');
+    }
     jwksCache = createRemoteJWKSet(new URL(JWKS_URL));
   }
   return jwksCache;
@@ -65,10 +69,12 @@ async function verifyToken(token: string): Promise<CognitoJWTPayload | null> {
  * @returns Environment name (prod, stage) or null
  */
 function getEnvironmentFromHost(hostname: string): string | null {
-  if (hostname.includes('stage.afu-9.com') || hostname.includes('localhost')) {
+  // Exact match or subdomain of expected domains
+  // Prevent subdomain spoofing by ensuring hostname ends with domain or is exact match
+  if (hostname === 'stage.afu-9.com' || hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'stage';
   }
-  if (hostname.includes('afu-9.com') || hostname.includes('prod.afu-9.com')) {
+  if (hostname === 'afu-9.com' || hostname === 'prod.afu-9.com' || hostname === 'www.afu-9.com') {
     return 'prod';
   }
   return null;
@@ -122,7 +128,7 @@ export async function middleware(request: NextRequest) {
   // If no tokens present, redirect to landing page
   if (!idToken && !accessToken) {
     console.log('No authentication tokens found, redirecting to landing page');
-    return NextResponse.redirect('https://afu-9.com/');
+    return NextResponse.redirect(LANDING_PAGE_URL);
   }
 
   // Verify the ID token (contains user info and groups)
@@ -133,7 +139,7 @@ export async function middleware(request: NextRequest) {
     console.log('Token verification failed, redirecting to landing page');
     
     // Clear invalid cookies
-    const response = NextResponse.redirect('https://afu-9.com/');
+    const response = NextResponse.redirect(LANDING_PAGE_URL);
     response.cookies.delete('afu9_id');
     response.cookies.delete('afu9_access');
     
@@ -151,7 +157,7 @@ export async function middleware(request: NextRequest) {
       console.log(`User does not have access to ${requiredEnv} environment`);
       
       // Return 403 Forbidden or redirect to landing page
-      return NextResponse.redirect('https://afu-9.com/', {
+      return NextResponse.redirect(LANDING_PAGE_URL, {
         status: 403,
       });
     }
