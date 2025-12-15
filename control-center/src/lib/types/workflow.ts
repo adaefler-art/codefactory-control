@@ -97,4 +97,7 @@ export interface WorkflowExecutionConfig {
   
   /** Whether to continue on step failure */
   continueOnError?: boolean;
+  
+  /** Enable verbose debug logging */
+  debugMode?: boolean;
 }

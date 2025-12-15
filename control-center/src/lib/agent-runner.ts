@@ -16,6 +16,8 @@ import {
   AgentContext,
 } from './types/agent';
 import { MCPTool } from './types/mcp';
+import { logger } from './logger';
+import { isDebugModeEnabled } from './debug-mode';
 
 /**
  * Agent Runner for executing LLM-based agents with tool calling
@@ -41,22 +43,35 @@ export class AgentRunner {
     config: AgentConfig
   ): Promise<AgentExecutionResult> {
     const startTime = Date.now();
+    const debugMode = config.debugMode ?? isDebugModeEnabled();
     
     console.log(`[Agent Runner] Starting agent execution`, {
       provider: config.provider,
       model: config.model,
       toolsCount: context.tools.length,
+      debugMode,
     });
+    
+    if (debugMode) {
+      logger.debug('Agent execution starting', {
+        provider: config.provider,
+        model: config.model,
+        prompt: context.prompt,
+        tools: context.tools.map(t => t.name),
+        variables: context.variables,
+        config,
+      }, 'AgentRunner');
+    }
 
     // Initialize LLM client based on provider
     const provider = config.provider || 'openai';
     
     if (provider === 'openai') {
-      return await this.executeOpenAI(context, config, startTime);
+      return await this.executeOpenAI(context, config, startTime, debugMode);
     } else if (provider === 'deepseek') {
-      return await this.executeDeepSeek(context, config, startTime);
+      return await this.executeDeepSeek(context, config, startTime, debugMode);
     } else if (provider === 'anthropic') {
-      return await this.executeAnthropic(context, config, startTime);
+      return await this.executeAnthropic(context, config, startTime, debugMode);
     } else if (provider === 'bedrock') {
       throw new Error('AWS Bedrock provider not yet implemented');
     } else {
@@ -70,10 +85,11 @@ export class AgentRunner {
   private async executeOpenAI(
     context: AgentContext,
     config: AgentConfig,
-    startTime: number
+    startTime: number,
+    debugMode: boolean = false
   ): Promise<AgentExecutionResult> {
     const client = this.getOpenAIClient();
-    return await this.executeOpenAICompatible(client, context, config, startTime);
+    return await this.executeOpenAICompatible(client, context, config, startTime, debugMode);
   }
 
   /**
@@ -83,7 +99,8 @@ export class AgentRunner {
     client: OpenAI,
     context: AgentContext,
     config: AgentConfig,
-    startTime: number
+    startTime: number,
+    debugMode: boolean = false
   ): Promise<AgentExecutionResult> {
     
     const messages: AgentMessage[] = [];
@@ -121,6 +138,15 @@ export class AgentRunner {
       iterations++;
       
       console.log(`[Agent Runner] Iteration ${iterations}/${maxIterations}`);
+      
+      if (debugMode) {
+        logger.debug('Agent iteration starting', {
+          iteration: iterations,
+          maxIterations,
+          messagesCount: messages.length,
+          toolCallsCount: allToolCalls.length,
+        }, 'AgentRunner');
+      }
 
       const completion = await client.chat.completions.create({
         model: config.model,
@@ -129,6 +155,15 @@ export class AgentRunner {
         temperature: config.temperature || 0.7,
         max_tokens: config.maxTokens,
       });
+      
+      if (debugMode) {
+        logger.debug('LLM response received', {
+          iteration: iterations,
+          model: config.model,
+          usage: completion.usage,
+          hasToolCalls: !!completion.choices[0]?.message.tool_calls,
+        }, 'AgentRunner');
+      }
 
       const choice = completion.choices[0];
       if (!choice) {
@@ -146,6 +181,14 @@ export class AgentRunner {
       // Check if LLM wants to call tools
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         console.log(`[Agent Runner] LLM requested ${assistantMessage.tool_calls.length} tool call(s)`);
+        
+        if (debugMode) {
+          logger.debug('LLM requested tool calls', {
+            iteration: iterations,
+            toolCallsCount: assistantMessage.tool_calls.length,
+            toolNames: assistantMessage.tool_calls.map(tc => (tc as any).function?.name),
+          }, 'AgentRunner');
+        }
 
         // Add assistant message with tool calls
         messages.push({
@@ -178,6 +221,14 @@ export class AgentRunner {
             const args = JSON.parse(functionCall.arguments);
 
             console.log(`[Agent Runner] Executing tool: ${toolName}`, { args });
+            
+            if (debugMode) {
+              logger.debug('Executing MCP tool via agent', {
+                iteration: iterations,
+                toolName,
+                args,
+              }, 'AgentRunner');
+            }
 
             // Parse server.tool format
             const [serverName, mcpToolName] = toolName.split('.');
@@ -186,7 +237,15 @@ export class AgentRunner {
             }
 
             // Call the MCP tool
-            const result = await this.mcpClient.callTool(serverName, mcpToolName, args);
+            const result = await this.mcpClient.callTool(serverName, mcpToolName, args, { debugMode });
+            
+            if (debugMode) {
+              logger.debug('MCP tool call completed', {
+                iteration: iterations,
+                toolName,
+                result,
+              }, 'AgentRunner');
+            }
 
             // Track tool call
             allToolCalls.push({
@@ -206,6 +265,14 @@ export class AgentRunner {
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error(`[Agent Runner] Tool call failed: ${errorMessage}`);
+            
+            if (debugMode) {
+              logger.debug('MCP tool call failed', {
+                iteration: iterations,
+                toolName: (toolCall as any).function?.name,
+                error: errorMessage,
+              }, 'AgentRunner');
+            }
 
             // Add error as tool result
             messages.push({
@@ -286,12 +353,13 @@ export class AgentRunner {
   private async executeDeepSeek(
     context: AgentContext,
     config: AgentConfig,
-    startTime: number
+    startTime: number,
+    debugMode: boolean = false
   ): Promise<AgentExecutionResult> {
     const client = this.getDeepSeekClient();
     
     // DeepSeek uses the same API as OpenAI, so we can reuse the OpenAI execution logic
-    return await this.executeOpenAICompatible(client, context, config, startTime);
+    return await this.executeOpenAICompatible(client, context, config, startTime, debugMode);
   }
 
   /**
@@ -300,7 +368,8 @@ export class AgentRunner {
   private async executeAnthropic(
     context: AgentContext,
     config: AgentConfig,
-    startTime: number
+    startTime: number,
+    debugMode: boolean = false
   ): Promise<AgentExecutionResult> {
     const client = this.getAnthropicClient();
     
@@ -331,6 +400,15 @@ export class AgentRunner {
       iterations++;
       
       console.log(`[Agent Runner] Iteration ${iterations}/${maxIterations}`);
+      
+      if (debugMode) {
+        logger.debug('Agent iteration starting (Anthropic)', {
+          iteration: iterations,
+          maxIterations,
+          messagesCount: anthropicMessages.length,
+          toolCallsCount: allToolCalls.length,
+        }, 'AgentRunner');
+      }
 
       const response = await client.messages.create({
         model: config.model,
@@ -340,6 +418,15 @@ export class AgentRunner {
         tools: tools.length > 0 ? tools : undefined,
         temperature: config.temperature || 0.7,
       });
+      
+      if (debugMode) {
+        logger.debug('LLM response received (Anthropic)', {
+          iteration: iterations,
+          model: config.model,
+          usage: response.usage,
+          stopReason: response.stop_reason,
+        }, 'AgentRunner');
+      }
 
       // Track token usage
       totalInputTokens += response.usage.input_tokens;
@@ -376,7 +463,7 @@ export class AgentRunner {
             }
 
             // Call the MCP tool
-            const result = await this.mcpClient.callTool(serverName, mcpToolName, args);
+            const result = await this.mcpClient.callTool(serverName, mcpToolName, args, { debugMode });
 
             // Track tool call
             allToolCalls.push({

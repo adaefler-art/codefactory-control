@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { isDebugModeEnabled } from '@/lib/debug-mode';
 
 export async function GET() {
   try {
@@ -27,6 +28,9 @@ export async function GET() {
     }
     
     const llmConfigured = llmProvider !== 'Nicht konfiguriert';
+    
+    // Check debug mode status using centralized utility
+    const debugMode = isDebugModeEnabled();
 
     return NextResponse.json({
       integrations: {
@@ -47,6 +51,7 @@ export async function GET() {
         architecture: 'AFU-9 (Ninefold)',
         environment: process.env.NODE_ENV || 'development',
         database: process.env.DATABASE_NAME || 'afu9',
+        debugMode,
       },
     });
   } catch (error) {

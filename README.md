@@ -78,7 +78,21 @@ cp .env.local.template .env.local
 npm run dev
 ```
 
-3. **Run MCP servers locally** (optional):
+3. **Enable Debug Mode** (optional):
+Debug mode provides verbose logging for troubleshooting workflows, agents, and MCP communication.
+```bash
+# In .env.local or .env
+AFU9_DEBUG_MODE=true
+```
+
+When debug mode is enabled:
+- Detailed workflow step execution logs
+- LLM request/response tracking
+- MCP JSON-RPC request/response details
+- Variable substitution and context updates
+- Tool call parameter inspection
+
+4. **Run MCP servers locally** (optional):
 ```bash
 # Terminal 1: GitHub server
 cd mcp-servers/github

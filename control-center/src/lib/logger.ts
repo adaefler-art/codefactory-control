@@ -5,10 +5,9 @@
  * All logs include timestamp, service name, and optional trace context.
  */
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import { isDebugModeEnabled } from './debug-mode';
 
-// Cache production check for performance
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
   workflowId?: string;
@@ -45,11 +44,11 @@ class Logger {
   }
 
   /**
-   * Log debug information (development only)
+   * Log debug information (when debug mode is enabled)
    */
   debug(message: string, context?: LogContext, component?: string): void {
-    if (IS_PRODUCTION) {
-      return; // Skip debug logs in production
+    if (!isDebugModeEnabled()) {
+      return; // Skip debug logs when debug mode is disabled
     }
     this.log('debug', message, context, component);
   }
@@ -148,7 +147,7 @@ class ComponentLogger {
   ) {}
 
   debug(message: string, context?: LogContext): void {
-    if (IS_PRODUCTION) {
+    if (!isDebugModeEnabled()) {
       return;
     }
     this.log('debug', message, context);
