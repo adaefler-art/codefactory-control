@@ -17,6 +17,8 @@ jobs:
   validate:
     name: Validate Deployment Confirmation
     runs-on: ubuntu-latest
+    permissions:
+      contents: none
     steps:
       - name: Check confirmation
         run: |
