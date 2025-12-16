@@ -697,7 +697,8 @@ export async function aggregateProductKPIsFromRuns(
     
     if (throughputResult.rows.length > 0) {
       const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
-      const throughput = totalRuns / (periodHours / 24);
+      const periodDays = Math.max(periodHours / 24, 1); // At least 1 day
+      const throughput = totalRuns / periodDays;
       
       const throughputSnapshot = await createKpiSnapshot({
         kpiName: 'product_throughput',
@@ -852,7 +853,8 @@ export async function aggregateFactoryKPIsFromProducts(
     
     if (throughputResult.rows.length > 0) {
       const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
-      const throughput = totalRuns / (periodHours / 24);
+      const periodDays = Math.max(periodHours / 24, 1); // At least 1 day
+      const throughput = totalRuns / periodDays;
       
       const throughputSnapshot = await createKpiSnapshot({
         kpiName: 'factory_throughput',
@@ -917,7 +919,7 @@ export async function executeKpiAggregationPipeline(
     ) VALUES (
       'incremental',
       'running',
-      ARRAY['run_duration', 'token_usage', 'tool_call_success_rate', 'product_success_rate', 'product_throughput', 'mtti', 'success_rate', 'steering_accuracy'],
+      $3,
       $1,
       $2,
       NOW(),
@@ -927,7 +929,7 @@ export async function executeKpiAggregationPipeline(
   `;
   
   try {
-    const jobResult = await pool.query(jobQuery, [periodStart, periodEnd]);
+    const jobResult = await pool.query(jobQuery, [periodStart, periodEnd, KPI_NAMES]);
     const jobId = jobResult.rows[0].id;
     let totalSnapshots = 0;
     

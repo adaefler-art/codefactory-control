@@ -18,11 +18,21 @@
 
 const { Pool } = require('pg');
 
+// KPI Configuration Constants
+const KPI_VERSION = '1.0.0';
+const KPI_NAMES = [
+  'run_duration',
+  'token_usage',
+  'product_success_rate',
+  'product_throughput',
+  'mtti',
+  'success_rate'
+];
+
 // Configuration
 const DATABASE_URL = process.env.DATABASE_URL;
 const AGGREGATION_INTERVAL_MS = parseInt(process.env.KPI_AGGREGATION_INTERVAL_MS || '300000', 10); // 5 minutes
 const AGGREGATION_PERIOD_HOURS = parseInt(process.env.KPI_AGGREGATION_PERIOD_HOURS || '24', 10); // 24 hours
-const KPI_VERSION = '1.0.0';
 
 if (!DATABASE_URL) {
   console.error('[KPI Scheduler] ERROR: DATABASE_URL environment variable is required');
@@ -194,7 +204,8 @@ async function aggregateProductKPIs(repositoryId, periodStart, periodEnd) {
     );
     
     const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
-    const throughput = totalRuns / (AGGREGATION_PERIOD_HOURS / 24);
+    const periodDays = Math.max(AGGREGATION_PERIOD_HOURS / 24, 1); // At least 1 day
+    const throughput = totalRuns / periodDays;
     
     await client.query(
       `INSERT INTO kpi_snapshots (
@@ -333,14 +344,14 @@ async function executeAggregationPipeline() {
       ) VALUES (
         'incremental',
         'running',
-        ARRAY['run_duration', 'token_usage', 'product_success_rate', 'product_throughput', 'mtti', 'success_rate'],
+        $3,
         $1,
         $2,
         NOW(),
         '{"pipeline": "run->product->factory", "triggered_by": "scheduler"}'::jsonb
       )
       RETURNING id`,
-      [periodStart, periodEnd]
+      [periodStart, periodEnd, KPI_NAMES]
     );
     
     const jobId = jobResult.rows[0].id;
@@ -400,7 +411,12 @@ async function executeAggregationPipeline() {
         await client.query('SELECT refresh_kpi_materialized_views()');
         console.log('[KPI Scheduler] Materialized views refreshed');
       } catch (error) {
-        console.log('[KPI Scheduler] Materialized views not available or error refreshing:', error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('does not exist')) {
+          console.log('[KPI Scheduler] Materialized views function not available (not yet migrated)');
+        } else {
+          console.log('[KPI Scheduler] Error refreshing materialized views:', errorMessage);
+        }
       }
       
       // Update job as completed
