@@ -123,7 +123,7 @@ export class WorkflowEngine {
           }
         } catch (policyError) {
           // Log error but continue - policy snapshot is not critical for execution
-          console.warn('[Workflow Engine] Failed to create policy snapshot, continuing without it:', policyError);
+          console.warn(`[Workflow Engine] Failed to create policy snapshot for execution ${executionId}, continuing without it:`, policyError);
           if (isDebugEnabled) {
             logger.warn('Policy snapshot creation failed', {
               executionId,

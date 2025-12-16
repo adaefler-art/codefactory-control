@@ -15,6 +15,7 @@ import { logger } from './logger';
 
 // Import classification rules from deploy-memory
 // These define the current policy state
+// TODO: Move to configuration file for easier version management
 const CURRENT_POLICY_VERSION = 'v1.0.0';
 
 /**
@@ -153,7 +154,10 @@ export async function createPolicySnapshotForExecution(
  * Get or create policy snapshot for execution
  * 
  * This is the main entry point for workflow executions.
- * It will either use the latest snapshot or create a new one.
+ * Currently creates a new snapshot for each execution to ensure complete immutability.
+ * 
+ * Future optimization: Could reuse recent snapshots with the same version
+ * to reduce database load while maintaining auditability.
  * 
  * @param pool Database connection pool
  * @param executionId Workflow execution ID
@@ -164,12 +168,8 @@ export async function ensurePolicySnapshotForExecution(
   executionId: string
 ): Promise<string> {
   try {
-    // Check if there's a recent policy snapshot we can use
-    const latestSnapshot = await getLatestPolicySnapshot(pool);
-    
-    // For now, always create a new snapshot per execution for complete immutability
-    // In the future, we could optimize this by reusing snapshots with the same version
-    // that were created within a short time window
+    // Always create a new snapshot per execution for complete immutability
+    // This ensures each execution has its own policy record for audit purposes
     const snapshotId = await createPolicySnapshotForExecution(pool, executionId);
     
     return snapshotId;
