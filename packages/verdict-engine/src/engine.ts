@@ -33,8 +33,17 @@ import {
  * - Comparable: 0-100 scale allows easy comparison across verdicts
  * - Documented: simple formula (raw * 100, rounded)
  * 
+ * **Public Documentation:** See docs/CONFIDENCE_SCORE_SCHEMA.md for complete
+ * documentation including examples, validation, testing, and change policy.
+ * 
  * @param rawConfidence Raw confidence from classifier (0-1)
  * @returns Normalized confidence score (0-100)
+ * @throws Error if rawConfidence is outside [0, 1] range
+ * 
+ * @example
+ * normalizeConfidenceScore(0.9)   // Returns 90
+ * normalizeConfidenceScore(0.85)  // Returns 85
+ * normalizeConfidenceScore(0.855) // Returns 86 (rounded)
  */
 export function normalizeConfidenceScore(rawConfidence: number): number {
   // Validate input range
