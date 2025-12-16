@@ -115,90 +115,31 @@ export class Afu9EcsStack extends cdk.Stack {
     const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
 
     // ========================================
-    // ECR Repositories
+    // ECR Repositories (import existing)
     // ========================================
+    this.controlCenterRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'ControlCenterRepo',
+      'afu9/control-center'
+    );
 
-    // ========================================
-    // ECR Repositories (Shared across environments)
-    // ========================================
-    // Create repositories only once (in stage stack), import in other environments
-    // This prevents resource conflicts and simplifies image management
+    this.mcpGithubRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpGithubRepo',
+      'afu9/mcp-github'
+    );
 
-    if (environment === ENVIRONMENT.STAGE) {
-      // Create ECR repositories in stage environment
-      this.controlCenterRepo = new ecr.Repository(this, 'ControlCenterRepo', {
-        repositoryName: 'afu9/control-center',
-        imageScanOnPush: true,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        lifecycleRules: [
-          {
-            description: 'Keep last 20 images',
-            maxImageCount: 20,
-          },
-        ],
-      });
+    this.mcpDeployRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpDeployRepo',
+      'afu9/mcp-deploy'
+    );
 
-      this.mcpGithubRepo = new ecr.Repository(this, 'McpGithubRepo', {
-        repositoryName: 'afu9/mcp-github',
-        imageScanOnPush: true,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        lifecycleRules: [
-          {
-            description: 'Keep last 20 images',
-            maxImageCount: 20,
-          },
-        ],
-      });
-
-      this.mcpDeployRepo = new ecr.Repository(this, 'McpDeployRepo', {
-        repositoryName: 'afu9/mcp-deploy',
-        imageScanOnPush: true,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        lifecycleRules: [
-          {
-            description: 'Keep last 20 images',
-            maxImageCount: 20,
-          },
-        ],
-      });
-
-      this.mcpObservabilityRepo = new ecr.Repository(this, 'McpObservabilityRepo', {
-        repositoryName: 'afu9/mcp-observability',
-        imageScanOnPush: true,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        lifecycleRules: [
-          {
-            description: 'Keep last 20 images',
-            maxImageCount: 20,
-          },
-        ],
-      });
-    } else {
-      // Import existing repositories in other environments (prod, legacy)
-      this.controlCenterRepo = ecr.Repository.fromRepositoryName(
-        this,
-        'ControlCenterRepo',
-        'afu9/control-center'
-      );
-
-      this.mcpGithubRepo = ecr.Repository.fromRepositoryName(
-        this,
-        'McpGithubRepo',
-        'afu9/mcp-github'
-      );
-
-      this.mcpDeployRepo = ecr.Repository.fromRepositoryName(
-        this,
-        'McpDeployRepo',
-        'afu9/mcp-deploy'
-      );
-
-      this.mcpObservabilityRepo = ecr.Repository.fromRepositoryName(
-        this,
-        'McpObservabilityRepo',
-        'afu9/mcp-observability'
-      );
-    }
+    this.mcpObservabilityRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpObservabilityRepo',
+      'afu9/mcp-observability'
+    );
 
     // ========================================
     // Secrets Manager
@@ -253,10 +194,9 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
 
     // Task execution role (used by ECS to pull images and write logs)
-    // Environment-specific role names to avoid conflicts
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
-      roleName: `afu9-ecs-task-execution-role-${environment}`,
-      description: `IAM role for ECS to pull container images and manage logs (${environment})`,
+      roleName: 'afu9-ecs-task-execution-role',
+      description: 'IAM role for ECS to pull container images and manage logs',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
@@ -272,10 +212,9 @@ export class Afu9EcsStack extends cdk.Stack {
     llmSecret.grantRead(taskExecutionRole);
 
     // Task role (used by application code for AWS API calls)
-    // Environment-specific role names to avoid conflicts
     const taskRole = new iam.Role(this, 'TaskRole', {
-      roleName: `afu9-ecs-task-role-${environment}`,
-      description: `IAM role for AFU-9 ECS tasks to access AWS services (${environment})`,
+      roleName: 'afu9-ecs-task-role',
+      description: 'IAM role for AFU-9 ECS tasks to access AWS services',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
@@ -386,29 +325,29 @@ export class Afu9EcsStack extends cdk.Stack {
     */
 
     // ========================================
-    // CloudWatch Log Groups (environment-specific)
+    // CloudWatch Log Groups (stable names to avoid replacement)
     // ========================================
 
     const controlCenterLogGroup = new logs.LogGroup(this, 'ControlCenterLogGroup', {
-      logGroupName: `/ecs/afu9/control-center-${environment}`,
+      logGroupName: '/ecs/afu9/control-center',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpGithubLogGroup = new logs.LogGroup(this, 'McpGithubLogGroup', {
-      logGroupName: `/ecs/afu9/mcp-github-${environment}`,
+      logGroupName: '/ecs/afu9/mcp-github',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpDeployLogGroup = new logs.LogGroup(this, 'McpDeployLogGroup', {
-      logGroupName: `/ecs/afu9/mcp-deploy-${environment}`,
+      logGroupName: '/ecs/afu9/mcp-deploy',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpObservabilityLogGroup = new logs.LogGroup(this, 'McpObservabilityLogGroup', {
-      logGroupName: `/ecs/afu9/mcp-observability-${environment}`,
+      logGroupName: '/ecs/afu9/mcp-observability',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
@@ -428,7 +367,7 @@ export class Afu9EcsStack extends cdk.Stack {
     // For rollback procedures, see docs/ROLLBACK.md
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
-      family: `afu9-control-center-${environment}`,
+      family: 'afu9-control-center',
       cpu,
       memoryLimitMiB,
       executionRole: taskExecutionRole,
@@ -576,18 +515,17 @@ export class Afu9EcsStack extends cdk.Stack {
     this.service = new ecs.FargateService(this, 'Service', {
       cluster: this.cluster,
       taskDefinition,
-      serviceName: `afu9-control-center-${environment}`,
+      serviceName: 'afu9-control-center',
       desiredCount: envDesiredCount,
-      // For single-task deployments, allow zero tasks during updates
-      // For multi-task deployments, maintain at least 50% capacity
-      minHealthyPercent: envDesiredCount === 1 ? 0 : 50,
+      // Deployment preferences: keep at least 50% healthy during updates
+      minHealthyPercent: 50,
       maxHealthyPercent: 200,
       securityGroups: [ecsSecurityGroup],
       vpcSubnets: {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
       },
       assignPublicIp: false,
-      healthCheckGracePeriod: cdk.Duration.seconds(60),
+      healthCheckGracePeriod: cdk.Duration.seconds(180),
       enableExecuteCommand: true, // Enable ECS Exec for debugging
     });
 
@@ -604,8 +542,8 @@ export class Afu9EcsStack extends cdk.Stack {
       },
     };
 
-    cdk.Tags.of(this.service).add('Name', `afu9-control-center-service-${environment}`);
-    cdk.Tags.of(this.service).add('Environment', environment);
+    cdk.Tags.of(this.service).add('Name', 'afu9-control-center-service');
+    cdk.Tags.of(this.service).add('Environment', 'production');
     cdk.Tags.of(this.service).add('Project', 'AFU-9');
 
     // ========================================
