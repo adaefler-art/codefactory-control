@@ -7,11 +7,15 @@ The Central Factory Status API provides a read-only, versioned REST API for quer
 **Key Features:**
 - Read-only access (GET only)
 - JSON-only responses
-- Versioned API (currently v1.0.0)
-- Aggregated view of runs, errors, and KPIs
+- Versioned API (currently v1.1.0)
+- Aggregated view of runs, errors, verdicts, and KPIs
+- Verdict Engine v1.1 integration (EPIC 2)
 - Extensible design for future enhancements
 
-**KPI:** Mean Time to Insight
+**KPIs:** 
+- Mean Time to Insight
+- Verdict Consistency (EPIC 2)
+- Auditability (EPIC 2)
 
 ## API Endpoint
 
@@ -48,7 +52,7 @@ curl "http://localhost:3000/api/v1/factory/status?limit=20&errorLimit=10&kpiPeri
 ```json
 {
   "api": {
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "timestamp": "2024-01-15T10:30:00.000Z",
   "runs": {
@@ -88,7 +92,42 @@ curl "http://localhost:3000/api/v1/factory/status?limit=20&errorLimit=10&kpiPeri
     "runningExecutions": 2
   },
   "verdicts": {
-    "enabled": false
+    "enabled": true,
+    "summary": [
+      {
+        "id": "verdict-123",
+        "executionId": "770e8400-e29b-41d4-a716-446655440000",
+        "errorClass": "ACM_DNS_VALIDATION_PENDING",
+        "service": "ACM",
+        "confidenceScore": 90,
+        "proposedAction": "WAIT_AND_RETRY",
+        "fingerprintId": "abc123def456",
+        "policyVersion": "v1.0.0",
+        "createdAt": "2024-01-15T09:45:30.000Z"
+      }
+    ],
+    "kpis": {
+      "totalVerdicts": 245,
+      "avgConfidence": 87,
+      "consistencyScore": 98,
+      "byAction": {
+        "waitAndRetry": 120,
+        "openIssue": 100,
+        "humanRequired": 25
+      },
+      "topErrorClasses": [
+        {
+          "errorClass": "ACM_DNS_VALIDATION_PENDING",
+          "count": 50,
+          "avgConfidence": 90
+        },
+        {
+          "errorClass": "MISSING_SECRET",
+          "count": 45,
+          "avgConfidence": 85
+        }
+      ]
+    }
   }
 }
 ```
@@ -179,12 +218,40 @@ curl "http://localhost:3000/api/v1/factory/status?limit=20&errorLimit=10&kpiPeri
 | `avgExecutionDurationMs` | number \| null | Average duration of completed executions in milliseconds |
 | `runningExecutions` | number | Currently running executions |
 
-### VerdictsData
+### VerdictsData (EPIC 2: Verdict Engine v1.1)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `enabled` | boolean | Whether verdict engine is enabled (currently `false`) |
-| `summary` | VerdictSummary[]? | Optional verdict summaries (future implementation) |
+| `enabled` | boolean | Whether Verdict Engine is enabled (`true` in v1.1.0+) |
+| `summary` | VerdictSummary[] | Array of recent verdicts |
+| `kpis` | VerdictKPIs | Verdict-related KPI metrics |
+
+### VerdictSummary
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique verdict ID (UUID) |
+| `executionId` | string | Workflow execution that generated this verdict |
+| `errorClass` | string | Classified error type (e.g., `ACM_DNS_VALIDATION_PENDING`) |
+| `service` | string | AWS service involved (e.g., `ACM`, `SecretsManager`) |
+| `confidenceScore` | number | Normalized confidence score (0-100) |
+| `proposedAction` | string | Recommended action: `WAIT_AND_RETRY`, `OPEN_ISSUE`, or `HUMAN_REQUIRED` |
+| `fingerprintId` | string | Stable fingerprint for error pattern |
+| `policyVersion` | string | Policy snapshot version used (e.g., `v1.0.0`) |
+| `createdAt` | string | ISO 8601 timestamp when verdict was created |
+
+### VerdictKPIs
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `totalVerdicts` | number | Total number of verdicts in the time period |
+| `avgConfidence` | number | Average confidence score (0-100) |
+| `consistencyScore` | number | **Verdict Consistency** - Percentage of fingerprint groups with consistent verdicts (0-100) |
+| `byAction` | object | Count of verdicts by proposed action |
+| `byAction.waitAndRetry` | number | Number of verdicts proposing wait and retry |
+| `byAction.openIssue` | number | Number of verdicts proposing to open an issue |
+| `byAction.humanRequired` | number | Number of verdicts requiring human intervention |
+| `topErrorClasses` | array | Top 5 most common error classes with counts and average confidence |
 
 ## KPIs Explained
 
@@ -211,6 +278,39 @@ Percentage of executions that complete successfully versus fail.
 ```
 Success Rate = (completed_executions / (completed_executions + failed_executions)) * 100
 ```
+
+### Verdict Consistency Score (EPIC 2)
+
+**New in v1.1.0** - Measures the determinism and reliability of the Verdict Engine.
+
+The consistency score indicates the percentage of error fingerprint groups where all verdicts have consistent error classifications and confidence scores. A high consistency score (>95%) indicates that the Verdict Engine produces deterministic, repeatable verdicts.
+
+**Calculation:**
+```
+Consistency Score = (consistent_fingerprint_groups / total_fingerprint_groups) * 100
+
+Where a fingerprint group is "consistent" if all verdicts with the same fingerprint have:
+- Identical error_class
+- Identical confidence_score
+```
+
+**Target:** >95% consistency
+
+**Use Cases:**
+- Validate Verdict Engine determinism
+- Monitor policy changes impact
+- Track verdict quality over time
+- Ensure governance compliance
+
+### Auditability (EPIC 2)
+
+**New in v1.1.0** - Every verdict includes:
+- **Policy Reference**: Immutable policy snapshot ID and version
+- **Full Traceability**: From verdict → policy → execution → workflow
+- **Timestamps**: When verdict was created
+- **Raw Signals**: Original failure data preserved
+
+This enables complete audit trails for compliance and governance requirements.
 
 ## HTTP Methods
 
