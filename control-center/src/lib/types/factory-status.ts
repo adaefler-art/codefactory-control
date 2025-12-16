@@ -25,6 +25,8 @@ export interface FactoryRunSummary {
   durationMs: number | null;
   triggeredBy: string | null;
   error: string | null;
+  policySnapshotId: string | null;
+  policyVersion: string | null;
 }
 
 /**

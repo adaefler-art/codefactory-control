@@ -73,19 +73,22 @@ async function getRecentRuns(limit: number): Promise<{
 }> {
   const pool = getPool();
   
-  // Get recent executions
+  // Get recent executions with policy snapshot information (Issue 2.1)
   const runsQuery = `
     SELECT 
-      id,
-      workflow_id,
-      status,
-      started_at,
-      completed_at,
-      error,
-      triggered_by,
-      EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000 AS duration_ms
-    FROM workflow_executions
-    ORDER BY started_at DESC
+      e.id,
+      e.workflow_id,
+      e.status,
+      e.started_at,
+      e.completed_at,
+      e.error,
+      e.triggered_by,
+      e.policy_snapshot_id,
+      ps.version as policy_version,
+      EXTRACT(EPOCH FROM (e.completed_at - e.started_at)) * 1000 AS duration_ms
+    FROM workflow_executions e
+    LEFT JOIN policy_snapshots ps ON e.policy_snapshot_id = ps.id
+    ORDER BY e.started_at DESC
     LIMIT $1
   `;
   
@@ -110,6 +113,8 @@ async function getRecentRuns(limit: number): Promise<{
       durationMs: row.duration_ms ? Math.round(row.duration_ms) : null,
       triggeredBy: row.triggered_by,
       error: row.error,
+      policySnapshotId: row.policy_snapshot_id,
+      policyVersion: row.policy_version,
     }));
 
     const total = parseInt(countResult.rows[0].total, 10);

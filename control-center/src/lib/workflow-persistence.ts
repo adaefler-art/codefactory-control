@@ -27,6 +27,7 @@ export interface WorkflowExecutionRow {
   error: string | null;
   triggered_by: string | null;
   github_run_id: string | null;
+  policy_snapshot_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -319,6 +320,35 @@ export async function getRecentExecutions(limit: number = 50): Promise<WorkflowE
     return result.rows;
   } catch (error) {
     console.error('[Workflow Persistence] Failed to get recent executions:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update policy snapshot ID for workflow execution
+ * 
+ * Issue 2.1: Policy Snapshotting per Run
+ * Links the execution to its immutable policy snapshot
+ */
+export async function updateExecutionPolicySnapshot(
+  executionId: string,
+  policySnapshotId: string
+): Promise<void> {
+  const pool = getPool();
+  const query = `
+    UPDATE workflow_executions
+    SET policy_snapshot_id = $2,
+        updated_at = NOW()
+    WHERE id = $1
+  `;
+
+  const values = [executionId, policySnapshotId];
+
+  try {
+    await pool.query(query, values);
+    console.log('[Workflow Persistence] Updated policy snapshot:', { executionId, policySnapshotId });
+  } catch (error) {
+    console.error('[Workflow Persistence] Failed to update policy snapshot:', error);
     throw error;
   }
 }
