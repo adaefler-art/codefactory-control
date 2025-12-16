@@ -1,5 +1,23 @@
-- run: npm ci
-- run: node scripts/create_afu9_v0_3_issues_from_md.js docs/roadmaps/afu9_roadmap_v0_3_issues.md
-  env:
-    GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-    GITHUB_REPOSITORY: ${{ github.repository }}
+name: Create AFU-9 Issues from Roadmap
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/roadmaps/afu9_roadmap_v0_3_issues.md'
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: node scripts/create_afu9_v0_3_issues_from_md.js docs/roadmaps/afu9_roadmap_v0_3_issues.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
