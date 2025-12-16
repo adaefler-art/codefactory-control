@@ -54,7 +54,13 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   /**
    * ARN of the database connection secret
    */
-  dbSecretArn: string;
+  dbSecretArn?: string;
+
+  /**
+   * Enable database secrets injection. If false, database secrets are omitted.
+   * @default false
+   */
+  enableDatabase?: boolean;
 
   /**
    * Image tag to use for deployments
@@ -104,12 +110,19 @@ export class Afu9EcsStack extends cdk.Stack {
       ecsSecurityGroup,
       targetGroup,
       dbSecretArn,
+      enableDatabase = false,
       imageTag = 'staging-latest',
       environment = 'stage',
       desiredCount,
       cpu = 1024,
       memoryLimitMiB = 2048,
     } = props;
+
+    const contextEnableDb = this.node.tryGetContext('enableDatabase');
+    const databaseEnabled =
+      enableDatabase === true ||
+      contextEnableDb === true ||
+      contextEnableDb === 'true';
 
     // Environment-specific defaults
     const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
@@ -145,13 +158,11 @@ export class Afu9EcsStack extends cdk.Stack {
     // Secrets Manager
     // ========================================
 
-    // Import database secret (connection details for application)
+    // Import database secret (connection details for application) when enabled
     // This is the comprehensive secret created by Afu9DatabaseStack
-    const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
-      this,
-      'DatabaseSecret',
-      dbSecretArn
-    );
+    const dbSecret = databaseEnabled && dbSecretArn
+      ? secretsmanager.Secret.fromSecretCompleteArn(this, 'DatabaseSecret', dbSecretArn)
+      : undefined;
 
     // Import GitHub credentials secret (shared across environments)
     const githubSecret = secretsmanager.Secret.fromSecretNameV2(
@@ -207,7 +218,9 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Grant access to secrets for injecting them as environment variables
     // Justification: ECS needs to read secrets to inject them into containers at startup
-    dbSecret.grantRead(taskExecutionRole);
+    if (dbSecret) {
+      dbSecret.grantRead(taskExecutionRole);
+    }
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
@@ -220,7 +233,9 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Grant task role access to secrets
     // Justification: Application needs to read database credentials, GitHub tokens, and LLM API keys
-    dbSecret.grantRead(taskRole);
+    if (dbSecret) {
+      dbSecret.grantRead(taskRole);
+    }
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
@@ -391,11 +406,15 @@ export class Afu9EcsStack extends cdk.Stack {
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
       },
       secrets: {
-        DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
-        DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-        DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
-        DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
-        DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+        ...(dbSecret
+          ? {
+              DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
+              DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
+              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+              DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
+              DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+            }
+          : {}),
         GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
         GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
         GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
@@ -405,7 +424,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3000/api/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -436,7 +459,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3001/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -465,7 +492,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3002/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3002/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -494,7 +525,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3003/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3003/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
