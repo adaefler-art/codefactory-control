@@ -1,0 +1,47 @@
+name: Import AFU-9 v0.3 Roadmap Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_path:
+        description: "Optional path to roadmap markdown"
+        required: false
+        default: docs/roadmaps/afu9_roadmap_v0_3_issues.md
+      project_title:
+        description: "ProjectV2 title"
+        required: false
+        default: "AFU-9 Codefactory v0.3"
+      status:
+        description: "Status value to set on project items"
+        required: false
+        default: Backlog
+
+permissions:
+  contents: read
+  issues: write
+  projects: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import roadmap issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          FILE_PATH="${{ inputs.file_path }}"
+          PROJECT_TITLE="${{ inputs.project_title }}"
+          STATUS_VALUE="${{ inputs.status }}"
+          node scripts/import_afu9_v0_3_issues.ts --projectTitle "${PROJECT_TITLE}" --setStatus "${STATUS_VALUE}" "${FILE_PATH}"
