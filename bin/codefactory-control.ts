@@ -25,6 +25,15 @@ function isMultiEnvEnabled(app: cdk.App): boolean {
   return contextValue === true || contextValue === 'true';
 }
 
+/**
+ * Helper function to check if database integration should be enabled
+ * @returns true if database is enabled (default), false if explicitly disabled
+ */
+function isDatabaseEnabled(app: cdk.App): boolean {
+  const enableDatabaseContext = app.node.tryGetContext('afu9-enable-database');
+  return enableDatabaseContext === undefined ? true : enableDatabaseContext !== false && enableDatabaseContext !== 'false';
+}
+
 // v0.1 Lambda-based stack (existing)
 new CodefactoryControlStack(app, 'CodefactoryControlStack', {
   /* You can specify env here if you want:
@@ -74,6 +83,9 @@ if (multiEnvEnabled) {
   // Multi-Environment Deployment (Stage + Prod)
   // ========================================
 
+  // Check if database should be enabled
+  const enableDatabase = isDatabaseEnabled(app);
+
   // Create environment-specific target groups
   const stageTargetGroup = new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroup', {
     vpc: networkStack.vpc,
@@ -116,7 +128,8 @@ if (multiEnvEnabled) {
     vpc: networkStack.vpc,
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: stageTargetGroup,
-    dbSecretArn: databaseStack.dbSecret.secretArn,
+    enableDatabase,
+    dbSecretArn: enableDatabase ? databaseStack.dbSecret.secretArn : undefined,
     environment: 'stage',
     imageTag: 'stage-latest',
     desiredCount: 1,
@@ -131,7 +144,8 @@ if (multiEnvEnabled) {
     vpc: networkStack.vpc,
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: prodTargetGroup,
-    dbSecretArn: databaseStack.dbSecret.secretArn,
+    enableDatabase,
+    dbSecretArn: enableDatabase ? databaseStack.dbSecret.secretArn : undefined,
     environment: 'prod',
     imageTag: 'prod-latest',
     desiredCount: 2,
@@ -190,14 +204,18 @@ if (multiEnvEnabled) {
   // Single Environment Deployment (Backward Compatible)
   // ========================================
 
-  // ECS stack (depends on network and database)
+  // Check if database should be enabled
+  const enableDatabase = isDatabaseEnabled(app);
+
+  // ECS stack (depends on network, optionally on database)
   const ecsStack = new Afu9EcsStack(app, 'Afu9EcsStack', {
     env,
     description: 'AFU-9 v0.2 ECS: Fargate service with Control Center and MCP servers',
     vpc: networkStack.vpc,
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: networkStack.targetGroup,
-    dbSecretArn: databaseStack.dbSecret.secretArn,
+    enableDatabase,
+    dbSecretArn: enableDatabase ? databaseStack.dbSecret.secretArn : undefined,
   });
 
   // If DNS stack exists, add Route53 A record to point to ALB

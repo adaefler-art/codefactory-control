@@ -20,6 +20,55 @@ export const ENVIRONMENT = {
 export type Environment = typeof ENVIRONMENT[keyof typeof ENVIRONMENT];
 
 /**
+ * Configuration for AFU-9 ECS deployment
+ * Resolved from CDK context and props with strict validation
+ */
+export interface Afu9EcsConfig {
+  /**
+   * Environment name (stage, prod, legacy)
+   */
+  environment: Environment;
+  
+  /**
+   * Enable database integration
+   * When false: no DB secrets, no IAM grants, app reports database:not_configured
+   * When true: DB secret ARN required, IAM grants added, app connects to DB
+   * @default true
+   */
+  enableDatabase: boolean;
+  
+  /**
+   * ARN of the database connection secret
+   * Required when enableDatabase=true
+   */
+  dbSecretArn?: string;
+  
+  /**
+   * Image tag to use for deployments
+   * @default 'staging-latest'
+   */
+  imageTag: string;
+  
+  /**
+   * Desired count of tasks
+   * @default 1 for stage, 2 for prod
+   */
+  desiredCount: number;
+  
+  /**
+   * CPU allocation for tasks (in CPU units)
+   * @default 1024 (1 vCPU)
+   */
+  cpu: number;
+  
+  /**
+   * Memory allocation for tasks (in MiB)
+   * @default 2048 (2 GB)
+   */
+  memoryLimitMiB: number;
+}
+
+/**
  * AFU-9 ECS Infrastructure Stack
  * 
  * Deploys AFU-9 Control Center and MCP servers on ECS Fargate:
@@ -33,7 +82,9 @@ export type Environment = typeof ENVIRONMENT[keyof typeof ENVIRONMENT];
  * 
  * This stack depends on:
  * - Afu9NetworkStack: VPC, security groups, ALB, target group
- * - Afu9DatabaseStack: RDS database and connection secrets
+ * - Optionally Afu9DatabaseStack: RDS database and connection secrets (if enableDatabase=true)
+ * 
+ * IMPORTANT: This stack does NOT depend on Afu9DnsStack. DNS is deployed separately.
  */
 export interface Afu9EcsStackProps extends cdk.StackProps {
   /**
@@ -57,7 +108,16 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   targetGroup: elbv2.ApplicationTargetGroup;
 
   /**
+   * Enable database integration
+   * When false: no DB secrets, no IAM grants, app reports database:not_configured
+   * When true: DB secret ARN required, IAM grants added, app connects to DB
+   * @default true
+   */
+  enableDatabase?: boolean;
+
+  /**
    * ARN of the database connection secret
+   * Required when enableDatabase=true, ignored when enableDatabase=false
    */
   dbSecretArn?: string;
 
@@ -163,6 +223,10 @@ export class Afu9EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
 
+    // ========================================
+    // Configuration Resolution and Validation
+    // ========================================
+    
     const {
       vpc,
       ecsSecurityGroup,
@@ -178,6 +242,14 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Environment-specific defaults
     const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
+
+    // Log configuration for diagnostics
+    console.log('AFU-9 ECS Stack Configuration:');
+    console.log(`  Environment: ${environment}`);
+    console.log(`  Database Enabled: ${enableDatabase}`);
+    console.log(`  Image Tag: ${imageTag}`);
+    console.log(`  Desired Count: ${envDesiredCount}`);
+    console.log(`  CPU: ${cpu}, Memory: ${memoryLimitMiB}`);
 
     // ========================================
     // ECR Repositories (import existing)
@@ -260,7 +332,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Task execution role (used by ECS to pull images and write logs)
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
-      roleName: 'afu9-ecs-task-execution-role',
+      roleName: `afu9-ecs-task-execution-role-${environment}`,
       description: 'IAM role for ECS to pull container images and manage logs',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
@@ -280,7 +352,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Task role (used by application code for AWS API calls)
     const taskRole = new iam.Role(this, 'TaskRole', {
-      roleName: 'afu9-ecs-task-role',
+      roleName: `afu9-ecs-task-role-${environment}`,
       description: 'IAM role for AFU-9 ECS tasks to access AWS services',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
@@ -451,6 +523,7 @@ export class Afu9EcsStack extends cdk.Stack {
         NODE_ENV: 'production',
         PORT: '3000',
         ENVIRONMENT: environment, // Add environment variable for app-level detection
+        DATABASE_ENABLED: enableDatabase ? 'true' : 'false', // Signal to app whether DB is configured
         MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
         MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
@@ -600,7 +673,7 @@ export class Afu9EcsStack extends cdk.Stack {
     this.service = new ecs.FargateService(this, 'Service', {
       cluster: this.cluster,
       taskDefinition,
-      serviceName: 'afu9-control-center',
+      serviceName: `afu9-control-center-${environment}`,
       desiredCount: envDesiredCount,
       // Deployment preferences: keep at least 50% healthy during updates
       minHealthyPercent: 50,
@@ -610,7 +683,9 @@ export class Afu9EcsStack extends cdk.Stack {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
       },
       assignPublicIp: false,
-      healthCheckGracePeriod: cdk.Duration.seconds(180),
+      // Increased grace period for database initialization and health checks
+      // 240s = 4 minutes to account for DB connection pooling and MCP server startup
+      healthCheckGracePeriod: cdk.Duration.seconds(240),
       enableExecuteCommand: true, // Enable ECS Exec for debugging
     });
 
