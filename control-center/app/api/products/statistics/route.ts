@@ -5,7 +5,7 @@
  * EPIC 4: Product Registry & Templates
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
 import { ProductService } from '../../../../src/lib/product-service';
 
@@ -13,7 +13,7 @@ import { ProductService } from '../../../../src/lib/product-service';
  * GET /api/products/statistics
  * Get aggregate statistics about products
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const pool = getPool();
     const productService = new ProductService(pool);

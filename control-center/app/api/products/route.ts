@@ -8,7 +8,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
 import { ProductService } from '../../../src/lib/product-service';
-import { CreateProductRequest, ProductQueryParams, PRODUCT_KEY_REGEX } from '../../../src/lib/types/product';
+import { CreateProductRequest, ProductQueryParams, PRODUCT_KEY_REGEX, ProductIsolationLevel } from '../../../src/lib/types/product';
+
+// Valid sort fields
+const VALID_SORT_FIELDS = ['created_at', 'updated_at', 'display_name', 'product_key'] as const;
+const VALID_SORT_ORDERS = ['asc', 'desc'] as const;
+const VALID_ISOLATION_LEVELS: ProductIsolationLevel[] = ['standard', 'strict', 'relaxed'];
+
+/**
+ * Validate and parse sort field
+ */
+function parseValidSortBy(value: string | null): ProductQueryParams['sortBy'] {
+  if (!value) return 'created_at';
+  if (VALID_SORT_FIELDS.includes(value as typeof VALID_SORT_FIELDS[number])) {
+    return value as ProductQueryParams['sortBy'];
+  }
+  return 'created_at';
+}
+
+/**
+ * Validate and parse sort order
+ */
+function parseValidSortOrder(value: string | null): ProductQueryParams['sortOrder'] {
+  if (!value) return 'desc';
+  if (VALID_SORT_ORDERS.includes(value as typeof VALID_SORT_ORDERS[number])) {
+    return value as ProductQueryParams['sortOrder'];
+  }
+  return 'desc';
+}
+
+/**
+ * Validate and parse isolation level
+ */
+function parseValidIsolationLevel(value: string | null): ProductIsolationLevel | undefined {
+  if (!value) return undefined;
+  return VALID_ISOLATION_LEVELS.includes(value as ProductIsolationLevel)
+    ? (value as ProductIsolationLevel)
+    : undefined;
+}
 
 /**
  * GET /api/products
@@ -26,12 +63,12 @@ export async function GET(request: NextRequest) {
       archived: searchParams.get('archived') === 'true' ? true : searchParams.get('archived') === 'false' ? false : undefined,
       templateId: searchParams.get('templateId') || undefined,
       ownerTeam: searchParams.get('ownerTeam') || undefined,
-      isolationLevel: searchParams.get('isolationLevel') as any,
+      isolationLevel: parseValidIsolationLevel(searchParams.get('isolationLevel')),
       search: searchParams.get('search') || undefined,
       limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 50,
       offset: searchParams.get('offset') ? parseInt(searchParams.get('offset')!, 10) : 0,
-      sortBy: (searchParams.get('sortBy') as any) || 'created_at',
-      sortOrder: (searchParams.get('sortOrder') as any) || 'desc',
+      sortBy: parseValidSortBy(searchParams.get('sortBy')),
+      sortOrder: parseValidSortOrder(searchParams.get('sortOrder')),
     };
 
     // Parse tags if provided (comma-separated)
