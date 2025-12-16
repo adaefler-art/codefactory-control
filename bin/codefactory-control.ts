@@ -13,6 +13,7 @@ import { Afu9AlarmsStack } from '../lib/afu9-alarms-stack';
 import { Afu9IamStack } from '../lib/afu9-iam-stack';
 import { Afu9AuthStack } from '../infra/stacks/afu9-auth-stack';
 import { Afu9RoutingStack } from '../lib/afu9-routing-stack';
+import { Afu9DeployMemoryStack } from '../lib/afu9-deploy-memory-stack';
 
 const app = new cdk.App();
 
@@ -246,4 +247,10 @@ new Afu9AuthStack(app, 'Afu9AuthStack', {
   env,
   description: 'AFU-9 v0.2 Authentication: Cognito User Pool for Control Center',
   domainPrefix: cognitoDomainPrefix,
+});
+
+// Deploy Memory stack (independent)
+new Afu9DeployMemoryStack(app, 'Afu9DeployMemoryStack', {
+  env,
+  description: 'AFU-9 Deploy Memory: DynamoDB table for tracking deploy failures',
 });
