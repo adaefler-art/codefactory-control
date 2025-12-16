@@ -8,6 +8,9 @@ on:
     paths:
       - 'docs/roadmaps/afu9_roadmap_v0_3_issues.md'
 
+permissions:
+  contents: read
+
 jobs:
   create-issues:
     runs-on: ubuntu-latest
