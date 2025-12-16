@@ -62,7 +62,9 @@ export async function GET() {
 
     // Check MCP servers health in production/staging
     const env = process.env.NODE_ENV;
-    if (env === 'production' || env === 'staging') {
+    const shouldCheckMCPServers = env === 'production' || env === 'staging';
+    
+    if (shouldCheckMCPServers) {
       const mcpServers = [
         { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://localhost:3001' },
         { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://localhost:3002' },
@@ -122,7 +124,7 @@ export async function GET() {
       checks,
       dependencies: {
         required: ['database', 'environment'],
-        optional: env === 'production' || env === 'staging' 
+        optional: shouldCheckMCPServers 
           ? ['mcp-github', 'mcp-deploy', 'mcp-observability']
           : [],
       },

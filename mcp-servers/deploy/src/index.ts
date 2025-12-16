@@ -84,8 +84,7 @@ export class DeployMCPServer extends MCPServer {
   private async checkECSPermissions(): Promise<DependencyCheck> {
     const startTime = Date.now();
     try {
-      // Try to describe a minimal ECS service call to verify permissions
-      // We use ListClusters as it's a lightweight call
+      // Use ListClustersCommand which is already imported
       const { ListClustersCommand } = await import('@aws-sdk/client-ecs');
       const command = new ListClustersCommand({ maxResults: 1 });
       await this.ecsClient.send(command);

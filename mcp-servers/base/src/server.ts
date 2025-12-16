@@ -208,59 +208,65 @@ export abstract class MCPServer {
       this.logger.debug('Readiness check endpoint accessed');
 
       try {
-        // Perform all dependency checks with timeout
-        const checksPromise = this.checkDependencies();
-        const timeoutPromise = new Promise<Map<string, DependencyCheck>>((_, reject) => {
-          setTimeout(() => reject(new Error('Readiness check timeout')), 5000);
-        });
+        // Perform all dependency checks with timeout using AbortController
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => abortController.abort(), 5000);
+        
+        try {
+          const checks = await this.checkDependencies();
+          clearTimeout(timeoutId);
+          
+          const checksObj: Record<string, DependencyCheck> = {};
+          const errors: string[] = [];
 
-        const checks = await Promise.race([checksPromise, timeoutPromise]);
-        const checksObj: Record<string, DependencyCheck> = {};
-        const errors: string[] = [];
-
-        // Convert Map to object and collect errors
-        checks.forEach((check, name) => {
-          checksObj[name] = check;
-          if (check.status === 'error') {
-            errors.push(`${name} check failed: ${check.message || 'unknown error'}`);
-          }
-        });
+          // Convert Map to object and collect errors
+          checks.forEach((check, name) => {
+            checksObj[name] = check;
+            if (check.status === 'error') {
+              errors.push(`${name} check failed: ${check.message || 'unknown error'}`);
+            }
+          });
 
         const duration = Date.now() - startTime;
 
-        // Determine if service is ready
-        // Service is ready if all required dependencies are ok or warning
-        const requiredDeps = this.getRequiredDependencies();
-        const hasFailedRequiredDeps = requiredDeps.some(dep => {
-          const check = checksObj[dep];
-          return check && check.status === 'error';
-        });
+          // Determine if service is ready
+          // Service is ready if all required dependencies are ok or warning
+          const requiredDeps = this.getRequiredDependencies();
+          const hasFailedRequiredDeps = requiredDeps.some(dep => {
+            const check = checksObj[dep];
+            return check && check.status === 'error';
+          });
 
-        const result: ReadinessCheckResult = {
-          ready: !hasFailedRequiredDeps,
-          service: this.serverName,
-          version: this.version,
-          timestamp: new Date().toISOString(),
-          checks: checksObj,
-          dependencies: {
-            required: requiredDeps,
-            optional: this.getOptionalDependencies(),
-          },
-        };
+          const result: ReadinessCheckResult = {
+            ready: !hasFailedRequiredDeps,
+            service: this.serverName,
+            version: this.version,
+            timestamp: new Date().toISOString(),
+            checks: checksObj,
+            dependencies: {
+              required: requiredDeps,
+              optional: this.getOptionalDependencies(),
+            },
+          };
 
-        if (errors.length > 0) {
-          result.errors = errors;
+          if (errors.length > 0) {
+            result.errors = errors;
+          }
+
+          const statusCode = result.ready ? 200 : 503;
+
+          this.logger.info('Readiness check completed', {
+            ready: result.ready,
+            duration_ms: duration,
+            failed_checks: errors.length,
+          });
+
+          res.status(statusCode).json(result);
+        } catch (checkError) {
+          // Check was aborted or threw an error
+          clearTimeout(timeoutId);
+          throw checkError;
         }
-
-        const statusCode = result.ready ? 200 : 503;
-
-        this.logger.info('Readiness check completed', {
-          ready: result.ready,
-          duration_ms: duration,
-          failed_checks: errors.length,
-        });
-
-        res.status(statusCode).json(result);
       } catch (error) {
         const duration = Date.now() - startTime;
         this.logger.error('Readiness check failed', error, { duration_ms: duration });

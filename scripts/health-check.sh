@@ -11,20 +11,27 @@ WAIT_TIME=${2:-60}  # Default 60 seconds
 if [ "$ENVIRONMENT" == "local" ]; then
   BASE_URL="http://localhost:3000"
 elif [ "$ENVIRONMENT" == "staging" ]; then
-  # Get ALB DNS from AWS
+  # Get ALB DNS from environment variable or AWS CLI
+  if [ -n "$AFU9_STAGING_ALB_NAME" ]; then
+    ALB_NAME="$AFU9_STAGING_ALB_NAME"
+  else
+    ALB_NAME="afu9-staging-alb"
+  fi
+  
   ALB_DNS=$(aws elbv2 describe-load-balancers \
-    --names afu9-staging-alb \
+    --names "$ALB_NAME" \
     --query 'LoadBalancers[0].DNSName' \
     --output text 2>/dev/null || echo "")
   
   if [ -z "$ALB_DNS" ]; then
-    echo "❌ Could not find staging ALB"
+    echo "❌ Could not find staging ALB: $ALB_NAME"
+    echo "Set AFU9_STAGING_ALB_NAME environment variable if using a different name"
     exit 1
   fi
   BASE_URL="http://${ALB_DNS}"
 elif [ "$ENVIRONMENT" == "production" ]; then
   # For production, use the custom domain if configured
-  BASE_URL="https://afu9.example.com"
+  BASE_URL="${AFU9_PRODUCTION_URL:-https://afu9.example.com}"
 else
   echo "Usage: $0 {staging|production|local} [wait-time]"
   echo ""
