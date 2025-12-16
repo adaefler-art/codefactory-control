@@ -55,3 +55,5 @@ cdk.out/
 **/cdk.out/
 dist/
 **/dist/
+
+.local/
