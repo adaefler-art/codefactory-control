@@ -171,6 +171,11 @@ export class ProductService {
     );
     const total = parseInt(countResult.rows[0].total, 10);
 
+    // Validate sortBy and sortOrder to prevent SQL injection
+    const validSortColumns = ['created_at', 'updated_at', 'product_key', 'display_name'];
+    const validSortBy = validSortColumns.includes(sortBy) ? sortBy : 'created_at';
+    const validSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
     // Get products
     values.push(limit, offset);
     const result = await this.db.query(
@@ -183,7 +188,7 @@ export class ProductService {
         created_at, updated_at, created_by, updated_by
       FROM products
       ${whereClause}
-      ORDER BY ${sortBy} ${sortOrder}
+      ORDER BY ${validSortBy} ${validSortOrder}
       LIMIT $${valueIndex} OFFSET $${valueIndex + 1}`,
       values
     );

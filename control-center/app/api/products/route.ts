@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
 import { ProductService } from '../../../src/lib/product-service';
-import { CreateProductRequest, ProductQueryParams } from '../../../src/lib/types/product';
+import { CreateProductRequest, ProductQueryParams, PRODUCT_KEY_REGEX } from '../../../src/lib/types/product';
 
 /**
  * GET /api/products
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate product key format (owner/repo)
-    if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/.test(body.productKey)) {
+    if (!PRODUCT_KEY_REGEX.test(body.productKey)) {
       return NextResponse.json(
         { error: 'productKey must be in format "owner/repo"' },
         { status: 400 }

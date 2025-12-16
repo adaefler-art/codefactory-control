@@ -6,6 +6,17 @@
  */
 
 /**
+ * Product key validation regex
+ * Format: owner/repo (alphanumeric, hyphen, underscore)
+ */
+export const PRODUCT_KEY_REGEX = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/;
+
+/**
+ * KPI names where lower values are better
+ */
+export const LOWER_IS_BETTER_KPIS = ['mtti', 'executionDuration', 'mttr'] as const;
+
+/**
  * Product Isolation Level
  */
 export type ProductIsolationLevel = 'standard' | 'strict' | 'relaxed';
@@ -428,10 +439,7 @@ export function checkKpiMeetsTarget(
   actualValue: number,
   targetValue: number
 ): boolean {
-  // KPIs where lower is better
-  const lowerIsBetter = ['mtti', 'executionDuration', 'mttr'];
-  
-  if (lowerIsBetter.includes(kpiName)) {
+  if (LOWER_IS_BETTER_KPIS.includes(kpiName as any)) {
     return actualValue <= targetValue;
   }
   
