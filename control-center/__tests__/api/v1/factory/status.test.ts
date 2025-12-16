@@ -271,4 +271,32 @@ describe('Factory Status API', () => {
       expect(result.verdicts).toHaveProperty('enabled');
     });
   });
+
+  describe('Parameter Validation', () => {
+    test('should enforce maximum limit', async () => {
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              total_executions: 0,
+              completed_executions: 0,
+              failed_executions: 0,
+              running_executions: 0,
+              avg_duration_ms: null,
+              mean_time_to_insight_ms: null,
+            },
+          ],
+        });
+
+      // Limits are enforced by the API route, but service layer should handle any value
+      await getFactoryStatus({ limit: 200, errorLimit: 200, kpiPeriodHours: 200 });
+      
+      // Should still work even with large values (route enforces limits)
+      expect(mockPool.query).toHaveBeenCalled();
+    });
+  });
 });

@@ -31,28 +31,32 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters with validation
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const errorLimit = parseInt(searchParams.get('errorLimit') || '10', 10);
-    const kpiPeriodHours = parseInt(searchParams.get('kpiPeriodHours') || '24', 10);
+    const limitParam = searchParams.get('limit') || '10';
+    const errorLimitParam = searchParams.get('errorLimit') || '10';
+    const kpiPeriodHoursParam = searchParams.get('kpiPeriodHours') || '24';
 
-    // Validate parameters
-    if (limit < 1 || limit > 100) {
+    const limit = parseInt(limitParam, 10);
+    const errorLimit = parseInt(errorLimitParam, 10);
+    const kpiPeriodHours = parseInt(kpiPeriodHoursParam, 10);
+
+    // Validate parameters (check for NaN and bounds)
+    if (isNaN(limit) || limit < 1 || limit > 100) {
       return NextResponse.json(
-        { error: 'limit must be between 1 and 100' },
+        { error: 'limit must be a number between 1 and 100' },
         { status: 400 }
       );
     }
 
-    if (errorLimit < 1 || errorLimit > 100) {
+    if (isNaN(errorLimit) || errorLimit < 1 || errorLimit > 100) {
       return NextResponse.json(
-        { error: 'errorLimit must be between 1 and 100' },
+        { error: 'errorLimit must be a number between 1 and 100' },
         { status: 400 }
       );
     }
 
-    if (kpiPeriodHours < 1 || kpiPeriodHours > 168) { // Max 1 week
+    if (isNaN(kpiPeriodHours) || kpiPeriodHours < 1 || kpiPeriodHours > 168) { // Max 1 week
       return NextResponse.json(
-        { error: 'kpiPeriodHours must be between 1 and 168' },
+        { error: 'kpiPeriodHours must be a number between 1 and 168' },
         { status: 400 }
       );
     }

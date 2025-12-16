@@ -184,11 +184,11 @@ async function calculateKPIs(periodHours: number): Promise<FactoryKPIs> {
       AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000) 
         FILTER (WHERE status IN ('completed', 'failed')) as mean_time_to_insight_ms
     FROM workflow_executions
-    WHERE started_at >= NOW() - INTERVAL '${periodHours} hours'
+    WHERE started_at >= NOW() - INTERVAL '1 hour' * $1
   `;
 
   try {
-    const result = await pool.query(query);
+    const result = await pool.query(query, [periodHours]);
     const row = result.rows[0];
 
     const totalExecutions = parseInt(row.total_executions, 10);
