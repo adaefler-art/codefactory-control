@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Validate parameters
     if (periodHours < 1 || periodHours > 168) {
       return NextResponse.json(
-        { error: 'periodHours must be between 1 and 168 (1 week)' },
+        { error: 'periodHours must be between 1 and 168 hours (7 days)' },
         { status: 400 }
       );
     }

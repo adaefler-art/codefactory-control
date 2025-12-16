@@ -447,7 +447,7 @@ KPI definitions follow semantic versioning:
 5. Update all consumers to use new version
 
 **Version History:**
-- `1.0.0` (2025-12-16): Initial canonical KPI definitions for EPIC 3
+- `1.0.0` (2024-12-16): Initial canonical KPI definitions for EPIC 3
 
 ---
 

@@ -25,6 +25,30 @@ import {
 const KPI_VERSION = '1.0.0';
 
 /**
+ * Check if a database table exists
+ * Utility to avoid repeated information_schema queries
+ */
+async function tableExists(tableName: string): Promise<boolean> {
+  const pool = getPool();
+  
+  try {
+    const query = `
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = $1
+      );
+    `;
+    
+    const result = await pool.query(query, [tableName]);
+    return result.rows[0].exists;
+  } catch (error) {
+    console.error(`[KPI Service] Error checking table existence for ${tableName}:`, error);
+    return false;
+  }
+}
+
+/**
  * Create a KPI snapshot
  */
 export async function createKpiSnapshot(
@@ -138,22 +162,14 @@ export async function calculateSteeringAccuracy(
   const pool = getPool();
   
   // Check if verdict_outcomes table exists
-  const tableCheckQuery = `
-    SELECT EXISTS (
-      SELECT FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      AND table_name = 'verdict_outcomes'
-    );
-  `;
+  const exists = await tableExists('verdict_outcomes');
+  
+  if (!exists) {
+    // Table doesn't exist yet (migration not run)
+    return undefined;
+  }
   
   try {
-    const tableCheck = await pool.query(tableCheckQuery);
-    
-    if (!tableCheck.rows[0].exists) {
-      // Table doesn't exist yet (migration not run)
-      return undefined;
-    }
-    
     const query = `
       SELECT * FROM calculate_steering_accuracy($1)
     `;
@@ -309,7 +325,7 @@ export async function getKpiHistory(
     ]);
     
     if (result.rows.length === 0) {
-      throw new Error(`No data found for KPI: ${params.kpiName}`);
+      throw new Error(`No KPI history found for: ${params.kpiName}. The KPI may not exist or no data has been collected yet.`);
     }
     
     const dataPoints: KpiDataPoint[] = result.rows.map((row) => ({

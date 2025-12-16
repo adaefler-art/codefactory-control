@@ -5,6 +5,19 @@
 -- ========================================
 -- KPI Snapshots - Historization
 -- ========================================
+-- 
+-- This is the central time-series storage table for all KPI values across the factory.
+-- It supports three aggregation levels (run, product, factory) and enables:
+-- 1. Historical trending and analysis
+-- 2. Real-time KPI freshness tracking
+-- 3. Reproducible KPI calculations with versioning
+-- 4. Multi-level KPI rollup (Run → Product → Factory)
+--
+-- Usage patterns:
+-- - Write: Periodic aggregation jobs insert snapshots every 5 minutes
+-- - Read: API queries for current values, historical trends, and freshness
+-- - Retention: 7 days real-time (5-min), 90 days historical (1-hour), 2 years archived (daily)
+--
 
 CREATE TABLE kpi_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
