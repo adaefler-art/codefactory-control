@@ -12,8 +12,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Import from local package (adjust path based on execution context)
-let deployMemory: any;
+// Import types first
+type DeployMemoryModule = typeof import('../packages/deploy-memory/dist/index');
+
+// Import from local package
+let deployMemory: DeployMemoryModule;
 try {
   // Try to import from compiled package
   deployMemory = require('../packages/deploy-memory/dist/index');

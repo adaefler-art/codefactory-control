@@ -97,21 +97,25 @@ export class DeployMemoryStore {
    * Gets event statistics for a fingerprint
    * 
    * @param fingerprintId Fingerprint to analyze
+   * @param maxEvents Maximum events to analyze (default: 1000)
    * @returns Statistics about the error pattern
    */
-  async getEventStats(fingerprintId: string): Promise<{
+  async getEventStats(
+    fingerprintId: string,
+    maxEvents: number = 1000
+  ): Promise<{
     totalOccurrences: number;
-    firstSeen: string;
-    lastSeen: string;
+    firstSeen: string | null;
+    lastSeen: string | null;
     averageConfidence: number;
   }> {
-    const events = await this.queryByFingerprint(fingerprintId, 1000);
+    const events = await this.queryByFingerprint(fingerprintId, maxEvents);
 
     if (events.length === 0) {
       return {
         totalOccurrences: 0,
-        firstSeen: new Date().toISOString(),
-        lastSeen: new Date().toISOString(),
+        firstSeen: null,
+        lastSeen: null,
         averageConfidence: 0,
       };
     }

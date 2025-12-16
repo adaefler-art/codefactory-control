@@ -201,10 +201,14 @@ export function classifyFailure(signals: CfnFailureSignal[]): FailureClassificat
 /**
  * Generates a stable fingerprint ID for a failure pattern
  * 
+ * Uses SHA-256 hash truncated to 32 characters for balance between
+ * uniqueness and readability. With 32 hex characters (128 bits),
+ * collision probability is negligible for practical use cases.
+ * 
  * @param errorClass Error classification
  * @param service AWS service name
  * @param normalizedTemplate Normalized error template
- * @returns SHA-256 hash of the pattern
+ * @returns SHA-256 hash (32 characters)
  */
 function generateFingerprint(
   errorClass: ErrorClass | string,
@@ -212,7 +216,7 @@ function generateFingerprint(
   normalizedTemplate: string
 ): string {
   const input = `${errorClass}:${service}:${normalizedTemplate}`;
-  return crypto.createHash('sha256').update(input).digest('hex').substring(0, 16);
+  return crypto.createHash('sha256').update(input).digest('hex').substring(0, 32);
 }
 
 /**
