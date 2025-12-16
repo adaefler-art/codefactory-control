@@ -93,6 +93,11 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
 
   /**
+   * Optional domain name for external routing (no hosted zone management in this stack)
+   */
+  domainName?: string;
+
+  /**
    * Security group for ECS tasks
    */
   ecsSecurityGroup: ec2.SecurityGroup;
@@ -115,6 +120,12 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * Required when enableDatabase=true, ignored when enableDatabase=false
    */
   dbSecretArn?: string;
+
+  /**
+   * Enable database secrets injection. If false, database secrets are omitted.
+   * @default false
+   */
+  enableDatabase?: boolean;
 
   /**
    * Image tag to use for deployments
@@ -148,6 +159,58 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   memoryLimitMiB?: number;
 }
 
+interface ResolvedEcsConfig {
+  environment: string;
+  domainName?: string;
+  databaseEnabled: boolean;
+  dbSecretArn?: string;
+  dbSecretName: string;
+}
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  return undefined;
+}
+
+function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
+  const ctxDomain = scope.node.tryGetContext('domainName');
+  const ctxEnvironment = scope.node.tryGetContext('environment') ?? scope.node.tryGetContext('stage');
+  const ctxEnableDb = scope.node.tryGetContext('enableDatabase');
+  const ctxDbSecretArn = scope.node.tryGetContext('dbSecretArn');
+  const ctxDbSecretName = scope.node.tryGetContext('dbSecretName');
+
+  const environment = props.environment ?? ctxEnvironment ?? 'stage';
+  const domainName = props.domainName ?? ctxDomain;
+
+  const enableDatabase =
+    toOptionalBoolean(props.enableDatabase) ??
+    toOptionalBoolean(ctxEnableDb) ??
+    false;
+
+  const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
+  const dbSecretName = ctxDbSecretName ?? 'afu9/database/master';
+
+  if (enableDatabase && !dbSecretArn && !dbSecretName) {
+    throw new Error(
+      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database.'
+    );
+  }
+
+  return {
+    environment,
+    domainName,
+    databaseEnabled: enableDatabase,
+    dbSecretArn,
+    dbSecretName,
+  };
+}
+
 export class Afu9EcsStack extends cdk.Stack {
   public readonly cluster: ecs.ICluster;
   public readonly service: ecs.FargateService;
@@ -155,6 +218,7 @@ export class Afu9EcsStack extends cdk.Stack {
   public readonly mcpGithubRepo: ecr.IRepository;
   public readonly mcpDeployRepo: ecr.IRepository;
   public readonly mcpObservabilityRepo: ecr.IRepository;
+  public readonly domainName?: string;
 
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
@@ -167,29 +231,14 @@ export class Afu9EcsStack extends cdk.Stack {
       vpc,
       ecsSecurityGroup,
       targetGroup,
-      enableDatabase = true, // Default to enabled for backward compatibility
-      dbSecretArn,
       imageTag = 'staging-latest',
-      environment = 'stage',
       desiredCount,
       cpu = 1024,
       memoryLimitMiB = 2048,
     } = props;
 
-    // Validate configuration
-    if (enableDatabase && !dbSecretArn) {
-      throw new Error(
-        'Afu9EcsStack: enableDatabase=true but dbSecretArn is not provided. ' +
-        'Either provide dbSecretArn or set enableDatabase=false.'
-      );
-    }
-
-    if (!enableDatabase && dbSecretArn) {
-      console.warn(
-        'Afu9EcsStack: enableDatabase=false but dbSecretArn is provided. ' +
-        'dbSecretArn will be ignored.'
-      );
-    }
+    const { environment, domainName, databaseEnabled, dbSecretArn, dbSecretName } = resolveEcsConfig(this, props);
+    this.domainName = domainName;
 
     // Environment-specific defaults
     const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
@@ -233,17 +282,13 @@ export class Afu9EcsStack extends cdk.Stack {
     // Secrets Manager
     // ========================================
 
-    let dbSecret: secretsmanager.ISecret | undefined;
-    
-    if (enableDatabase) {
-      // Import database secret (connection details for application)
-      // This is the comprehensive secret created by Afu9DatabaseStack
-      dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
-        this,
-        'DatabaseSecret',
-        dbSecretArn!
-      );
-    }
+    // Import database secret (connection details for application) when enabled
+    // Prefer ARN when provided; otherwise fall back to name (supports rotated suffix secrets)
+    const dbSecret = databaseEnabled
+      ? dbSecretArn
+        ? secretsmanager.Secret.fromSecretCompleteArn(this, 'DatabaseSecret', dbSecretArn)
+        : secretsmanager.Secret.fromSecretNameV2(this, 'DatabaseSecret', dbSecretName)
+      : undefined;
 
     // Import GitHub credentials secret (shared across environments)
     const githubSecret = secretsmanager.Secret.fromSecretNameV2(
@@ -299,7 +344,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Grant access to secrets for injecting them as environment variables
     // Justification: ECS needs to read secrets to inject them into containers at startup
-    if (enableDatabase && dbSecret) {
+    if (dbSecret) {
       dbSecret.grantRead(taskExecutionRole);
     }
     githubSecret.grantRead(taskExecutionRole);
@@ -312,12 +357,7 @@ export class Afu9EcsStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
-    // Grant task role access to secrets (conditionally for database)
-    // Justification: Application needs to read GitHub tokens and LLM API keys
-    // Database secret only granted if database is enabled
-    if (enableDatabase && dbSecret) {
-      dbSecret.grantRead(taskRole);
-    }
+    // Grant task role access to secrets (database omitted; injected by execution role only)
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
@@ -488,31 +528,30 @@ export class Afu9EcsStack extends cdk.Stack {
         MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
       },
-      secrets: (() => {
-        // Build secrets object with common secrets
-        const secrets: Record<string, ecs.Secret> = {
-          GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
-          GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
-          GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
-          OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
-          ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
-          DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
-        };
-        
-        // Conditionally add database secrets
-        if (enableDatabase && dbSecret) {
-          secrets.DATABASE_HOST = ecs.Secret.fromSecretsManager(dbSecret, 'host');
-          secrets.DATABASE_PORT = ecs.Secret.fromSecretsManager(dbSecret, 'port');
-          secrets.DATABASE_NAME = ecs.Secret.fromSecretsManager(dbSecret, 'database');
-          secrets.DATABASE_USER = ecs.Secret.fromSecretsManager(dbSecret, 'username');
-          secrets.DATABASE_PASSWORD = ecs.Secret.fromSecretsManager(dbSecret, 'password');
-        }
-        
-        return secrets;
-      })(),
+      secrets: {
+        ...(dbSecret
+          ? {
+              DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
+              DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
+              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+              DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
+              DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+            }
+          : {}),
+        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
+        GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
+        GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
+        OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
+        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
+        DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
+      },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3000/api/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -543,7 +582,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3001/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -572,7 +615,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3002/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3002/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -601,7 +648,11 @@ export class Afu9EcsStack extends cdk.Stack {
       },
       essential: true,
       healthCheck: {
-        command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3003/health || exit 1'],
+        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
+        command: [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3003/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+        ],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,

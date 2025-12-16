@@ -12,9 +12,12 @@
     "cdk": "cdk",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
-    "destroy": "cdk destroy"
+    "destroy": "cdk destroy",
+    "ecs:diagnose": "pwsh -File scripts/ecs_diagnose.ps1"
   },
   "devDependencies": {
+    "@octokit/rest": "^22.0.1",
+    "@types/minimist": "^1.2.5",
     "@types/node": "^22.10.2",
     "ajv-cli": "^5.0.0",
     "ajv-formats": "^3.0.1",
@@ -31,6 +34,8 @@
     "@aws-sdk/client-secrets-manager": "^3.950.0",
     "@aws-sdk/client-sfn": "^3.726.0",
     "@aws-sdk/lib-dynamodb": "^3.950.0",
+    "dotenv": "^17.2.3",
+    "minimist": "^1.2.8",
     "octokit": "^4.0.0"
   }
 }
