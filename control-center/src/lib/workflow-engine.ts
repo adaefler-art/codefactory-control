@@ -19,13 +19,15 @@ import {
   createExecution,
   updateExecutionStatus,
   updateExecutionContext,
+  updateExecutionPolicySnapshot,
   createStep,
   updateStep,
   incrementStepRetry,
 } from './workflow-persistence';
-import { checkDatabase } from './db';
+import { checkDatabase, getPool } from './db';
 import { logger } from './logger';
 import { isDebugModeEnabled } from './debug-mode';
+import { ensurePolicySnapshotForExecution } from './policy-manager';
 
 /**
  * Step execution result
@@ -104,6 +106,30 @@ export class WorkflowEngine {
             workflowStepsCount: workflow.steps.length,
             initialContext: context,
           }, 'WorkflowEngine');
+        }
+
+        // Issue 2.1: Create immutable policy snapshot for this execution
+        try {
+          const pool = getPool();
+          const policySnapshotId = await ensurePolicySnapshotForExecution(pool, executionId);
+          await updateExecutionPolicySnapshot(executionId, policySnapshotId);
+          
+          console.log(`[Workflow Engine] Policy snapshot created for execution: ${policySnapshotId}`);
+          if (isDebugEnabled) {
+            logger.debug('Policy snapshot created and linked to execution', {
+              executionId,
+              policySnapshotId,
+            }, 'WorkflowEngine');
+          }
+        } catch (policyError) {
+          // Log error but continue - policy snapshot is not critical for execution
+          console.warn('[Workflow Engine] Failed to create policy snapshot, continuing without it:', policyError);
+          if (isDebugEnabled) {
+            logger.warn('Policy snapshot creation failed', {
+              executionId,
+              error: policyError instanceof Error ? policyError.message : String(policyError),
+            }, 'WorkflowEngine');
+          }
         }
       } catch (error) {
         console.error('[Workflow Engine] Failed to create execution record:', error);
