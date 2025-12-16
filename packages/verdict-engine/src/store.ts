@@ -2,7 +2,7 @@
  * AFU-9 Verdict Engine Database Layer
  * 
  * Handles persistence of verdicts and policy snapshots
- * Implements Issue 2.1: Policy Snapshotting pro Run
+ * Implements Issue 2.1: Policy Snapshotting per Run
  */
 
 import { Pool, QueryResult } from 'pg';

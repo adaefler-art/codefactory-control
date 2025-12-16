@@ -1,7 +1,7 @@
 /**
  * Tests for Verdict Engine v1.1
  * 
- * Tests Issue 2.2: Confidence Score Normalisierung
+ * Tests Issue 2.2: Confidence Score Normalization
  */
 
 import { 

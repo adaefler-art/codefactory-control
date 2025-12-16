@@ -2,8 +2,8 @@
  * AFU-9 Verdict Engine v1.1
  * 
  * Implements EPIC 2: Governance & Auditability
- * - Issue 2.1: Policy Snapshotting pro Run
- * - Issue 2.2: Confidence Score Normalisierung
+ * - Issue 2.1: Policy Snapshotting per Run
+ * - Issue 2.2: Confidence Score Normalization
  * 
  * Main exports for the Verdict Engine package
  */
