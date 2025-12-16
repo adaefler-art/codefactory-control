@@ -17,8 +17,9 @@ import {
   VerdictSummary,
   VerdictKPIs,
 } from './types/factory-status';
+import { FACTORY_STATUS_API_VERSION } from '@codefactory/verdict-engine';
 
-const API_VERSION = '1.1.0'; // Updated for Verdict Engine v1.1
+const API_VERSION = FACTORY_STATUS_API_VERSION; // Import from verdict-engine package
 
 /**
  * Get comprehensive factory status

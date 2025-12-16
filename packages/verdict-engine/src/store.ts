@@ -15,6 +15,7 @@ import {
   VerdictQueryParams,
   VerdictAuditEntry
 } from './types';
+import { MAX_QUERY_LIMIT } from './constants';
 
 /**
  * Store a policy snapshot in the database
@@ -274,7 +275,7 @@ export async function queryVerdicts(
     ? `WHERE ${conditions.join(' AND ')}` 
     : '';
 
-  const limit = Math.min(params.limit || 50, 500);
+  const limit = Math.min(params.limit || 50, MAX_QUERY_LIMIT);
   const offset = params.offset || 0;
 
   const query = `

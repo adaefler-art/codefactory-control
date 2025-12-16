@@ -28,7 +28,7 @@ import {
 /**
  * Normalize confidence score from 0-1 range to 0-100 integer scale
  * 
- * Issue 2.2: Confidence Score Normalisierung
+ * Issue 2.2: Confidence Score Normalization
  * - Deterministic: identical inputs always produce identical outputs
  * - Comparable: 0-100 scale allows easy comparison across verdicts
  * - Documented: simple formula (raw * 100, rounded)

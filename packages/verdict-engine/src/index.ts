@@ -30,6 +30,14 @@ export {
   logVerdictAudit,
 } from './store';
 
+// Constants
+export {
+  FACTORY_ACTIONS,
+  FACTORY_STATUS_API_VERSION,
+  MAX_QUERY_LIMIT,
+  CONFIDENCE_SCALE,
+} from './constants';
+
 // Types
 export type {
   PolicySnapshot,
