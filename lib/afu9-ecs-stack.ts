@@ -488,27 +488,28 @@ export class Afu9EcsStack extends cdk.Stack {
         MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
       },
-      secrets: enableDatabase && dbSecret ? {
-        DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
-        DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-        DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
-        DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
-        DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
-        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
-        GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
-        GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
-        OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
-        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
-        DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
-      } : {
-        // Database disabled - only provide non-DB secrets
-        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
-        GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
-        GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
-        OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
-        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
-        DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
-      },
+      secrets: (() => {
+        // Build secrets object with common secrets
+        const secrets: Record<string, ecs.Secret> = {
+          GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
+          GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
+          GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
+          OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
+          ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
+          DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
+        };
+        
+        // Conditionally add database secrets
+        if (enableDatabase && dbSecret) {
+          secrets.DATABASE_HOST = ecs.Secret.fromSecretsManager(dbSecret, 'host');
+          secrets.DATABASE_PORT = ecs.Secret.fromSecretsManager(dbSecret, 'port');
+          secrets.DATABASE_NAME = ecs.Secret.fromSecretsManager(dbSecret, 'database');
+          secrets.DATABASE_USER = ecs.Secret.fromSecretsManager(dbSecret, 'username');
+          secrets.DATABASE_PASSWORD = ecs.Secret.fromSecretsManager(dbSecret, 'password');
+        }
+        
+        return secrets;
+      })(),
       essential: true,
       healthCheck: {
         command: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1'],

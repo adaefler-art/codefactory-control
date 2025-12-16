@@ -25,6 +25,15 @@ function isMultiEnvEnabled(app: cdk.App): boolean {
   return contextValue === true || contextValue === 'true';
 }
 
+/**
+ * Helper function to check if database integration should be enabled
+ * @returns true if database is enabled (default), false if explicitly disabled
+ */
+function isDatabaseEnabled(app: cdk.App): boolean {
+  const enableDatabaseContext = app.node.tryGetContext('afu9-enable-database');
+  return enableDatabaseContext === undefined ? true : enableDatabaseContext !== false && enableDatabaseContext !== 'false';
+}
+
 // v0.1 Lambda-based stack (existing)
 new CodefactoryControlStack(app, 'CodefactoryControlStack', {
   /* You can specify env here if you want:
@@ -74,9 +83,8 @@ if (multiEnvEnabled) {
   // Multi-Environment Deployment (Stage + Prod)
   // ========================================
 
-  // Check if database should be enabled (default: true for backward compatibility)
-  const enableDatabaseContext = app.node.tryGetContext('afu9-enable-database');
-  const enableDatabase = enableDatabaseContext === undefined ? true : enableDatabaseContext !== false && enableDatabaseContext !== 'false';
+  // Check if database should be enabled
+  const enableDatabase = isDatabaseEnabled(app);
 
   // Create environment-specific target groups
   const stageTargetGroup = new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroup', {
@@ -196,9 +204,8 @@ if (multiEnvEnabled) {
   // Single Environment Deployment (Backward Compatible)
   // ========================================
 
-  // Check if database should be enabled (default: true for backward compatibility)
-  const enableDatabaseContext = app.node.tryGetContext('afu9-enable-database');
-  const enableDatabase = enableDatabaseContext === undefined ? true : enableDatabaseContext !== false && enableDatabaseContext !== 'false';
+  // Check if database should be enabled
+  const enableDatabase = isDatabaseEnabled(app);
 
   // ECS stack (depends on network, optionally on database)
   const ecsStack = new Afu9EcsStack(app, 'Afu9EcsStack', {
