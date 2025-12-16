@@ -1,4 +1,4 @@
-import { MCPServer } from '../../base/src/server';
+import { MCPServer, DependencyCheck } from '../../base/src/server';
 import {
   ECSClient,
   UpdateServiceCommand,
@@ -9,6 +9,7 @@ import {
   RegisterTaskDefinitionCommand,
   ContainerDefinition
 } from '@aws-sdk/client-ecs';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 
 /**
  * AWS Deploy MCP Server
@@ -19,13 +20,114 @@ import {
  */
 export class DeployMCPServer extends MCPServer {
   private ecsClient: ECSClient;
+  private stsClient: STSClient;
+  private region: string;
 
   constructor(port: number = 3002) {
-    super(port, 'mcp-deploy');
+    super(port, 'mcp-deploy', '0.2.0');
     
-    const region = process.env.AWS_REGION || 'eu-central-1';
-    this.ecsClient = new ECSClient({ region });
-    this.logger.info('DeployMCPServer initialized', { region });
+    this.region = process.env.AWS_REGION || 'eu-central-1';
+    this.ecsClient = new ECSClient({ region: this.region });
+    this.stsClient = new STSClient({ region: this.region });
+    this.logger.info('DeployMCPServer initialized', { region: this.region });
+  }
+
+  /**
+   * Check dependencies for readiness probe
+   */
+  protected async checkDependencies(): Promise<Map<string, DependencyCheck>> {
+    const checks = new Map<string, DependencyCheck>();
+
+    // Check 1: Service is running
+    checks.set('service', { status: 'ok' });
+
+    // Check 2: AWS connectivity
+    const awsCheck = await this.checkAWSConnectivity();
+    checks.set('aws_connectivity', awsCheck);
+
+    // Check 3: ECS permissions
+    const ecsCheck = await this.checkECSPermissions();
+    checks.set('ecs_permissions', ecsCheck);
+
+    return checks;
+  }
+
+  /**
+   * Check AWS API connectivity using STS
+   */
+  private async checkAWSConnectivity(): Promise<DependencyCheck> {
+    const startTime = Date.now();
+    try {
+      const command = new GetCallerIdentityCommand({});
+      await this.stsClient.send(command);
+      
+      const latency = Date.now() - startTime;
+
+      return {
+        status: latency > 2000 ? 'warning' : 'ok',
+        message: latency > 2000 ? 'High latency detected' : 'AWS API reachable',
+        latency_ms: latency,
+      };
+    } catch (error) {
+      const latency = Date.now() - startTime;
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'AWS connectivity check failed',
+        latency_ms: latency,
+      };
+    }
+  }
+
+  /**
+   * Check if we have ECS permissions by listing clusters
+   */
+  private async checkECSPermissions(): Promise<DependencyCheck> {
+    const startTime = Date.now();
+    try {
+      // Try to describe a minimal ECS service call to verify permissions
+      // We use ListClusters as it's a lightweight call
+      const { ListClustersCommand } = await import('@aws-sdk/client-ecs');
+      const command = new ListClustersCommand({ maxResults: 1 });
+      await this.ecsClient.send(command);
+      
+      const latency = Date.now() - startTime;
+
+      return {
+        status: 'ok',
+        message: 'ECS permissions verified',
+        latency_ms: latency,
+      };
+    } catch (error: any) {
+      const latency = Date.now() - startTime;
+      
+      if (error.name === 'AccessDeniedException') {
+        return {
+          status: 'error',
+          message: 'Missing ECS permissions',
+          latency_ms: latency,
+        };
+      }
+
+      return {
+        status: 'warning',
+        message: `ECS permissions check failed: ${error.message}`,
+        latency_ms: latency,
+      };
+    }
+  }
+
+  /**
+   * Get required dependencies
+   */
+  protected getRequiredDependencies(): string[] {
+    return ['aws_connectivity', 'ecs_permissions'];
+  }
+
+  /**
+   * Get optional dependencies
+   */
+  protected getOptionalDependencies(): string[] {
+    return [];
   }
 
   protected registerTools(): void {

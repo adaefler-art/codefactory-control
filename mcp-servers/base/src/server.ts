@@ -5,6 +5,7 @@ import { MCPLogger } from './logger';
  * Base MCP Server implementation
  * 
  * Provides common functionality for all MCP servers following the JSON-RPC 2.0 protocol
+ * Implements standardized health and readiness endpoints according to Control Plane Spec v1
  */
 
 export interface Tool {
@@ -15,6 +16,25 @@ export interface Tool {
     properties: Record<string, any>;
     required?: string[];
   };
+}
+
+export interface DependencyCheck {
+  status: 'ok' | 'warning' | 'error' | 'not_configured';
+  message?: string;
+  latency_ms?: number;
+}
+
+export interface ReadinessCheckResult {
+  ready: boolean;
+  service: string;
+  version: string;
+  timestamp: string;
+  checks: Record<string, DependencyCheck>;
+  dependencies: {
+    required: string[];
+    optional: string[];
+  };
+  errors?: string[];
 }
 
 export interface JSONRPCRequest {
@@ -39,10 +59,12 @@ export abstract class MCPServer {
   protected app = express();
   protected tools: Map<string, Tool> = new Map();
   protected serverName: string;
+  protected version: string;
   protected logger: MCPLogger;
 
-  constructor(protected port: number, serverName: string) {
+  constructor(protected port: number, serverName: string, version: string = '0.2.0') {
     this.serverName = serverName;
+    this.version = version;
     this.logger = new MCPLogger(serverName);
     this.app.use(express.json());
     this.setupRoutes();
@@ -60,6 +82,35 @@ export abstract class MCPServer {
     tool: string,
     args: Record<string, any>
   ): Promise<any>;
+
+  /**
+   * Perform dependency checks for readiness probe
+   * To be implemented by subclasses to check service-specific dependencies
+   * 
+   * @returns Map of dependency name to check result
+   */
+  protected async checkDependencies(): Promise<Map<string, DependencyCheck>> {
+    // Base implementation - subclasses should override
+    return new Map([
+      ['service', { status: 'ok' }]
+    ]);
+  }
+
+  /**
+   * Get list of required dependencies
+   * To be overridden by subclasses
+   */
+  protected getRequiredDependencies(): string[] {
+    return [];
+  }
+
+  /**
+   * Get list of optional dependencies
+   * To be overridden by subclasses
+   */
+  protected getOptionalDependencies(): string[] {
+    return [];
+  }
 
   private setupRoutes() {
     this.app.post('/', async (req: Request, res: Response) => {
@@ -139,13 +190,96 @@ export abstract class MCPServer {
     });
 
     // Health check endpoint (non-JSON-RPC)
+    // Simple liveness probe - responds quickly without dependency checks
     this.app.get('/health', (req: Request, res: Response) => {
       this.logger.debug('Health check endpoint accessed');
       res.json({
         status: 'ok',
-        server: this.serverName,
+        service: this.serverName,
+        version: this.version,
         timestamp: new Date().toISOString(),
       });
+    });
+
+    // Readiness check endpoint (non-JSON-RPC)
+    // Comprehensive readiness probe - checks all dependencies
+    this.app.get('/ready', async (req: Request, res: Response) => {
+      const startTime = Date.now();
+      this.logger.debug('Readiness check endpoint accessed');
+
+      try {
+        // Perform all dependency checks with timeout
+        const checksPromise = this.checkDependencies();
+        const timeoutPromise = new Promise<Map<string, DependencyCheck>>((_, reject) => {
+          setTimeout(() => reject(new Error('Readiness check timeout')), 5000);
+        });
+
+        const checks = await Promise.race([checksPromise, timeoutPromise]);
+        const checksObj: Record<string, DependencyCheck> = {};
+        const errors: string[] = [];
+
+        // Convert Map to object and collect errors
+        checks.forEach((check, name) => {
+          checksObj[name] = check;
+          if (check.status === 'error') {
+            errors.push(`${name} check failed: ${check.message || 'unknown error'}`);
+          }
+        });
+
+        const duration = Date.now() - startTime;
+
+        // Determine if service is ready
+        // Service is ready if all required dependencies are ok or warning
+        const requiredDeps = this.getRequiredDependencies();
+        const hasFailedRequiredDeps = requiredDeps.some(dep => {
+          const check = checksObj[dep];
+          return check && check.status === 'error';
+        });
+
+        const result: ReadinessCheckResult = {
+          ready: !hasFailedRequiredDeps,
+          service: this.serverName,
+          version: this.version,
+          timestamp: new Date().toISOString(),
+          checks: checksObj,
+          dependencies: {
+            required: requiredDeps,
+            optional: this.getOptionalDependencies(),
+          },
+        };
+
+        if (errors.length > 0) {
+          result.errors = errors;
+        }
+
+        const statusCode = result.ready ? 200 : 503;
+
+        this.logger.info('Readiness check completed', {
+          ready: result.ready,
+          duration_ms: duration,
+          failed_checks: errors.length,
+        });
+
+        res.status(statusCode).json(result);
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        this.logger.error('Readiness check failed', error, { duration_ms: duration });
+
+        res.status(503).json({
+          ready: false,
+          service: this.serverName,
+          version: this.version,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Unknown error',
+          checks: {
+            service: { status: 'error', message: 'Readiness check exception' }
+          },
+          dependencies: {
+            required: this.getRequiredDependencies(),
+            optional: this.getOptionalDependencies(),
+          },
+        });
+      }
     });
   }
 

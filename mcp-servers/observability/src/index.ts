@@ -1,4 +1,4 @@
-import { MCPServer } from '../../base/src/server';
+import { MCPServer, DependencyCheck } from '../../base/src/server';
 import {
   CloudWatchLogsClient,
   FilterLogEventsCommand,
@@ -9,6 +9,7 @@ import {
   GetMetricStatisticsCommand,
   DescribeAlarmsCommand,
 } from '@aws-sdk/client-cloudwatch';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 
 /**
  * Observability MCP Server
@@ -21,13 +22,112 @@ import {
 export class ObservabilityMCPServer extends MCPServer {
   private logsClient: CloudWatchLogsClient;
   private cloudwatchClient: CloudWatchClient;
+  private stsClient: STSClient;
+  private region: string;
 
   constructor(port: number = 3003) {
-    super(port, 'mcp-observability');
+    super(port, 'mcp-observability', '0.2.0');
     
-    const region = process.env.AWS_REGION || 'eu-central-1';
-    this.logsClient = new CloudWatchLogsClient({ region });
-    this.cloudwatchClient = new CloudWatchClient({ region });
+    this.region = process.env.AWS_REGION || 'eu-central-1';
+    this.logsClient = new CloudWatchLogsClient({ region: this.region });
+    this.cloudwatchClient = new CloudWatchClient({ region: this.region });
+    this.stsClient = new STSClient({ region: this.region });
+  }
+
+  /**
+   * Check dependencies for readiness probe
+   */
+  protected async checkDependencies(): Promise<Map<string, DependencyCheck>> {
+    const checks = new Map<string, DependencyCheck>();
+
+    // Check 1: Service is running
+    checks.set('service', { status: 'ok' });
+
+    // Check 2: AWS connectivity
+    const awsCheck = await this.checkAWSConnectivity();
+    checks.set('aws_connectivity', awsCheck);
+
+    // Check 3: CloudWatch permissions
+    const cwCheck = await this.checkCloudWatchPermissions();
+    checks.set('cloudwatch_permissions', cwCheck);
+
+    return checks;
+  }
+
+  /**
+   * Check AWS API connectivity
+   */
+  private async checkAWSConnectivity(): Promise<DependencyCheck> {
+    const startTime = Date.now();
+    try {
+      const command = new GetCallerIdentityCommand({});
+      await this.stsClient.send(command);
+      
+      const latency = Date.now() - startTime;
+
+      return {
+        status: latency > 2000 ? 'warning' : 'ok',
+        message: latency > 2000 ? 'High latency detected' : 'AWS API reachable',
+        latency_ms: latency,
+      };
+    } catch (error) {
+      const latency = Date.now() - startTime;
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'AWS connectivity check failed',
+        latency_ms: latency,
+      };
+    }
+  }
+
+  /**
+   * Check CloudWatch permissions
+   */
+  private async checkCloudWatchPermissions(): Promise<DependencyCheck> {
+    const startTime = Date.now();
+    try {
+      // Try a lightweight CloudWatch API call to verify permissions
+      const command = new DescribeAlarmsCommand({ MaxRecords: 1 });
+      await this.cloudwatchClient.send(command);
+      
+      const latency = Date.now() - startTime;
+
+      return {
+        status: 'ok',
+        message: 'CloudWatch permissions verified',
+        latency_ms: latency,
+      };
+    } catch (error: any) {
+      const latency = Date.now() - startTime;
+      
+      if (error.name === 'AccessDeniedException') {
+        return {
+          status: 'error',
+          message: 'Missing CloudWatch permissions',
+          latency_ms: latency,
+        };
+      }
+
+      return {
+        status: 'warning',
+        message: `CloudWatch permissions check failed: ${error.message}`,
+        latency_ms: latency,
+      };
+    }
+  }
+
+  /**
+   * Get required dependencies
+   */
+  protected getRequiredDependencies(): string[] {
+    return ['aws_connectivity', 'cloudwatch_permissions'];
+  }
+
+  /**
+   * Get optional dependencies
+   */
+  protected getOptionalDependencies(): string[] {
+    return [];
   }
 
   protected registerTools(): void {

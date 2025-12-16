@@ -1,4 +1,4 @@
-import { MCPServer, Tool } from '../../base/src/server';
+import { MCPServer, Tool, DependencyCheck } from '../../base/src/server';
 import { Octokit } from 'octokit';
 
 /**
@@ -27,7 +27,7 @@ export class GitHubMCPServer extends MCPServer {
   private octokit: Octokit;
 
   constructor(port: number = 3001) {
-    super(port, 'mcp-github');
+    super(port, 'mcp-github', '0.2.0');
     
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
@@ -35,6 +35,148 @@ export class GitHubMCPServer extends MCPServer {
     }
     
     this.octokit = new Octokit({ auth: token });
+  }
+
+  /**
+   * Check dependencies for readiness probe
+   * Checks GitHub API connectivity and authentication
+   */
+  protected async checkDependencies(): Promise<Map<string, DependencyCheck>> {
+    const checks = new Map<string, DependencyCheck>();
+
+    // Check 1: Service is running
+    checks.set('service', { status: 'ok' });
+
+    // Check 2: GitHub API connectivity
+    const githubApiCheck = await this.checkGitHubAPI();
+    checks.set('github_api', githubApiCheck);
+
+    // Check 3: Authentication token validity
+    const authCheck = await this.checkAuthentication();
+    checks.set('authentication', authCheck);
+
+    return checks;
+  }
+
+  /**
+   * Check if GitHub API is reachable
+   */
+  private async checkGitHubAPI(): Promise<DependencyCheck> {
+    const startTime = Date.now();
+    try {
+      // Use the /zen endpoint for a quick connectivity check
+      const response = await fetch('https://api.github.com/zen', {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(3000), // 3 second timeout
+      });
+      
+      const latency = Date.now() - startTime;
+
+      if (!response.ok) {
+        return {
+          status: 'error',
+          message: `GitHub API returned status ${response.status}`,
+          latency_ms: latency,
+        };
+      }
+
+      return {
+        status: latency > 2000 ? 'warning' : 'ok',
+        message: latency > 2000 ? 'High latency detected' : 'GitHub API reachable',
+        latency_ms: latency,
+      };
+    } catch (error) {
+      const latency = Date.now() - startTime;
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Connection failed',
+        latency_ms: latency,
+      };
+    }
+  }
+
+  /**
+   * Check if authentication token is valid
+   */
+  private async checkAuthentication(): Promise<DependencyCheck> {
+    try {
+      // Check if token is configured
+      const token = process.env.GITHUB_TOKEN;
+      if (!token) {
+        return {
+          status: 'error',
+          message: 'GitHub token not configured',
+        };
+      }
+
+      // Verify token format (basic check)
+      if (token.length < 10) {
+        return {
+          status: 'error',
+          message: 'Invalid token format',
+        };
+      }
+
+      // Optional: Try to get rate limit to verify token validity
+      // This makes an actual API call, so it's more thorough but slower
+      try {
+        const startTime = Date.now();
+        const { data } = await this.octokit.rest.rateLimit.get();
+        const latency = Date.now() - startTime;
+
+        // Check if we're close to rate limit
+        const remaining = data.rate.remaining;
+        const limit = data.rate.limit;
+        const percentRemaining = (remaining / limit) * 100;
+
+        if (percentRemaining < 10) {
+          return {
+            status: 'warning',
+            message: `Low rate limit: ${remaining}/${limit} remaining`,
+            latency_ms: latency,
+          };
+        }
+
+        return {
+          status: 'ok',
+          message: `Token valid, ${remaining}/${limit} requests remaining`,
+          latency_ms: latency,
+        };
+      } catch (apiError: any) {
+        // If rate limit check fails, token is likely invalid
+        if (apiError.status === 401) {
+          return {
+            status: 'error',
+            message: 'Invalid or expired token',
+          };
+        }
+        
+        // For other errors, token exists but API check failed
+        return {
+          status: 'warning',
+          message: `Token configured but validation failed: ${apiError.message}`,
+        };
+      }
+    } catch (error) {
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Authentication check failed',
+      };
+    }
+  }
+
+  /**
+   * Get required dependencies for this service
+   */
+  protected getRequiredDependencies(): string[] {
+    return ['github_api', 'authentication'];
+  }
+
+  /**
+   * Get optional dependencies for this service
+   */
+  protected getOptionalDependencies(): string[] {
+    return [];
   }
 
   /**
