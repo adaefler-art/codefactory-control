@@ -286,8 +286,8 @@ cd ../observability && npm install && npm run build
 
 **Test individual servers**:
 ```bash
-# Start server
-cd mcp-servers/github && GITHUB_TOKEN=test PORT=3001 npm start
+# Start server (replace your_token_here with actual GitHub token)
+cd mcp-servers/github && GITHUB_TOKEN=your_token_here PORT=3001 npm start
 
 # In another terminal
 curl http://localhost:3001/health | jq .

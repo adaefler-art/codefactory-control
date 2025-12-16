@@ -11,6 +11,12 @@ set -e
 # Default to localhost if no base URL provided
 BASE_URL="${1:-http://localhost}"
 
+# Validate base URL format
+if [[ ! "$BASE_URL" =~ ^https?://[a-zA-Z0-9.-]+$ ]]; then
+  echo "Error: Invalid base URL format. Expected http://hostname or https://hostname"
+  exit 1
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -31,16 +37,19 @@ test_health_endpoint() {
   echo "Testing $name health endpoint..."
   
   # Test /health endpoint
-  local response=$(curl -s -w "\n%{http_code}" "$url:$port/health" 2>&1)
+  local response=$(curl -s -w "\n%{http_code}" "$url:$port/health" 2>/dev/null)
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ $name health check failed - connection error${NC}"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    return 1
+  fi
   local http_code=$(echo "$response" | tail -n1)
   local body=$(echo "$response" | sed '$d')
   
   if [ "$http_code" = "200" ]; then
-    # Validate JSON response format
-    local status=$(echo "$body" | jq -r '.status' 2>/dev/null)
-    local service=$(echo "$body" | jq -r '.service' 2>/dev/null)
-    local version=$(echo "$body" | jq -r '.version' 2>/dev/null)
-    local timestamp=$(echo "$body" | jq -r '.timestamp' 2>/dev/null)
+    # Validate JSON response format - extract all fields in one jq call
+    local json_fields=$(echo "$body" | jq -r '[.status, .service, .version, .timestamp] | @tsv' 2>/dev/null)
+    IFS=$'\t' read -r status service version timestamp <<< "$json_fields"
     
     if [ "$status" = "ok" ] && [ -n "$service" ] && [ -n "$version" ] && [ -n "$timestamp" ]; then
       echo -e "${GREEN}✅ $name health check passed${NC}"
@@ -68,19 +77,21 @@ test_readiness_endpoint() {
   echo "Testing $name readiness endpoint..."
   
   # Test /ready endpoint
-  local response=$(curl -s -w "\n%{http_code}" "$url:$port/ready" 2>&1)
+  local response=$(curl -s -w "\n%{http_code}" "$url:$port/ready" 2>/dev/null)
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ $name readiness check failed - connection error${NC}"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    return 1
+  fi
   local http_code=$(echo "$response" | tail -n1)
   local body=$(echo "$response" | sed '$d')
   
   if [ "$http_code" = "200" ] || [ "$http_code" = "503" ]; then
-    # Validate JSON response format
-    local ready=$(echo "$body" | jq -r '.ready' 2>/dev/null)
-    local service=$(echo "$body" | jq -r '.service' 2>/dev/null)
-    local version=$(echo "$body" | jq -r '.version' 2>/dev/null)
-    local timestamp=$(echo "$body" | jq -r '.timestamp' 2>/dev/null)
-    local checks=$(echo "$body" | jq -r '.checks' 2>/dev/null)
+    # Validate JSON response format - extract all fields in one jq call
+    local json_fields=$(echo "$body" | jq -r '[(.ready | tostring), .service, .version, .timestamp, (.checks | if . then "present" else "null" end)] | @tsv' 2>/dev/null)
+    IFS=$'\t' read -r ready service version timestamp checks <<< "$json_fields"
     
-    if [ -n "$ready" ] && [ -n "$service" ] && [ -n "$version" ] && [ -n "$timestamp" ] && [ "$checks" != "null" ]; then
+    if [ -n "$ready" ] && [ -n "$service" ] && [ -n "$version" ] && [ -n "$timestamp" ] && [ "$checks" = "present" ]; then
       if [ "$ready" = "true" ] && [ "$http_code" = "200" ]; then
         echo -e "${GREEN}✅ $name readiness check passed - service is ready${NC}"
         echo "   Service: $service, Version: $version"
@@ -130,6 +141,12 @@ test_service() {
   test_readiness_endpoint "$name" "$url" "$port"
 }
 
+# Configuration - can be overridden by environment variables
+CONTROL_CENTER_PORT="${CONTROL_CENTER_PORT:-3000}"
+MCP_GITHUB_PORT="${MCP_GITHUB_PORT:-3001}"
+MCP_DEPLOY_PORT="${MCP_DEPLOY_PORT:-3002}"
+MCP_OBSERVABILITY_PORT="${MCP_OBSERVABILITY_PORT:-3003}"
+
 # Main test execution
 echo "================================================"
 echo "AFU-9 Health & Readiness Smoke Tests"
@@ -139,16 +156,16 @@ echo "Base URL: $BASE_URL"
 echo ""
 
 # Test Control Center
-test_service "Control Center" "$BASE_URL" "3000"
+test_service "Control Center" "$BASE_URL" "$CONTROL_CENTER_PORT"
 
 # Test MCP GitHub Server
-test_service "MCP GitHub Server" "$BASE_URL" "3001"
+test_service "MCP GitHub Server" "$BASE_URL" "$MCP_GITHUB_PORT"
 
 # Test MCP Deploy Server
-test_service "MCP Deploy Server" "$BASE_URL" "3002"
+test_service "MCP Deploy Server" "$BASE_URL" "$MCP_DEPLOY_PORT"
 
 # Test MCP Observability Server
-test_service "MCP Observability Server" "$BASE_URL" "3003"
+test_service "MCP Observability Server" "$BASE_URL" "$MCP_OBSERVABILITY_PORT"
 
 # Print summary
 echo ""
