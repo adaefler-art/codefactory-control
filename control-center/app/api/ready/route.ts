@@ -20,7 +20,7 @@ const VERSION = '0.2.5';
  */
 export async function GET() {
   try {
-    const checks: Record<string, { status: string; message?: string }> = {
+    const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
       service: { status: 'ok' },
     };
 
@@ -60,33 +60,80 @@ export async function GET() {
       checks.environment = { status: 'ok' };
     }
 
+    // Check MCP servers health in production/staging
+    const env = process.env.NODE_ENV;
+    const shouldCheckMCPServers = env === 'production' || env === 'staging';
+    
+    if (shouldCheckMCPServers) {
+      const mcpServers = [
+        { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://localhost:3001' },
+        { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://localhost:3002' },
+        { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://localhost:3003' },
+      ];
+
+      for (const server of mcpServers) {
+        try {
+          const startTime = Date.now();
+          const response = await fetch(`${server.url}/health`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          const latency = Date.now() - startTime;
+
+          if (!response.ok) {
+            checks[server.name] = {
+              status: 'error',
+              message: `Server returned status ${response.status}`,
+              latency_ms: latency,
+            };
+          } else {
+            checks[server.name] = {
+              status: latency > 2000 ? 'warning' : 'ok',
+              message: latency > 2000 ? 'High latency' : 'Server healthy',
+              latency_ms: latency,
+            };
+          }
+        } catch (error) {
+          checks[server.name] = {
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Connection failed',
+          };
+        }
+      }
+    }
+
     // Determine overall readiness
     const hasFailures = Object.values(checks).some(
       check => check.status === 'error' || check.status === 'failed'
     );
 
-    if (hasFailures) {
-      return NextResponse.json(
-        {
-          ready: false,
-          service: 'afu9-control-center',
-          version: VERSION,
-          timestamp: new Date().toISOString(),
-          checks,
-        },
-        { status: 503 }
-      );
-    }
+    // Collect errors
+    const errors: string[] = [];
+    Object.entries(checks).forEach(([name, check]) => {
+      if (check.status === 'error') {
+        errors.push(`${name} check failed: ${check.message || 'unknown error'}`);
+      }
+    });
+
+    const ready = !hasFailures;
+
+    const response = {
+      ready,
+      service: 'afu9-control-center',
+      version: VERSION,
+      timestamp: new Date().toISOString(),
+      checks,
+      dependencies: {
+        required: ['database', 'environment'],
+        optional: shouldCheckMCPServers 
+          ? ['mcp-github', 'mcp-deploy', 'mcp-observability']
+          : [],
+      },
+      ...(errors.length > 0 && { errors }),
+    };
 
     return NextResponse.json(
-      {
-        ready: true,
-        service: 'afu9-control-center',
-        version: VERSION,
-        timestamp: new Date().toISOString(),
-        checks,
-      },
-      { status: 200 }
+      response,
+      { status: ready ? 200 : 503 }
     );
   } catch (error) {
     console.error('Readiness check failed:', error);
@@ -97,6 +144,13 @@ export async function GET() {
         version: VERSION,
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
+        checks: {
+          service: { status: 'error', message: 'Readiness check exception' }
+        },
+        dependencies: {
+          required: ['database', 'environment'],
+          optional: [],
+        },
       },
       { status: 503 }
     );
