@@ -8,7 +8,7 @@ import { Construct } from 'constructs';
  * AFU-9 Database Stack
  * 
  * Provides RDS Postgres database for AFU-9 v0.2:
- * - PostgreSQL 15.5 on db.t4g.micro
+ * - PostgreSQL 15.15 on db.t4g.micro
  * - Multi-AZ deployment for high availability (optional)
  * - Automated backups with 7-day retention
  * - Encryption at rest with AWS KMS
@@ -16,7 +16,7 @@ import { Construct } from 'constructs';
  * - Secrets Manager integration for credentials
  * 
  * Database Configuration:
- * - Engine: PostgreSQL 15.5
+ * - Engine: PostgreSQL 15.15
  * - Instance: db.t4g.micro (1 vCPU, 1 GB RAM)
  * - Storage: 20 GB GP3 with autoscaling
  * - Region: eu-central-1
@@ -87,7 +87,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     // Custom parameter group for performance tuning
     const parameterGroup = new rds.ParameterGroup(this, 'DbParameterGroup', {
       engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_15_5,
+        version: rds.PostgresEngineVersion.of('15.15', '15'),
       }),
       description: 'Custom parameter group for AFU-9 database',
       parameters: {
@@ -95,13 +95,14 @@ export class Afu9DatabaseStack extends cdk.Stack {
         'max_connections': '100',
         
         // Memory settings (for db.t4g.micro: 1GB RAM)
-        'shared_buffers': '256MB',
-        'effective_cache_size': '768MB',
-        'work_mem': '4MB',
-        'maintenance_work_mem': '64MB',
+        // Use 8kB pages to avoid replacements when units change
+        'shared_buffers': '32768', // 256MB / 8kB
+        'effective_cache_size': '98304', // 768MB / 8kB
+        'work_mem': '4096', // 4MB / 1kB
+        'maintenance_work_mem': '65536', // 64MB / 1kB
         
         // Write-ahead log settings
-        'wal_buffers': '8MB',
+        'wal_buffers': '1024', // 8MB / 8kB
         'checkpoint_completion_target': '0.9',
         
         // Query planning
@@ -122,7 +123,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     this.dbInstance = new rds.DatabaseInstance(this, 'DbInstance', {
       // Engine configuration
       engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_15_5,
+        version: rds.PostgresEngineVersion.of('15.15', '15'),
       }),
       
       // Instance configuration
