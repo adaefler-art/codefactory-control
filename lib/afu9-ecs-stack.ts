@@ -42,6 +42,11 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
 
   /**
+   * Optional domain name for external routing (no hosted zone management in this stack)
+   */
+  domainName?: string;
+
+  /**
    * Security group for ECS tasks
    */
   ecsSecurityGroup: ec2.SecurityGroup;
@@ -94,6 +99,58 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   memoryLimitMiB?: number;
 }
 
+interface ResolvedEcsConfig {
+  environment: string;
+  domainName?: string;
+  databaseEnabled: boolean;
+  dbSecretArn?: string;
+  dbSecretName: string;
+}
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  return undefined;
+}
+
+function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
+  const ctxDomain = scope.node.tryGetContext('domainName');
+  const ctxEnvironment = scope.node.tryGetContext('environment') ?? scope.node.tryGetContext('stage');
+  const ctxEnableDb = scope.node.tryGetContext('enableDatabase');
+  const ctxDbSecretArn = scope.node.tryGetContext('dbSecretArn');
+  const ctxDbSecretName = scope.node.tryGetContext('dbSecretName');
+
+  const environment = props.environment ?? ctxEnvironment ?? 'stage';
+  const domainName = props.domainName ?? ctxDomain;
+
+  const enableDatabase =
+    toOptionalBoolean(props.enableDatabase) ??
+    toOptionalBoolean(ctxEnableDb) ??
+    false;
+
+  const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
+  const dbSecretName = ctxDbSecretName ?? 'afu9/database/master';
+
+  if (enableDatabase && !dbSecretArn && !dbSecretName) {
+    throw new Error(
+      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database.'
+    );
+  }
+
+  return {
+    environment,
+    domainName,
+    databaseEnabled: enableDatabase,
+    dbSecretArn,
+    dbSecretName,
+  };
+}
+
 export class Afu9EcsStack extends cdk.Stack {
   public readonly cluster: ecs.ICluster;
   public readonly service: ecs.FargateService;
@@ -101,6 +158,7 @@ export class Afu9EcsStack extends cdk.Stack {
   public readonly mcpGithubRepo: ecr.IRepository;
   public readonly mcpDeployRepo: ecr.IRepository;
   public readonly mcpObservabilityRepo: ecr.IRepository;
+  public readonly domainName?: string;
 
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
@@ -109,20 +167,14 @@ export class Afu9EcsStack extends cdk.Stack {
       vpc,
       ecsSecurityGroup,
       targetGroup,
-      dbSecretArn,
-      enableDatabase = false,
       imageTag = 'staging-latest',
-      environment = 'stage',
       desiredCount,
       cpu = 1024,
       memoryLimitMiB = 2048,
     } = props;
 
-    const contextEnableDb = this.node.tryGetContext('enableDatabase');
-    const databaseEnabled =
-      enableDatabase === true ||
-      contextEnableDb === true ||
-      contextEnableDb === 'true';
+    const { environment, domainName, databaseEnabled, dbSecretArn, dbSecretName } = resolveEcsConfig(this, props);
+    this.domainName = domainName;
 
     // Environment-specific defaults
     const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
@@ -159,9 +211,11 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
 
     // Import database secret (connection details for application) when enabled
-    // This is the comprehensive secret created by Afu9DatabaseStack
-    const dbSecret = databaseEnabled && dbSecretArn
-      ? secretsmanager.Secret.fromSecretCompleteArn(this, 'DatabaseSecret', dbSecretArn)
+    // Prefer ARN when provided; otherwise fall back to name (supports rotated suffix secrets)
+    const dbSecret = databaseEnabled
+      ? dbSecretArn
+        ? secretsmanager.Secret.fromSecretCompleteArn(this, 'DatabaseSecret', dbSecretArn)
+        : secretsmanager.Secret.fromSecretNameV2(this, 'DatabaseSecret', dbSecretName)
       : undefined;
 
     // Import GitHub credentials secret (shared across environments)
@@ -231,11 +285,7 @@ export class Afu9EcsStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
-    // Grant task role access to secrets
-    // Justification: Application needs to read database credentials, GitHub tokens, and LLM API keys
-    if (dbSecret) {
-      dbSecret.grantRead(taskRole);
-    }
+    // Grant task role access to secrets (database omitted; injected by execution role only)
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 

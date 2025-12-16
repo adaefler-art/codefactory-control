@@ -12,7 +12,8 @@
     "cdk": "cdk",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
-    "destroy": "cdk destroy"
+    "destroy": "cdk destroy",
+    "ecs:diagnose": "pwsh -File scripts/ecs_diagnose.ps1"
   },
   "devDependencies": {
     "@octokit/rest": "^22.0.1",
