@@ -2,9 +2,24 @@
 
 **Version:** 1.0.0  
 **Status:** Canonical  
-**EPIC:** 3 - KPI System & Telemetry
+**EPIC:** 3 - KPI System & Telemetry  
+**Last Updated:** 2024-12-16
 
 This document defines all Key Performance Indicators (KPIs) for the AFU-9 Factory Control Plane. It serves as the **Single Source of Truth** for KPI calculations, ensuring consistent measurement and steering across all factory operations.
+
+## 📋 Governance Documents
+
+This is the **canonical KPI definition document**. All changes must follow the governance process:
+
+- **[KPI Governance](./KPI_GOVERNANCE.md)** - Change management process and governance framework
+- **[KPI Changelog](./KPI_CHANGELOG.md)** - Complete version history with detailed change records
+- **[KPI API](./KPI_API.md)** - REST API documentation for accessing KPI data
+
+**⚠️ Important:** Any changes to KPI formulas, calculations, or definitions MUST be:
+1. Documented in the KPI Changelog
+2. Reviewed and approved by the Platform Team
+3. Validated with the KPI version validator
+4. Communicated to all stakeholders
 
 ## Overview
 
@@ -526,11 +541,103 @@ GET /api/v1/kpi/history/{kpi_name}?period=7d
 
 ---
 
-## Governance
+## Governance & Compliance
+
+### Canonical Status
+
+This document holds **canonical status** for AFU-9 Factory KPIs:
+- All KPI implementations MUST reference this document
+- No "shadow" KPI definitions are permitted in code or dashboards
+- All formula changes require updating this document first
+- Version mismatches trigger validation warnings
+
+### Change Process
+
+**All KPI changes must follow the governance framework:**
+
+1. **Propose** - Create RFC using template in [KPI Governance](./KPI_GOVERNANCE.md)
+2. **Review** - Platform team + stakeholders review for impact
+3. **Approve** - Platform team (minor/patch) or EPIC owner (major)
+4. **Document** - Update this document + [KPI Changelog](./KPI_CHANGELOG.md)
+5. **Implement** - Update code, tests, and infrastructure
+6. **Validate** - Run KPI version validator and calculation tests
+7. **Deploy** - Roll out with monitoring and rollback plan
+8. **Communicate** - Notify all stakeholders
+
+**Version Increment Rules:**
+- `MAJOR.x.x` - Breaking formula change (e.g., 1.0.0 → 2.0.0)
+- `x.MINOR.x` - New KPI or enhancement (e.g., 1.0.0 → 1.1.0)
+- `x.x.PATCH` - Documentation only (e.g., 1.0.0 → 1.0.1)
+
+### Validation & Enforcement
+
+**Automated Validation:**
+```typescript
+// All KPI calculations must use version validator
+import { validateKpiVersion } from '@/lib/kpi-version-validator';
+
+const validation = validateKpiVersion('mtti', '1.0.0');
+if (!validation.isCompatible) {
+  throw new Error(validation.message);
+}
+```
+
+**CI/CD Checks:**
+- KPI type definitions match canonical document
+- All KPI versions are compatible
+- Calculation tests pass for all KPIs
+
+**Runtime Monitoring:**
+- Alert on KPI version mismatches
+- Track KPI freshness violations
+- Monitor calculation errors
+
+### Audit Trail
+
+All KPI changes are tracked in:
+- **[KPI Changelog](./KPI_CHANGELOG.md)** - Complete change history
+- **Git History** - All document commits
+- **Database** - `kpi_snapshots.kpi_version` for every calculation
+
+### Ownership & Responsibilities
 
 **Owner:** Factory Platform Team  
-**Review Cycle:** Quarterly  
-**Breaking Changes:** Require EPIC-level approval
+**Approval Authority:**
+- Platform Team: MINOR and PATCH changes
+- EPIC Owner: MAJOR changes (breaking)
+
+**Review Cycle:** Quarterly or per-change  
+**Next Review:** 2025-03-16
+
+**Escalation:**
+- Questions: GitHub issue with label `kpi`
+- Urgent: Slack `#factory-platform-alerts`
+- Critical: Page on-call engineer
+
+---
+
+## References
+
+### Documentation
+- [KPI Governance](./KPI_GOVERNANCE.md) - Change management framework
+- [KPI Changelog](./KPI_CHANGELOG.md) - Version history
+- [KPI API](./KPI_API.md) - REST API documentation
+- [Observability Guide](./OBSERVABILITY.md) - Monitoring and alerting
+- [Factory Status API](./FACTORY_STATUS_API.md) - Status aggregation
+
+### Implementation
+- Type Definitions: `control-center/src/lib/types/kpi.ts`
+- Service Layer: `control-center/src/lib/kpi-service.ts`
+- Version Validator: `control-center/src/lib/kpi-version-validator.ts`
+- Database Schema: `database/migrations/006_kpi_aggregation.sql`
+- Tests: `control-center/__tests__/lib/kpi-service.test.ts`
+
+---
+
+**Document Status:** Canonical ✅  
+**Current Version:** 1.0.0  
+**Maintained By:** Factory Platform Team  
+**Compliance:** All implementations must reference this document
 
 ---
 
