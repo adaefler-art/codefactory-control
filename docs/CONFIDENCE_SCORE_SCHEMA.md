@@ -347,11 +347,13 @@ Current version: **v1.0.0**
 - **API Documentation**: `docs/FACTORY_STATUS_API.md`
 - **Package README**: `packages/verdict-engine/README.md`
 - **Deploy Memory**: `packages/deploy-memory/src/classifier.ts`
+- **Validation Examples**: `docs/examples/confidence-score-validation.md`
 
 ## Contact
 
 For questions or issues regarding confidence score normalization:
 1. Review this documentation
-2. Check test suite for examples
-3. Consult the Verdict Engine README
-4. Open a GitHub issue with details
+2. Check validation examples in `docs/examples/confidence-score-validation.md`
+3. Check test suite for examples
+4. Consult the Verdict Engine README
+5. Open a GitHub issue with details
