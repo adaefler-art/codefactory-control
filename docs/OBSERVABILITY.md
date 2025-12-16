@@ -37,7 +37,39 @@ AFU-9 v0.2 includes comprehensive observability and security features for produc
 
 ## Features
 
-### 1. CloudWatch Alarms
+### 1. KPI System & Telemetry (EPIC 3)
+
+**NEW**: Comprehensive KPI system for factory steering and transparency.
+
+**Key Features**:
+- **Canonical KPI Definitions**: Versioned, documented formulas for all factory KPIs
+- **Steering Accuracy KPI**: Measures how well factory decisions align with expected outcomes (Target: >90%)
+- **KPI Freshness KPI**: Tracks how current KPI data is (Target: <60 seconds)
+- **Multi-Level Aggregation**: Run → Product → Factory KPI rollup
+- **Time-Series Historization**: Long-term KPI trending and analysis
+- **Real-Time API**: REST endpoints for accessing KPI data
+
+**KPI Dashboard APIs**:
+- `/api/v1/kpi/factory` - Factory-level KPIs with steering accuracy
+- `/api/v1/kpi/products` - Product/repository-level KPIs
+- `/api/v1/kpi/history` - Historical time-series data
+- `/api/v1/kpi/freshness` - KPI freshness monitoring
+
+**Core KPIs Tracked**:
+- Mean Time to Insight (MTTI) - Average execution time
+- Success Rate - Percentage of successful executions
+- Steering Accuracy - Quality of autonomous decisions (Issue 3.1)
+- KPI Freshness - Currency of KPI data (Issue 3.2)
+- Verdict Consistency - Determinism of verdict generation
+- Factory Uptime - Service availability
+- MTTR - Mean time to recovery
+
+**Documentation**:
+- [KPI Definitions](./KPI_DEFINITIONS.md) - Complete KPI formulas and versioning
+- [KPI API](./KPI_API.md) - API documentation and usage examples
+- [Factory Status API](./FACTORY_STATUS_API.md) - Consolidated status endpoint
+
+### 2. CloudWatch Alarms
 
 Comprehensive alarms for infrastructure health:
 
@@ -58,7 +90,7 @@ Comprehensive alarms for infrastructure health:
 
 **Notification**: SNS topic with optional email subscription
 
-### 2. Structured Logging
+### 3. Structured Logging
 
 AFU-9 uses structured JSON logging across all components (Control Center, MCP Servers, Lambda Functions) for consistent observability.
 
@@ -117,7 +149,7 @@ try {
 - MCP Servers: `/ecs/afu9/mcp-{github|deploy|observability}`
 - Lambda Functions: `/aws/lambda/afu9-{orchestrator|issue-interpreter|patch-generator|pr-creator}`
 
-### 3. Observability Dashboard
+### 4. Observability Dashboard
 
 Accessible at `/observability` in Control Center:
 
@@ -133,7 +165,7 @@ Accessible at `/observability` in Control Center:
 - Time range (1 hour, 6 hours, 24 hours)
 - Filter pattern (default: ERROR)
 
-### 4. IAM Security
+### 5. IAM Security
 
 Least-privilege IAM roles:
 
@@ -148,7 +180,7 @@ Least-privilege IAM roles:
 - Update ECS services (for deploy MCP server)
 - Put CloudWatch metrics
 
-### 5. Secrets Management
+### 6. Secrets Management
 
 All secrets stored in AWS Secrets Manager:
 
@@ -163,7 +195,7 @@ All secrets stored in AWS Secrets Manager:
 - IAM-based access control
 - CloudTrail audit logging
 
-### 6. Network Security
+### 7. Network Security
 
 Multi-layer security:
 

@@ -162,13 +162,15 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - [Complete Architecture Guide (German)](docs/architecture/afu9-v0.2-overview.md) - Comprehensive guide with AWS components, MCP pattern, and development workflow integration
 - [Control Plane Specification](docs/CONTROL_PLANE_SPEC.md) - **NEW**: Standardized health/readiness endpoints for all services
 - [Factory Status API](docs/FACTORY_STATUS_API.md) - **NEW**: Central Factory Status API for aggregated runs, errors, and KPIs
+- [KPI System](docs/KPI_DEFINITIONS.md) - **NEW (EPIC 3)**: Canonical KPI definitions with steering accuracy and freshness tracking
+- [KPI API](docs/KPI_API.md) - **NEW (EPIC 3)**: KPI system REST API documentation and usage examples
 - [Confidence Score Schema](docs/CONFIDENCE_SCORE_SCHEMA.md) - **NEW**: Complete confidence score normalization documentation (0-100 scale, deterministic)
 - [Sync & Deployment Process](docs/SYNC_DEPLOYMENT_PROCESS.md) - **NEW**: Safe synchronization and deployment procedures
 - [Workflow Schema](docs/WORKFLOW-SCHEMA.md) - Complete workflow model and JSON format specification
 - [Workflow Engine](docs/WORKFLOW-ENGINE.md) - Workflow execution and agent runner documentation
 - [Database Schema](docs/architecture/database-schema.md) - Database structure and workflow persistence
 - [Logging Concept](docs/LOGGING.md) - Structured logging, CloudWatch integration, and log searching
-- [Observability](docs/OBSERVABILITY.md) - Monitoring, alarms, and observability features
+- [Observability](docs/OBSERVABILITY.md) - Monitoring, alarms, KPI system, and observability features
 
 ### v0.1 Architecture (Legacy)
 
