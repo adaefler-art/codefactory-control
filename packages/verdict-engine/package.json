@@ -1,0 +1,31 @@
+{
+  "name": "@codefactory/verdict-engine",
+  "version": "1.1.0",
+  "description": "AFU-9 Verdict Engine v1.1: Governance & Auditability for deployment verdicts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "keywords": [
+    "afu-9",
+    "verdict-engine",
+    "governance",
+    "auditability",
+    "deployment"
+  ],
+  "dependencies": {
+    "@codefactory/deploy-memory": "file:../deploy-memory",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.10.9",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.7.0"
+  }
+}
