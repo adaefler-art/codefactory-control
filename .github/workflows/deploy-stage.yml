@@ -1,0 +1,212 @@
+name: Deploy to Stage
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'control-center/**'
+      - 'mcp-servers/**'
+      - '.github/workflows/deploy-stage.yml'
+
+env:
+  AWS_REGION: eu-central-1
+  ECS_CLUSTER: afu9-cluster
+  ECS_SERVICE: afu9-control-center-stage
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy to Stage
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get ECR repository URIs
+        id: ecr-uris
+        run: |
+          echo "control_center=$(aws ecr describe-repositories --repository-names afu9/control-center --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
+          echo "mcp_github=$(aws ecr describe-repositories --repository-names afu9/mcp-github --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
+          echo "mcp_deploy=$(aws ecr describe-repositories --repository-names afu9/mcp-deploy --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
+          echo "mcp_observability=$(aws ecr describe-repositories --repository-names afu9/mcp-observability --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
+
+      - name: Generate image tags
+        id: image-tags
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+
+      # Build and push Control Center
+      - name: Build and push Control Center
+        uses: docker/build-push-action@v5
+        with:
+          context: ./control-center
+          file: ./control-center/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.control_center }}:stage-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.control_center }}:stage-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.control_center }}:stage-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build and push MCP GitHub Server
+      - name: Build and push MCP GitHub Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/github/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_github }}:stage-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:stage-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:stage-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build and push MCP Deploy Server
+      - name: Build and push MCP Deploy Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/deploy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:stage-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:stage-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:stage-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build and push MCP Observability Server
+      - name: Build and push MCP Observability Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/observability/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:stage-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:stage-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:stage-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create new task definition with stage tags
+        id: task-def
+        run: |
+          echo "Creating new task definition with stage-tagged images..."
+          
+          # Get current task definition
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          
+          echo "Current task definition: $TASK_DEF_ARN"
+          
+          # Get task definition JSON
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def.json
+          
+          # Update container images with stage tags
+          jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:stage-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:stage-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:stage-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:stage-${{ steps.image-tags.outputs.short_sha }}" \
+             '.containerDefinitions |= map(
+               if .name == "control-center" then .image = $cc_image
+               elif .name == "mcp-github" then .image = $gh_image
+               elif .name == "mcp-deploy" then .image = $dp_image
+               elif .name == "mcp-observability" then .image = $ob_image
+               else . end
+             ) | 
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+             task-def.json > new-task-def.json
+          
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "New task definition: $NEW_TASK_DEF_ARN"
+
+      - name: Update ECS service
+        run: |
+          echo "Updating ECS service with new task definition..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.task-def.outputs.new_task_def_arn }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for service to reach stable state..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Get service status
+        if: always()
+        run: |
+          echo "Service deployment status:"
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
+            --output table
+
+      - name: Deployment summary
+        run: |
+          echo "## Stage Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Images deployed:" >> $GITHUB_STEP_SUMMARY
+          echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:stage-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:stage-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:stage-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:stage-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ECS Configuration:" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: **Stage**" >> $GITHUB_STEP_SUMMARY
+          echo "- Cluster: \`${{ env.ECS_CLUSTER }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Service: \`${{ env.ECS_SERVICE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Region: \`${{ env.AWS_REGION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Access:" >> $GITHUB_STEP_SUMMARY
+          echo "- Stage URL: https://stage.afu-9.com" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rollback Information:" >> $GITHUB_STEP_SUMMARY
+          echo "- Git SHA: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- See [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for rollback procedures" >> $GITHUB_STEP_SUMMARY
