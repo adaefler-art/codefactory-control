@@ -13,7 +13,7 @@ import {
   validateKpiDefinition,
   validateAllCanonicalKpis,
   generateMigrationGuide,
-} from '../kpi-version-validator';
+} from '../../lib/kpi-version-validator';
 
 describe('KPI Version Validator', () => {
   describe('validateKpiVersion', () => {

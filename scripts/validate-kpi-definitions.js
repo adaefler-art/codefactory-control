@@ -33,7 +33,11 @@ function log(message, color = 'reset') {
 
 function loadKpiDefinitions() {
   try {
-    // Load from TypeScript file (simplified - in real CI, we'd compile first)
+    // Load from TypeScript file
+    // NOTE: This is a simplified check for CI/CD. In production, consider:
+    // - Compiling TypeScript first and importing the compiled module
+    // - Using @typescript-eslint/parser for proper AST parsing
+    // - Or extracting KPI definitions to a JSON schema file
     const kpiTypesPath = path.join(
       __dirname,
       '../control-center/src/lib/types/kpi.ts'
@@ -46,10 +50,11 @@ function loadKpiDefinitions() {
 
     const content = fs.readFileSync(kpiTypesPath, 'utf8');
     
-    // Parse CANONICAL_KPIS export (basic regex parsing)
-    const match = content.match(/export const CANONICAL_KPIS[^=]*=\s*(\{[\s\S]*?\n\};)/);
+    // Basic validation that CANONICAL_KPIS export exists
+    // This is intentionally simple - full validation happens in TypeScript tests
+    const match = content.match(/export const CANONICAL_KPIS/);
     if (!match) {
-      log('Error: Cannot parse CANONICAL_KPIS from kpi.ts', 'red');
+      log('Error: Cannot find CANONICAL_KPIS export in kpi.ts', 'red');
       return null;
     }
 
@@ -204,14 +209,28 @@ function validateKpiCount() {
 
   const content = fs.readFileSync(kpiTypesPath, 'utf8');
   
-  // Count KPI definitions in CANONICAL_KPIS
-  const kpiMatches = content.match(/^\s{2}\w+:\s*\{/gm);
+  // Extract CANONICAL_KPIS block for counting
+  // NOTE: This is a heuristic count, not precise parsing.
+  // The actual validation happens in TypeScript tests.
+  const canonicalMatch = content.match(
+    /export const CANONICAL_KPIS.*?=\s*\{([\s\S]*?)\n\};/
+  );
+  
+  if (!canonicalMatch) {
+    log('Warning: Cannot extract CANONICAL_KPIS for counting', 'yellow');
+    return true; // Don't fail on this - TypeScript tests will catch issues
+  }
+
+  // Count top-level keys (KPI names) by looking for patterns like "  kpi_name: {"
+  // This assumes standard formatting but is more forgiving than requiring exact indentation
+  const kpiMatches = canonicalMatch[1].match(/^\s+\w+:\s*\{/gm);
   const kpiCount = kpiMatches ? kpiMatches.length : 0;
 
   if (kpiCount < 7) {
-    log(`Warning: Only ${kpiCount} KPIs defined, expected at least 7`, 'yellow');
+    log(`Warning: Only ${kpiCount} KPIs detected, expected at least 7`, 'yellow');
+    log('Note: This is a heuristic count. Check TypeScript tests for accuracy.', 'yellow');
   } else {
-    log(`✓ ${kpiCount} KPIs defined in CANONICAL_KPIS`, 'green');
+    log(`✓ ${kpiCount} KPIs detected in CANONICAL_KPIS`, 'green');
   }
 
   return true;

@@ -12,6 +12,16 @@ import { CANONICAL_KPIS, KpiDefinition } from './types/kpi';
 /**
  * Current canonical KPI version
  * Must match version in docs/KPI_DEFINITIONS.md
+ * 
+ * NOTE: This version should be kept in sync with KPI_DEFINITIONS.md manually.
+ * Any mismatch will be caught by the CI/CD validation script (validate-kpi-definitions.js).
+ * 
+ * To update:
+ * 1. Update version in docs/KPI_DEFINITIONS.md
+ * 2. Update this constant
+ * 3. Update all KPI versions in CANONICAL_KPIS (types/kpi.ts)
+ * 4. Add entry to docs/KPI_CHANGELOG.md
+ * 5. Run: node scripts/validate-kpi-definitions.js
  */
 export const CANONICAL_KPI_VERSION = '1.0.0';
 
