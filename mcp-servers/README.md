@@ -20,8 +20,15 @@ Control Center (MCP-Client)
 Common base implementation for all MCP servers. Provides:
 - JSON-RPC 2.0 protocol handling
 - Tool registration and discovery
-- Health check endpoints
+- **Standardized health check endpoints** (`/health`, `/ready`) - See [Control Plane Spec](../docs/CONTROL_PLANE_SPEC.md)
+- Dependency checking framework for readiness probes
 - Error handling
+
+**Health Endpoints**:
+- `GET /health` - Simple liveness probe (< 1s response time)
+- `GET /ready` - Comprehensive readiness probe with dependency checks (< 5s response time)
+
+All MCP servers inherit these endpoints and implement service-specific dependency checks.
 
 ### GitHub Server (`github/`)
 
@@ -42,6 +49,10 @@ Common base implementation for all MCP servers. Provides:
 
 **Authentication**:
 The server supports both GitHub Personal Access Tokens (PAT) and GitHub App tokens. In production environments, tokens are loaded from AWS Secrets Manager (secret: `afu9/github`). The token must have appropriate permissions for the operations being performed (see [ADDING-TOOLS.md](github/ADDING-TOOLS.md) for required scopes).
+
+**Dependency Checks** (for `/ready` endpoint):
+- `github_api` - Verifies GitHub API is reachable (https://api.github.com/zen)
+- `authentication` - Validates token is configured and checks rate limits
 
 **Error Handling**:
 The server provides comprehensive error handling for common GitHub API issues:
@@ -66,7 +77,13 @@ See [github/ADDING-TOOLS.md](github/ADDING-TOOLS.md) for a comprehensive guide o
 - `AWS_REGION` - AWS region (default: eu-central-1)
 - `PORT` - Server port (default: 3002)
 
+**Dependency Checks** (for `/ready` endpoint):
+- `aws_connectivity` - Verifies AWS API is reachable via STS GetCallerIdentity
+- `ecs_permissions` - Validates ECS permissions by listing clusters
+
 **IAM Permissions Required**:
+- `sts:GetCallerIdentity` (for readiness checks)
+- `ecs:ListClusters` (for readiness checks)
 - `ecs:DescribeServices`
 - `ecs:UpdateService`
 - `ecs:DescribeTasks`
@@ -86,11 +103,16 @@ See [github/ADDING-TOOLS.md](github/ADDING-TOOLS.md) for a comprehensive guide o
 - `AWS_REGION` - AWS region (default: eu-central-1)
 - `PORT` - Server port (default: 3003)
 
+**Dependency Checks** (for `/ready` endpoint):
+- `aws_connectivity` - Verifies AWS API is reachable via STS GetCallerIdentity
+- `cloudwatch_permissions` - Validates CloudWatch permissions by describing alarms
+
 **IAM Permissions Required**:
+- `sts:GetCallerIdentity` (for readiness checks)
+- `cloudwatch:DescribeAlarms` (for readiness checks)
 - `logs:FilterLogEvents`
 - `logs:DescribeLogGroups`
 - `cloudwatch:GetMetricStatistics`
-- `cloudwatch:DescribeAlarms`
 - `elasticloadbalancing:DescribeLoadBalancers` (for ALB metrics)
 - `elasticloadbalancing:DescribeTargetGroups` (for ALB metrics)
 

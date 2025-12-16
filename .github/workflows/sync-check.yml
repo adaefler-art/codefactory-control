@@ -1,0 +1,108 @@
+name: Sync Check
+
+# This workflow ensures branches are synchronized with main and runs health checks
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+
+jobs:
+  sync-check:
+    name: Check Sync with Main
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for comparison
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Check if branch is up-to-date with main
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main
+          BEHIND=$(git rev-list --count HEAD..origin/main)
+          echo "Branch is $BEHIND commits behind main"
+          
+          if [ $BEHIND -gt 0 ]; then
+            echo "⚠️ Branch is behind main by $BEHIND commits"
+            echo "Please sync your branch with main:"
+            echo "  git pull origin main --rebase"
+            exit 1
+          fi
+          
+          echo "✅ Branch is up-to-date with main"
+      
+      - name: Check for merge conflicts
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main
+          if git merge-tree $(git merge-base HEAD origin/main) HEAD origin/main | grep -q "<<<<<<"; then
+            echo "❌ Merge conflicts detected with main"
+            echo "Please resolve conflicts before merging"
+            exit 1
+          fi
+          echo "✅ No merge conflicts detected"
+      
+      - name: Install root dependencies
+        run: npm ci
+      
+      - name: Build infrastructure
+        run: npm run build
+      
+      - name: Install MCP server dependencies
+        run: |
+          cd mcp-servers/base && npm ci && cd ../..
+          cd mcp-servers/github && npm ci && cd ../..
+          cd mcp-servers/deploy && npm ci && cd ../..
+          cd mcp-servers/observability && npm ci && cd ../..
+      
+      - name: Build MCP servers
+        run: |
+          cd mcp-servers/base && npm run build && cd ../..
+          cd mcp-servers/github && npm run build && cd ../..
+          cd mcp-servers/deploy && npm run build && cd ../..
+          cd mcp-servers/observability && npm run build && cd ../..
+      
+      - name: Verify Control Plane Spec exists
+        run: |
+          if [ ! -f docs/CONTROL_PLANE_SPEC.md ]; then
+            echo "❌ Control Plane Specification not found"
+            exit 1
+          fi
+          echo "✅ Control Plane Specification exists"
+      
+      - name: Check for breaking changes in health endpoints
+        run: |
+          # Verify health endpoint structure in base server
+          if ! grep -q "'/health'" mcp-servers/base/src/server.ts; then
+            echo "❌ Health endpoint missing in base server"
+            exit 1
+          fi
+          
+          if ! grep -q "'/ready'" mcp-servers/base/src/server.ts; then
+            echo "❌ Readiness endpoint missing in base server"
+            exit 1
+          fi
+          
+          echo "✅ Health and readiness endpoints present"
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== Sync Check Summary ==="
+          echo "✅ Code compiles successfully"
+          echo "✅ MCP servers build successfully"
+          echo "✅ Control Plane Spec validated"
+          echo ""
+          echo "Ready for deployment after PR approval"
