@@ -277,10 +277,10 @@ foreach ($logGroup in $logGroups) {
         
         if ($logsJson.events.Count -eq 0) {
             Write-Success "No errors found in last 15 minutes"
-            $report += "  $logGroup: No errors"
+            $report += "  ${logGroup}: No errors"
         } else {
             Write-Warning "Found $($logsJson.events.Count) error events"
-            $report += "  $logGroup: $($logsJson.events.Count) errors found"
+            $report += "  ${logGroup}: $($logsJson.events.Count) errors found"
             
             foreach ($event in $logsJson.events | Select-Object -First 3) {
                 $message = $event.message.Substring(0, [Math]::Min(200, $event.message.Length))
@@ -290,7 +290,7 @@ foreach ($logGroup in $logGroups) {
         }
     } catch {
         Write-Info "Log group not found or no access: $logGroup"
-        $report += "  $logGroup: Not found or no access"
+        $report += "  ${logGroup}: Not found or no access"
     }
 }
 
