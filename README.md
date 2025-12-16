@@ -161,6 +161,7 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - [Architecture Overview](docs/architecture/README.md) - Technical architecture details
 - [Complete Architecture Guide (German)](docs/architecture/afu9-v0.2-overview.md) - Comprehensive guide with AWS components, MCP pattern, and development workflow integration
 - [Control Plane Specification](docs/CONTROL_PLANE_SPEC.md) - **NEW**: Standardized health/readiness endpoints for all services
+- [Factory Status API](docs/FACTORY_STATUS_API.md) - **NEW**: Central Factory Status API for aggregated runs, errors, and KPIs
 - [Sync & Deployment Process](docs/SYNC_DEPLOYMENT_PROCESS.md) - **NEW**: Safe synchronization and deployment procedures
 - [Workflow Schema](docs/WORKFLOW-SCHEMA.md) - Complete workflow model and JSON format specification
 - [Workflow Engine](docs/WORKFLOW-ENGINE.md) - Workflow execution and agent runner documentation
