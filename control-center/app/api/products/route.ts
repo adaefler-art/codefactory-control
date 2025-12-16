@@ -26,12 +26,12 @@ export async function GET(request: NextRequest) {
       archived: searchParams.get('archived') === 'true' ? true : searchParams.get('archived') === 'false' ? false : undefined,
       templateId: searchParams.get('templateId') || undefined,
       ownerTeam: searchParams.get('ownerTeam') || undefined,
-      isolationLevel: searchParams.get('isolationLevel') as any,
+      isolationLevel: (searchParams.get('isolationLevel') || undefined) as ProductQueryParams['isolationLevel'],
       search: searchParams.get('search') || undefined,
       limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 50,
       offset: searchParams.get('offset') ? parseInt(searchParams.get('offset')!, 10) : 0,
-      sortBy: (searchParams.get('sortBy') as any) || 'created_at',
-      sortOrder: (searchParams.get('sortOrder') as any) || 'desc',
+      sortBy: (searchParams.get('sortBy') || 'created_at') as ProductQueryParams['sortBy'],
+      sortOrder: (searchParams.get('sortOrder') || 'desc') as ProductQueryParams['sortOrder'],
     };
 
     // Parse tags if provided (comma-separated)

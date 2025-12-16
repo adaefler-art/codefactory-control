@@ -37,7 +37,7 @@ export interface ProductMetadata {
   primaryLanguage?: string;
   framework?: string;
   deploymentTarget?: string;
-  customFields?: Record<string, any>;
+  customFields?: Record<string, unknown>;
 }
 
 /**
@@ -64,7 +64,7 @@ export interface ProductConstraints {
   maxResourceUsageMb?: number;
   
   // Custom constraints
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -95,7 +95,7 @@ export interface ProductTemplate {
   defaultMetadata: ProductMetadata;
   defaultConstraints: ProductConstraints;
   defaultKpiTargets: ProductKpiTargets;
-  configSchema?: Record<string, any>; // JSON Schema
+  configSchema?: Record<string, unknown>; // JSON Schema
   enabled: boolean;
   version: string; // Semantic versioning
   createdAt: string; // ISO 8601
@@ -122,7 +122,7 @@ export interface Product {
   
   // Template
   templateId?: string;
-  templateConfig?: Record<string, any>;
+  templateConfig?: Record<string, unknown>;
   
   // Status
   enabled: boolean;
@@ -158,12 +158,12 @@ export interface ProductConstraintHistory {
   id: string;
   productId: string;
   constraintKey: string;
-  oldValue: any;
-  newValue: any;
+  oldValue: unknown;
+  newValue: unknown;
   changeReason?: string;
   changedAt: string; // ISO 8601
   changedBy: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -217,7 +217,7 @@ export interface CreateProductRequest {
   constraints?: ProductConstraints;
   kpiTargets?: ProductKpiTargets;
   templateId?: string;
-  templateConfig?: Record<string, any>;
+  templateConfig?: Record<string, unknown>;
   isolationLevel?: ProductIsolationLevel;
   ownerTeam?: string;
   contactEmail?: string;
@@ -235,7 +235,7 @@ export interface UpdateProductRequest {
   constraints?: ProductConstraints;
   kpiTargets?: ProductKpiTargets;
   templateId?: string;
-  templateConfig?: Record<string, any>;
+  templateConfig?: Record<string, unknown>;
   enabled?: boolean;
   isolationLevel?: ProductIsolationLevel;
   ownerTeam?: string;
@@ -323,8 +323,8 @@ export interface TemplateListResponse {
 export interface ConstraintValidationError {
   constraintKey: string;
   message: string;
-  actualValue?: any;
-  expectedValue?: any;
+  actualValue?: unknown;
+  expectedValue?: unknown;
 }
 
 /**
@@ -439,7 +439,7 @@ export function checkKpiMeetsTarget(
   actualValue: number,
   targetValue: number
 ): boolean {
-  if (LOWER_IS_BETTER_KPIS.includes(kpiName as any)) {
+  if (LOWER_IS_BETTER_KPIS.includes(kpiName as typeof LOWER_IS_BETTER_KPIS[number])) {
     return actualValue <= targetValue;
   }
   

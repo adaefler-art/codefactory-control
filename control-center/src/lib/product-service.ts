@@ -10,7 +10,6 @@ import {
   Product,
   ProductWithTemplate,
   ProductTemplate,
-  ProductKpiOverride,
   ProductConstraintHistory,
   CreateProductRequest,
   UpdateProductRequest,
@@ -119,7 +118,7 @@ export class ProductService {
     } = params;
 
     const conditions: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | boolean | string[] | null)[] = [];
     let valueIndex = 1;
 
     if (enabled !== undefined) {
@@ -241,7 +240,7 @@ export class ProductService {
    */
   async updateProduct(productId: string, request: UpdateProductRequest): Promise<Product> {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | boolean | string[] | Record<string, unknown> | null)[] = [];
     let valueIndex = 1;
 
     if (request.displayName !== undefined) {
@@ -421,7 +420,7 @@ export class ProductService {
       activeProducts: parseInt(row.active_products, 10),
       archivedProducts: parseInt(row.archived_products, 10),
       productsByTemplate,
-      productsByIsolationLevel: productsByIsolationLevel as any,
+      productsByIsolationLevel: productsByIsolationLevel as Record<string, number>,
       averageExecutionsPerProduct: parseInt(row.avg_executions_per_product, 10) || 0,
     };
   }
@@ -510,7 +509,7 @@ export class ProductService {
     const { enabled, limit = 50, offset = 0 } = params;
 
     const conditions: string[] = [];
-    const values: any[] = [];
+    const values: (boolean | number)[] = [];
     let valueIndex = 1;
 
     if (enabled !== undefined) {
@@ -555,7 +554,7 @@ export class ProductService {
   // Helper Methods
   // ========================================
 
-  private mapRowToProduct(row: any): Product {
+  private mapRowToProduct(row: Record<string, unknown>): Product {
     return {
       id: row.id,
       repositoryId: row.repository_id,
@@ -582,7 +581,7 @@ export class ProductService {
     };
   }
 
-  private mapRowToTemplate(row: any): ProductTemplate {
+  private mapRowToTemplate(row: Record<string, unknown>): ProductTemplate {
     return {
       id: row.id,
       name: row.name,
