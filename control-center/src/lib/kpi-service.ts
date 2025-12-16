@@ -479,3 +479,553 @@ function mapKpiAggregationJob(row: any): KpiAggregationJob {
     createdAt: row.created_at.toISOString(),
   };
 }
+
+/**
+ * Aggregation Pipeline Functions
+ * Issue 3.2: KPI Aggregation Pipeline (Run → Product → Factory)
+ */
+
+/**
+ * Aggregate run-level KPIs from workflow_executions
+ * Creates KPI snapshots for individual runs
+ */
+export async function aggregateRunKPIs(
+  executionId: string
+): Promise<KpiSnapshot[]> {
+  const pool = getPool();
+  const snapshots: KpiSnapshot[] = [];
+  
+  try {
+    // Get execution data
+    const executionQuery = `
+      SELECT 
+        id,
+        repository_id,
+        started_at,
+        completed_at,
+        status,
+        EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000 as duration_ms
+      FROM workflow_executions
+      WHERE id = $1
+        AND status IN ('completed', 'failed')
+        AND completed_at IS NOT NULL
+    `;
+    
+    const executionResult = await pool.query(executionQuery, [executionId]);
+    
+    if (executionResult.rows.length === 0) {
+      console.log(`[KPI Service] No completed execution found for ID: ${executionId}`);
+      return snapshots;
+    }
+    
+    const execution = executionResult.rows[0];
+    const periodStart = execution.started_at;
+    const periodEnd = execution.completed_at;
+    
+    // 1. Run Duration KPI
+    const durationSnapshot = await createKpiSnapshot({
+      kpiName: 'run_duration',
+      level: 'run',
+      scopeId: executionId,
+      value: execution.duration_ms,
+      unit: 'milliseconds',
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      metadata: {
+        status: execution.status,
+        repositoryId: execution.repository_id,
+      },
+    });
+    snapshots.push(durationSnapshot);
+    
+    // 2. Token Usage KPI (if available in execution metadata)
+    const tokenQuery = `
+      SELECT metadata->'token_usage' as token_usage
+      FROM workflow_executions
+      WHERE id = $1
+        AND metadata ? 'token_usage'
+    `;
+    
+    const tokenResult = await pool.query(tokenQuery, [executionId]);
+    
+    if (tokenResult.rows.length > 0 && tokenResult.rows[0].token_usage) {
+      const tokenUsage = tokenResult.rows[0].token_usage;
+      const totalTokens = (tokenUsage.prompt_tokens || 0) + (tokenUsage.completion_tokens || 0);
+      
+      const tokenSnapshot = await createKpiSnapshot({
+        kpiName: 'token_usage',
+        level: 'run',
+        scopeId: executionId,
+        value: totalTokens,
+        unit: 'tokens',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          promptTokens: tokenUsage.prompt_tokens,
+          completionTokens: tokenUsage.completion_tokens,
+        },
+      });
+      snapshots.push(tokenSnapshot);
+    }
+    
+    // 3. Tool Call Success Rate (if available)
+    const toolCallQuery = `
+      SELECT 
+        COUNT(*) as total_calls,
+        COUNT(*) FILTER (WHERE metadata->>'success' = 'true') as successful_calls
+      FROM workflow_execution_steps
+      WHERE execution_id = $1
+        AND step_type = 'tool_call'
+    `;
+    
+    const toolCallResult = await pool.query(toolCallQuery, [executionId]);
+    
+    if (toolCallResult.rows.length > 0 && toolCallResult.rows[0].total_calls > 0) {
+      const totalCalls = parseInt(toolCallResult.rows[0].total_calls, 10);
+      const successfulCalls = parseInt(toolCallResult.rows[0].successful_calls, 10);
+      const successRate = (successfulCalls / totalCalls) * 100;
+      
+      const toolCallSnapshot = await createKpiSnapshot({
+        kpiName: 'tool_call_success_rate',
+        level: 'run',
+        scopeId: executionId,
+        value: successRate,
+        unit: 'percentage',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          totalCalls,
+          successfulCalls,
+        },
+      });
+      snapshots.push(toolCallSnapshot);
+    }
+    
+    console.log(`[KPI Service] Aggregated ${snapshots.length} run-level KPIs for execution ${executionId}`);
+    return snapshots;
+  } catch (error) {
+    console.error('[KPI Service] Error aggregating run KPIs:', error);
+    throw error;
+  }
+}
+
+/**
+ * Aggregate product-level KPIs from run-level snapshots
+ * Creates KPI snapshots for a specific product/repository
+ */
+export async function aggregateProductKPIsFromRuns(
+  repositoryId: string,
+  periodHours: number = 24
+): Promise<KpiSnapshot[]> {
+  const pool = getPool();
+  const snapshots: KpiSnapshot[] = [];
+  const periodEnd = new Date();
+  const periodStart = new Date(periodEnd.getTime() - periodHours * 60 * 60 * 1000);
+  
+  try {
+    // Get repository info
+    const repoQuery = `
+      SELECT owner || '/' || name as product_name
+      FROM repositories
+      WHERE id = $1
+    `;
+    
+    const repoResult = await pool.query(repoQuery, [repositoryId]);
+    
+    if (repoResult.rows.length === 0) {
+      console.log(`[KPI Service] No repository found for ID: ${repositoryId}`);
+      return snapshots;
+    }
+    
+    const productName = repoResult.rows[0].product_name;
+    
+    // 1. Product Success Rate
+    const successRateQuery = `
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'completed') as completed,
+        COUNT(*) FILTER (WHERE status = 'failed') as failed,
+        COUNT(*) as total
+      FROM workflow_executions
+      WHERE repository_id = $1
+        AND started_at >= $2
+        AND started_at <= $3
+        AND status IN ('completed', 'failed')
+    `;
+    
+    const successRateResult = await pool.query(successRateQuery, [
+      repositoryId,
+      periodStart,
+      periodEnd,
+    ]);
+    
+    if (successRateResult.rows.length > 0 && successRateResult.rows[0].total > 0) {
+      const completed = parseInt(successRateResult.rows[0].completed, 10);
+      const total = parseInt(successRateResult.rows[0].total, 10);
+      const successRate = (completed / total) * 100;
+      
+      const successRateSnapshot = await createKpiSnapshot({
+        kpiName: 'product_success_rate',
+        level: 'product',
+        scopeId: repositoryId,
+        value: successRate,
+        unit: 'percentage',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          productName,
+          completedRuns: completed,
+          totalRuns: total,
+        },
+      });
+      snapshots.push(successRateSnapshot);
+    }
+    
+    // 2. Product Throughput (runs per day)
+    const throughputQuery = `
+      SELECT COUNT(*) as total_runs
+      FROM workflow_executions
+      WHERE repository_id = $1
+        AND started_at >= $2
+        AND started_at <= $3
+    `;
+    
+    const throughputResult = await pool.query(throughputQuery, [
+      repositoryId,
+      periodStart,
+      periodEnd,
+    ]);
+    
+    if (throughputResult.rows.length > 0) {
+      const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
+      const throughput = totalRuns / (periodHours / 24);
+      
+      const throughputSnapshot = await createKpiSnapshot({
+        kpiName: 'product_throughput',
+        level: 'product',
+        scopeId: repositoryId,
+        value: throughput,
+        unit: 'runs_per_day',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          productName,
+          totalRuns,
+        },
+      });
+      snapshots.push(throughputSnapshot);
+    }
+    
+    // 3. Average run duration from run-level snapshots
+    const avgDurationQuery = `
+      SELECT AVG(value) as avg_duration
+      FROM kpi_snapshots
+      WHERE kpi_name = 'run_duration'
+        AND level = 'run'
+        AND scope_id IN (
+          SELECT id FROM workflow_executions 
+          WHERE repository_id = $1
+            AND started_at >= $2
+            AND started_at <= $3
+        )
+        AND calculated_at >= $2
+    `;
+    
+    const avgDurationResult = await pool.query(avgDurationQuery, [
+      repositoryId,
+      periodStart,
+      periodEnd,
+    ]);
+    
+    if (avgDurationResult.rows.length > 0 && avgDurationResult.rows[0].avg_duration) {
+      const avgDuration = parseFloat(avgDurationResult.rows[0].avg_duration);
+      
+      const avgDurationSnapshot = await createKpiSnapshot({
+        kpiName: 'product_avg_duration',
+        level: 'product',
+        scopeId: repositoryId,
+        value: avgDuration,
+        unit: 'milliseconds',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          productName,
+        },
+      });
+      snapshots.push(avgDurationSnapshot);
+    }
+    
+    console.log(`[KPI Service] Aggregated ${snapshots.length} product-level KPIs for repository ${repositoryId}`);
+    return snapshots;
+  } catch (error) {
+    console.error('[KPI Service] Error aggregating product KPIs:', error);
+    throw error;
+  }
+}
+
+/**
+ * Aggregate factory-level KPIs from product-level snapshots
+ * Creates KPI snapshots for the entire factory
+ */
+export async function aggregateFactoryKPIsFromProducts(
+  periodHours: number = 24
+): Promise<KpiSnapshot[]> {
+  const pool = getPool();
+  const snapshots: KpiSnapshot[] = [];
+  const periodEnd = new Date();
+  const periodStart = new Date(periodEnd.getTime() - periodHours * 60 * 60 * 1000);
+  
+  try {
+    // 1. Mean Time to Insight (MTTI)
+    const mttiQuery = `
+      SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000) as mtti_ms
+      FROM workflow_executions
+      WHERE status IN ('completed', 'failed')
+        AND started_at >= $1
+        AND started_at <= $2
+        AND completed_at IS NOT NULL
+    `;
+    
+    const mttiResult = await pool.query(mttiQuery, [periodStart, periodEnd]);
+    
+    if (mttiResult.rows.length > 0 && mttiResult.rows[0].mtti_ms) {
+      const mtti = parseFloat(mttiResult.rows[0].mtti_ms);
+      
+      const mttiSnapshot = await createKpiSnapshot({
+        kpiName: 'mtti',
+        level: 'factory',
+        scopeId: null,
+        value: mtti,
+        unit: 'milliseconds',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          targetMs: 300000, // 5 minutes
+        },
+      });
+      snapshots.push(mttiSnapshot);
+    }
+    
+    // 2. Factory Success Rate
+    const successRateQuery = `
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'completed') as completed,
+        COUNT(*) FILTER (WHERE status IN ('completed', 'failed')) as total
+      FROM workflow_executions
+      WHERE status IN ('completed', 'failed')
+        AND started_at >= $1
+        AND started_at <= $2
+    `;
+    
+    const successRateResult = await pool.query(successRateQuery, [periodStart, periodEnd]);
+    
+    if (successRateResult.rows.length > 0 && successRateResult.rows[0].total > 0) {
+      const completed = parseInt(successRateResult.rows[0].completed, 10);
+      const total = parseInt(successRateResult.rows[0].total, 10);
+      const successRate = (completed / total) * 100;
+      
+      const successRateSnapshot = await createKpiSnapshot({
+        kpiName: 'success_rate',
+        level: 'factory',
+        scopeId: null,
+        value: successRate,
+        unit: 'percentage',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          completedRuns: completed,
+          totalRuns: total,
+          targetPct: 85,
+        },
+      });
+      snapshots.push(successRateSnapshot);
+    }
+    
+    // 3. Factory Throughput (total runs per day)
+    const throughputQuery = `
+      SELECT COUNT(*) as total_runs
+      FROM workflow_executions
+      WHERE started_at >= $1
+        AND started_at <= $2
+    `;
+    
+    const throughputResult = await pool.query(throughputQuery, [periodStart, periodEnd]);
+    
+    if (throughputResult.rows.length > 0) {
+      const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
+      const throughput = totalRuns / (periodHours / 24);
+      
+      const throughputSnapshot = await createKpiSnapshot({
+        kpiName: 'factory_throughput',
+        level: 'factory',
+        scopeId: null,
+        value: throughput,
+        unit: 'runs_per_day',
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        metadata: {
+          totalRuns,
+        },
+      });
+      snapshots.push(throughputSnapshot);
+    }
+    
+    // 4. Steering Accuracy (from verdict outcomes)
+    const steeringAccuracyMetrics = await calculateSteeringAccuracy(periodHours);
+    
+    if (steeringAccuracyMetrics && steeringAccuracyMetrics.totalDecisions > 0) {
+      const steeringAccuracySnapshot = await createKpiSnapshot({
+        kpiName: 'steering_accuracy',
+        level: 'factory',
+        scopeId: null,
+        value: steeringAccuracyMetrics.steeringAccuracyPct,
+        unit: 'percentage',
+        periodStart: steeringAccuracyMetrics.periodStart,
+        periodEnd: steeringAccuracyMetrics.periodEnd,
+        metadata: {
+          totalDecisions: steeringAccuracyMetrics.totalDecisions,
+          acceptedDecisions: steeringAccuracyMetrics.acceptedDecisions,
+          targetPct: 90,
+        },
+      });
+      snapshots.push(steeringAccuracySnapshot);
+    }
+    
+    console.log(`[KPI Service] Aggregated ${snapshots.length} factory-level KPIs`);
+    return snapshots;
+  } catch (error) {
+    console.error('[KPI Service] Error aggregating factory KPIs:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute full aggregation pipeline: Run → Product → Factory
+ * This is the main orchestration function for the KPI aggregation pipeline
+ */
+export async function executeKpiAggregationPipeline(
+  periodHours: number = 24
+): Promise<KpiAggregationJob> {
+  const pool = getPool();
+  const startTime = Date.now();
+  const periodEnd = new Date();
+  const periodStart = new Date(periodEnd.getTime() - periodHours * 60 * 60 * 1000);
+  
+  // Create aggregation job
+  const jobQuery = `
+    INSERT INTO kpi_aggregation_jobs (
+      job_type, status, kpi_names, period_start, period_end, started_at, metadata
+    ) VALUES (
+      'incremental',
+      'running',
+      ARRAY['run_duration', 'token_usage', 'tool_call_success_rate', 'product_success_rate', 'product_throughput', 'mtti', 'success_rate', 'steering_accuracy'],
+      $1,
+      $2,
+      NOW(),
+      '{"pipeline": "run->product->factory", "triggered_by": "scheduler"}'::jsonb
+    )
+    RETURNING id, job_type, status, kpi_names, period_start, period_end, started_at, created_at
+  `;
+  
+  try {
+    const jobResult = await pool.query(jobQuery, [periodStart, periodEnd]);
+    const jobId = jobResult.rows[0].id;
+    let totalSnapshots = 0;
+    
+    try {
+      // Step 1: Aggregate run-level KPIs for recent completed executions
+      const executionsQuery = `
+        SELECT id
+        FROM workflow_executions
+        WHERE status IN ('completed', 'failed')
+          AND completed_at >= $1
+          AND completed_at <= $2
+          AND NOT EXISTS (
+            SELECT 1 FROM kpi_snapshots
+            WHERE kpi_name = 'run_duration'
+              AND level = 'run'
+              AND scope_id = workflow_executions.id
+          )
+        ORDER BY completed_at DESC
+        LIMIT 100
+      `;
+      
+      const executionsResult = await pool.query(executionsQuery, [periodStart, periodEnd]);
+      
+      console.log(`[KPI Pipeline] Processing ${executionsResult.rows.length} run-level aggregations`);
+      
+      for (const row of executionsResult.rows) {
+        const runSnapshots = await aggregateRunKPIs(row.id);
+        totalSnapshots += runSnapshots.length;
+      }
+      
+      // Step 2: Aggregate product-level KPIs
+      const repositoriesQuery = `
+        SELECT DISTINCT r.id
+        FROM repositories r
+        INNER JOIN workflow_executions we ON we.repository_id = r.id
+        WHERE we.started_at >= $1
+          AND we.started_at <= $2
+          AND r.kpi_enabled = TRUE
+      `;
+      
+      const repositoriesResult = await pool.query(repositoriesQuery, [periodStart, periodEnd]);
+      
+      console.log(`[KPI Pipeline] Processing ${repositoriesResult.rows.length} product-level aggregations`);
+      
+      for (const row of repositoriesResult.rows) {
+        const productSnapshots = await aggregateProductKPIsFromRuns(row.id, periodHours);
+        totalSnapshots += productSnapshots.length;
+      }
+      
+      // Step 3: Aggregate factory-level KPIs
+      console.log('[KPI Pipeline] Processing factory-level aggregation');
+      const factorySnapshots = await aggregateFactoryKPIsFromProducts(periodHours);
+      totalSnapshots += factorySnapshots.length;
+      
+      // Step 4: Refresh materialized views
+      await refreshKpiMaterializedViews();
+      
+      // Update job as completed
+      const durationMs = Date.now() - startTime;
+      
+      const updateQuery = `
+        UPDATE kpi_aggregation_jobs
+        SET status = 'completed',
+            completed_at = NOW(),
+            duration_ms = $1,
+            snapshots_created = $2
+        WHERE id = $3
+        RETURNING 
+          id, job_type, status, kpi_names, period_start, period_end,
+          started_at, completed_at, duration_ms, snapshots_created,
+          error, metadata, created_at
+      `;
+      
+      const updateResult = await pool.query(updateQuery, [durationMs, totalSnapshots, jobId]);
+      
+      console.log(`[KPI Pipeline] Aggregation completed: ${totalSnapshots} snapshots in ${durationMs}ms`);
+      
+      return mapKpiAggregationJob(updateResult.rows[0]);
+    } catch (error) {
+      // Update job as failed
+      const durationMs = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      await pool.query(
+        `UPDATE kpi_aggregation_jobs
+         SET status = 'failed',
+             completed_at = NOW(),
+             duration_ms = $1,
+             snapshots_created = $2,
+             error = $3
+         WHERE id = $4`,
+        [durationMs, totalSnapshots, errorMessage, jobId]
+      );
+      
+      throw error;
+    }
+  } catch (error) {
+    console.error('[KPI Pipeline] Error executing aggregation pipeline:', error);
+    throw error;
+  }
+}

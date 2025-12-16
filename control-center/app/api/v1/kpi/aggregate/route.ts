@@ -1,0 +1,61 @@
+/**
+ * KPI Aggregation Trigger API
+ * POST /api/v1/kpi/aggregate
+ * 
+ * Triggers on-demand KPI aggregation pipeline execution
+ * EPIC 3: KPI System & Telemetry
+ * Issue 3.2: KPI Aggregation Pipeline
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { executeKpiAggregationPipeline } from '@/lib/kpi-service';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Parse request body for optional parameters
+    let periodHours = 24;
+    
+    try {
+      const body = await request.json();
+      if (body.periodHours && typeof body.periodHours === 'number') {
+        periodHours = body.periodHours;
+      }
+    } catch {
+      // Body is optional, use defaults
+    }
+    
+    console.log(`[KPI API] Triggering aggregation pipeline (periodHours: ${periodHours})`);
+    
+    // Execute the aggregation pipeline
+    const job = await executeKpiAggregationPipeline(periodHours);
+    
+    return NextResponse.json({
+      success: true,
+      job,
+      message: 'KPI aggregation pipeline triggered successfully',
+    });
+  } catch (error) {
+    console.error('[KPI API] Error triggering aggregation:', error);
+    
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        message: 'Failed to trigger KPI aggregation pipeline',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Return method not allowed for other HTTP methods
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: 'Method not allowed',
+      message: 'Use POST to trigger aggregation',
+    },
+    { status: 405 }
+  );
+}
