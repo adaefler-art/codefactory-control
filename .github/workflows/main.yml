@@ -1,0 +1,5 @@
+- run: npm ci
+- run: node scripts/create_afu9_v0_3_issues_from_md.js docs/roadmaps/afu9_roadmap_v0_3_issues.md
+  env:
+    GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+    GITHUB_REPOSITORY: ${{ github.repository }}
