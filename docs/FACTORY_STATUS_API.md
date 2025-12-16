@@ -17,6 +17,11 @@ The Central Factory Status API provides a read-only, versioned REST API for quer
 - Verdict Consistency (EPIC 2)
 - Auditability (EPIC 2)
 
+**Related Documentation:**
+- [Confidence Score Schema](./CONFIDENCE_SCORE_SCHEMA.md) - Complete confidence score normalization documentation
+- [Policy Snapshotting](./POLICY_SNAPSHOTTING.md) - Policy versioning and auditability
+- [Verdict Engine Package](../packages/verdict-engine/README.md) - Technical implementation details
+
 ## API Endpoint
 
 ### GET /api/v1/factory/status
@@ -234,7 +239,7 @@ curl "http://localhost:3000/api/v1/factory/status?limit=20&errorLimit=10&kpiPeri
 | `executionId` | string | Workflow execution that generated this verdict |
 | `errorClass` | string | Classified error type (e.g., `ACM_DNS_VALIDATION_PENDING`) |
 | `service` | string | AWS service involved (e.g., `ACM`, `SecretsManager`) |
-| `confidenceScore` | number | Normalized confidence score (0-100) |
+| `confidenceScore` | number | **Normalized confidence score (0-100)** - Deterministic integer score calculated as `Math.round(raw_confidence * 100)`. See [Confidence Score Schema](./CONFIDENCE_SCORE_SCHEMA.md) for complete documentation. |
 | `proposedAction` | string | Recommended action: `WAIT_AND_RETRY`, `OPEN_ISSUE`, or `HUMAN_REQUIRED` |
 | `fingerprintId` | string | Stable fingerprint for error pattern |
 | `policyVersion` | string | Policy snapshot version used (e.g., `v1.0.0`) |
@@ -278,6 +283,31 @@ Percentage of executions that complete successfully versus fail.
 ```
 Success Rate = (completed_executions / (completed_executions + failed_executions)) * 100
 ```
+
+### Confidence Score Normalization (EPIC 2)
+
+**New in v1.1.0** - All verdict confidence scores are normalized to a 0-100 integer scale.
+
+**Key Properties:**
+- **Deterministic**: Identical error signals always produce identical scores
+- **Comparable**: Scores can be compared across all verdicts and time periods
+- **Documented**: Formula is public and immutable
+
+**Formula:**
+```
+normalized_score = Math.round(raw_confidence × 100)
+```
+
+**Where:**
+- `raw_confidence`: Classifier confidence in range [0, 1]
+- `normalized_score`: Output score in range [0, 100] (integer)
+
+**Example:**
+- Raw confidence 0.9 → Normalized score **90**
+- Raw confidence 0.85 → Normalized score **85**
+- Raw confidence 0.855 → Normalized score **86** (rounded)
+
+**Complete Documentation:** See [Confidence Score Schema](./CONFIDENCE_SCORE_SCHEMA.md) for detailed documentation including examples, validation, and testing.
 
 ### Verdict Consistency Score (EPIC 2)
 

@@ -2,6 +2,8 @@
 
 **EPIC 2 Implementation** - Provides governance, auditability, and deterministic verdict evaluation for AFU-9.
 
+**📖 Complete Documentation:** See [Confidence Score Schema](../../docs/CONFIDENCE_SCORE_SCHEMA.md) for comprehensive confidence score normalization documentation.
+
 ## Overview
 
 The Verdict Engine v1.1 enhances the AFU-9 system with:
@@ -18,6 +20,8 @@ All confidence scores are normalized to a 0-100 integer scale:
 - **Deterministic**: Identical inputs always produce identical scores
 - **Comparable**: Easy comparison across verdicts and time periods
 - **Documented**: Simple formula: `round(raw_confidence * 100)`
+
+**For complete documentation including examples, validation, and testing, see:** [Confidence Score Schema](../../docs/CONFIDENCE_SCORE_SCHEMA.md)
 
 ```typescript
 // Example: Classifier returns 0.9 → Verdict Engine returns 90
