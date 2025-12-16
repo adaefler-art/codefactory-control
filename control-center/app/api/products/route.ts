@@ -20,9 +20,10 @@ const VALID_ISOLATION_LEVELS: ProductIsolationLevel[] = ['standard', 'strict', '
  */
 function parseValidSortBy(value: string | null): ProductQueryParams['sortBy'] {
   if (!value) return 'created_at';
-  return VALID_SORT_FIELDS.includes(value as typeof VALID_SORT_FIELDS[number])
-    ? (value as ProductQueryParams['sortBy'])
-    : 'created_at';
+  if (VALID_SORT_FIELDS.includes(value as typeof VALID_SORT_FIELDS[number])) {
+    return value as ProductQueryParams['sortBy'];
+  }
+  return 'created_at';
 }
 
 /**
@@ -30,9 +31,10 @@ function parseValidSortBy(value: string | null): ProductQueryParams['sortBy'] {
  */
 function parseValidSortOrder(value: string | null): ProductQueryParams['sortOrder'] {
   if (!value) return 'desc';
-  return VALID_SORT_ORDERS.includes(value as typeof VALID_SORT_ORDERS[number])
-    ? (value as ProductQueryParams['sortOrder'])
-    : 'desc';
+  if (VALID_SORT_ORDERS.includes(value as typeof VALID_SORT_ORDERS[number])) {
+    return value as ProductQueryParams['sortOrder'];
+  }
+  return 'desc';
 }
 
 /**

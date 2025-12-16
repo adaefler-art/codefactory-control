@@ -23,6 +23,11 @@ import {
   ProductKpiPerformance,
 } from './types/product';
 
+/**
+ * SQL parameter value type
+ */
+type SqlValue = string | number | boolean | string[] | Record<string, unknown> | null;
+
 export class ProductService {
   constructor(private db: Pool) {}
 
@@ -118,7 +123,7 @@ export class ProductService {
     } = params;
 
     const conditions: string[] = [];
-    const values: (string | number | boolean | string[] | null)[] = [];
+    const values: SqlValue[] = [];
     let valueIndex = 1;
 
     if (enabled !== undefined) {
@@ -240,7 +245,7 @@ export class ProductService {
    */
   async updateProduct(productId: string, request: UpdateProductRequest): Promise<Product> {
     const updates: string[] = [];
-    const values: (string | number | boolean | string[] | Record<string, unknown> | null)[] = [];
+    const values: SqlValue[] = [];
     let valueIndex = 1;
 
     if (request.displayName !== undefined) {
@@ -509,7 +514,7 @@ export class ProductService {
     const { enabled, limit = 50, offset = 0 } = params;
 
     const conditions: string[] = [];
-    const values: (boolean | number)[] = [];
+    const values: SqlValue[] = [];
     let valueIndex = 1;
 
     if (enabled !== undefined) {

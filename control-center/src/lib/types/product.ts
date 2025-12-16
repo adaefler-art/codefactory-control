@@ -439,7 +439,7 @@ export function checkKpiMeetsTarget(
   actualValue: number,
   targetValue: number
 ): boolean {
-  if ((LOWER_IS_BETTER_KPIS as readonly string[]).includes(kpiName)) {
+  if (LOWER_IS_BETTER_KPIS.includes(kpiName as typeof LOWER_IS_BETTER_KPIS[number])) {
     return actualValue <= targetValue;
   }
   
