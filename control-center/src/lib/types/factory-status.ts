@@ -65,14 +65,48 @@ export interface FactoryKPIs {
 }
 
 /**
- * Verdict placeholder for future Verdict Engine integration
- * (EPIC 2 from roadmap)
+ * Verdict summary for Factory Status API
+ * 
+ * EPIC 2: Verdict Engine v1.1 - Governance & Auditability
  */
 export interface VerdictSummary {
+  id: string;
   executionId: string;
-  // Placeholder for future verdict data
-  status: 'pending' | 'approved' | 'rejected';
-  confidenceScore?: number;
+  errorClass: string;
+  service: string;
+  confidenceScore: number; // Normalized 0-100 scale (Issue 2.2)
+  proposedAction: 'WAIT_AND_RETRY' | 'OPEN_ISSUE' | 'HUMAN_REQUIRED';
+  fingerprintId: string;
+  policyVersion: string; // Policy snapshot version (Issue 2.1)
+  createdAt: string;
+}
+
+/**
+ * Verdict statistics for KPI reporting
+ */
+export interface VerdictKPIs {
+  /** Total number of verdicts */
+  totalVerdicts: number;
+  
+  /** Average confidence score (0-100) */
+  avgConfidence: number;
+  
+  /** Verdict consistency score (0-100) */
+  consistencyScore: number;
+  
+  /** Verdicts by proposed action */
+  byAction: {
+    waitAndRetry: number;
+    openIssue: number;
+    humanRequired: number;
+  };
+  
+  /** Top error classes */
+  topErrorClasses: Array<{
+    errorClass: string;
+    count: number;
+    avgConfidence: number;
+  }>;
 }
 
 /**
@@ -100,10 +134,11 @@ export interface FactoryStatusResponse {
   /** Factory-wide KPIs */
   kpis: FactoryKPIs;
   
-  /** Verdicts (placeholder for future implementation) */
+  /** Verdicts from Verdict Engine v1.1 */
   verdicts: {
     enabled: boolean;
     summary?: VerdictSummary[];
+    kpis?: VerdictKPIs;
   };
 }
 
