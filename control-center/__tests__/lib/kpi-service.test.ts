@@ -11,6 +11,10 @@ import {
   getKpiFreshness,
   getProductKPIs,
   createKpiSnapshot,
+  aggregateRunKPIs,
+  aggregateProductKPIsFromRuns,
+  aggregateFactoryKPIsFromProducts,
+  executeKpiAggregationPipeline,
 } from '../../src/lib/kpi-service';
 import type { CreateKpiSnapshotRequest } from '../../src/lib/types/kpi';
 
@@ -313,6 +317,324 @@ describe('KPI Service', () => {
       expect(result.level).toBe('factory');
       expect(result.value).toBe(285000);
       expect(result.unit).toBe('milliseconds');
+    });
+  });
+
+  describe('aggregateRunKPIs', () => {
+    test('should aggregate run-level KPIs for a completed execution', async () => {
+      const executionId = 'exec-123';
+      const now = new Date();
+      
+      // Mock execution query
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{
+            id: executionId,
+            repository_id: 'repo-123',
+            started_at: new Date(now.getTime() - 300000), // 5 minutes ago
+            completed_at: now,
+            status: 'completed',
+            duration_ms: 300000,
+          }],
+        })
+        // Mock run duration snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-1',
+            kpi_name: 'run_duration',
+            kpi_version: '1.0.0',
+            level: 'run',
+            scope_id: executionId,
+            value: 300000,
+            unit: 'milliseconds',
+            metadata: { status: 'completed', repositoryId: 'repo-123' },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 300000),
+            period_end: now,
+            created_at: now,
+          }],
+        })
+        // Mock token usage query (no results)
+        .mockResolvedValueOnce({
+          rows: [],
+        })
+        // Mock tool call query (no results)
+        .mockResolvedValueOnce({
+          rows: [{ total_calls: '0' }],
+        });
+
+      const result = await aggregateRunKPIs(executionId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].kpiName).toBe('run_duration');
+      expect(result[0].value).toBe(300000);
+    });
+
+    test('should return empty array for non-existent execution', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const result = await aggregateRunKPIs('non-existent');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('aggregateProductKPIsFromRuns', () => {
+    test('should aggregate product-level KPIs from runs', async () => {
+      const repositoryId = 'repo-123';
+      const now = new Date();
+      
+      // Mock repository query
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{
+            product_name: 'org/repo',
+          }],
+        })
+        // Mock success rate query
+        .mockResolvedValueOnce({
+          rows: [{
+            completed: '8',
+            failed: '2',
+            total: '10',
+          }],
+        })
+        // Mock success rate snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-1',
+            kpi_name: 'product_success_rate',
+            kpi_version: '1.0.0',
+            level: 'product',
+            scope_id: repositoryId,
+            value: 80,
+            unit: 'percentage',
+            metadata: { productName: 'org/repo', completedRuns: 8, totalRuns: 10 },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            created_at: now,
+          }],
+        })
+        // Mock throughput query
+        .mockResolvedValueOnce({
+          rows: [{
+            total_runs: '10',
+          }],
+        })
+        // Mock throughput snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-2',
+            kpi_name: 'product_throughput',
+            kpi_version: '1.0.0',
+            level: 'product',
+            scope_id: repositoryId,
+            value: 10,
+            unit: 'runs_per_day',
+            metadata: { productName: 'org/repo', totalRuns: 10 },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            created_at: now,
+          }],
+        })
+        // Mock avg duration query
+        .mockResolvedValueOnce({
+          rows: [{
+            avg_duration: '250000',
+          }],
+        })
+        // Mock avg duration snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-3',
+            kpi_name: 'product_avg_duration',
+            kpi_version: '1.0.0',
+            level: 'product',
+            scope_id: repositoryId,
+            value: 250000,
+            unit: 'milliseconds',
+            metadata: { productName: 'org/repo' },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            created_at: now,
+          }],
+        });
+
+      const result = await aggregateProductKPIsFromRuns(repositoryId, 24);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].kpiName).toBe('product_success_rate');
+      expect(result[0].value).toBe(80);
+      expect(result[1].kpiName).toBe('product_throughput');
+      expect(result[2].kpiName).toBe('product_avg_duration');
+    });
+  });
+
+  describe('aggregateFactoryKPIsFromProducts', () => {
+    test('should aggregate factory-level KPIs', async () => {
+      const now = new Date();
+      
+      // Mock MTTI query
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{
+            mtti_ms: '285000',
+          }],
+        })
+        // Mock MTTI snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-1',
+            kpi_name: 'mtti',
+            kpi_version: '1.0.0',
+            level: 'factory',
+            scope_id: null,
+            value: 285000,
+            unit: 'milliseconds',
+            metadata: { targetMs: 300000 },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            created_at: now,
+          }],
+        })
+        // Mock success rate query
+        .mockResolvedValueOnce({
+          rows: [{
+            completed: '42',
+            total: '50',
+          }],
+        })
+        // Mock success rate snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-2',
+            kpi_name: 'success_rate',
+            kpi_version: '1.0.0',
+            level: 'factory',
+            scope_id: null,
+            value: 84,
+            unit: 'percentage',
+            metadata: { completedRuns: 42, totalRuns: 50, targetPct: 85 },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            created_at: now,
+          }],
+        })
+        // Mock throughput query
+        .mockResolvedValueOnce({
+          rows: [{
+            total_runs: '50',
+          }],
+        })
+        // Mock throughput snapshot creation
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'snapshot-3',
+            kpi_name: 'factory_throughput',
+            kpi_version: '1.0.0',
+            level: 'factory',
+            scope_id: null,
+            value: 50,
+            unit: 'runs_per_day',
+            metadata: { totalRuns: 50 },
+            calculated_at: now,
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            created_at: now,
+          }],
+        })
+        // Mock table check for steering accuracy
+        .mockResolvedValueOnce({
+          rows: [{ exists: false }],
+        });
+
+      const result = await aggregateFactoryKPIsFromProducts(24);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].kpiName).toBe('mtti');
+      expect(result[1].kpiName).toBe('success_rate');
+      expect(result[2].kpiName).toBe('factory_throughput');
+    });
+  });
+
+  describe('executeKpiAggregationPipeline', () => {
+    test('should execute full aggregation pipeline', async () => {
+      const now = new Date();
+      const jobId = 'job-123';
+      
+      // Mock job creation
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{
+            id: jobId,
+            job_type: 'incremental',
+            status: 'running',
+            kpi_names: ['run_duration', 'product_success_rate', 'mtti'],
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            started_at: now,
+            created_at: now,
+          }],
+        })
+        // Mock executions query (no new executions)
+        .mockResolvedValueOnce({
+          rows: [],
+        })
+        // Mock repositories query (no repositories)
+        .mockResolvedValueOnce({
+          rows: [],
+        })
+        // Mock factory-level aggregations (MTTI)
+        .mockResolvedValueOnce({
+          rows: [{ mtti_ms: null }],
+        })
+        // Mock factory success rate
+        .mockResolvedValueOnce({
+          rows: [{ completed: '0', total: '0' }],
+        })
+        // Mock factory throughput
+        .mockResolvedValueOnce({
+          rows: [{ total_runs: '0' }],
+        })
+        // Mock table check for steering accuracy
+        .mockResolvedValueOnce({
+          rows: [{ exists: false }],
+        })
+        // Mock materialized views refresh
+        .mockResolvedValueOnce({
+          rows: [],
+        })
+        // Mock job update
+        .mockResolvedValueOnce({
+          rows: [{
+            id: jobId,
+            job_type: 'incremental',
+            status: 'completed',
+            kpi_names: ['run_duration', 'product_success_rate', 'mtti'],
+            period_start: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            period_end: now,
+            started_at: now,
+            completed_at: now,
+            duration_ms: 100,
+            snapshots_created: 0,
+            error: null,
+            metadata: { pipeline: 'run->product->factory' },
+            created_at: now,
+          }],
+        });
+
+      const result = await executeKpiAggregationPipeline(24);
+
+      expect(result.id).toBe(jobId);
+      expect(result.status).toBe('completed');
+      expect(result.snapshotsCreated).toBe(0);
     });
   });
 });

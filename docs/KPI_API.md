@@ -428,6 +428,102 @@ All errors follow the standard format:
 }
 ```
 
+---
+
+## POST /api/v1/kpi/aggregate
+
+**NEW in Issue 3.2** - Trigger on-demand KPI aggregation pipeline execution.
+
+**Description:**  
+Manually triggers the complete KPI aggregation pipeline (Run → Product → Factory). This endpoint executes the same aggregation logic as the periodic scheduler, useful for:
+- On-demand KPI updates after system changes
+- Backfilling historical data
+- Testing and validation
+
+**Request Body (Optional):**
+```json
+{
+  "periodHours": 24
+}
+```
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `periodHours` | integer | 24 | Time period for aggregation (1-168 hours) |
+
+**Example Request:**
+```bash
+curl -X POST http://localhost:3000/api/v1/kpi/aggregate \
+  -H "Content-Type: application/json" \
+  -d '{"periodHours": 48}'
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "job": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "jobType": "incremental",
+    "status": "completed",
+    "kpiNames": [
+      "run_duration",
+      "token_usage",
+      "product_success_rate",
+      "product_throughput",
+      "mtti",
+      "success_rate",
+      "steering_accuracy"
+    ],
+    "periodStart": "2025-12-15T20:00:00.000Z",
+    "periodEnd": "2025-12-16T20:00:00.000Z",
+    "startedAt": "2025-12-16T20:00:01.000Z",
+    "completedAt": "2025-12-16T20:00:05.523Z",
+    "durationMs": 5523,
+    "snapshotsCreated": 142,
+    "metadata": {
+      "pipeline": "run->product->factory",
+      "triggered_by": "api"
+    },
+    "createdAt": "2025-12-16T20:00:01.000Z"
+  },
+  "message": "KPI aggregation pipeline triggered successfully"
+}
+```
+
+**Error Response (500):**
+```json
+{
+  "success": false,
+  "error": "Database connection failed",
+  "message": "Failed to trigger KPI aggregation pipeline"
+}
+```
+
+**Method Not Allowed (405):**
+```json
+{
+  "success": false,
+  "error": "Method not allowed",
+  "message": "Use POST to trigger aggregation"
+}
+```
+
+**Pipeline Stages:**
+1. **Run-Level Aggregation**: Calculate metrics for individual workflow executions (duration, tokens, tool calls)
+2. **Product-Level Aggregation**: Roll up metrics per repository (success rate, throughput, avg duration)
+3. **Factory-Level Aggregation**: Global metrics across all products (MTTI, success rate, steering accuracy)
+4. **Materialized View Refresh**: Update optimized query views for performance
+
+**Notes:**
+- Aggregation jobs are tracked in `kpi_aggregation_jobs` table
+- Only processes runs that haven't been aggregated yet (idempotent)
+- Safe to run multiple times - won't create duplicate snapshots
+- Typical execution time: 2-10 seconds depending on data volume
+
+---
+
 **Common HTTP Status Codes:**
 - `200` - Success
 - `400` - Invalid parameters

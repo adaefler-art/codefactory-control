@@ -2,6 +2,7 @@
 *.js
 !bin/*.js
 !jest.config.js
+!scripts/*.js
 *.d.ts
 node_modules/
 cdk.out/
