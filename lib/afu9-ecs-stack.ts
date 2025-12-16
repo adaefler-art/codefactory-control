@@ -111,7 +111,7 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * Enable database integration
    * When false: no DB secrets, no IAM grants, app reports database:not_configured
    * When true: DB secret ARN required, IAM grants added, app connects to DB
-   * @default true
+    * @default false (can be overridden via CDK context -c enableDatabase=true)
    */
   enableDatabase?: boolean;
 
@@ -120,12 +120,6 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * Required when enableDatabase=true, ignored when enableDatabase=false
    */
   dbSecretArn?: string;
-
-  /**
-   * Enable database secrets injection. If false, database secrets are omitted.
-   * @default false
-   */
-  enableDatabase?: boolean;
 
   /**
    * Image tag to use for deployments
@@ -162,7 +156,7 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
 interface ResolvedEcsConfig {
   environment: string;
   domainName?: string;
-  databaseEnabled: boolean;
+  enableDatabase: boolean;
   dbSecretArn?: string;
   dbSecretName: string;
 }
@@ -205,7 +199,7 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
   return {
     environment,
     domainName,
-    databaseEnabled: enableDatabase,
+    enableDatabase,
     dbSecretArn,
     dbSecretName,
   };
@@ -237,7 +231,7 @@ export class Afu9EcsStack extends cdk.Stack {
       memoryLimitMiB = 2048,
     } = props;
 
-    const { environment, domainName, databaseEnabled, dbSecretArn, dbSecretName } = resolveEcsConfig(this, props);
+    const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName } = resolveEcsConfig(this, props);
     this.domainName = domainName;
 
     // Environment-specific defaults
@@ -284,7 +278,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Import database secret (connection details for application) when enabled
     // Prefer ARN when provided; otherwise fall back to name (supports rotated suffix secrets)
-    const dbSecret = databaseEnabled
+    const dbSecret = enableDatabase
       ? dbSecretArn
         ? secretsmanager.Secret.fromSecretCompleteArn(this, 'DatabaseSecret', dbSecretArn)
         : secretsmanager.Secret.fromSecretNameV2(this, 'DatabaseSecret', dbSecretName)
@@ -346,6 +340,17 @@ export class Afu9EcsStack extends cdk.Stack {
     // Justification: ECS needs to read secrets to inject them into containers at startup
     if (dbSecret) {
       dbSecret.grantRead(taskExecutionRole);
+
+      // Belt-and-suspenders policy to cover rotated/aliased secret ARNs (name suffixed by AWS)
+      const secretResourceArn = dbSecretArn ?? `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:${dbSecretName}*`;
+      taskExecutionRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'DbSecretRead',
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+          resources: [secretResourceArn],
+        })
+      );
     }
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
