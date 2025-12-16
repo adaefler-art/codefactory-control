@@ -56,14 +56,14 @@ export function normalizeConfidenceScore(rawConfidence: number): number {
 
 ### Rounding Behavior
 
-JavaScript's `Math.round()` uses **half-up rounding** (banker's rounding):
+JavaScript's `Math.round()` uses **standard half-up rounding**: values with fractional part >= 0.5 round up, values < 0.5 round down.
 
 | Raw Confidence | Calculation | Normalized Score |
 |----------------|-------------|------------------|
 | 0.0            | 0 × 100 = 0 | **0** |
 | 0.5            | 0.5 × 100 = 50 | **50** |
-| 0.854          | 0.854 × 100 = 85.4 | **85** |
-| 0.855          | 0.855 × 100 = 85.5 | **86** |
+| 0.854          | 0.854 × 100 = 85.4 | **85** (rounds down) |
+| 0.855          | 0.855 × 100 = 85.5 | **86** (rounds up) |
 | 0.9            | 0.9 × 100 = 90 | **90** |
 | 0.95           | 0.95 × 100 = 95 | **95** |
 | 1.0            | 1.0 × 100 = 100 | **100** |
