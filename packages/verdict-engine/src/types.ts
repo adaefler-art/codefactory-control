@@ -6,7 +6,7 @@
  * - Issue 2.2: Confidence Score Normalization
  */
 
-import { ErrorClass, FactoryAction, CfnFailureSignal } from '@codefactory/deploy-memory/src/types';
+import { ErrorClass, FactoryAction, CfnFailureSignal } from '@codefactory/deploy-memory';
 
 /**
  * Policy snapshot containing immutable classification rules

@@ -11,14 +11,15 @@
  * - Immutable policy snapshots
  */
 
-import { classifyFailure, extractTokens } from '@codefactory/deploy-memory/src/classifier';
-import { getPlaybook } from '@codefactory/deploy-memory/src/playbook';
-import { 
-  CfnFailureSignal, 
+import {
+  classifyFailure,
+  extractTokens,
+  getPlaybook,
+  CfnFailureSignal,
   FailureClassification,
   ErrorClass,
-  FactoryAction 
-} from '@codefactory/deploy-memory/src/types';
+  FactoryAction,
+} from '@codefactory/deploy-memory';
 import { 
   Verdict, 
   CreateVerdictInput, 

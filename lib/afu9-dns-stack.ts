@@ -141,15 +141,16 @@ export class Afu9DnsStack extends cdk.Stack {
       exportName: 'Afu9HostedZoneId',
     });
 
-    new cdk.CfnOutput(this, 'HostedZoneNameServers', {
-      value: cdk.Fn.join(
-        ', ',
-        this.hostedZone.hostedZoneNameServers ?? []
-      ),
-      description:
-        'Name servers for the hosted zone (configure these with your registrar)',
-      exportName: 'Afu9HostedZoneNameServers',
-    });
+    // Only emit name servers when available (imported hosted zones do not expose them)
+    const nameServers = this.hostedZone.hostedZoneNameServers;
+    if (nameServers && nameServers.length > 0) {
+      new cdk.CfnOutput(this, 'HostedZoneNameServers', {
+        value: cdk.Fn.join(', ', nameServers),
+        description:
+          'Name servers for the hosted zone (configure these with your registrar)',
+        exportName: 'Afu9HostedZoneNameServers',
+      });
+    }
 
     new cdk.CfnOutput(this, 'ControlCenterUrl', {
       value: `https://${this.domainName}`,
