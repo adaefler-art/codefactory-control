@@ -279,12 +279,25 @@ describe('Database Configuration Resolution', () => {
       // 
       // Validation:
       //   npx cdk synth Afu9EcsStack -c enableDatabase=false 2>&1 | \
-      //     grep "DEPRECATION WARNING"
+      //     grep "Warning"
       // 
       // Expected:
       //   Warning message displayed:
-      //   "⚠️  DEPRECATION WARNING: Context key "enableDatabase" is deprecated. 
+      //   "[Warning at /Afu9EcsStack] DEPRECATION: Context key "enableDatabase" is deprecated. 
       //    Please use "afu9-enable-database" instead."
+    });
+
+    test('ACCEPTANCE: Warning when both keys provided', () => {
+      // Additional validation for clarity
+      // 
+      // Validation:
+      //   npx cdk synth Afu9EcsStack -c enableDatabase=true -c afu9-enable-database=false 2>&1 | \
+      //     grep "Warning"
+      // 
+      // Expected:
+      //   Warning message displayed:
+      //   "[Warning at /Afu9EcsStack] Both "enableDatabase" (deprecated) and "afu9-enable-database" 
+      //    context keys are provided. Using "afu9-enable-database" value."
     });
   });
 });
@@ -306,14 +319,18 @@ describe('Database Configuration Resolution', () => {
  *    - Should have: DATABASE_HOST, DATABASE_PORT, etc.
  * 
  * 3. Test legacy key with deprecation warning:
- *    npx cdk synth Afu9EcsStack -c enableDatabase=false 2>&1 | grep DEPRECATION
- *    - Should show: ⚠️  DEPRECATION WARNING: Context key "enableDatabase" is deprecated.
+ *    npx cdk synth Afu9EcsStack -c enableDatabase=false 2>&1 | grep Warning
+ *    - Should show: [Warning at /Afu9EcsStack] DEPRECATION: Context key "enableDatabase" is deprecated.
  * 
- * 4. Verify IAM policies:
+ * 4. Test both keys provided:
+ *    npx cdk synth Afu9EcsStack -c enableDatabase=true -c afu9-enable-database=false 2>&1 | grep Warning
+ *    - Should show: [Warning at /Afu9EcsStack] Both "enableDatabase" (deprecated) and "afu9-enable-database" context keys are provided.
+ * 
+ * 5. Verify IAM policies:
  *    npx cdk synth Afu9EcsStack -c afu9-enable-database=false | grep DbSecretRead
  *    - Should return: exit code 1 (no matches)
  * 
- * 5. Verify secret validation:
+ * 6. Verify secret validation:
  *    npx cdk synth Afu9EcsStack -c afu9-enable-database=false | grep SecretValidation
  *    - Should show: afu9/github and afu9/llm
  *    - Should NOT show: afu9/database

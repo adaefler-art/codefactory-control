@@ -422,16 +422,22 @@ Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or disable databa
 npx cdk deploy Afu9EcsStack -c afu9-enable-database=false
 ```
 
-### Configuration Warning: Conflicting Settings
+### Configuration Warning: Deprecated Context Key
 
-**Warning:**
+**Warning (when using only `enableDatabase`):**
 ```
-⚠️  DEPRECATION WARNING: Context key "enableDatabase" is deprecated. 
+[Warning at /Afu9EcsStack] DEPRECATION: Context key "enableDatabase" is deprecated. 
 Please use "afu9-enable-database" instead. 
 Example: cdk deploy -c afu9-enable-database=false
 ```
 
-**Fix:** Use the correct context key `afu9-enable-database` instead of `enableDatabase`.
+**Warning (when using both keys):**
+```
+[Warning at /Afu9EcsStack] Both "enableDatabase" (deprecated) and "afu9-enable-database" context keys are provided. 
+Using "afu9-enable-database" value. Please remove the deprecated "enableDatabase" key.
+```
+
+**Fix:** Use only the correct context key `afu9-enable-database` and remove `enableDatabase`.
 
 ### Secret Validation Failed
 

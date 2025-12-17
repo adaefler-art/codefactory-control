@@ -188,12 +188,21 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
   const domainName = props.domainName ?? ctxDomain;
 
   // Deprecation warning for legacy key
-  if (ctxEnableDbLegacy !== undefined && ctxEnableDbCorrect === undefined) {
-    console.warn(
-      '⚠️  DEPRECATION WARNING: Context key "enableDatabase" is deprecated. ' +
-      'Please use "afu9-enable-database" instead. ' +
-      'Example: cdk deploy -c afu9-enable-database=false'
-    );
+  if (ctxEnableDbLegacy !== undefined) {
+    if (ctxEnableDbCorrect === undefined) {
+      // Only legacy key provided
+      cdk.Annotations.of(scope).addWarning(
+        'DEPRECATION: Context key "enableDatabase" is deprecated. ' +
+        'Please use "afu9-enable-database" instead. ' +
+        'Example: cdk deploy -c afu9-enable-database=false'
+      );
+    } else {
+      // Both keys provided - warn about potential confusion
+      cdk.Annotations.of(scope).addWarning(
+        'Both "enableDatabase" (deprecated) and "afu9-enable-database" context keys are provided. ' +
+        'Using "afu9-enable-database" value. Please remove the deprecated "enableDatabase" key.'
+      );
+    }
   }
 
   // Resolution priority: props > correct context key > legacy context key > default (false)
