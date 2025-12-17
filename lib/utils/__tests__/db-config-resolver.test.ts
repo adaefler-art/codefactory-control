@@ -173,7 +173,7 @@ describe('Database Configuration Resolution', () => {
       // Expected Result:
       //   Exit code: 1
       //   Error: enableDatabase is true but neither dbSecretArn nor dbSecretName is provided.
-      //          Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) 
+      //          Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master
       //          or disable database with -c afu9-enable-database=false
     });
   });

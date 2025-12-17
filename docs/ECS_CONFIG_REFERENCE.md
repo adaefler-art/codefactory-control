@@ -93,7 +93,7 @@ The stack performs validation during `cdk synth` to catch configuration errors e
 if (enableDatabase && !dbSecretArn && !dbSecretName) {
   throw new Error(
     'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. ' +
-    'Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or ' +
+    'Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or ' +
     'disable database with -c afu9-enable-database=false'
   );
 }
@@ -413,7 +413,7 @@ curl http://<ALB_DNS>/api/ready
 **Error:**
 ```
 Error: enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. 
-Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database with -c afu9-enable-database=false
+Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or disable database with -c afu9-enable-database=false
 ```
 
 **Fix:** Either provide `dbSecretArn` or disable the database:
