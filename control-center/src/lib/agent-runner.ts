@@ -18,6 +18,9 @@ import {
 import { MCPTool } from './types/mcp';
 import { logger } from './logger';
 import { isDebugModeEnabled } from './debug-mode';
+import { getPromptLibraryService } from './prompt-library-service';
+import { PromptVersion } from './types/prompt-library';
+import { sanitizeString } from './prompt-library-validation';
 
 /**
  * Agent Runner for executing LLM-based agents with tool calling
@@ -626,6 +629,72 @@ export class AgentRunner {
     console.log(`[Agent Runner] Loaded ${allTools.length} tools from ${servers.length} MCP server(s)`);
 
     return allTools;
+  }
+
+  /**
+   * Load prompt from library by name
+   * @param promptName - Name of the prompt to load
+   * @param variables - Variables to substitute in the prompt template
+   * @returns Context with prompt loaded from library
+   */
+  async loadPromptFromLibrary(
+    promptName: string,
+    variables?: Record<string, any>
+  ): Promise<{ prompt: string; promptVersionId: string; systemPrompt?: string }> {
+    try {
+      const promptService = getPromptLibraryService();
+      const promptWithVersion = await promptService.getPromptByName(promptName);
+
+      if (!promptWithVersion || !promptWithVersion.currentVersion) {
+        throw new Error(`Prompt not found in library: ${promptName}`);
+      }
+
+      const version = promptWithVersion.currentVersion;
+
+      // Substitute variables in user prompt template
+      let userPrompt = version.userPromptTemplate || version.content;
+      if (variables && userPrompt) {
+        userPrompt = this.substituteVariables(userPrompt, variables);
+      }
+
+      logger.info('Loaded prompt from library', {
+        promptName,
+        version: version.version,
+        hasVariables: !!variables,
+      }, 'AgentRunner');
+
+      return {
+        prompt: userPrompt || version.content,
+        promptVersionId: version.id,
+        systemPrompt: version.systemPrompt,
+      };
+    } catch (error) {
+      logger.error(
+        'Failed to load prompt from library',
+        error instanceof Error ? error : new Error(String(error)),
+        { promptName },
+        'AgentRunner'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Substitute variables in a template string
+   * Supports ${variable} syntax
+   * Uses centralized sanitization to prevent code injection
+   */
+  private substituteVariables(template: string, variables: Record<string, any>): string {
+    return template.replace(/\$\{([^}]+)\}/g, (match, key) => {
+      const value = variables[key];
+      if (value === undefined) {
+        return match; // Keep placeholder if variable not found
+      }
+      
+      // Convert to string and sanitize using centralized utility
+      const stringValue = String(value);
+      return sanitizeString(stringValue);
+    });
   }
 }
 

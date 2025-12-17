@@ -1,12 +1,11 @@
 # AFU-9 Control Center Dockerfile
-# Multi-stage build for Next.js application using Debian base to satisfy lightningcss native bindings
+# Multi-stage build for Next.js application using pinned Node version and Debian base to satisfy lightningcss native bindings
 
 ARG APP_DIR=control-center
 
 # Stage 1: Dependencies (install full deps to support build tooling)
-FROM node:20-bookworm-slim AS deps
+FROM node:20.10.0-bookworm-slim AS deps
 ARG APP_DIR
-
 WORKDIR /app
 COPY packages ./packages
 
@@ -20,26 +19,27 @@ COPY control-center/package.json control-center/package-lock.json ./
 RUN npm ci && npm cache clean --force
 
 # Stage 2: Build
-FROM node:20-bookworm-slim AS builder
+FROM node:20.10.0-bookworm-slim AS builder
 ARG APP_DIR
 WORKDIR /app/${APP_DIR}
+
+# Set deterministic build timestamp
+ENV SOURCE_DATE_EPOCH=0
 
 COPY --from=deps /app/${APP_DIR}/node_modules ./node_modules
 COPY control-center/ ./
 
-# Debug: verify local packages present
-RUN ls node_modules/@codefactory || true
-
 RUN npm run build
 
 # Stage 3: Production
-FROM node:20-bookworm-slim AS runner
+FROM node:20.10.0-bookworm-slim AS runner
 ARG APP_DIR
 WORKDIR /app/${APP_DIR}
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV SOURCE_DATE_EPOCH=0
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \

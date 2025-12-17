@@ -1,21 +1,37 @@
-FROM node:20-alpine AS builder
+FROM node:20.10.0-alpine AS builder
 
 WORKDIR /build
 
-# Copy all source files maintaining directory structure
+# Set deterministic build timestamp
+ENV SOURCE_DATE_EPOCH=0
+
+# Copy package files for dependency installation
+COPY base/package.json base/package-lock.json ./base/
+COPY observability/package.json observability/package-lock.json ./observability/
+
+# Install dependencies for base
+WORKDIR /build/base
+RUN npm ci
+
+# Install dependencies for observability server
+WORKDIR /build/observability
+RUN npm ci
+
+# Copy source files after dependencies are installed
+WORKDIR /build
 COPY base ./base
 COPY observability ./observability
 
-# Install dependencies and build base
+# Build base
 WORKDIR /build/base
-RUN npm install && npm run build
+RUN npm run build
 
-# Install dependencies and build observability server
+# Build observability server
 WORKDIR /build/observability
-RUN npm install && npm run build
+RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:20.10.0-alpine
 
 WORKDIR /app
 
@@ -26,6 +42,7 @@ COPY --from=builder /build/observability/package.json /app/package.json
 
 ENV NODE_ENV=production
 ENV PORT=3003
+ENV SOURCE_DATE_EPOCH=0
 
 EXPOSE 3003
 

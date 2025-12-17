@@ -117,4 +117,10 @@ export interface AgentContext {
   
   /** Additional context variables */
   variables?: Record<string, any>;
+  
+  /** Optional: Prompt version ID for tracking */
+  promptVersionId?: string;
+  
+  /** Optional: Prompt name from library */
+  promptName?: string;
 }

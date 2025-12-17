@@ -1,14 +1,21 @@
 name: Sync Check
 
 # This workflow ensures branches are synchronized with main and runs health checks
+# Only runs for PRs targeting the main branch
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
     branches:
-      - main
-      - 'feature/**'
-      - 'fix/**'
+      - main  # Target branch filter (only PRs to main)
+
+# Prevent duplicate runs for the same PR
+concurrency:
+  group: sync-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   sync-check:
