@@ -390,6 +390,7 @@ Pull requests must:
 
 ## References
 
+- [Build Determinism Implementation Summary](BUILD_DETERMINISM_IMPLEMENTATION_SUMMARY.md) - Complete implementation overview
 - [Build Determinism System](BUILD_DETERMINISM.md) - System architecture and API
 - [Build Determinism Workflow Example](examples/BUILD_DETERMINISM_WORKFLOW.md) - Usage examples
 - [KPI Definitions](KPI_DEFINITIONS.md) - Build Determinism KPI specification

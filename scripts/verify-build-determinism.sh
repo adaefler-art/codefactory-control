@@ -37,15 +37,31 @@ build_and_get_digest() {
     echo "Building $tag (build $build_num)..."
     
     # Build without cache to ensure clean build
-    docker build \
+    # Save full build log to temp file
+    local log_file="/tmp/build-${name}-${build_num}.log"
+    
+    if ! docker build \
         --no-cache \
         --progress=plain \
         -f "$dockerfile" \
         -t "$tag" \
-        "$context" 2>&1 | tail -n 20
+        "$context" > "$log_file" 2>&1; then
+        echo "Build failed! Last 50 lines:"
+        tail -n 50 "$log_file"
+        return 1
+    fi
+    
+    echo "Build completed. Last 20 lines:"
+    tail -n 20 "$log_file"
     
     # Get image digest
-    docker inspect "$tag" --format='{{.Id}}' 2>/dev/null || echo "error"
+    local digest=$(docker inspect "$tag" --format='{{.Id}}' 2>&1)
+    if [ $? -ne 0 ]; then
+        echo "Error getting image digest: $digest"
+        return 1
+    fi
+    
+    echo "$digest"
 }
 
 # Function to verify determinism for a component
@@ -70,8 +86,8 @@ verify_component() {
     echo "  Build 2 digest: $digest2"
     
     # Compare digests
-    if [ "$digest1" = "error" ] || [ "$digest2" = "error" ]; then
-        print_error "Build failed for $name"
+    if [ -z "$digest1" ] || [ -z "$digest2" ]; then
+        print_error "Build failed for $name (empty digest)"
         return 1
     elif [ "$digest1" = "$digest2" ]; then
         print_success "Build is deterministic for $name"

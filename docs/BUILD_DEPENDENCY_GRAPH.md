@@ -392,6 +392,7 @@ Real-time tracking via Control Center:
 
 ## References
 
+- [Build Determinism Implementation Summary](BUILD_DETERMINISM_IMPLEMENTATION_SUMMARY.md)
 - [Build Determinism System](BUILD_DETERMINISM.md)
 - [Build Determinism Criteria](BUILD_DETERMINISM_CRITERIA.md)
 - [KPI Definitions](KPI_DEFINITIONS.md)
