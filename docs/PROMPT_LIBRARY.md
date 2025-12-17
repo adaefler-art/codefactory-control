@@ -2,6 +2,11 @@
 
 **EPIC 6: Standardized Factory Intelligence through Prompt & Action Canon**
 
+> **📋 Related Documentation:**
+> - **[PROMPT_LIBRARY_CANON.md](./PROMPT_LIBRARY_CANON.md)** - **CANONICAL REGISTRY**: Single source of truth for all Factory prompts
+> - **[PROMPT_GOVERNANCE.md](./PROMPT_GOVERNANCE.md)** - Governance framework, versioning rules, and change management
+> - This document: Technical implementation details and API reference
+
 ## Overview
 
 The Prompt & Action Library provides versioned, traceable, and governed management of prompts and actions used in AFU-9 Factory Intelligence. This system ensures transparency, quality control, and stability in autonomous code fabrication operations.
@@ -466,12 +471,13 @@ Custom metrics to track:
 
 ## Support
 
-For questions or issues with the Prompt & Action Library:
+For questions about the Prompt & Action Library:
 
-1. Check this documentation
-2. Review example prompts in the database
-3. Check prompt stability metrics for insights
-4. Consult the AFU-9 architecture documentation
+1. **Canonical Registry**: Check [PROMPT_LIBRARY_CANON.md](./PROMPT_LIBRARY_CANON.md) for all registered prompts
+2. **Governance**: Review [PROMPT_GOVERNANCE.md](./PROMPT_GOVERNANCE.md) for change procedures
+3. **API Usage**: Refer to this document for technical implementation
+4. **Metrics**: Query `prompt_stability_metrics` view for usage data
+5. **Architecture**: Consult the AFU-9 architecture documentation
 
 ## Appendix
 
