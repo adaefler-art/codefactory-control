@@ -1,5 +1,13 @@
 name: Deploy AFU-9 to ECS
 
+# Build Determinism:
+# - Uses git commit SHA as the primary deterministic identifier
+# - Docker images are built with pinned versions (node:20.10.0-alpine)
+# - Dependencies installed via npm ci (uses lockfiles)
+# - SOURCE_DATE_EPOCH=0 ensures reproducible timestamps
+# - Timestamp tags are supplementary for human readability only
+# See docs/BUILD_DETERMINISM_CRITERIA.md for details
+
 on:
   workflow_dispatch:
     inputs:
@@ -60,8 +68,13 @@ jobs:
       - name: Generate image tags
         id: image-tags
         run: |
+          # Primary deterministic identifier: Git commit SHA
+          # This ensures reproducible builds - same commit = same image
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          
+          # Supplementary timestamp for human readability and rollback convenience
+          # NOTE: Timestamp is NOT used for build determinism validation
           echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
 
       # Build and push Control Center
