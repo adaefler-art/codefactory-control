@@ -3,6 +3,21 @@
 **EPIC 5: Autonomous Build-Test-Deploy Loop**  
 **Issue 5.1: Deterministic Build Graphs**
 
+## Status: ✅ Implemented
+
+Build determinism is fully implemented and enforced in AFU-9. All builds use:
+- Pinned dependency versions (node:20.10.0-alpine)
+- Lockfile-based installs (npm ci)
+- Deterministic timestamps (SOURCE_DATE_EPOCH=0)
+- Git SHA as primary identifier
+- Automated verification in CI/CD
+
+## Quick Links
+
+- **[Build Determinism Criteria](BUILD_DETERMINISM_CRITERIA.md)** - Complete rules and validation procedures
+- **[Build Dependency Graph](BUILD_DEPENDENCY_GRAPH.md)** - Visual representation and audit trail
+- **[Workflow Example](examples/BUILD_DETERMINISM_WORKFLOW.md)** - Usage examples
+
 ## Overview
 
 The Build Determinism System ensures reproducible builds by tracking inputs, computing checksums, and validating that identical inputs produce identical outputs. This is critical for:
@@ -453,8 +468,32 @@ RUN npm run build
 4. **Build Graph Visualization**: Visual representation of build dependencies
 5. **Regression Detection**: Alert when previously deterministic builds become non-deterministic
 
+## Verification
+
+### Automated Verification
+
+A GitHub Actions workflow validates build determinism on every PR:
+
+```bash
+# Workflow: .github/workflows/build-determinism.yml
+# Builds each component twice and compares image digests
+# Fails if determinism score < 100%
+```
+
+### Manual Verification
+
+```bash
+# Run the verification script
+./scripts/verify-build-determinism.sh
+
+# This builds all components twice and verifies identical outputs
+```
+
 ## References
 
+- **[Build Determinism Implementation Summary](BUILD_DETERMINISM_IMPLEMENTATION_SUMMARY.md)** - Complete implementation overview
+- **[Build Determinism Criteria](BUILD_DETERMINISM_CRITERIA.md)** - Complete determinism rules and validation
+- **[Build Dependency Graph](BUILD_DEPENDENCY_GRAPH.md)** - Build pipeline visualization and audit trail
 - [EPIC 5: Autonomous Build-Test-Deploy Loop](/docs/roadmaps/afu9_roadmap_v0_3_issues.md#epic-5--autonomous-build-test-deploy-loop)
 - [KPI Definitions](/docs/KPI_DEFINITIONS.md)
 - [Workflow Engine](/docs/WORKFLOW-ENGINE.md)
