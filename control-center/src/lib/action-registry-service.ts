@@ -90,7 +90,12 @@ export class ActionRegistryService {
       };
     } catch (error) {
       await client.query('ROLLBACK');
-      logger.error('Failed to create action', { error, request }, 'ActionRegistry');
+      logger.error(
+        'Failed to create action',
+        error instanceof Error ? error : new Error(String(error)),
+        { action: request.name },
+        'ActionRegistry'
+      );
       throw error;
     } finally {
       client.release();
@@ -174,7 +179,12 @@ export class ActionRegistryService {
       return version;
     } catch (error) {
       await client.query('ROLLBACK');
-      logger.error('Failed to create action version', { error, request }, 'ActionRegistry');
+      logger.error(
+        'Failed to create action version',
+        error instanceof Error ? error : new Error(String(error)),
+        { actionId: request.actionId },
+        'ActionRegistry'
+      );
       throw error;
     } finally {
       client.release();

@@ -94,7 +94,12 @@ export class PromptLibraryService {
       };
     } catch (error) {
       await client.query('ROLLBACK');
-      logger.error('Failed to create prompt', { error, request }, 'PromptLibrary');
+      logger.error(
+        'Failed to create prompt',
+        error instanceof Error ? error : new Error(String(error)),
+        { request: request.name },
+        'PromptLibrary'
+      );
       throw error;
     } finally {
       client.release();
@@ -189,7 +194,12 @@ export class PromptLibraryService {
       return version;
     } catch (error) {
       await client.query('ROLLBACK');
-      logger.error('Failed to create prompt version', { error, request }, 'PromptLibrary');
+      logger.error(
+        'Failed to create prompt version',
+        error instanceof Error ? error : new Error(String(error)),
+        { promptId: request.promptId },
+        'PromptLibrary'
+      );
       throw error;
     } finally {
       client.release();
