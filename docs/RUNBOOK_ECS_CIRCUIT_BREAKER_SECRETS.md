@@ -111,8 +111,14 @@ aws ecs list-tasks \
 ### 3.2 Task-Details anzeigen
 
 ```bash
-# Task-ARN von Schritt 3.1 einsetzen
-TASK_ARN="<task-arn-hier-einfügen>"
+# Task-ARN automatisch holen (oder manuell aus Schritt 3.1 kopieren)
+TASK_ARN=$(aws ecs list-tasks \
+  --cluster ${CLUSTER_NAME} \
+  --service-name ${SERVICE_NAME} \
+  --desired-status STOPPED \
+  --region ${AWS_REGION} \
+  --query 'taskArns[0]' \
+  --output text)
 
 aws ecs describe-tasks \
   --cluster ${CLUSTER_NAME} \
