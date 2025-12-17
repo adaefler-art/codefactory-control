@@ -176,16 +176,31 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
 function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
   const ctxDomain = scope.node.tryGetContext('domainName');
   const ctxEnvironment = scope.node.tryGetContext('environment') ?? scope.node.tryGetContext('stage');
-  const ctxEnableDb = scope.node.tryGetContext('enableDatabase');
+  
+  // Prioritize correct key 'afu9-enable-database', fall back to legacy 'enableDatabase'
+  const ctxEnableDbCorrect = scope.node.tryGetContext('afu9-enable-database');
+  const ctxEnableDbLegacy = scope.node.tryGetContext('enableDatabase');
+  
   const ctxDbSecretArn = scope.node.tryGetContext('dbSecretArn');
   const ctxDbSecretName = scope.node.tryGetContext('dbSecretName');
 
   const environment = props.environment ?? ctxEnvironment ?? 'stage';
   const domainName = props.domainName ?? ctxDomain;
 
+  // Deprecation warning for legacy key
+  if (ctxEnableDbLegacy !== undefined && ctxEnableDbCorrect === undefined) {
+    console.warn(
+      '⚠️  DEPRECATION WARNING: Context key "enableDatabase" is deprecated. ' +
+      'Please use "afu9-enable-database" instead. ' +
+      'Example: cdk deploy -c afu9-enable-database=false'
+    );
+  }
+
+  // Resolution priority: props > correct context key > legacy context key > default (false)
   const enableDatabase =
     toOptionalBoolean(props.enableDatabase) ??
-    toOptionalBoolean(ctxEnableDb) ??
+    toOptionalBoolean(ctxEnableDbCorrect) ??
+    toOptionalBoolean(ctxEnableDbLegacy) ??
     false;
 
   const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
@@ -193,7 +208,7 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
 
   if (enableDatabase && !dbSecretArn && !dbSecretName) {
     throw new Error(
-      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database.'
+      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database with -c afu9-enable-database=false'
     );
   }
 
