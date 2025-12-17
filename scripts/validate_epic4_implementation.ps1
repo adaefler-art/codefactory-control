@@ -161,13 +161,13 @@ try {
         Write-Success "ALL VALIDATION CHECKS PASSED"
         Write-Host ""
         Write-Success "✨ Epic-4 implementation is complete and correct"
-        Write-Info ""
+        Write-Host ""
         Write-Info "Next steps:"
         Write-Info "  1. Deploy with enableDatabase=false to test DB disabled scenario"
         Write-Info "  2. Run smoke tests: npm run smoke:epic4 -- -ExpectDatabaseEnabled false"
         Write-Info "  3. Deploy with enableDatabase=true to test DB enabled scenario"
         Write-Info "  4. Run smoke tests: npm run smoke:epic4 -- -ExpectDatabaseEnabled true"
-        Write-Info ""
+        Write-Host ""
         Write-Info "For detailed testing instructions, see docs/TESTING_EPIC4.md"
         exit 0
     }

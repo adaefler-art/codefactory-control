@@ -254,19 +254,19 @@ try {
     $BaseUrl = $BaseUrl.TrimEnd('/')
     
     # Test Control Center (port 3000) with database validation
-    $controlCenterUrl = "$BaseUrl`:3000"
+    $controlCenterUrl = "${BaseUrl}:3000"
     $controlCenterResult = Test-Service -ServiceName "Control Center" -Url $controlCenterUrl -ValidateDatabaseStatus $true -ExpectedDbStatus $ExpectDatabaseEnabled
     
     # Test MCP GitHub Server (port 3001)
-    $mcpGithubUrl = "$BaseUrl`:3001"
+    $mcpGithubUrl = "${BaseUrl}:3001"
     Test-Service -ServiceName "MCP GitHub Server" -Url $mcpGithubUrl
     
     # Test MCP Deploy Server (port 3002)
-    $mcpDeployUrl = "$BaseUrl`:3002"
+    $mcpDeployUrl = "${BaseUrl}:3002"
     Test-Service -ServiceName "MCP Deploy Server" -Url $mcpDeployUrl
     
     # Test MCP Observability Server (port 3003)
-    $mcpObservabilityUrl = "$BaseUrl`:3003"
+    $mcpObservabilityUrl = "${BaseUrl}:3003"
     Test-Service -ServiceName "MCP Observability Server" -Url $mcpObservabilityUrl
     
     # Print summary
