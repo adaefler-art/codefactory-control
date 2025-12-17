@@ -75,7 +75,7 @@ describe('Database Configuration Resolution', () => {
       //   The DbSecretRead policy statement should not exist
     });
 
-    test('README: No DB secret validation when disabled', () => {
+    test('README: No DB Secret Validation when disabled', () => {
       // Prerequisites:
       //   afu9-enable-database=false
       // 

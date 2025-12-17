@@ -204,20 +204,25 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
     false;
 
   const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
-  const dbSecretName = ctxDbSecretName ?? 'afu9/database/master';
+  const dbSecretName = ctxDbSecretName;
 
+  // Validation: If database is enabled, we need either ARN or name
+  // Note: dbSecretName will default to 'afu9/database/master' later if not provided
   if (enableDatabase && !dbSecretArn && !dbSecretName) {
     throw new Error(
-      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database with -c afu9-enable-database=false'
+      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or disable database with -c afu9-enable-database=false'
     );
   }
+
+  // Apply default for dbSecretName after validation
+  const resolvedDbSecretName = dbSecretName ?? 'afu9/database/master';
 
   return {
     environment,
     domainName,
     enableDatabase,
     dbSecretArn,
-    dbSecretName,
+    dbSecretName: resolvedDbSecretName,
   };
 }
 
