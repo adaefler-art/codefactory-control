@@ -406,6 +406,7 @@ export class Afu9EcsStack extends cdk.Stack {
       dbSecret.grantRead(taskExecutionRole);
 
       // Belt-and-suspenders policy to cover rotated/aliased secret ARNs (name suffixed by AWS)
+      // Resource is scoped to afu9/database/* to allow for AWS secret rotation (suffix added by AWS)
       const secretResourceArn = dbSecretArn ?? `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:${dbSecretName}*`;
       taskExecutionRole.addToPolicy(
         new iam.PolicyStatement({
