@@ -1031,3 +1031,69 @@ export async function executeKpiAggregationPipeline(
     throw error;
   }
 }
+
+/**
+ * Calculate and persist Build Determinism KPI
+ * EPIC 5: Autonomous Build-Test-Deploy Loop
+ * Issue 5.1: Deterministic Build Graphs
+ */
+export async function calculateBuildDeterminismKPI(): Promise<KpiSnapshot> {
+  const pool = getPool();
+  
+  try {
+    // Import dynamically to avoid circular dependencies
+    const { getBuildDeterminismTracker } = await import('./build-determinism');
+    
+    // Get statistics from the tracker
+    const tracker = getBuildDeterminismTracker();
+    const stats = tracker.getStatistics();
+    
+    // Create snapshot for factory-level Build Determinism KPI
+    const snapshot = await createKpiSnapshot({
+      kpiName: 'build_determinism',
+      level: 'factory',
+      value: stats.determinismScore,
+      unit: 'percentage',
+      metadata: {
+        totalBuilds: stats.totalBuilds,
+        uniqueInputs: stats.uniqueInputs,
+        cacheSize: stats.cacheSize,
+        cacheHitRate: stats.cacheHitRate,
+        description: 'Percentage of input hashes where all builds produced identical outputs',
+      },
+      periodStart: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Last 24 hours
+      periodEnd: new Date().toISOString(),
+    });
+    
+    console.log('[KPI Service] Build Determinism KPI calculated', {
+      score: stats.determinismScore,
+      totalBuilds: stats.totalBuilds,
+      uniqueInputs: stats.uniqueInputs,
+    });
+    
+    return snapshot;
+  } catch (error) {
+    console.error('[KPI Service] Error calculating Build Determinism KPI:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get Build Determinism metrics from tracker
+ */
+export async function getBuildDeterminismMetrics() {
+  try {
+    const { getBuildDeterminismTracker } = await import('./build-determinism');
+    const tracker = getBuildDeterminismTracker();
+    return tracker.getStatistics();
+  } catch (error) {
+    console.error('[KPI Service] Error getting Build Determinism metrics:', error);
+    return {
+      totalBuilds: 0,
+      uniqueInputs: 0,
+      cacheSize: 0,
+      determinismScore: 100,
+      cacheHitRate: 0,
+    };
+  }
+}
