@@ -32,8 +32,11 @@ async function main() {
   console.log(`Region: ${region}`);
   if (profile) {
     console.log(`Profile: ${profile}`);
+    console.log('Note: AWS SDK will use the specified profile from your AWS config\n');
+  } else {
+    console.log('Using default AWS credentials\n');
   }
-  console.log('\nValidating secrets...\n');
+  console.log('Validating secrets...\n');
 
   try {
     const results = await validateAllSecrets();

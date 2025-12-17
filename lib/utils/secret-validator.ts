@@ -97,7 +97,10 @@ export function validateSecretKeys(
 
   // Add a CfnOutput to make validation information visible in synth output
   // This allows pre-deployment scripts to validate the requirements
-  const outputId = `SecretValidation-${secretName.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  // Use a hash of the secret name to ensure unique output IDs
+  const normalizedName = secretName.replace(/[^a-zA-Z0-9]/g, '');
+  const hash = secretName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const outputId = `SecretValidation${normalizedName}${hash}`;
   
   new cdk.CfnOutput(scope, outputId, {
     value: JSON.stringify({
@@ -194,6 +197,8 @@ export async function validateSecretRuntime(
       '@aws-sdk/client-secrets-manager'
     );
 
+    // Use region from environment or default to eu-central-1 (AFU-9 project default)
+    // This can be overridden by setting AWS_REGION environment variable
     const client = new SecretsManagerClient({
       region: process.env.AWS_REGION || 'eu-central-1',
     });
@@ -213,12 +218,25 @@ export async function validateSecretRuntime(
       };
     }
 
-    const secretValue = JSON.parse(response.SecretString);
+    let secretValue: Record<string, any>;
+    try {
+      secretValue = JSON.parse(response.SecretString);
+    } catch (error: any) {
+      return {
+        valid: false,
+        secretName: config.secretName,
+        missingKeys: [],
+        error: `Secret ${config.secretName} contains invalid JSON: ${error.message || String(error)}`,
+      };
+    }
+
     const missingKeys: string[] = [];
 
     // Check for required keys
+    // Only flag as missing if the key doesn't exist or is null/undefined
+    // Empty strings are considered valid values
     for (const key of config.requiredKeys) {
-      if (!(key in secretValue) || !secretValue[key]) {
+      if (!(key in secretValue) || secretValue[key] == null) {
         missingKeys.push(key);
       }
     }
