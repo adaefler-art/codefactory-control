@@ -20,6 +20,7 @@ import { logger } from './logger';
 import { isDebugModeEnabled } from './debug-mode';
 import { getPromptLibraryService } from './prompt-library-service';
 import { PromptVersion } from './types/prompt-library';
+import { sanitizeString } from './prompt-library-validation';
 
 /**
  * Agent Runner for executing LLM-based agents with tool calling
@@ -681,7 +682,7 @@ export class AgentRunner {
   /**
    * Substitute variables in a template string
    * Supports ${variable} syntax
-   * Basic sanitization to prevent code injection
+   * Uses centralized sanitization to prevent code injection
    */
   private substituteVariables(template: string, variables: Record<string, any>): string {
     return template.replace(/\$\{([^}]+)\}/g, (match, key) => {
@@ -690,13 +691,9 @@ export class AgentRunner {
         return match; // Keep placeholder if variable not found
       }
       
-      // Convert to string and perform basic sanitization
+      // Convert to string and sanitize using centralized utility
       const stringValue = String(value);
-      
-      // Remove any control characters that could cause issues
-      const sanitized = stringValue.replace(/[\x00-\x1F\x7F]/g, '');
-      
-      return sanitized;
+      return sanitizeString(stringValue);
     });
   }
 }
