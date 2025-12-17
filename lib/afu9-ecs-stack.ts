@@ -538,7 +538,8 @@ export class Afu9EcsStack extends cdk.Stack {
           ? {
               DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
               DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+              // RDS secrets use 'dbname' as the key for the database name
+              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'dbname'),
               DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
               DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
             }

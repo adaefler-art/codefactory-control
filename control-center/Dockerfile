@@ -1,33 +1,42 @@
 # AFU-9 Control Center Dockerfile
-# Multi-stage build for Next.js application
-# Deterministic build: Uses pinned versions and lockfiles
+# Multi-stage build for Next.js application using pinned Node version and Debian base to satisfy lightningcss native bindings
 
-# Stage 1: Dependencies
-FROM node:20.10.0-alpine AS deps
+ARG APP_DIR=control-center
+
+# Stage 1: Dependencies (install full deps to support build tooling)
+FROM node:20.10.0-bookworm-slim AS deps
+ARG APP_DIR
 WORKDIR /app
+COPY packages ./packages
 
-# Install dependencies based on package-lock.json
-COPY package.json package-lock.json ./
-RUN npm ci --only=production && \
-    npm cache clean --force
+# Build local packages so file: dependencies contain compiled output
+RUN npm --prefix packages/deploy-memory ci && npm --prefix packages/deploy-memory run build
+RUN npm --prefix packages/verdict-engine ci && npm --prefix packages/verdict-engine run build
+
+WORKDIR /app/${APP_DIR}
+COPY control-center/package.json control-center/package-lock.json ./
+
+RUN npm ci && npm cache clean --force
 
 # Stage 2: Build
-FROM node:20.10.0-alpine AS builder
-WORKDIR /app
+FROM node:20.10.0-bookworm-slim AS builder
+ARG APP_DIR
+WORKDIR /app/${APP_DIR}
 
 # Set deterministic build timestamp
 ENV SOURCE_DATE_EPOCH=0
+ENV SKIP_PREBUILD=1
 
-# Copy dependencies
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /app/${APP_DIR}/node_modules ./node_modules
+COPY --from=deps /app/packages /app/packages
+COPY control-center/ ./
 
-# Build Next.js application
-RUN npm run build
+RUN SKIP_PREBUILD=1 npm run build
 
 # Stage 3: Production
-FROM node:20.10.0-alpine AS runner
-WORKDIR /app
+FROM node:20.10.0-bookworm-slim AS runner
+ARG APP_DIR
+WORKDIR /app/${APP_DIR}
 
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -39,12 +48,12 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Copy necessary files
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/${APP_DIR}/public ./public
+COPY --from=builder /app/${APP_DIR}/package.json ./package.json
 
 # Copy standalone build output
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/${APP_DIR}/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/${APP_DIR}/.next/static ./.next/static
 
 USER nextjs
 

@@ -231,6 +231,25 @@ if (multiEnvEnabled) {
       ),
       comment: 'A record for AFU-9 Control Center pointing to ALB',
     });
+
+    // Convenience A records for www and stage hosts pointing to the same ALB
+    new route53.ARecord(networkStack, 'AliasRecordWww', {
+      zone: dnsStack.hostedZone,
+      recordName: `www.${dnsStack.domainName}`,
+      target: route53.RecordTarget.fromAlias(
+        new route53Targets.LoadBalancerTarget(networkStack.loadBalancer)
+      ),
+      comment: 'A record for www.<domain> pointing to AFU-9 ALB',
+    });
+
+    new route53.ARecord(networkStack, 'AliasRecordStage', {
+      zone: dnsStack.hostedZone,
+      recordName: `stage.${dnsStack.domainName}`,
+      target: route53.RecordTarget.fromAlias(
+        new route53Targets.LoadBalancerTarget(networkStack.loadBalancer)
+      ),
+      comment: 'A record for stage.<domain> pointing to AFU-9 ALB',
+    });
   }
 
   // CloudWatch Alarms stack (depends on ECS and database)

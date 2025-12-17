@@ -4,7 +4,7 @@ import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/a
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
-const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || 'https://afu-9.com/';
+const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 
 /**
  * Middleware to protect routes and verify authentication
@@ -23,6 +23,7 @@ export async function middleware(request: NextRequest) {
     '/api/auth/login',
     '/api/health',
     '/api/ready',
+    '/login',
     '/favicon.ico',
     '/_next',
     '/public',
@@ -53,7 +54,7 @@ export async function middleware(request: NextRequest) {
       );
     } else {
       // UI routes: redirect to unauth page
-      return NextResponse.redirect(AFU9_UNAUTH_REDIRECT);
+      return NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
     }
   }
 
@@ -72,7 +73,7 @@ export async function middleware(request: NextRequest) {
       );
     } else {
       // UI routes: redirect to unauth page and clear invalid cookies
-      const response = NextResponse.redirect(AFU9_UNAUTH_REDIRECT);
+      const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
       response.cookies.delete(AFU9_AUTH_COOKIE);
       response.cookies.delete('afu9_access');
       response.cookies.delete('afu9_refresh');
@@ -101,7 +102,7 @@ export async function middleware(request: NextRequest) {
       );
     } else {
       // UI routes: redirect to unauth page
-      return NextResponse.redirect(AFU9_UNAUTH_REDIRECT, {
+      return NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url), {
         status: 403,
       });
     }

@@ -6,7 +6,7 @@
  */
 
 import { Pool } from 'pg';
-import { 
+import {
   PolicySnapshot,
   storePolicySnapshot,
   getLatestPolicySnapshot,
