@@ -208,8 +208,11 @@ async function exampleBreakingChange() {
 async function exampleQueryingPromptUsage() {
   console.log('\n=== Example: Querying Prompt Usage in Agent Runs ===\n');
 
-  const { getPool } = require('../control-center/src/lib/db');
-  const pool = getPool();
+  // Note: This example requires database connection
+  // Import getPool dynamically to avoid issues in different environments
+  try {
+    const db = await import('../control-center/src/lib/db.js');
+    const pool = db.getPool();
 
   // Query 1: Find all agent runs using a specific prompt
   console.log('1. Finding agent runs using issue_analyzer prompt...');
@@ -272,6 +275,11 @@ async function exampleQueryingPromptUsage() {
   }
 
   console.log('\n=== Usage query example completed ===');
+  
+  } catch (error) {
+    console.error('Error querying prompt usage:', error);
+    console.log('Note: This example requires database connection');
+  }
 }
 
 // Run examples
@@ -303,7 +311,3 @@ export {
   exampleQueryingPromptUsage,
 };
 
-// Run if executed directly
-if (require.main === module) {
-  main().catch(console.error);
-}
