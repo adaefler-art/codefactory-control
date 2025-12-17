@@ -56,6 +56,9 @@ const FORBIDDEN_WILDCARD_ACTIONS = [
   'iam:DeleteRolePolicy',
   'iam:PassRole',
   'iam:UpdateAssumeRolePolicy',
+  'iam:CreatePolicy',
+  'iam:AttachUserPolicy',
+  'iam:AttachGroupPolicy',
   // Secrets management - data protection critical
   'secretsmanager:CreateSecret',
   'secretsmanager:DeleteSecret',

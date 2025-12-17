@@ -41,6 +41,7 @@ jobs:
 
       - name: Run IAM Policy Validation
         id: validate_iam
+        shell: bash
         run: |
           npm run validate-iam 2>&1 | tee validation_output.txt
           EXIT_CODE=${PIPESTATUS[0]}

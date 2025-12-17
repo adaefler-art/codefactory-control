@@ -288,9 +288,15 @@ Q4 2024: 0
 ---
 
 **Dashboard Owner**: Security Team  
-**Last Updated**: 2024-12-17  
+**Last Updated**: {{ current_date }}  
 **Update Frequency**: Quarterly (with monthly reviews for incidents)  
-**Next Scheduled Update**: 2025-03-17
+**Next Scheduled Update**: {{ next_quarter_date }}
+
+<!-- 
+  NOTE: Update dates manually during each quarterly audit:
+  - Last Updated: Date of audit completion
+  - Next Scheduled Update: 3 months from last update
+-->
 
 ---
 

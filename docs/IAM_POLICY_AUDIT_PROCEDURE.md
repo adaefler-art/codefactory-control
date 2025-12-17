@@ -210,7 +210,11 @@ grep -B5 -A5 "Justification:" lib/*-stack.ts
 
 1. Review recent IAM-related commits:
 ```bash
+# For Linux/macOS with GNU date
 git log --since="3 months ago" --oneline -- lib/*-stack.ts | grep -i "iam\|policy\|permission\|role"
+
+# Alternative: Use relative date (works on all platforms)
+git log --since="90 days ago" --oneline -- lib/*-stack.ts | grep -i "iam\|policy\|permission\|role"
 ```
 
 2. For each change:
@@ -250,9 +254,14 @@ git log --since="3 months ago" --oneline -- lib/*-stack.ts | grep -i "iam\|polic
 
 1. Review CloudTrail for IAM-related events:
 ```bash
+# Note: Adjust the date calculation based on your platform
+# Linux/GNU: $(date -d '3 months ago' +%s)
+# macOS/BSD: $(date -v-3m +%s)
+# Alternative: Use explicit date like 2024-09-01
+
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=ResourceType,AttributeValue=AWS::IAM::Role \
-  --start-time $(date -d '3 months ago' +%s) \
+  --start-time 2024-09-01 \
   --max-results 50
 ```
 
