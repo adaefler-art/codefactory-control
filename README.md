@@ -185,6 +185,7 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 **🎯 Prompt Library (EPIC 6):**
 - [Prompt Library Canon](docs/PROMPT_LIBRARY_CANON.md) - **CANONICAL**: Single source of truth for all Factory prompts
 - [Prompt Governance](docs/PROMPT_GOVERNANCE.md) - **NEW**: Versioning rules and change management
+- [Prompt Library Integration](docs/PROMPT_LIBRARY_INTEGRATION.md) - **NEW**: Integration guide for workflows and agents
 - [Prompt Library Changelog](docs/PROMPT_LIBRARY_CHANGELOG.md) - **NEW**: Complete change history and audit trail
 - [Prompt Library](docs/PROMPT_LIBRARY.md) - Technical implementation and API reference
 

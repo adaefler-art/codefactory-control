@@ -477,6 +477,149 @@ High build determinism enables the autonomous build-test-deploy loop to operate 
 
 ---
 
+### 11. Prompt Stability
+
+**Category:** Quality / Governance  
+**Level:** Factory, Prompt  
+**Unit:** Multiple metrics (count, percentage, days)  
+**Target:** 
+- Version count < 5 per quarter
+- Breaking changes < 1 per year per prompt
+- Usage > 10 runs per active prompt
+
+**EPIC:** 6 - Prompt & Action Canon  
+**Issue:** 6.1 - Canonical Prompt Library
+
+**Definition:**  
+Measures the stability, consistency, and quality of prompts in the Canonical Prompt Library. Tracks prompt usage, version changes, and breaking change frequency to ensure Factory Intelligence reliability.
+
+**Metrics Tracked:**
+
+1. **Total Uses**: Number of times prompt has been used in agent runs
+2. **Days Used**: Number of unique days with at least one use
+3. **Executions Using Prompt**: Number of workflow executions using the prompt
+4. **Version Count**: Total number of published versions
+5. **Last Breaking Change**: Date of most recent MAJOR version
+6. **Deprecation Status**: Whether prompt is marked deprecated
+
+**Formula:**
+```
+Prompt Stability Score = weighted_average([
+  version_stability_score,    // Weight: 40%
+  usage_consistency_score,    // Weight: 30%
+  breaking_change_score       // Weight: 30%
+])
+
+Where:
+- version_stability_score = max(0, 100 - (version_count * 10))
+- usage_consistency_score = min(100, days_used / days_in_period * 100)
+- breaking_change_score = days_since_last_breaking / 365 * 100
+```
+
+**Calculation:**
+```sql
+-- Available via database view
+SELECT 
+  prompt_id,
+  prompt_name,
+  category,
+  current_version,
+  current_version_published_at,
+  total_uses,
+  days_used,
+  executions_using_prompt,
+  last_used_at,
+  first_used_at,
+  version_count,
+  last_breaking_change_at,
+  is_deprecated
+FROM prompt_stability_metrics
+ORDER BY total_uses DESC;
+```
+
+**Data Sources:**
+- `prompts` table: Prompt definitions and metadata
+- `prompt_versions` table: Version history with change types
+- `agent_runs` table: Usage tracking via `prompt_version_id`
+- `prompt_stability_metrics` view: Pre-aggregated metrics
+
+**Interpretation:**
+
+**Version Stability:**
+- **1-3 versions**: Excellent - Stable prompt with minimal changes
+- **4-6 versions**: Good - Normal evolution
+- **7-10 versions**: Moderate - Frequent changes, review needed
+- **>10 versions**: Poor - Unstable prompt, refactor recommended
+
+**Usage Consistency:**
+- **Used daily**: High confidence in prompt quality
+- **Used weekly**: Moderate usage, track trends
+- **Used rarely**: Consider deprecation or improvement
+- **Not used**: Candidate for archival
+
+**Breaking Changes:**
+- **0 per year**: Excellent stability
+- **1 per year**: Acceptable for evolving prompts
+- **2-3 per year**: High churn, governance review needed
+- **>3 per year**: Critical instability
+
+**Rationale:**  
+Prompt Stability is critical for:
+1. **Predictability**: Stable prompts produce consistent results
+2. **Reliability**: Fewer breaking changes reduce workflow failures
+3. **Governance**: Track compliance with versioning rules
+4. **Quality**: Identify problematic or unused prompts
+5. **Traceability**: Complete audit trail of prompt usage
+
+High prompt stability enables the Factory Intelligence system to operate reliably with predictable, versioned prompts that follow governance rules.
+
+**Related Metrics:**
+- **Action Usage Metrics**: Similar tracking for MCP tool actions
+- **Prompt Version Adoption Rate**: Speed of migration to new versions
+- **Deprecated Prompt Usage**: Usage of prompts past grace period
+
+**Query Examples:**
+
+```sql
+-- Most stable prompts (low version count, high usage)
+SELECT prompt_name, version_count, total_uses
+FROM prompt_stability_metrics
+WHERE total_uses > 10
+ORDER BY version_count ASC, total_uses DESC
+LIMIT 10;
+
+-- Prompts needing attention (deprecated but still used)
+SELECT p.name, p.deprecation_reason, COUNT(ar.id) as recent_uses
+FROM prompts p
+JOIN prompt_versions pv ON p.current_version_id = pv.id
+JOIN agent_runs ar ON ar.prompt_version_id = pv.id
+WHERE p.deprecated = true
+  AND ar.started_at > NOW() - INTERVAL '7 days'
+GROUP BY p.id, p.name, p.deprecation_reason;
+
+-- Version adoption tracking
+SELECT pv.version, COUNT(DISTINCT ar.execution_id) as execution_count
+FROM prompt_versions pv
+JOIN agent_runs ar ON ar.prompt_version_id = pv.id
+WHERE pv.prompt_id = 'your-prompt-id'
+GROUP BY pv.version
+ORDER BY pv.created_at DESC;
+```
+
+**API Endpoint:**
+```bash
+GET /api/metrics?type=prompt-stability
+GET /api/prompts/{id}/metrics
+```
+
+**Dashboard Visualization:**
+- Time series chart: Prompt usage over time
+- Bar chart: Version count by prompt
+- Table: Top prompts by stability score
+- Alert indicators: Deprecated prompts still in use
+
+---
+
 ## KPI Aggregation Levels
 
 ### Level 1: Run (Individual Execution)
@@ -498,6 +641,14 @@ High build determinism enables the autonomous build-test-deploy loop to operate 
 - KPI Freshness
 - Verdict Consistency
 - Factory Uptime
+- Build Determinism
+- Prompt Stability
+
+### Level 4: Prompt/Action (Governance)
+- Prompt Stability (per prompt)
+- Action Usage Metrics (per action)
+- Version adoption rates
+- Breaking change frequency
 - MTTR
 - Build Determinism
 
