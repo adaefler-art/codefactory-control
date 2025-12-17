@@ -538,9 +538,9 @@ export class Afu9EcsStack extends cdk.Stack {
           ? {
               DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
               DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-              // Application connection secret (afu9/database) uses 'database' as the key
-              // Note: RDS master secret (afu9/database/master) uses 'dbname', but we use the app secret
-              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+              // RDS master secret (afu9/database/master) uses 'dbname' as the database name key
+              // This is the standard format for RDS-managed secrets
+              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'dbname'),
               DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
               DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
             }
