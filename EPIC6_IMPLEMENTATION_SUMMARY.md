@@ -96,8 +96,11 @@ GET  /api/metrics?type=action-usage      - Action usage metrics
 
 ### 5. Documentation
 
-**PROMPT_LIBRARY.md** - Comprehensive guide including:
-- Semantic versioning rules and guidelines
+**Canonical Prompt Library Documentation:**
+- **PROMPT_LIBRARY_CANON.md** - Canonical registry of all Factory prompts (single source of truth)
+- **PROMPT_GOVERNANCE.md** - Governance framework for versioning and change management
+- **PROMPT_LIBRARY.md** - Technical implementation guide including:
+  - Semantic versioning rules and guidelines
 - Breaking change requirements
 - API reference with examples
 - Usage patterns and best practices
