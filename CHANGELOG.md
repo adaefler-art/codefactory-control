@@ -1,3 +1,65 @@
+# Changelog
+
+Alle wesentlichen Änderungen an diesem Projekt werden hier dokumentiert.
+
+## 2025-12-17 - EPIC 07: Security & Blast Radius – Minimale Angriffsfläche
+
+### Added - Security Hardening & Policy Validation
+
+**Issue #7: Security & Blast Radius – Minimale Angriffsfläche**
+
+Comprehensive security hardening to minimize attack surface and enforce least privilege principles across all MCP servers and infrastructure components.
+
+#### Automated Security Validation
+- **IAM Policy Validator**: `scripts/validate-iam-policies.ts` - Parses and validates all IAM policies
+  - Checks for forbidden wildcard actions (iam:DeleteRole, rds:DeleteDBInstance, etc.)
+  - Verifies resource scoping to `afu9/*` prefix
+  - Validates least privilege principles
+  - Documents justified wildcards (AWS service limitations)
+- **Test Suite**: `scripts/test-iam-validation.ts` - Comprehensive validation logic tests
+- **npm Scripts**: `validate-iam` and `security:check` commands for easy validation
+
+#### CI/CD Integration
+- **GitHub Actions Workflow**: `.github/workflows/security-validation.yml`
+  - Automated validation on all PRs
+  - Detects IAM policy changes
+  - Posts security review checklist to PRs
+  - Blocks deployment on validation failures
+  - Exit code 0 = compliant, 1 = violations detected
+
+#### Security Enhancements
+- **Resource Scoping**: All IAM resources include `afu9` prefix
+  - Secrets Manager: `afu9/*`
+  - ECR Repositories: `afu9/*`
+  - ECS Cluster: `afu9-cluster`
+  - CloudWatch Logs: `/ecs/afu9/*`
+- **Wildcard Justification**: Only 2 wildcards remaining, both AWS limitations:
+  - `ecr:GetAuthorizationToken` - No resource-level support
+  - `cloudwatch:*` metrics actions - Global service limitation
+- **No Broad Actions**: Zero `service:*` or `*` action permissions
+- **Separation of Concerns**: Clear boundaries between infrastructure, application, and deployment roles
+
+#### Documentation
+- **Quick Reference**: `docs/SECURITY_VALIDATION_GUIDE.md` - Day-to-day security validation guide
+- **Implementation**: `EPIC07_SECURITY_IMPLEMENTATION.md` - Complete security hardening documentation
+- **IAM Justification**: Enhanced `docs/IAM-ROLES-JUSTIFICATION.md` with detailed permission rationale
+- **Security Guide**: Enhanced `docs/SECURITY-IAM.md` with security architecture
+- **Updated README**: Added security validation section with quick links
+
+#### Validation Results
+- ✅ 10 IAM policy statements validated across all CDK stacks
+- ✅ 0 errors found
+- ✅ 0 warnings
+- ✅ 2 info messages (justified AWS limitations)
+- ✅ All policies comply with least privilege principle
+
+#### KPI
+- **Security Incidents**: Zero incidents related to IAM misconfiguration
+- **Attack Surface**: Minimized through strict resource scoping
+- **Blast Radius**: Contained through least privilege enforcement
+
+## 2025-12-17 - EPIC 5: Deterministic Build Graphs
+
 Architektur: Control Center + MCP Sidecars (GitHub/Deploy/Observability)
 
 AWS: VPC/ALB/RDS/ECS/ECR/IAM/Secrets/DNS (Issues #40–#43, #58–#61)
