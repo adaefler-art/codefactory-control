@@ -28,6 +28,13 @@ import { checkDatabase, getPool } from './db';
 import { logger } from './logger';
 import { isDebugModeEnabled } from './debug-mode';
 import { ensurePolicySnapshotForExecution } from './policy-manager';
+import {
+  getBuildDeterminismTracker,
+  createBuildManifest,
+  computeHash,
+  BuildInputs,
+  BuildOutputs,
+} from './build-determinism';
 
 /**
  * Step execution result
@@ -313,6 +320,24 @@ export class WorkflowEngine {
       stepsTotal: result.metadata.stepsTotal,
     });
 
+    // Track build determinism for this execution
+    try {
+      await this.trackBuildDeterminism(
+        executionId,
+        workflow,
+        context,
+        stepResults,
+        startedAt,
+        completedAt,
+        status === 'completed'
+      );
+    } catch (trackError) {
+      logger.warn('Failed to track build determinism', {
+        executionId,
+        error: trackError instanceof Error ? trackError.message : String(trackError),
+      }, 'WorkflowEngine');
+    }
+
     return result;
   }
 
@@ -564,6 +589,81 @@ export class WorkflowEngine {
       console.error(`[Workflow Engine] Error evaluating condition: ${condition}`, error);
       return false;
     }
+  }
+
+  /**
+   * Track build determinism for this workflow execution
+   */
+  private async trackBuildDeterminism(
+    executionId: string,
+    workflow: WorkflowDefinition,
+    context: WorkflowContext,
+    stepResults: StepExecutionResult[],
+    startedAt: Date,
+    completedAt: Date,
+    success: boolean
+  ): Promise<void> {
+    const tracker = getBuildDeterminismTracker();
+
+    // Collect build inputs
+    const inputs: BuildInputs = {
+      // Workflow definition (treating it as source)
+      sourceFiles: {
+        'workflow.json': computeHash(workflow),
+      },
+      // Input variables and context
+      dependencies: {
+        'context': computeHash(context.input),
+      },
+      // Environment configuration
+      environment: {
+        'repo.owner': context.repo?.owner || '',
+        'repo.name': context.repo?.name || '',
+        'repo.branch': context.repo?.default_branch || '',
+      },
+      // Build configuration (workflow steps)
+      buildConfig: {
+        steps: workflow.steps.map(s => ({
+          name: s.name,
+          tool: s.tool,
+          // Don't include params as they might contain secrets
+        })),
+        totalSteps: workflow.steps.length,
+      },
+      timestamp: startedAt.toISOString(),
+    };
+
+    // Collect build outputs
+    const outputs: BuildOutputs = {
+      // Step results as artifacts
+      artifacts: stepResults.reduce((acc, step) => {
+        acc[step.stepName] = computeHash({
+          status: step.status,
+          output: step.output,
+        });
+        return acc;
+      }, {} as Record<string, string>),
+      success,
+      durationMs: completedAt.getTime() - startedAt.getTime(),
+    };
+
+    // Create and register the build manifest
+    const manifest = createBuildManifest(
+      executionId,
+      inputs,
+      outputs,
+      startedAt,
+      completedAt
+    );
+
+    tracker.registerBuild(manifest);
+
+    logger.debug('Tracked build determinism', {
+      executionId,
+      inputsHash: manifest.inputsHash,
+      outputsHash: manifest.outputsHash,
+      determinismScore: tracker.getStatistics().determinismScore,
+    }, 'WorkflowEngine');
   }
 }
 
