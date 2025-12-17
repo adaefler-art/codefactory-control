@@ -90,10 +90,11 @@ The stack performs validation during `cdk synth` to catch configuration errors e
 
 ```typescript
 // Example validation in Afu9EcsStack constructor
-if (enableDatabase && !dbSecretArn) {
+if (enableDatabase && !dbSecretArn && !dbSecretName) {
   throw new Error(
-    'Afu9EcsStack: enableDatabase=true but dbSecretArn is not provided. ' +
-    'Either provide dbSecretArn or set enableDatabase=false.'
+    'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. ' +
+    'Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or ' +
+    'disable database with -c afu9-enable-database=false'
   );
 }
 ```
@@ -411,10 +412,11 @@ curl http://<ALB_DNS>/api/ready
 
 **Error:**
 ```
-Error: Afu9EcsStack: enableDatabase=true but dbSecretArn is not provided.
+Error: enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. 
+Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database with -c afu9-enable-database=false
 ```
 
-**Fix:** Either provide `dbSecretArn` or set `enableDatabase=false`:
+**Fix:** Either provide `dbSecretArn` or disable the database:
 
 ```bash
 npx cdk deploy Afu9EcsStack -c afu9-enable-database=false
@@ -424,11 +426,12 @@ npx cdk deploy Afu9EcsStack -c afu9-enable-database=false
 
 **Warning:**
 ```
-Afu9EcsStack: enableDatabase=false but dbSecretArn is provided. 
-dbSecretArn will be ignored.
+⚠️  DEPRECATION WARNING: Context key "enableDatabase" is deprecated. 
+Please use "afu9-enable-database" instead. 
+Example: cdk deploy -c afu9-enable-database=false
 ```
 
-**Fix:** Remove `dbSecretArn` or set `enableDatabase=true`.
+**Fix:** Use the correct context key `afu9-enable-database` instead of `enableDatabase`.
 
 ### Secret Validation Failed
 

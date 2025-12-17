@@ -112,7 +112,7 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * Enable database integration
    * When false: no DB secrets, no IAM grants, app reports database:not_configured
    * When true: DB secret ARN required, IAM grants added, app connects to DB
-    * @default false (can be overridden via CDK context -c enableDatabase=true)
+    * @default false (can be overridden via CDK context -c afu9-enable-database=true)
    */
   enableDatabase?: boolean;
 
