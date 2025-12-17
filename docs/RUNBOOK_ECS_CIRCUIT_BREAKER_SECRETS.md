@@ -385,16 +385,23 @@ curl http://${ALB_DNS}/api/ready | jq .
 #### Schritt 1: Database Secret erstellen/updaten
 
 ```bash
+# RDS Endpoint dynamisch holen
+RDS_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name ${DATABASE_STACK_NAME} \
+  --region ${AWS_REGION} \
+  --query 'Stacks[0].Outputs[?OutputKey==`Afu9DbEndpoint`].OutputValue' \
+  --output text)
+
 # Secrets Manager Secret mit korrekter Struktur erstellen
 aws secretsmanager create-secret \
   --name afu9/database \
-  --secret-string '{
-    "host": "afu9-postgres.xxxxx.eu-central-1.rds.amazonaws.com",
-    "port": "5432",
-    "database": "afu9",
-    "username": "afu9_admin",
-    "password": "DEIN_SICHERES_PASSWORT"
-  }' \
+  --secret-string "{
+    \"host\": \"${RDS_ENDPOINT}\",
+    \"port\": \"5432\",
+    \"database\": \"afu9\",
+    \"username\": \"afu9_admin\",
+    \"password\": \"DEIN_SICHERES_PASSWORT\"
+  }" \
   --region ${AWS_REGION}
 ```
 
@@ -404,13 +411,13 @@ aws secretsmanager create-secret \
 # Bestehenden Secret updaten
 aws secretsmanager update-secret \
   --secret-id afu9/database \
-  --secret-string '{
-    "host": "afu9-postgres.xxxxx.eu-central-1.rds.amazonaws.com",
-    "port": "5432",
-    "database": "afu9",
-    "username": "afu9_admin",
-    "password": "DEIN_SICHERES_PASSWORT"
-  }' \
+  --secret-string "{
+    \"host\": \"${RDS_ENDPOINT}\",
+    \"port\": \"5432\",
+    \"database\": \"afu9\",
+    \"username\": \"afu9_admin\",
+    \"password\": \"DEIN_SICHERES_PASSWORT\"
+  }" \
   --region ${AWS_REGION}
 ```
 
