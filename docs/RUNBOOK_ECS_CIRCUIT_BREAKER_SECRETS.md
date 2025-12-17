@@ -280,9 +280,12 @@ TASK_EXEC_ROLE=$(aws cloudformation describe-stacks \
 
 echo "Task Execution Role: ${TASK_EXEC_ROLE}"
 
+# Role-Name aus ARN extrahieren
+TASK_EXEC_ROLE_NAME=$(echo ${TASK_EXEC_ROLE} | awk -F'/' '{print $NF}')
+
 # Attached Policies auflisten
 aws iam list-attached-role-policies \
-  --role-name afu9-ecs-task-execution-role-stage \
+  --role-name ${TASK_EXEC_ROLE_NAME} \
   --region ${AWS_REGION} \
   --output table
 ```
@@ -586,9 +589,16 @@ aws ecs update-service \
 
 **Fix:** 
 ```bash
-# Korrekte Credentials aus RDS Stack holen
+# RDS Master Secret ARN aus Database Stack holen
+RDS_SECRET_ARN=$(aws cloudformation describe-stacks \
+  --stack-name Afu9DatabaseStack \
+  --region ${AWS_REGION} \
+  --query 'Stacks[0].Outputs[?OutputKey==`Afu9DbSecretArn`].OutputValue' \
+  --output text)
+
+# Korrekte Credentials aus RDS Secret holen
 aws secretsmanager get-secret-value \
-  --secret-id <rds-master-secret-arn> \
+  --secret-id ${RDS_SECRET_ARN} \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq .
