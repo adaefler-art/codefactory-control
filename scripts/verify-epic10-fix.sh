@@ -111,7 +111,7 @@ DB_NAME_SECRET=$(aws ecs describe-task-definition \
   --output json)
 
 if [ "$DB_NAME_SECRET" != "[]" ] && [ "$DB_NAME_SECRET" != "null" ]; then
-  SECRET_KEY=$(echo "$DB_NAME_SECRET" | jq -r '.[0][0].valueFrom' | grep -oP ':[^:]*::$' | sed 's/:://g')
+  SECRET_KEY=$(echo "$DB_NAME_SECRET" | jq -r '.[0].valueFrom' | grep -oP ':[^:]*::$' | sed 's/:://g')
   
   if [ "$SECRET_KEY" = "database" ]; then
     echo "✅ DATABASE_NAME correctly uses 'database' key"
