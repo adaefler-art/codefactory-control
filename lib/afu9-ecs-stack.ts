@@ -173,6 +173,9 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+// Default database secret name when not explicitly provided
+const DEFAULT_DB_SECRET_NAME = 'afu9/database/master';
+
 function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
   const ctxDomain = scope.node.tryGetContext('domainName');
   const ctxEnvironment = scope.node.tryGetContext('environment') ?? scope.node.tryGetContext('stage');
@@ -215,17 +218,16 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
   const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
   const dbSecretName = ctxDbSecretName;
 
-  // Validation: If database is enabled, we need either ARN or name
-  // Note: dbSecretName will default to 'afu9/database/master' later if not provided
+  // Validation: If database is enabled, we need either ARN or name (before applying defaults)
   if (enableDatabase && !dbSecretArn && !dbSecretName) {
     throw new Error(
       'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. ' +
-      'Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or disable database with -c afu9-enable-database=false'
+      `Set -c dbSecretArn=... or -c dbSecretName=${DEFAULT_DB_SECRET_NAME} or disable database with -c afu9-enable-database=false`
     );
   }
 
   // Apply default for dbSecretName after validation
-  const resolvedDbSecretName = dbSecretName ?? 'afu9/database/master';
+  const resolvedDbSecretName = dbSecretName ?? DEFAULT_DB_SECRET_NAME;
 
   return {
     environment,
