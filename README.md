@@ -134,9 +134,22 @@ npx cdk deploy Afu9EcsStack --context environment=staging
 # 4. Build and push Docker images
 # (Use GitHub Actions or manual build - see runbook)
 
-# 5. Run smoke tests
+# 5. Run post-deployment verification (automated in GitHub Actions)
+./scripts/post-deploy-verification.sh stage afu9-cluster afu9-control-center-stage <ALB_DNS>
+
+# 6. Run smoke tests
 ./scripts/smoke-test-staging.sh <ALB_DNS>
 ```
+
+**Automated Verification:**
+
+All deployments via GitHub Actions automatically run post-deployment verification checks:
+- ECS service events (no Circuit Breaker issues)
+- ALB target health (all targets green)
+- Service stability (desired task count reached)
+- Health and readiness endpoints
+
+See [docs/POST_DEPLOY_VERIFICATION.md](docs/POST_DEPLOY_VERIFICATION.md) for details.
 
 **v0.1 Lambda Deployment (Legacy):**
 
