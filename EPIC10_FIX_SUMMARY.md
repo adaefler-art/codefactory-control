@@ -140,7 +140,10 @@ npx cdk synth Afu9EcsStack -c afu9-enable-https=false
 # 2. Deploy (will create new task definition revision)
 npx cdk deploy Afu9EcsStack -c afu9-enable-https=false
 
-# 3. Monitor deployment
+# 3. Verify deployment using automated script
+./scripts/verify-epic10-fix.sh afu9-cluster afu9-control-center-stage
+
+# Or manually monitor deployment
 aws ecs describe-services \
   --cluster afu9-cluster \
   --services afu9-control-center-stage \
@@ -150,6 +153,29 @@ aws ecs describe-services \
 curl http://<ALB_DNS>/api/health
 curl http://<ALB_DNS>/api/ready
 ```
+
+### Automated Verification Script
+
+Use the provided verification script to quickly check deployment status:
+
+```bash
+# Basic usage
+./scripts/verify-epic10-fix.sh
+
+# With custom cluster/service
+./scripts/verify-epic10-fix.sh my-cluster my-service
+
+# With ALB health endpoint checks
+ALB_DNS=my-alb-123456.eu-central-1.elb.amazonaws.com \
+  ./scripts/verify-epic10-fix.sh
+```
+
+The script checks:
+1. ✅ Service stability (desired count = running count)
+2. ✅ No circuit breaker events
+3. ✅ No stopped tasks with secret errors
+4. ✅ Task definition uses correct 'database' key
+5. ✅ Health endpoints respond correctly (optional)
 
 ### Expected Behavior After Fix
 
