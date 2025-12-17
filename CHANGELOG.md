@@ -8,6 +8,52 @@ Webhooks + UI (#37, #48, #53–#57)
 
 Observability/Security (#38, #60–#61)
 
+## 2025-12-17 - EPIC 5: Deterministic Build Graphs
+
+### Added - Build Determinism Implementation
+
+**Issue 5.1: Deterministic Build Graphs – Reproduzierbare Build-Prozesse**
+
+Build determinism has been fully implemented to ensure reproducible builds with no uncontrolled side effects.
+
+#### Docker Build Improvements
+- Pinned Node.js version to `node:20.10.0-alpine` for all Docker images
+- Changed from `npm install` to `npm ci` in all Dockerfiles to use lockfiles
+- Added `SOURCE_DATE_EPOCH=0` environment variable for deterministic timestamps
+- Created `.dockerignore` files to exclude non-deterministic files
+
+#### GitHub Actions Enhancements
+- Added documentation explaining git SHA as primary deterministic identifier
+- Clarified timestamp tags are supplementary for human readability only
+- Created automated build determinism verification workflow (`.github/workflows/build-determinism.yml`)
+- Added explicit security permissions to workflows
+
+#### Verification Tools
+- New verification script: `scripts/verify-build-determinism.sh`
+- Automated CI/CD enforcement via GitHub Actions
+- Builds components twice and verifies identical image digests
+- Improved error handling with full logs and clear error messages
+
+#### Documentation
+- `docs/BUILD_DETERMINISM_CRITERIA.md` - Complete determinism rules and validation procedures
+- `docs/BUILD_DEPENDENCY_GRAPH.md` - Visual build pipeline documentation and audit trail
+- `docs/BUILD_DETERMINISM_IMPLEMENTATION_SUMMARY.md` - Implementation overview and status
+- Updated `docs/BUILD_DETERMINISM.md` with status and quick links
+
+#### Acceptance Criteria Met
+- ✅ Gleiche Inputs → gleicher Output: Docker builds with pinned versions ensure identical outputs
+- ✅ Auditierbare Build-Pipeline: Build manifests, KPI tracking, and dependency graphs provide full audit trail
+- ✅ Build Determinism KPI: Tracked via BuildDeterminismTracker, target ≥95%
+
+#### Security
+- CodeQL analysis: Zero vulnerabilities found
+- Explicit permissions in GitHub Actions workflows
+- Secure build process with pinned versions
+
+**Priority**: P0 ✅ Complete
+
+---
+
 ## 2025-12-17 - Epic-4: Smoke/Debug Harness + DB Toggle Hardening
 
 ### Added
