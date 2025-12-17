@@ -23,6 +23,8 @@ jobs:
   validate-iam-policies:
     name: Validate IAM Policies
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout code
@@ -56,6 +58,9 @@ jobs:
   policy-review:
     name: Policy Change Review
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     if: github.event_name == 'pull_request'
     
     steps:

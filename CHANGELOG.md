@@ -2,7 +2,7 @@
 
 Alle wesentlichen Änderungen an diesem Projekt werden hier dokumentiert.
 
-## 2025-12-17 - EPIC 07: Security & Blast Radius – Minimale Angriffsfläche
+## 2024-12-17 - EPIC 07: Security & Blast Radius – Minimale Angriffsfläche
 
 ### Added - Security Hardening & Policy Validation
 
@@ -58,7 +58,7 @@ Comprehensive security hardening to minimize attack surface and enforce least pr
 - **Attack Surface**: Minimized through strict resource scoping
 - **Blast Radius**: Contained through least privilege enforcement
 
-## 2025-12-17 - EPIC 5: Deterministic Build Graphs
+## 2024-12-17 - EPIC 5: Deterministic Build Graphs
 
 Architektur: Control Center + MCP Sidecars (GitHub/Deploy/Observability)
 
@@ -70,7 +70,7 @@ Webhooks + UI (#37, #48, #53–#57)
 
 Observability/Security (#38, #60–#61)
 
-## 2025-12-17 - EPIC 5: Deterministic Build Graphs
+## 2024-12-17 - EPIC 5: Deterministic Build Graphs
 
 ### Added - Build Determinism Implementation
 
@@ -116,7 +116,7 @@ Build determinism has been fully implemented to ensure reproducible builds with 
 
 ---
 
-## 2025-12-17 - Epic-4: Smoke/Debug Harness + DB Toggle Hardening
+## 2024-12-17 - Epic-4: Smoke/Debug Harness + DB Toggle Hardening
 
 ### Added
 - **scripts/smoke_epic4.ps1**: Comprehensive smoke tests for health/ready endpoints with database toggle assertions

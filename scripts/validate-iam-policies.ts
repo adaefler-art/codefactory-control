@@ -162,7 +162,7 @@ function validatePolicy(
   if (hasWildcard) {
     // Check if any action is forbidden to use wildcards
     const forbiddenActions = policy.actions.filter((action: string) =>
-      FORBIDDEN_WILDCARD_ACTIONS.some(forbidden => action === forbidden || action.includes(forbidden))
+      FORBIDDEN_WILDCARD_ACTIONS.some(forbidden => action === forbidden)
     );
     
     if (forbiddenActions.length > 0) {
@@ -213,12 +213,6 @@ function validatePolicy(
           return true; // Trust that these variables contain properly scoped ARNs
         }
         
-        // Handle template literals and variables that we can't fully evaluate
-        // If resource contains a variable or template expression, be lenient
-        if (resource.includes('${') || resource.includes('dbSecretName') || resource.includes('secretResourceArn')) {
-          // Check if the hardcoded part includes the required prefix
-          return requiredPrefixes.some((prefix: string) => resource.includes(prefix));
-        }
         // For regular resources, remove trailing wildcards for prefix checking (AWS uses wildcards for rotation)
         const cleanResource = resource.replace(/\*+$/, '');
         return requiredPrefixes.some((prefix: string) => cleanResource.includes(prefix));
