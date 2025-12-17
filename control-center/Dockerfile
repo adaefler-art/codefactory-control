@@ -25,11 +25,13 @@ WORKDIR /app/${APP_DIR}
 
 # Set deterministic build timestamp
 ENV SOURCE_DATE_EPOCH=0
+ENV SKIP_PREBUILD=1
 
 COPY --from=deps /app/${APP_DIR}/node_modules ./node_modules
+COPY --from=deps /app/packages /app/packages
 COPY control-center/ ./
 
-RUN npm run build
+RUN SKIP_PREBUILD=1 npm run build
 
 # Stage 3: Production
 FROM node:20.10.0-bookworm-slim AS runner
