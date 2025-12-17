@@ -144,17 +144,36 @@ fi
 print_section "Check 2: ALB Target Health"
 
 echo "Fetching target groups for ALB..."
-TARGET_GROUPS=$(aws elbv2 describe-target-groups \
+# Get ALB ARN first
+ALB_ARN=$(aws elbv2 describe-load-balancers \
   --region "$AWS_REGION" \
-  --query "TargetGroups[?contains(LoadBalancerArns[0], '$ALB_DNS')].TargetGroupArn" \
-  --output text 2>&1)
+  --query "LoadBalancers[?DNSName=='$ALB_DNS'].LoadBalancerArn" \
+  --output text 2>/dev/null || echo "")
 
-if [ $? -ne 0 ] || [ -z "$TARGET_GROUPS" ]; then
-  # Try alternative method: get target groups by name pattern
+if [ -z "$ALB_ARN" ]; then
+  # Try alternative: get by name pattern
+  echo "Could not find ALB by DNS name, trying by name pattern..."
+  ALB_ARN=$(aws elbv2 describe-load-balancers \
+    --region "$AWS_REGION" \
+    --query "LoadBalancers[?contains(LoadBalancerName, 'afu9')].LoadBalancerArn" \
+    --output text 2>/dev/null | head -1 || echo "")
+fi
+
+if [ -z "$ALB_ARN" ]; then
+  print_result "FAIL" "Could not find ALB"
+  TARGET_GROUPS=""
+else
+  echo "Found ALB: $ALB_ARN"
   TARGET_GROUPS=$(aws elbv2 describe-target-groups \
     --region "$AWS_REGION" \
-    --query "TargetGroups[?contains(TargetGroupName, 'afu9')].TargetGroupArn" \
-    --output text 2>/dev/null || echo "")
+    --load-balancer-arn "$ALB_ARN" \
+    --query "TargetGroups[].TargetGroupArn" \
+    --output text 2>&1)
+  
+  if [ $? -ne 0 ]; then
+    print_result "FAIL" "Failed to fetch target groups for ALB"
+    TARGET_GROUPS=""
+  fi
 fi
 
 if [ -z "$TARGET_GROUPS" ]; then

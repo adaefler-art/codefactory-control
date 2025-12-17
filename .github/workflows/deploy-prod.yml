@@ -262,12 +262,12 @@ jobs:
           echo "✅ **Production deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Post-deployment verification passed**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Verification Checks:" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ ECS service events - No Circuit Breaker issues" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ ALB target health - All targets healthy" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Service stability - Desired task count reached" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Health endpoint - /api/health returns 200 OK" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Readiness endpoint - /api/ready returns 200 OK" >> $GITHUB_STEP_SUMMARY
+          echo "All critical deployment checks passed:" >> $GITHUB_STEP_SUMMARY
+          echo "- ECS service events verified (no Circuit Breaker issues)" >> $GITHUB_STEP_SUMMARY
+          echo "- ALB target health confirmed (all targets healthy)" >> $GITHUB_STEP_SUMMARY
+          echo "- Service stability achieved (desired task count reached)" >> $GITHUB_STEP_SUMMARY
+          echo "- Health endpoint validated (\`/api/health\` returns 200 OK)" >> $GITHUB_STEP_SUMMARY
+          echo "- Readiness endpoint validated (\`/api/ready\` returns 200 OK)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images deployed:" >> $GITHUB_STEP_SUMMARY
           echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:prod-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
