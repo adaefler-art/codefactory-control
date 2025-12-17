@@ -112,7 +112,7 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * Enable database integration
    * When false: no DB secrets, no IAM grants, app reports database:not_configured
    * When true: DB secret ARN required, IAM grants added, app connects to DB
-    * @default false (can be overridden via CDK context -c enableDatabase=true)
+    * @default false (can be overridden via CDK context -c afu9-enable-database=true)
    */
   enableDatabase?: boolean;
 
@@ -173,36 +173,68 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+// Default database secret name when not explicitly provided
+const DEFAULT_DB_SECRET_NAME = 'afu9/database/master';
+
 function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
   const ctxDomain = scope.node.tryGetContext('domainName');
   const ctxEnvironment = scope.node.tryGetContext('environment') ?? scope.node.tryGetContext('stage');
-  const ctxEnableDb = scope.node.tryGetContext('enableDatabase');
+  
+  // Prioritize correct key 'afu9-enable-database', fall back to legacy 'enableDatabase'
+  const ctxEnableDbCorrect = scope.node.tryGetContext('afu9-enable-database');
+  const ctxEnableDbLegacy = scope.node.tryGetContext('enableDatabase');
+  
   const ctxDbSecretArn = scope.node.tryGetContext('dbSecretArn');
   const ctxDbSecretName = scope.node.tryGetContext('dbSecretName');
 
   const environment = props.environment ?? ctxEnvironment ?? 'stage';
   const domainName = props.domainName ?? ctxDomain;
 
+  // Deprecation warning for legacy key
+  if (ctxEnableDbLegacy !== undefined) {
+    if (ctxEnableDbCorrect === undefined) {
+      // Only legacy key provided
+      cdk.Annotations.of(scope).addWarning(
+        'DEPRECATION: Context key "enableDatabase" is deprecated. ' +
+        'Please use "afu9-enable-database" instead. ' +
+        'Example: cdk deploy -c afu9-enable-database=false'
+      );
+    } else {
+      // Both keys provided - warn about potential confusion
+      cdk.Annotations.of(scope).addWarning(
+        'Both "enableDatabase" (deprecated) and "afu9-enable-database" context keys are provided. ' +
+        'Using "afu9-enable-database" value. Please remove the deprecated "enableDatabase" key.'
+      );
+    }
+  }
+
+  // Resolution priority: props > correct context key > legacy context key > default (false)
   const enableDatabase =
     toOptionalBoolean(props.enableDatabase) ??
-    toOptionalBoolean(ctxEnableDb) ??
+    toOptionalBoolean(ctxEnableDbCorrect) ??
+    toOptionalBoolean(ctxEnableDbLegacy) ??
     false;
 
   const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
-  const dbSecretName = ctxDbSecretName ?? 'afu9/database/master';
+  const dbSecretName = ctxDbSecretName;
 
+  // Validation: If database is enabled, we need either ARN or name (before applying defaults)
   if (enableDatabase && !dbSecretArn && !dbSecretName) {
     throw new Error(
-      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master (default) or disable database.'
+      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. ' +
+      `Set -c dbSecretArn=... or -c dbSecretName=${DEFAULT_DB_SECRET_NAME} or disable database with -c afu9-enable-database=false`
     );
   }
+
+  // Apply default for dbSecretName after validation
+  const resolvedDbSecretName = dbSecretName ?? DEFAULT_DB_SECRET_NAME;
 
   return {
     environment,
     domainName,
     enableDatabase,
     dbSecretArn,
-    dbSecretName,
+    dbSecretName: resolvedDbSecretName,
   };
 }
 

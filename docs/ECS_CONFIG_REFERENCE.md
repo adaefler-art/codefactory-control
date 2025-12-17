@@ -90,10 +90,11 @@ The stack performs validation during `cdk synth` to catch configuration errors e
 
 ```typescript
 // Example validation in Afu9EcsStack constructor
-if (enableDatabase && !dbSecretArn) {
+if (enableDatabase && !dbSecretArn && !dbSecretName) {
   throw new Error(
-    'Afu9EcsStack: enableDatabase=true but dbSecretArn is not provided. ' +
-    'Either provide dbSecretArn or set enableDatabase=false.'
+    'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. ' +
+    'Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or ' +
+    'disable database with -c afu9-enable-database=false'
   );
 }
 ```
@@ -411,24 +412,32 @@ curl http://<ALB_DNS>/api/ready
 
 **Error:**
 ```
-Error: Afu9EcsStack: enableDatabase=true but dbSecretArn is not provided.
+Error: enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. 
+Set -c dbSecretArn=... or -c dbSecretName=afu9/database/master or disable database with -c afu9-enable-database=false
 ```
 
-**Fix:** Either provide `dbSecretArn` or set `enableDatabase=false`:
+**Fix:** Either provide `dbSecretArn` or disable the database:
 
 ```bash
 npx cdk deploy Afu9EcsStack -c afu9-enable-database=false
 ```
 
-### Configuration Warning: Conflicting Settings
+### Configuration Warning: Deprecated Context Key
 
-**Warning:**
+**Warning (when using only `enableDatabase`):**
 ```
-Afu9EcsStack: enableDatabase=false but dbSecretArn is provided. 
-dbSecretArn will be ignored.
+[Warning at /Afu9EcsStack] DEPRECATION: Context key "enableDatabase" is deprecated. 
+Please use "afu9-enable-database" instead. 
+Example: cdk deploy -c afu9-enable-database=false
 ```
 
-**Fix:** Remove `dbSecretArn` or set `enableDatabase=true`.
+**Warning (when using both keys):**
+```
+[Warning at /Afu9EcsStack] Both "enableDatabase" (deprecated) and "afu9-enable-database" context keys are provided. 
+Using "afu9-enable-database" value. Please remove the deprecated "enableDatabase" key.
+```
+
+**Fix:** Use only the correct context key `afu9-enable-database` and remove `enableDatabase`.
 
 ### Secret Validation Failed
 
