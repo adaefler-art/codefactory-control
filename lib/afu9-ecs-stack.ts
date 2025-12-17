@@ -7,6 +7,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
+import { validateSecretKeys } from './utils/secret-validator';
 
 /**
  * Supported deployment environments
@@ -299,6 +300,37 @@ export class Afu9EcsStack extends cdk.Stack {
     );
 
     // ========================================
+    // Secret Key Validation (Guardrail I-ECS-DB-02)
+    // ========================================
+
+    // Validate that all required secret keys exist
+    // This prevents deployment failures due to missing or misconfigured secrets
+    if (dbSecret) {
+      validateSecretKeys(
+        this,
+        dbSecret,
+        ['host', 'port', 'database', 'username', 'password'],
+        'Database connection credentials'
+      );
+    }
+
+    validateSecretKeys(
+      this,
+      githubSecret,
+      ['token', 'owner', 'repo'],
+      'GitHub API credentials'
+    );
+
+    // LLM keys are all optional, so we just validate the secret exists
+    // but don't require specific keys
+    validateSecretKeys(
+      this,
+      llmSecret,
+      [], // No required keys for LLM secret
+      'LLM API keys (all optional)'
+    );
+
+    // ========================================
     // ECS Cluster (Shared across environments)
     // ========================================
     // Create cluster only in stage environment, import in others
@@ -538,9 +570,9 @@ export class Afu9EcsStack extends cdk.Stack {
           ? {
               DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
               DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-              // RDS master secret (afu9/database/master) uses 'dbname' as the database name key
-              // This is the standard format for RDS-managed secrets
-              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'dbname'),
+              // Application connection secret uses 'database' as the key (defined in Afu9DatabaseStack)
+              // Note: This differs from RDS-generated secrets which use 'dbname'
+              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
               DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
               DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
             }

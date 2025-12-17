@@ -179,6 +179,7 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - [Database Schema](docs/architecture/database-schema.md) - Database structure and workflow persistence
 - [Logging Concept](docs/LOGGING.md) - Structured logging, CloudWatch integration, and log searching
 - [Observability](docs/OBSERVABILITY.md) - Monitoring, alarms, KPI system, and observability features
+- [Secret Validation](docs/SECRET_VALIDATION.md) - Pre-deployment secret key validation guardrail
 
 ### v0.1 Architecture (Legacy)
 
@@ -192,13 +193,25 @@ AWS CDK infrastructure for deploying the complete stack.
 
 ```bash
 npm install
-npx cdk synth              # Generate CloudFormation
-npx cdk deploy            # Deploy to AWS
+
+# Validate secrets before deployment (recommended)
+npm run validate-secrets
+
+# Generate CloudFormation
+npx cdk synth
+
+# Deploy to AWS
+npx cdk deploy
 ```
 
 Stacks:
 - `CodefactoryControlStack` - v0.1 Lambda-based pipeline
 - `Afu9InfrastructureStack` - v0.2 ECS-based infrastructure
+
+**Pre-deployment Checks:**
+- Secret validation ensures all required keys exist in AWS Secrets Manager
+- Prevents runtime failures due to misconfigured secrets
+- See [Secret Validation Guide](docs/SECRET_VALIDATION.md) for details
 
 ### Control Center (Next.js)
 
