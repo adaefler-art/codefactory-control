@@ -1,9 +1,9 @@
 # AFU-9 Factory KPI Definitions
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Status:** Canonical  
 **EPIC:** 3 - KPI System & Telemetry  
-**Last Updated:** 2024-12-16
+**Last Updated:** 2025-12-17
 
 This document defines all Key Performance Indicators (KPIs) for the AFU-9 Factory Control Plane. It serves as the **Single Source of Truth** for KPI calculations, ensuring consistent measurement and steering across all factory operations.
 
@@ -418,6 +418,65 @@ WHERE execution_id = $1;
 
 ---
 
+### 10. Build Determinism
+
+**Category:** Quality  
+**Level:** Factory  
+**Unit:** Percentage (0-100)  
+**Target:** ≥ 95%
+
+**EPIC:** 5 - Autonomous Build-Test-Deploy Loop  
+**Issue:** 5.1 - Deterministic Build Graphs
+
+**Definition:**  
+Percentage of unique input combinations where all builds produced identical outputs, ensuring reproducibility and eliminating implicit state dependencies.
+
+**Formula:**
+```
+Build Determinism = (deterministic_input_hashes / total_unique_input_hashes) × 100
+
+Where:
+- deterministic_input_hashes = Number of input hashes where all builds have identical outputs
+- total_unique_input_hashes = Number of unique input hash combinations
+```
+
+**Calculation:**
+```typescript
+// For each unique input hash:
+// 1. Get all builds with that input hash
+// 2. Check if all builds produced identical output hashes
+// 3. Count as deterministic if all outputs match
+
+determinismScore = (deterministicInputHashes / totalInputHashes) * 100
+```
+
+**Data Sources:**
+- Build manifests tracked by BuildDeterminismTracker
+- Workflow execution records with input/output checksums
+- Stored in `kpi_snapshots` table with `kpi_name = 'build_determinism'`
+
+**Interpretation:**
+- **100%**: Perfect determinism - all builds are reproducible
+- **95-99%**: High determinism - production quality
+- **80-94%**: Moderate determinism - needs investigation
+- **<80%**: Low determinism - critical reproducibility issues
+
+**Rationale:**  
+Build Determinism is critical for:
+1. **Reproducibility**: Same inputs must produce same outputs
+2. **Caching**: Enable safe reuse of build artifacts
+3. **Auditability**: Validate build consistency over time
+4. **Efficiency**: Avoid redundant builds through intelligent caching
+
+High build determinism enables the autonomous build-test-deploy loop to operate reliably and efficiently without implicit state dependencies.
+
+**Related Metrics:**
+- Cache Hit Rate: Percentage of builds that reused cached artifacts
+- Total Builds: Number of builds tracked
+- Unique Inputs: Number of distinct input combinations
+
+---
+
 ## KPI Aggregation Levels
 
 ### Level 1: Run (Individual Execution)
@@ -440,6 +499,7 @@ WHERE execution_id = $1;
 - Verdict Consistency
 - Factory Uptime
 - MTTR
+- Build Determinism
 
 ## KPI Versioning
 
@@ -462,6 +522,7 @@ KPI definitions follow semantic versioning:
 5. Update all consumers to use new version
 
 **Version History:**
+- `1.1.0` (2025-12-17): Added Build Determinism KPI (EPIC 5, Issue 5.1)
 - `1.0.0` (2024-12-16): Initial canonical KPI definitions for EPIC 3
 
 ---

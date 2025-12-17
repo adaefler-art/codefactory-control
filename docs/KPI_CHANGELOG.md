@@ -13,6 +13,62 @@ KPI definitions follow **Semantic Versioning**: `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.1.0] - 2025-12-17
+
+**Status:** Minor Release - New KPI Added  
+**Epic:** EPIC 5 - Autonomous Build-Test-Deploy Loop  
+**Issue:** #5.1 - Deterministic Build Graphs
+
+### Added
+
+#### Factory-Level KPI
+
+10. **Build Determinism** ⭐ Key KPI for Issue 5.1
+    - **Category:** Quality
+    - **Level:** Factory
+    - **Formula:** `(deterministic_input_hashes / total_unique_input_hashes) × 100`
+    - **Target:** ≥ 95%
+    - **Unit:** Percentage (0-100)
+    - **Rationale:** Ensures reproducible builds by tracking that identical inputs produce identical outputs
+    - **Implementation:**
+      - Tracks build manifests with input/output checksums
+      - Validates build reproducibility across multiple executions
+      - Enables intelligent build caching
+      - Eliminates implicit state dependencies
+    - **Related Metrics:**
+      - Cache Hit Rate: Percentage of builds reusing cached artifacts
+      - Total Builds: Number of builds tracked
+      - Unique Inputs: Number of distinct input combinations
+    - **Data Source:** BuildDeterminismTracker in workflow engine
+    - **API Endpoint:** `GET /api/v1/kpi/build-determinism`
+
+### Changed
+
+- **KPI Aggregation Levels:** Added Build Determinism to Factory-Level KPIs list
+- **KPI Version:** Incremented from 1.0.0 to 1.1.0 (MINOR version bump)
+
+### Impact Assessment
+
+**Breaking Changes:** None  
+**Migration Required:** No  
+**Affected Components:**
+- ✅ KPI Definitions document updated
+- ✅ KPI aggregation pipeline aware of new KPI
+- ✅ New API endpoint created: `/api/v1/kpi/build-determinism`
+- ✅ Database schema supports via existing `kpi_snapshots` table
+
+**Backward Compatibility:**
+- All existing KPIs continue to work unchanged
+- New KPI is optional and doesn't affect existing calculations
+- API consumers can opt-in to new endpoint
+
+**Documentation:**
+- ✅ Added comprehensive Build Determinism guide: `docs/BUILD_DETERMINISM.md`
+- ✅ Updated KPI Definitions with formula and interpretation
+- ✅ Added unit tests for build determinism module
+
+---
+
 ## [1.0.0] - 2024-12-16
 
 **Status:** Initial Release  
