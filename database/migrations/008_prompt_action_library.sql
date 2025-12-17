@@ -217,137 +217,164 @@ CREATE TRIGGER update_actions_updated_at BEFORE UPDATE ON actions
 -- ========================================
 
 -- Example: Issue Analysis Prompt
-INSERT INTO prompts (name, category, description, purpose, created_by) VALUES (
-  'issue_analyzer',
-  'analysis',
-  'Analyzes GitHub issues to determine scope, complexity, and suggested fixes',
-  'Used by the issue interpretation step to understand issue requirements and generate specifications',
-  'system'
-) RETURNING id AS prompt_id \gset
+DO $$
+DECLARE
+  v_prompt_id UUID;
+  v_version_id UUID;
+BEGIN
+  -- Create prompt
+  INSERT INTO prompts (name, category, description, purpose, created_by) VALUES (
+    'issue_analyzer',
+    'analysis',
+    'Analyzes GitHub issues to determine scope, complexity, and suggested fixes',
+    'Used by the issue interpretation step to understand issue requirements and generate specifications',
+    'system'
+  ) RETURNING id INTO v_prompt_id;
 
-INSERT INTO prompt_versions (
-  prompt_id, version, content, system_prompt, user_prompt_template,
-  variables, model_config, change_type, change_description, 
-  validated, published, published_at, created_by
-) VALUES (
-  :'prompt_id', '1.0.0',
-  'You are an expert software engineer analyzing GitHub issues for the AFU-9 autonomous code fabrication system.',
-  'You are an expert software engineer analyzing GitHub issues for the AFU-9 autonomous code fabrication system. Your task is to analyze the issue and provide a structured assessment including scope, complexity, and suggested implementation approach.',
-  'Analyze the following GitHub issue:\n\nTitle: ${title}\nBody: ${body}\n\nLabels: ${labels}\n\nProvide a structured analysis including:\n1. Issue scope and requirements\n2. Estimated complexity (low/medium/high)\n3. Suggested implementation approach\n4. Potential risks or dependencies',
-  '{"title": "Issue title", "body": "Issue description", "labels": "Comma-separated labels"}'::jsonb,
-  '{"temperature": 0.2, "max_tokens": 2000}'::jsonb,
-  'major', 'Initial version of issue analyzer prompt',
-  true, true, NOW(), 'system'
-) RETURNING id AS version_id \gset
+  -- Create first version
+  INSERT INTO prompt_versions (
+    prompt_id, version, content, system_prompt, user_prompt_template,
+    variables, model_config, change_type, change_description, 
+    validated, published, published_at, created_by
+  ) VALUES (
+    v_prompt_id, '1.0.0',
+    'You are an expert software engineer analyzing GitHub issues for the AFU-9 autonomous code fabrication system.',
+    'You are an expert software engineer analyzing GitHub issues for the AFU-9 autonomous code fabrication system. Your task is to analyze the issue and provide a structured assessment including scope, complexity, and suggested implementation approach.',
+    'Analyze the following GitHub issue:\n\nTitle: ${title}\nBody: ${body}\n\nLabels: ${labels}\n\nProvide a structured analysis including:\n1. Issue scope and requirements\n2. Estimated complexity (low/medium/high)\n3. Suggested implementation approach\n4. Potential risks or dependencies',
+    '{"title": "Issue title", "body": "Issue description", "labels": "Comma-separated labels"}'::jsonb,
+    '{"temperature": 0.2, "max_tokens": 2000}'::jsonb,
+    'major', 'Initial version of issue analyzer prompt',
+    true, true, NOW(), 'system'
+  ) RETURNING id INTO v_version_id;
 
-UPDATE prompts SET current_version_id = :'version_id' WHERE id = :'prompt_id';
+  -- Update prompt with current version
+  UPDATE prompts SET current_version_id = v_version_id WHERE id = v_prompt_id;
+END $$;
 
 -- Example: Code Review Prompt
-INSERT INTO prompts (name, category, description, purpose, created_by) VALUES (
-  'code_reviewer',
-  'review',
-  'Reviews code changes and provides feedback on quality, style, and potential issues',
-  'Used in PR review workflows to provide automated code review feedback',
-  'system'
-) RETURNING id AS prompt_id \gset
+DO $$
+DECLARE
+  v_prompt_id UUID;
+  v_version_id UUID;
+BEGIN
+  INSERT INTO prompts (name, category, description, purpose, created_by) VALUES (
+    'code_reviewer',
+    'review',
+    'Reviews code changes and provides feedback on quality, style, and potential issues',
+    'Used in PR review workflows to provide automated code review feedback',
+    'system'
+  ) RETURNING id INTO v_prompt_id;
 
-INSERT INTO prompt_versions (
-  prompt_id, version, content, system_prompt, user_prompt_template,
-  variables, model_config, change_type, change_description,
-  validated, published, published_at, created_by
-) VALUES (
-  :'prompt_id', '1.0.0',
-  'You are an expert code reviewer for the AFU-9 system.',
-  'You are an expert code reviewer. Analyze the provided code changes and provide constructive feedback focusing on correctness, performance, security, and maintainability.',
-  'Review the following code changes:\n\n${diff}\n\nContext:\nPR Title: ${pr_title}\nDescription: ${pr_description}\n\nProvide feedback on:\n1. Code correctness and logic\n2. Potential bugs or edge cases\n3. Security concerns\n4. Performance considerations\n5. Code style and best practices',
-  '{"diff": "Git diff content", "pr_title": "PR title", "pr_description": "PR description"}'::jsonb,
-  '{"temperature": 0.3, "max_tokens": 3000}'::jsonb,
-  'major', 'Initial version of code reviewer prompt',
-  true, true, NOW(), 'system'
-) RETURNING id AS version_id \gset
+  INSERT INTO prompt_versions (
+    prompt_id, version, content, system_prompt, user_prompt_template,
+    variables, model_config, change_type, change_description,
+    validated, published, published_at, created_by
+  ) VALUES (
+    v_prompt_id, '1.0.0',
+    'You are an expert code reviewer for the AFU-9 system.',
+    'You are an expert code reviewer. Analyze the provided code changes and provide constructive feedback focusing on correctness, performance, security, and maintainability.',
+    'Review the following code changes:\n\n${diff}\n\nContext:\nPR Title: ${pr_title}\nDescription: ${pr_description}\n\nProvide feedback on:\n1. Code correctness and logic\n2. Potential bugs or edge cases\n3. Security concerns\n4. Performance considerations\n5. Code style and best practices',
+    '{"diff": "Git diff content", "pr_title": "PR title", "pr_description": "PR description"}'::jsonb,
+    '{"temperature": 0.3, "max_tokens": 3000}'::jsonb,
+    'major', 'Initial version of code reviewer prompt',
+    true, true, NOW(), 'system'
+  ) RETURNING id INTO v_version_id;
 
-UPDATE prompts SET current_version_id = :'version_id' WHERE id = :'prompt_id';
+  UPDATE prompts SET current_version_id = v_version_id WHERE id = v_prompt_id;
+END $$;
 
 -- ========================================
 -- Seed Data: Example Actions
 -- ========================================
 
 -- Example: Create GitHub Issue Action
-INSERT INTO actions (name, category, description, created_by) VALUES (
-  'create_github_issue',
-  'github',
-  'Creates a new GitHub issue in a repository',
-  'system'
-) RETURNING id AS action_id \gset
+DO $$
+DECLARE
+  v_action_id UUID;
+  v_version_id UUID;
+BEGIN
+  INSERT INTO actions (name, category, description, created_by) VALUES (
+    'create_github_issue',
+    'github',
+    'Creates a new GitHub issue in a repository',
+    'system'
+  ) RETURNING id INTO v_action_id;
 
-INSERT INTO action_versions (
-  action_id, version, tool_reference, input_schema, output_schema,
-  change_type, change_description, validated, published, published_at, created_by
-) VALUES (
-  :'action_id', '1.0.0', 'github.createIssue',
-  '{
-    "type": "object",
-    "properties": {
-      "owner": {"type": "string", "description": "Repository owner"},
-      "repo": {"type": "string", "description": "Repository name"},
-      "title": {"type": "string", "description": "Issue title"},
-      "body": {"type": "string", "description": "Issue body/description"},
-      "labels": {"type": "array", "items": {"type": "string"}, "description": "Issue labels"}
-    },
-    "required": ["owner", "repo", "title"]
-  }'::jsonb,
-  '{
-    "type": "object",
-    "properties": {
-      "number": {"type": "integer", "description": "Issue number"},
-      "url": {"type": "string", "description": "Issue URL"},
-      "html_url": {"type": "string", "description": "Issue HTML URL"}
-    }
-  }'::jsonb,
-  'major', 'Initial version of create GitHub issue action',
-  true, true, NOW(), 'system'
-) RETURNING id AS version_id \gset
+  INSERT INTO action_versions (
+    action_id, version, tool_reference, input_schema, output_schema,
+    change_type, change_description, validated, published, published_at, created_by
+  ) VALUES (
+    v_action_id, '1.0.0', 'github.createIssue',
+    '{
+      "type": "object",
+      "properties": {
+        "owner": {"type": "string", "description": "Repository owner"},
+        "repo": {"type": "string", "description": "Repository name"},
+        "title": {"type": "string", "description": "Issue title"},
+        "body": {"type": "string", "description": "Issue body/description"},
+        "labels": {"type": "array", "items": {"type": "string"}, "description": "Issue labels"}
+      },
+      "required": ["owner", "repo", "title"]
+    }'::jsonb,
+    '{
+      "type": "object",
+      "properties": {
+        "number": {"type": "integer", "description": "Issue number"},
+        "url": {"type": "string", "description": "Issue URL"},
+        "html_url": {"type": "string", "description": "Issue HTML URL"}
+      }
+    }'::jsonb,
+    'major', 'Initial version of create GitHub issue action',
+    true, true, NOW(), 'system'
+  ) RETURNING id INTO v_version_id;
 
-UPDATE actions SET current_version_id = :'version_id' WHERE id = :'action_id';
+  UPDATE actions SET current_version_id = v_version_id WHERE id = v_action_id;
+END $$;
 
 -- Example: Create Pull Request Action
-INSERT INTO actions (name, category, description, created_by) VALUES (
-  'create_pull_request',
-  'github',
-  'Creates a new pull request in a repository',
-  'system'
-) RETURNING id AS action_id \gset
+DO $$
+DECLARE
+  v_action_id UUID;
+  v_version_id UUID;
+BEGIN
+  INSERT INTO actions (name, category, description, created_by) VALUES (
+    'create_pull_request',
+    'github',
+    'Creates a new pull request in a repository',
+    'system'
+  ) RETURNING id INTO v_action_id;
 
-INSERT INTO action_versions (
-  action_id, version, tool_reference, input_schema, output_schema,
-  change_type, change_description, validated, published, published_at, created_by
-) VALUES (
-  :'action_id', '1.0.0', 'github.createPullRequest',
-  '{
-    "type": "object",
-    "properties": {
-      "owner": {"type": "string", "description": "Repository owner"},
-      "repo": {"type": "string", "description": "Repository name"},
-      "title": {"type": "string", "description": "PR title"},
-      "body": {"type": "string", "description": "PR body/description"},
-      "head": {"type": "string", "description": "Head branch"},
-      "base": {"type": "string", "description": "Base branch"}
-    },
-    "required": ["owner", "repo", "title", "head", "base"]
-  }'::jsonb,
-  '{
-    "type": "object",
-    "properties": {
-      "number": {"type": "integer", "description": "PR number"},
-      "url": {"type": "string", "description": "PR URL"},
-      "html_url": {"type": "string", "description": "PR HTML URL"}
-    }
-  }'::jsonb,
-  'major', 'Initial version of create pull request action',
-  true, true, NOW(), 'system'
-) RETURNING id AS version_id \gset
+  INSERT INTO action_versions (
+    action_id, version, tool_reference, input_schema, output_schema,
+    change_type, change_description, validated, published, published_at, created_by
+  ) VALUES (
+    v_action_id, '1.0.0', 'github.createPullRequest',
+    '{
+      "type": "object",
+      "properties": {
+        "owner": {"type": "string", "description": "Repository owner"},
+        "repo": {"type": "string", "description": "Repository name"},
+        "title": {"type": "string", "description": "PR title"},
+        "body": {"type": "string", "description": "PR body/description"},
+        "head": {"type": "string", "description": "Head branch"},
+        "base": {"type": "string", "description": "Base branch"}
+      },
+      "required": ["owner", "repo", "title", "head", "base"]
+    }'::jsonb,
+    '{
+      "type": "object",
+      "properties": {
+        "number": {"type": "integer", "description": "PR number"},
+        "url": {"type": "string", "description": "PR URL"},
+        "html_url": {"type": "string", "description": "PR HTML URL"}
+      }
+    }'::jsonb,
+    'major', 'Initial version of create pull request action',
+    true, true, NOW(), 'system'
+  ) RETURNING id INTO v_version_id;
 
-UPDATE actions SET current_version_id = :'version_id' WHERE id = :'action_id';
+  UPDATE actions SET current_version_id = v_version_id WHERE id = v_action_id;
+END $$;
 
 -- ========================================
 -- Comments

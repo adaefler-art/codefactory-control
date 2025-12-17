@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPromptLibraryService } from '../../../../../src/lib/prompt-library-service';
 import { CreatePromptVersionRequest } from '../../../../../src/lib/types/prompt-library';
+import { validateChangeType } from '../../../../../src/lib/prompt-library-validation';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -78,9 +79,11 @@ export async function POST(
     }
 
     // Validate change type
-    if (!['major', 'minor', 'patch'].includes(body.changeType)) {
+    try {
+      validateChangeType(body.changeType);
+    } catch (error) {
       return NextResponse.json(
-        { error: 'Invalid changeType. Must be: major, minor, or patch' },
+        { error: error instanceof Error ? error.message : 'Invalid changeType' },
         { status: 400 }
       );
     }

@@ -10,6 +10,7 @@
 import { Pool } from 'pg';
 import { getPool } from './db';
 import { logger } from './logger';
+import { BREAKING_CHANGE_THRESHOLD } from './prompt-library-validation';
 import {
   Prompt,
   PromptVersion,
@@ -421,10 +422,10 @@ export class PromptLibraryService {
         newRequest.systemPrompt || ''
       );
       
-      if (changeRatio > 0.5) {
+      if (changeRatio > BREAKING_CHANGE_THRESHOLD) {
         changes.push({
           type: 'output_changed',
-          description: 'System prompt changed significantly (>50% difference)',
+          description: `System prompt changed significantly (>${Math.round(BREAKING_CHANGE_THRESHOLD * 100)}% difference)`,
           impact: 'high',
         });
       }

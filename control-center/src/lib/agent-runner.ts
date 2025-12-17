@@ -681,11 +681,22 @@ export class AgentRunner {
   /**
    * Substitute variables in a template string
    * Supports ${variable} syntax
+   * Basic sanitization to prevent code injection
    */
   private substituteVariables(template: string, variables: Record<string, any>): string {
     return template.replace(/\$\{([^}]+)\}/g, (match, key) => {
       const value = variables[key];
-      return value !== undefined ? String(value) : match;
+      if (value === undefined) {
+        return match; // Keep placeholder if variable not found
+      }
+      
+      // Convert to string and perform basic sanitization
+      const stringValue = String(value);
+      
+      // Remove any control characters that could cause issues
+      const sanitized = stringValue.replace(/[\x00-\x1F\x7F]/g, '');
+      
+      return sanitized;
     });
   }
 }
