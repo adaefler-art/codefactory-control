@@ -193,6 +193,13 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - [Confidence Score Schema](docs/CONFIDENCE_SCORE_SCHEMA.md) - Confidence score normalization (0-100 scale, deterministic)
 - [Sync & Deployment Process](docs/SYNC_DEPLOYMENT_PROCESS.md) - Safe synchronization and deployment procedures
 
+**🔒 Security (EPIC 07):**
+- [Security Validation Guide](docs/SECURITY_VALIDATION_GUIDE.md) - **QUICK REFERENCE**: IAM policy validation and security checks
+- [Security Implementation](EPIC07_SECURITY_IMPLEMENTATION.md) - Complete security hardening implementation
+- [IAM Roles Justification](docs/IAM-ROLES-JUSTIFICATION.md) - Detailed IAM permissions and justifications
+- [Security & IAM Guide](docs/SECURITY-IAM.md) - Security architecture and best practices
+- [Secret Management](SECURITY.md) - Secrets Manager integration and credential management
+
 **🔧 Workflow System:**
 - [Workflow Schema](docs/WORKFLOW-SCHEMA.md) - Complete workflow model and JSON format specification
 - [Workflow Engine](docs/WORKFLOW-ENGINE.md) - Workflow execution and agent runner documentation
@@ -214,6 +221,9 @@ AWS CDK infrastructure for deploying the complete stack.
 ```bash
 npm install
 
+# Security checks (EPIC 07)
+npm run security:check
+
 # Validate secrets before deployment (recommended)
 npm run validate-secrets
 
@@ -229,9 +239,10 @@ Stacks:
 - `Afu9InfrastructureStack` - v0.2 ECS-based infrastructure
 
 **Pre-deployment Checks:**
-- Secret validation ensures all required keys exist in AWS Secrets Manager
-- Prevents runtime failures due to misconfigured secrets
-- See [Secret Validation Guide](docs/SECRET_VALIDATION.md) for details
+- **Security validation** ensures IAM policies follow least privilege principles (EPIC 07)
+- **Secret validation** ensures all required keys exist in AWS Secrets Manager
+- Prevents runtime failures and security misconfigurations
+- See [Security Validation Guide](docs/SECURITY_VALIDATION_GUIDE.md) for details
 
 ### Control Center (Next.js)
 

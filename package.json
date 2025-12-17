@@ -14,6 +14,8 @@
     "deploy": "cdk deploy",
     "destroy": "cdk destroy",
     "validate-secrets": "ts-node scripts/validate-secrets.ts",
+    "validate-iam": "ts-node scripts/validate-iam-policies.ts",
+    "security:check": "npm run validate-iam",
     "ecs:diagnose": "pwsh -File scripts/ecs_diagnose.ps1",
     "smoke:epic4": "pwsh -File scripts/smoke_epic4.ps1",
     "ecs:debug": "pwsh -File scripts/ecs_debug.ps1"
@@ -21,7 +23,7 @@
   "devDependencies": {
     "@octokit/rest": "^22.0.1",
     "@types/minimist": "^1.2.5",
-    "@types/node": "^22.10.2",
+    "@types/node": "^22.19.3",
     "ajv-cli": "^5.0.0",
     "ajv-formats": "^3.0.1",
     "aws-cdk-lib": "2.162.1",
@@ -29,7 +31,7 @@
     "esbuild": "^0.27.1",
     "source-map-support": "^0.5.21",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.0"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.950.0",

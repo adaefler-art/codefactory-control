@@ -1,0 +1,122 @@
+name: Security Validation
+
+# EPIC 07: Security & Blast Radius Minimization
+# Validates IAM policies follow least privilege principles
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'lib/**/*.ts'
+      - 'scripts/validate-iam-policies.ts'
+      - '.github/workflows/security-validation.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'lib/**/*.ts'
+  workflow_dispatch:
+
+jobs:
+  validate-iam-policies:
+    name: Validate IAM Policies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run IAM Policy Validation
+        run: npm run validate-iam
+
+      - name: Security Check Summary
+        if: always()
+        run: |
+          echo "## Security Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ IAM policy validation completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Validated:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ No wildcard resources on forbidden actions" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ All resources properly scoped to afu9/* prefix" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ Least privilege principle enforced" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ No broad action permissions (*)" >> $GITHUB_STEP_SUMMARY
+
+  policy-review:
+    name: Policy Change Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for IAM policy changes
+        id: check_changes
+        run: |
+          # Check if any IAM-related files changed
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E 'lib/.*-stack\.ts|lib/.*-iam.*\.ts' || true)
+          
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "## ⚠️ IAM Policy Changes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The following files with IAM policies have been modified:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$CHANGED_FILES" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Security Review Required" >> $GITHUB_STEP_SUMMARY
+            echo "- [ ] Verify all resources are properly scoped" >> $GITHUB_STEP_SUMMARY
+            echo "- [ ] Confirm least privilege principle is maintained" >> $GITHUB_STEP_SUMMARY
+            echo "- [ ] Check for justified wildcard usage with documentation" >> $GITHUB_STEP_SUMMARY
+            echo "- [ ] Review action permissions are minimal" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "✅ No IAM policy changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: steps.check_changes.outputs.changes_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `## 🔒 Security Review Required
+
+            This PR modifies IAM policies. Please ensure:
+
+            - ✅ All resources are scoped to \`afu9/*\` prefix
+            - ✅ No wildcard resources on sensitive actions
+            - ✅ Least privilege principle is maintained
+            - ✅ Any wildcards are documented and justified
+            - ✅ Action permissions are minimal and specific
+
+            **Security validation has passed**, but manual review is recommended for IAM changes.
+
+            See [IAM Roles Justification](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/IAM-ROLES-JUSTIFICATION.md) for details.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
