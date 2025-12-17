@@ -13,6 +13,8 @@ Dieses Runbook ist speziell für Fälle, in denen der ECS Circuit Breaker aufgru
 # Environment-Variablen setzen
 export AWS_REGION=eu-central-1
 export STACK_NAME=Afu9EcsStack
+export NETWORK_STACK_NAME=Afu9NetworkStack
+export DATABASE_STACK_NAME=Afu9DatabaseStack
 export CLUSTER_NAME=afu9-cluster
 export SERVICE_NAME=afu9-control-center-stage  # oder afu9-control-center-prod
 ```
@@ -354,7 +356,7 @@ aws ecs wait services-stable \
 
 # Health-Check prüfen
 ALB_DNS=$(aws cloudformation describe-stacks \
-  --stack-name Afu9NetworkStack \
+  --stack-name ${NETWORK_STACK_NAME} \
   --region ${AWS_REGION} \
   --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
   --output text)
@@ -417,7 +419,7 @@ aws secretsmanager update-secret \
 ```bash
 # RDS Endpoint aus Database Stack
 aws cloudformation describe-stacks \
-  --stack-name Afu9DatabaseStack \
+  --stack-name ${DATABASE_STACK_NAME} \
   --region ${AWS_REGION} \
   --query 'Stacks[0].Outputs[?OutputKey==`Afu9DbEndpoint`].OutputValue' \
   --output text
@@ -459,7 +461,7 @@ aws ecs describe-services \
 
 # Health-Check OK?
 ALB_DNS=$(aws cloudformation describe-stacks \
-  --stack-name Afu9NetworkStack \
+  --stack-name ${NETWORK_STACK_NAME} \
   --region ${AWS_REGION} \
   --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
   --output text)
@@ -591,7 +593,7 @@ aws ecs update-service \
 ```bash
 # RDS Master Secret ARN aus Database Stack holen
 RDS_SECRET_ARN=$(aws cloudformation describe-stacks \
-  --stack-name Afu9DatabaseStack \
+  --stack-name ${DATABASE_STACK_NAME} \
   --region ${AWS_REGION} \
   --query 'Stacks[0].Outputs[?OutputKey==`Afu9DbSecretArn`].OutputValue' \
   --output text)
