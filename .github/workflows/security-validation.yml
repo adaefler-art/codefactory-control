@@ -40,20 +40,39 @@ jobs:
         run: npm ci
 
       - name: Run IAM Policy Validation
-        run: npm run validate-iam
+        id: validate_iam
+        run: |
+          npm run validate-iam 2>&1 | tee validation_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE
 
       - name: Security Check Summary
         if: always()
         run: |
-          echo "## Security Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔒 Security Validation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ IAM policy validation completed" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.validate_iam.outputs.exit_code }}" == "0" ]; then
+            echo "✅ **IAM policy validation PASSED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **IAM policy validation FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Validated:" >> $GITHUB_STEP_SUMMARY
-          echo "- ✓ No wildcard resources on forbidden actions" >> $GITHUB_STEP_SUMMARY
-          echo "- ✓ All resources properly scoped to afu9/* prefix" >> $GITHUB_STEP_SUMMARY
-          echo "- ✓ Least privilege principle enforced" >> $GITHUB_STEP_SUMMARY
-          echo "- ✓ No broad action permissions (*)" >> $GITHUB_STEP_SUMMARY
+          echo "### Validated Checks:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ No wildcard resources on forbidden actions (IAM, RDS, EC2, ECS destructive ops)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ All resources properly scoped to \`afu9/*\` or \`afu9-cluster\` prefix" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ Least privilege principle enforced on all roles" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ No broad action permissions (\`*\` or \`service:*\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ Wildcard usage limited to AWS service limitations only" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Policy Scope Coverage:" >> $GITHUB_STEP_SUMMARY
+          echo "- Task Execution Role (ECS infrastructure)" >> $GITHUB_STEP_SUMMARY
+          echo "- Task Role (application runtime)" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub Actions Deploy Role (CI/CD)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 See full validation output in workflow logs" >> $GITHUB_STEP_SUMMARY
 
   policy-review:
     name: Policy Change Review
@@ -100,19 +119,30 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const message = `## 🔒 Security Review Required
+            const message = `## 🔒 Security Review Required - IAM Policy Changes
 
-            This PR modifies IAM policies. Please ensure:
+            This PR modifies IAM policies. Please complete this security checklist:
 
-            - ✅ All resources are scoped to \`afu9/*\` prefix
-            - ✅ No wildcard resources on sensitive actions
-            - ✅ Least privilege principle is maintained
-            - ✅ Any wildcards are documented and justified
-            - ✅ Action permissions are minimal and specific
+            ### Least Privilege Validation
+            - [ ] All resources are scoped to \`afu9/*\`, \`afu9-cluster\`, or \`/ecs/afu9/*\` prefix
+            - [ ] No wildcard resources on sensitive/destructive actions
+            - [ ] Least privilege principle is maintained (minimal required permissions)
+            - [ ] Any wildcards are documented with AWS service limitation justification
+            - [ ] Action permissions are minimal and specific (no \`*\` wildcards)
+            - [ ] Resource ARNs include account/region where applicable
+            - [ ] Conditions are used to restrict permissions where possible
 
-            **Security validation has passed**, but manual review is recommended for IAM changes.
+            ### Security Impact Assessment
+            - [ ] Changes reviewed against [IAM Roles Justification](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/IAM-ROLES-JUSTIFICATION.md)
+            - [ ] No privilege escalation paths introduced
+            - [ ] Blast radius remains minimized to AFU-9 resources
+            - [ ] Cross-service access patterns validated
 
-            See [IAM Roles Justification](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/IAM-ROLES-JUSTIFICATION.md) for details.`;
+            **Automated validation has passed**, but manual security review is required for all IAM policy changes.
+
+            **Related Documentation:**
+            - [IAM Roles Justification](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/IAM-ROLES-JUSTIFICATION.md)
+            - [Security IAM Guide](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/SECURITY-IAM.md)`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,

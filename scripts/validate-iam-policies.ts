@@ -32,47 +32,77 @@ interface ValidationResult {
 }
 
 // Allowed wildcard resources with justifications
+// These actions are explicitly documented as AWS service limitations
+// Reference: https://docs.aws.amazon.com/service-authorization/latest/reference/
 const ALLOWED_WILDCARDS: Record<string, string> = {
-  'ecr:GetAuthorizationToken': 'AWS service limitation - GetAuthorizationToken does not support resource-level permissions',
-  'cloudwatch:GetMetricStatistics': 'AWS service limitation - CloudWatch Metrics is a global service without resource-level permissions',
-  'cloudwatch:GetMetricData': 'AWS service limitation - CloudWatch Metrics is a global service without resource-level permissions',
-  'cloudwatch:ListMetrics': 'AWS service limitation - CloudWatch Metrics is a global service without resource-level permissions',
-  'cloudwatch:DescribeAlarms': 'AWS service limitation - CloudWatch Metrics is a global service without resource-level permissions',
-  'cloudwatch:PutMetricData': 'AWS service limitation - CloudWatch Metrics is a global service without resource-level permissions',
+  'ecr:GetAuthorizationToken': 'AWS service limitation - GetAuthorizationToken does not support resource-level permissions per AWS documentation',
+  'cloudwatch:GetMetricStatistics': 'AWS service limitation - CloudWatch Metrics does not support resource-level permissions',
+  'cloudwatch:GetMetricData': 'AWS service limitation - CloudWatch Metrics does not support resource-level permissions',
+  'cloudwatch:ListMetrics': 'AWS service limitation - CloudWatch Metrics does not support resource-level permissions',
+  'cloudwatch:DescribeAlarms': 'AWS service limitation - CloudWatch Alarms does not support resource-level permissions',
+  'cloudwatch:PutMetricData': 'AWS service limitation - CloudWatch Metrics does not support resource-level permissions',
+  'logs:DescribeLogGroups': 'AWS service limitation - Requires * resource when listing all log groups',
 };
 
-// Actions that should never have wildcard resources
+// Actions that should NEVER have wildcard resources
+// These are destructive or privileged operations that must be explicitly scoped
 const FORBIDDEN_WILDCARD_ACTIONS = [
+  // IAM operations - security critical
   'iam:CreateRole',
   'iam:DeleteRole',
   'iam:AttachRolePolicy',
   'iam:DetachRolePolicy',
   'iam:PutRolePolicy',
   'iam:DeleteRolePolicy',
+  'iam:PassRole',
+  'iam:UpdateAssumeRolePolicy',
+  // Secrets management - data protection critical
   'secretsmanager:CreateSecret',
   'secretsmanager:DeleteSecret',
   'secretsmanager:UpdateSecret',
+  'secretsmanager:PutSecretValue',
+  // Database operations - data loss prevention
   'rds:DeleteDBInstance',
   'rds:DeleteDBCluster',
+  'rds:ModifyDBInstance',
+  'rds:ModifyDBCluster',
+  // Compute operations - availability critical
   'ec2:TerminateInstances',
   'ec2:DeleteSecurityGroup',
+  'ec2:ModifySecurityGroupRules',
   'ecs:DeleteCluster',
   'ecs:DeleteService',
+  'ecs:DeleteTaskDefinitions',
+  'ecs:DeregisterTaskDefinition',
+  // Storage operations - data loss prevention
   's3:DeleteBucket',
+  's3:DeleteObject',
+  's3:PutBucketPolicy',
+  // Container registry - supply chain security
+  'ecr:DeleteRepository',
+  'ecr:SetRepositoryPolicy',
+  'ecr:DeleteLifecyclePolicy',
 ];
 
-// Required prefixes for resource ARNs
+// Required prefixes for resource ARNs - ensures proper resource scoping
+// All resources must be scoped to AFU-9 specific prefixes to prevent cross-application access
 const REQUIRED_RESOURCE_PREFIXES: Record<string, string[]> = {
   'secretsmanager:GetSecretValue': ['afu9/'],
   'secretsmanager:DescribeSecret': ['afu9/'],  
   'ecr:PutImage': ['afu9/'],
   'ecr:BatchCheckLayerAvailability': ['afu9/'],
   'ecr:InitiateLayerUpload': ['afu9/'],
+  'ecr:CompleteLayerUpload': ['afu9/'],
+  'ecr:UploadLayerPart': ['afu9/'],
+  'ecr:DescribeRepositories': ['afu9/'],
   'ecs:UpdateService': ['afu9-cluster'],
   'ecs:DescribeServices': ['afu9-cluster'],
+  'ecs:DescribeTasks': ['afu9-cluster'],
+  'ecs:ListTasks': ['afu9-cluster'],
   'logs:FilterLogEvents': ['/ecs/afu9/'],
   'logs:CreateLogStream': ['/ecs/afu9/'],
   'logs:PutLogEvents': ['/ecs/afu9/'],
+  'logs:DescribeLogStreams': ['/ecs/afu9/'],
 };
 
 // Variable names that are known to contain properly scoped ARNs
