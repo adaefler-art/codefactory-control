@@ -3,6 +3,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
+import { validateSecretKeys } from './utils/secret-validator';
 
 /**
  * AFU-9 Database Stack
@@ -201,6 +202,19 @@ export class Afu9DatabaseStack extends cdk.Stack {
         password: dbCredentialsSecret.secretValueFromJson('password'),
       },
     });
+
+    // ========================================
+    // Secret Key Validation (Guardrail I-ECS-DB-02)
+    // ========================================
+
+    // Validate that the application connection secret has all required keys
+    // This ensures the ECS stack can successfully reference these keys
+    validateSecretKeys(
+      this,
+      appConnectionSecret,
+      ['host', 'port', 'database', 'username', 'password'],
+      'Database application connection secret'
+    );
 
     // ========================================
     // Tags
