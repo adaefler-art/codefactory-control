@@ -1,47 +1,25 @@
 import { NextResponse } from 'next/server';
 
-// Version should match control-center package.json
-// In a production system, this could be read from process.env.APP_VERSION
 const VERSION = '0.2.5';
 
-/**
- * Readiness check endpoint for Kubernetes-style readiness probes
- * 
- * This endpoint performs deeper checks than /api/health:
- * - Database connectivity (if configured)
- * - MCP server availability (if in production mode)
- * 
- * Returns:
- * - 200 OK if service is ready to accept traffic
- * - 503 Service Unavailable if service is not ready
- * 
- * ALB should use this endpoint for health checks to ensure traffic
- * is only routed to fully initialized instances.
- */
 export async function GET() {
   try {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
       service: { status: 'ok' },
     };
 
-    // Check database connectivity based on DATABASE_ENABLED flag
     const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
-    
+
     if (!databaseEnabled) {
-      // Database explicitly disabled - report as not_configured (this is expected)
       checks.database = { status: 'not_configured', message: 'Database disabled in configuration' };
     } else {
-      // Database is enabled, check if credentials are configured
       const dbHost = process.env.DATABASE_HOST;
       const dbPort = process.env.DATABASE_PORT;
       const dbName = process.env.DATABASE_NAME;
       const dbUser = process.env.DATABASE_USER;
       const dbPassword = process.env.DATABASE_PASSWORD;
-      
+
       if (dbHost && dbPort && dbName && dbUser && dbPassword) {
-        // All required DB env vars are present
-        // In production, we could attempt an actual connection here
-        // For now, verify the configuration looks valid
         try {
           const port = parseInt(dbPort, 10);
           if (port > 0 && port < 65536) {
@@ -50,41 +28,38 @@ export async function GET() {
             checks.database = { status: 'error', message: 'invalid_port' };
           }
         } catch (error) {
-          checks.database = { 
-            status: 'error', 
-            message: error instanceof Error ? error.message : 'invalid_port'
+          checks.database = {
+            status: 'error',
+            message: error instanceof Error ? error.message : 'invalid_port',
           };
         }
       } else {
-        // Database enabled but credentials missing
         const missing: string[] = [];
         if (!dbHost) missing.push('DATABASE_HOST');
         if (!dbPort) missing.push('DATABASE_PORT');
         if (!dbName) missing.push('DATABASE_NAME');
         if (!dbUser) missing.push('DATABASE_USER');
         if (!dbPassword) missing.push('DATABASE_PASSWORD');
-        
-        checks.database = { 
-          status: 'error', 
-          message: `Missing required environment variables: ${missing.join(', ')}`
+
+        checks.database = {
+          status: 'error',
+          message: `Missing required environment variables: ${missing.join(', ')}`,
         };
       }
     }
 
-    // Check if essential environment variables are set
     const essentialVars = ['NODE_ENV'];
-    const missingVars = essentialVars.filter(v => !process.env[v]);
-    
+    const missingVars = essentialVars.filter((v) => !process.env[v]);
+
     if (missingVars.length > 0) {
-      checks.environment = { 
-        status: 'warning', 
-        message: `Missing vars: ${missingVars.join(', ')}` 
+      checks.environment = {
+        status: 'warning',
+        message: `Missing vars: ${missingVars.join(', ')}`,
       };
     } else {
       checks.environment = { status: 'ok' };
     }
 
-    // Check MCP servers health in production/staging, but do NOT gate readiness
     const env = process.env.NODE_ENV;
     const shouldCheckMCPServers = env === 'production' || env === 'staging';
     const mcpServers = [
@@ -124,15 +99,10 @@ export async function GET() {
       }
     }
 
-    // Determine overall readiness
-    const hasFailures = Object.entries(checks).some(([name, check]) => {
-      if (['mcp-github', 'mcp-deploy', 'mcp-observability'].includes(name)) {
-        return false;
-      }
-      return check.status === 'error' || check.status === 'failed';
-    });
+    const hasFailures = Object.values(checks).some(
+      (check) => check.status === 'error' || check.status === 'failed'
+    );
 
-    // Collect errors
     const errors: string[] = [];
     Object.entries(checks).forEach(([name, check]) => {
       if (check.status === 'error') {
@@ -150,19 +120,14 @@ export async function GET() {
       checks,
       dependencies: {
         required: ['database', 'environment'],
-        optional: shouldCheckMCPServers 
-          ? ['mcp-github', 'mcp-deploy', 'mcp-observability']
-          : [],
+        optional: shouldCheckMCPServers ? ['mcp-github', 'mcp-deploy', 'mcp-observability'] : [],
       },
       ...(errors.length > 0 && { errors }),
     };
 
-    return NextResponse.json(
-      response,
-      { status: ready ? 200 : 503 }
-    );
+    return NextResponse.json(response, { status: ready ? 200 : 503 });
   } catch (error) {
-    console.error('Readiness check failed:', error);
+    console.error('Dependency readiness check failed:', error);
     return NextResponse.json(
       {
         ready: false,
@@ -171,7 +136,7 @@ export async function GET() {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
         checks: {
-          service: { status: 'error', message: 'Readiness check exception' }
+          service: { status: 'error', message: 'Readiness check exception' },
         },
         dependencies: {
           required: ['database', 'environment'],

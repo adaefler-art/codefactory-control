@@ -13,6 +13,13 @@ let pool: Pool | null = null;
  */
 export function getPool(): Pool {
   if (!pool) {
+    const shouldUseSsl =
+      process.env.DATABASE_SSL === 'true' ||
+      process.env.PGSSLMODE?.toLowerCase() === 'require' ||
+      ['production', 'staging'].includes(process.env.NODE_ENV || '');
+
+    const sslConfig = shouldUseSsl ? { rejectUnauthorized: false } : undefined;
+
     const config: PoolConfig = {
       host: process.env.DATABASE_HOST || 'localhost',
       port: parseInt(process.env.DATABASE_PORT || '5432', 10),
@@ -22,6 +29,7 @@ export function getPool(): Pool {
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
+      ssl: sslConfig,
     };
 
     pool = new Pool(config);

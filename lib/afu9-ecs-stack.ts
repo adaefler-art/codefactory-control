@@ -388,9 +388,13 @@ export class Afu9EcsStack extends cdk.Stack {
     // IAM Roles
     // ========================================
 
+    const taskExecutionRoleName = environment === ENVIRONMENT.PROD
+      ? 'afu9-ecs-task-execution-role-prod'
+      : 'afu9-ecs-task-execution-role';
+
     // Task execution role (used by ECS to pull images and write logs)
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
-      roleName: `afu9-ecs-task-execution-role-${environment}`,
+      roleName: taskExecutionRoleName,
       description: 'IAM role for ECS to pull container images and manage logs',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
@@ -420,9 +424,13 @@ export class Afu9EcsStack extends cdk.Stack {
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
+    const taskRoleName = environment === ENVIRONMENT.PROD
+      ? 'afu9-ecs-task-role-prod'
+      : 'afu9-ecs-task-role';
+
     // Task role (used by application code for AWS API calls)
     const taskRole = new iam.Role(this, 'TaskRole', {
-      roleName: `afu9-ecs-task-role-${environment}`,
+      roleName: taskRoleName,
       description: 'IAM role for AFU-9 ECS tasks to access AWS services',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
@@ -594,9 +602,13 @@ export class Afu9EcsStack extends cdk.Stack {
         PORT: '3000',
         ENVIRONMENT: environment, // Add environment variable for app-level detection
         DATABASE_ENABLED: enableDatabase ? 'true' : 'false', // Signal to app whether DB is configured
+        DATABASE_SSL: 'true',
         MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
         MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
+        MCP_GITHUB_URL: 'http://127.0.0.1:3001',
+        MCP_DEPLOY_URL: 'http://127.0.0.1:3002',
+        MCP_OBSERVABILITY_URL: 'http://127.0.0.1:3003',
       },
       secrets: {
         ...(dbSecret
@@ -741,10 +753,14 @@ export class Afu9EcsStack extends cdk.Stack {
     // ECS Service
     // ========================================
 
+    const serviceName = environment === ENVIRONMENT.PROD
+      ? 'afu9-control-center-prod'
+      : 'afu9-control-center';
+
     this.service = new ecs.FargateService(this, 'Service', {
       cluster: this.cluster,
       taskDefinition,
-      serviceName: `afu9-control-center-${environment}`,
+      serviceName,
       desiredCount: envDesiredCount,
       // Deployment preferences: keep at least 50% healthy during updates
       minHealthyPercent: 50,
