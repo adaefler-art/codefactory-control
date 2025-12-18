@@ -1,0 +1,44 @@
+name: Import AFU-9 v0.4 Issues
+
+# Manual workflow trigger for importing v0.4 issues and milestones
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "import-v04" to confirm issue creation'
+        required: true
+        default: ''
+
+jobs:
+  import-issues:
+    name: Import v0.4 Issues and Milestones
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'import-v04'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Run import script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+        run: npm run import-v04-issues
+        
+      - name: Summary
+        run: |
+          echo "✅ AFU-9 v0.4 issues imported successfully!"
+          echo "📊 Created 6 milestones and 13 issues"
+          echo ""
+          echo "View milestones: ${{ github.server_url }}/${{ github.repository }}/milestones"
+          echo "View issues: ${{ github.server_url }}/${{ github.repository }}/issues?q=is%3Aissue+label%3Av0.4"
