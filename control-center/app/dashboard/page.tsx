@@ -310,6 +310,12 @@ export default function DashboardPage() {
             </div>
             <div className="flex gap-3">
               <Link
+                href="/factory"
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+              >
+                Factory Status
+              </Link>
+              <Link
                 href="/observability"
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
               >
