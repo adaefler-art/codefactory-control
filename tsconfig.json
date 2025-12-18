@@ -15,6 +15,7 @@
     "bin/**/*.ts",
     "lib/**/*.ts",
     "infra/lambdas/**/*.ts",
-    "packages/deploy-memory/src/**/*.ts"
+    "packages/deploy-memory/src/**/*.ts",
+    "scripts/**/*.ts"
   ]
 }
