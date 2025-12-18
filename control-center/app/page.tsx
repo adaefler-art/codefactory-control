@@ -48,6 +48,13 @@ export default function Home() {
           />
 
           <FeatureCard
+            href="/factory"
+            title="Factory Status"
+            description="Read-only Übersicht der Factory Runs, Verdicts und KPIs (EPIC 08)"
+            bgColor="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/30"
+          />
+
+          <FeatureCard
             href="/board"
             title="Project Board"
             description="CodeFactory Board-Ansicht im GitHub-Style – Backlog, In Progress, Done"
