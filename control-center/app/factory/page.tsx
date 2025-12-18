@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { FactoryStatusResponse } from "../../src/lib/types/factory-status";
 
@@ -11,20 +11,7 @@ export default function FactoryPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  useEffect(() => {
-    fetchFactoryStatus();
-    
-    // Auto-refresh every 30 seconds if enabled
-    const interval = setInterval(() => {
-      if (autoRefresh && document.visibilityState === 'visible') {
-        fetchFactoryStatus();
-      }
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [autoRefresh]);
-
-  async function fetchFactoryStatus() {
+  const fetchFactoryStatus = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -44,7 +31,20 @@ export default function FactoryPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchFactoryStatus();
+    
+    // Auto-refresh every 30 seconds if enabled
+    const interval = setInterval(() => {
+      if (autoRefresh && document.visibilityState === 'visible') {
+        fetchFactoryStatus();
+      }
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchFactoryStatus]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -57,7 +57,7 @@ export default function FactoryPage() {
       case "pending":
         return "bg-yellow-500";
       case "cancelled":
-        return "bg-gray-500";
+        return "bg-orange-500";
       default:
         return "bg-gray-500";
     }
