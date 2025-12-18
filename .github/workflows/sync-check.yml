@@ -10,7 +10,7 @@ on:
 
 # Prevent duplicate runs for the same PR
 concurrency:
-  group: sync-check-${{ github.event.pull_request.number || github.ref }}
+  group: sync-check-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -21,6 +21,7 @@ jobs:
   sync-check:
     name: Check Sync with Main
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Prevent workflow from hanging indefinitely
     
     steps:
       - name: Checkout code
@@ -62,12 +63,15 @@ jobs:
           echo "✅ No merge conflicts detected"
       
       - name: Install root dependencies
+        timeout-minutes: 3
         run: npm ci
       
       - name: Build infrastructure
+        timeout-minutes: 3
         run: npm run build
       
       - name: Install MCP server dependencies
+        timeout-minutes: 3
         run: |
           cd mcp-servers/base && npm ci && cd ../..
           cd mcp-servers/github && npm ci && cd ../..
@@ -75,6 +79,7 @@ jobs:
           cd mcp-servers/observability && npm ci && cd ../..
       
       - name: Build MCP servers
+        timeout-minutes: 3
         run: |
           cd mcp-servers/base && npm run build && cd ../..
           cd mcp-servers/github && npm run build && cd ../..
