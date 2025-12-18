@@ -182,6 +182,11 @@ AFU-9 v0.2 uses a modern, scalable architecture:
 - [KPI Changelog](docs/KPI_CHANGELOG.md) - **NEW**: Complete version history and change tracking
 - [KPI API](docs/KPI_API.md) - REST API documentation and usage examples
 
+**💰 Cost & Efficiency Engine (EPIC 9):**
+- [Cost Attribution Guide](docs/COST_ATTRIBUTION.md) - **CANONICAL**: Transparent cost tracking and economic steering
+- Cost per Outcome KPI in [KPI Definitions](docs/KPI_DEFINITIONS.md#12-cost-per-outcome)
+- API: `/api/v1/costs/{runs,products,factory,export}` - Cost data and export endpoints
+
 **🎯 Prompt Library (EPIC 6):**
 - [Prompt Library Canon](docs/PROMPT_LIBRARY_CANON.md) - **CANONICAL**: Single source of truth for all Factory prompts
 - [Prompt Governance](docs/PROMPT_GOVERNANCE.md) - **NEW**: Versioning rules and change management
