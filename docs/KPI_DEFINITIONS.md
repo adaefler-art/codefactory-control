@@ -1,9 +1,9 @@
 # AFU-9 Factory KPI Definitions
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Status:** Canonical  
 **EPIC:** 3 - KPI System & Telemetry  
-**Last Updated:** 2025-12-17
+**Last Updated:** 2025-12-18
 
 This document defines all Key Performance Indicators (KPIs) for the AFU-9 Factory Control Plane. It serves as the **Single Source of Truth** for KPI calculations, ensuring consistent measurement and steering across all factory operations.
 
@@ -373,7 +373,103 @@ Time to complete a single workflow run.
 
 ---
 
-### 12. Token Usage
+### 12. Cost per Outcome
+
+**Category:** Cost / Efficiency  
+**Level:** Factory, Product  
+**Unit:** USD  
+**Target:** Minimize  
+**EPIC:** 9 - Cost & Efficiency Engine  
+**Issue:** 9.1 - Cost Attribution per Run
+
+**Definition:**  
+Average total cost (AWS infrastructure + LLM) per successful workflow outcome. Measures economic efficiency of the factory.
+
+**Formula:**
+```
+Cost per Outcome = Total Costs / Successful Outcomes
+
+Where:
+- Total Costs = AWS Infrastructure Costs + LLM Costs
+- AWS Infrastructure Costs = ECS + RDS + S3 + CloudWatch + Secrets Manager + Lambda
+- LLM Costs = Sum of all token costs from agent runs
+- Successful Outcomes = Workflow executions with status = 'completed'
+```
+
+**Calculation:**
+```sql
+-- Factory-level (from materialized view)
+SELECT 
+  SUM(ac.total_cost_usd) / NULLIF(COUNT(*) FILTER (WHERE we.status = 'completed'), 0) as cost_per_outcome_usd
+FROM workflow_executions we
+LEFT JOIN aws_cost_attribution ac ON we.id = ac.execution_id
+WHERE we.started_at >= NOW() - INTERVAL '24 hours';
+
+-- Product-level
+SELECT 
+  r.owner || '/' || r.name as product_name,
+  SUM(ac.total_cost_usd) / NULLIF(COUNT(*) FILTER (WHERE we.status = 'completed'), 0) as cost_per_outcome_usd
+FROM workflow_executions we
+JOIN repositories r ON we.repository_id = r.id
+LEFT JOIN aws_cost_attribution ac ON we.id = ac.execution_id
+WHERE we.started_at >= NOW() - INTERVAL '7 days'
+GROUP BY r.owner, r.name;
+```
+
+**Cost Breakdown:**
+1. **ECS Fargate**: Per-minute cost based on vCPU/memory allocation
+2. **RDS PostgreSQL**: Shared pool allocation across all runs
+3. **S3**: Storage and operations per execution
+4. **CloudWatch**: Logs ingestion and storage per execution
+5. **Secrets Manager**: Shared pool allocation for secret access
+6. **LLM**: Token-based costs aggregated from agent_runs table
+
+**Data Sources:**
+- `aws_cost_attribution` table: Per-run AWS cost breakdown
+- `agent_runs.cost_usd`: LLM token costs
+- `workflow_executions.status`: Success/failure status
+- `cost_allocation_rules`: Configurable cost allocation strategies
+
+**Interpretation:**
+- **< $0.01 per outcome**: Excellent efficiency
+- **$0.01 - $0.05 per outcome**: Good efficiency
+- **$0.05 - $0.10 per outcome**: Acceptable efficiency
+- **> $0.10 per outcome**: Review for optimization opportunities
+
+**Rationale:**  
+Cost per Outcome enables:
+1. **Economic Steering**: Track factory cost efficiency over time
+2. **Budget Planning**: Predict costs based on expected throughput
+3. **Cost Optimization**: Identify expensive workflows and products
+4. **Controlling**: Export data for financial reporting and analysis
+5. **Transparency**: Verursachungsgerechte (fair/causal) cost attribution
+
+**Cost Attribution Methods:**
+- `estimated`: Calculated using cost_allocation_rules (default)
+- `cost_explorer`: From AWS Cost Explorer API (planned)
+- `manual`: Manually entered for correction/adjustment
+
+**Export Capabilities:**
+- JSON format: `/api/v1/costs/export?format=json`
+- CSV format: `/api/v1/costs/export?format=csv`
+- Date filtering: `?startDate=2025-12-01&endDate=2025-12-31`
+
+**Optimization Strategies:**
+1. Reduce execution duration (lower ECS costs)
+2. Optimize LLM token usage (shorter prompts, better caching)
+3. Batch operations to amortize fixed costs
+4. Right-size ECS tasks based on actual resource usage
+5. Implement result caching for repeated operations
+
+**Related Metrics:**
+- **Total Factory Costs**: Sum of all costs across time period
+- **Cost Breakdown by Service**: Percentage allocation per AWS service
+- **Cost Trend**: Change in cost per outcome over time
+- **Product Cost Ranking**: Most expensive products/repositories
+
+---
+
+### 13. Token Usage
 
 **Category:** Cost  
 **Level:** Run  
@@ -391,7 +487,7 @@ Token Usage = prompt_tokens + completion_tokens
 
 ---
 
-### 13. Tool Call Success Rate
+### 14. Tool Call Success Rate
 
 **Category:** Reliability  
 **Level:** Run  
@@ -663,7 +759,7 @@ KPI definitions follow semantic versioning:
 - **MINOR**: New KPI added or non-breaking enhancement
 - **PATCH**: Documentation clarification, no formula change
 
-**Current Version:** 1.0.0
+**Current Version:** 1.2.0
 
 **Change Process:**
 1. Propose KPI change with rationale
@@ -673,6 +769,7 @@ KPI definitions follow semantic versioning:
 5. Update all consumers to use new version
 
 **Version History:**
+- `1.2.0` (2025-12-18): Added Cost per Outcome KPI (EPIC 9, Issue 9.1)
 - `1.1.0` (2025-12-17): Added Build Determinism KPI (EPIC 5, Issue 5.1)
 - `1.0.0` (2024-12-16): Initial canonical KPI definitions for EPIC 3
 
