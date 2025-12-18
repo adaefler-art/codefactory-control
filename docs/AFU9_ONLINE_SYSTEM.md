@@ -9,3 +9,6 @@ When `enableDatabase` is true (CDK context or stack prop), the ECS task expects 
 - `password`
 
 If `enableDatabase` is false or the secret/keys are absent, the task skips injecting database env vars and the `/api/ready` endpoint reports `database: not_configured` (current behavior).
+
+## Healthchecks
+- Current ECS healthcheck setup and incident notes: see [docs/runbooks/ecs-healthchecks.md](docs/runbooks/ecs-healthchecks.md).
