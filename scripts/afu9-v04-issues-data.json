@@ -1,0 +1,136 @@
+{
+  "version": "0.4",
+  "project": "AFU-9 Codefactory",
+  "description": "Issues and Milestones for AFU-9 v0.4 focusing on ECS deployment stability, configuration clarity, and operational excellence",
+  "epics": [
+    {
+      "id": "EPIC-01-ECS-STABILITY",
+      "title": "EPIC 1 — ECS Deployment Stabilität (Core)",
+      "description": "**Epic-ID:** EPIC-01-ECS-STABILITY\n\n**Ziel:** ECS Services deployen deterministisch ohne Circuit Breaker oder Rollbacks.\n\n**Definition of Done:** Afu9EcsStack deployt zuverlässig, Tasks bleiben healthy.",
+      "labels": ["epic", "v0.4", "ecs", "stability"]
+    },
+    {
+      "id": "EPIC-02-CONFIGURATION",
+      "title": "EPIC 2 — Konfigurationsklarheit & Feature Flags",
+      "description": "**Epic-ID:** EPIC-02-CONFIGURATION\n\n**Ziel:** Eindeutige, konsistente Kontext-Flags ohne implizite Defaults.\n\n**Definition of Done:** Alle Feature-Flags sind dokumentiert und werden korrekt verwendet.",
+      "labels": ["epic", "v0.4", "configuration"]
+    },
+    {
+      "id": "EPIC-03-DEPLOY-SAFETY",
+      "title": "EPIC 3 — Deploy Safety & Diff-Gates",
+      "description": "**Epic-ID:** EPIC-03-DEPLOY-SAFETY\n\n**Ziel:** Keine überraschenden Deploys, kein ungewollter ECS Replacement.\n\n**Definition of Done:** Deploy-Gate ist etabliert und dokumentiert.",
+      "labels": ["epic", "v0.4", "deploy", "safety"]
+    },
+    {
+      "id": "EPIC-04-OBSERVABILITY",
+      "title": "EPIC 4 — Observability & Health Signale",
+      "description": "**Epic-ID:** EPIC-04-OBSERVABILITY\n\n**Ziel:** Schnelle, eindeutige Aussage über Betriebszustand.\n\n**Definition of Done:** Health- und Ready-Endpoints sind klar getrennt und dokumentiert.",
+      "labels": ["epic", "v0.4", "observability"]
+    },
+    {
+      "id": "EPIC-05-RUNBOOKS",
+      "title": "EPIC 5 — Runbooks & Wissenssicherung",
+      "description": "**Epic-ID:** EPIC-05-RUNBOOKS\n\n**Ziel:** Wissen ist reproduzierbar, nicht personengebunden.\n\n**Definition of Done:** Runbooks für häufige Fehler sind dokumentiert und copy/paste-ready.",
+      "labels": ["epic", "v0.4", "documentation", "runbooks"]
+    },
+    {
+      "id": "EPIC-06-RELEASE-CLOSE",
+      "title": "EPIC 6 — Release-Abschluss & Qualitätssicherung",
+      "description": "**Epic-ID:** EPIC-06-RELEASE-CLOSE\n\n**Ziel:** v0.4 ist sauber abgeschlossen und referenzierbar.\n\n**Definition of Done:** v0.4 ist dokumentiert und v0.5 Go-Kriterien sind definiert.",
+      "labels": ["epic", "v0.4", "release"]
+    }
+  ],
+  "issues": [
+    {
+      "id": "I-01-01-DB-SECRET-MAPPING",
+      "epicId": "EPIC-01-ECS-STABILITY",
+      "title": "Issue 1.1 — Fix: DB Secret-Key Mapping korrigieren",
+      "body": "**Issue-ID:** I-01-01-DB-SECRET-MAPPING\n\n**Beschreibung:**\nKorrigiere das ECS TaskDefinition Secret-Mapping für DATABASE_NAME von `database` auf `dbname`, passend zur tatsächlichen Struktur des RDS Secrets.\n\n**Akzeptanzkriterien:**\n- [ ] Keine ResourceInitializationError mehr\n- [ ] Keine STOPPED Tasks wegen Secret-Errors\n- [ ] `cdk diff` zeigt nur die erwartete Änderung",
+      "labels": ["v0.4", "ecs", "secrets", "bugfix"]
+    },
+    {
+      "id": "I-01-02-SECRET-PREFLIGHT",
+      "epicId": "EPIC-01-ECS-STABILITY",
+      "title": "Issue 1.2 — Guardrail: Secret-Key-Preflight vor Deploy",
+      "body": "**Issue-ID:** I-01-02-SECRET-PREFLIGHT\n\n**Beschreibung:**\nImplementiere einen Preflight-Check (Script oder CDK-Assertion), der sicherstellt, dass alle im Task referenzierten Secret-Keys existieren.\n\n**Akzeptanzkriterien:**\n- [ ] Build/Synth schlägt fehl, wenn ein Key fehlt\n- [ ] Fehlermeldung nennt Secret + fehlenden Key explizit\n- [ ] Lokal + CI nutzbar",
+      "labels": ["v0.4", "ecs", "secrets", "validation"]
+    },
+    {
+      "id": "I-01-03-ECS-CIRCUIT-DIAG",
+      "epicId": "EPIC-01-ECS-STABILITY",
+      "title": "Issue 1.3 — ECS Circuit Breaker Diagnose standardisieren",
+      "body": "**Issue-ID:** I-01-03-ECS-CIRCUIT-DIAG\n\n**Beschreibung:**\nStandardisiere die Diagnose bei ECS Circuit Breaker Events (Service Events, STOPPED Tasks, Logs).\n\n**Akzeptanzkriterien:**\n- [ ] Klare Abfolge von Commands dokumentiert\n- [ ] Root-Cause innerhalb <10 Minuten identifizierbar\n- [ ] Keine Trial-and-Error-Fixes nötig",
+      "labels": ["v0.4", "ecs", "documentation", "troubleshooting"]
+    },
+    {
+      "id": "I-02-01-DB-OFF-MODE",
+      "epicId": "EPIC-02-CONFIGURATION",
+      "title": "Issue 2.1 — DB-Off Mode vollständig durchziehen",
+      "body": "**Issue-ID:** I-02-01-DB-OFF-MODE\n\n**Beschreibung:**\n`afu9-enable-database=false` muss garantieren, dass keine DB-Ressourcen, Secrets oder Env-Mappings in der TaskDefinition landen.\n\n**Akzeptanzkriterien:**\n- [ ] `cdk diff` zeigt bei DB-off keine DB-Referenzen\n- [ ] ECS Tasks starten ohne DB-Abhängigkeit\n- [ ] Dokumentation aktualisiert",
+      "labels": ["v0.4", "configuration", "database"]
+    },
+    {
+      "id": "I-02-02-CONTEXT-NAMES",
+      "epicId": "EPIC-02-CONFIGURATION",
+      "title": "Issue 2.2 — Kontext-Namen vereinheitlichen / absichern",
+      "body": "**Issue-ID:** I-02-02-CONTEXT-NAMES\n\n**Beschreibung:**\nSicherstellen, dass nur kanonische Kontextnamen verwendet werden (afu9-enable-database, afu9-enable-https).\nOptional: Warnung/Fail bei falschen Aliases (enableDatabase).\n\n**Akzeptanzkriterien:**\n- [ ] Falsche Keys führen zu klarer Fehlermeldung\n- [ ] Dokumentierte Liste erlaubter Kontexte",
+      "labels": ["v0.4", "configuration", "validation"]
+    },
+    {
+      "id": "I-03-01-DIFF-GATE",
+      "epicId": "EPIC-03-DEPLOY-SAFETY",
+      "title": "Issue 3.1 — Verbindlicher Diff-Gate vor Deploy",
+      "body": "**Issue-ID:** I-03-01-DIFF-GATE\n\n**Beschreibung:**\nDefiniere einen verbindlichen Diff-Gate: Deploy darf nur erfolgen, wenn der Diff keine unerwarteten Änderungen (ECS Replacement, DNS/ACM) enthält.\n\n**Akzeptanzkriterien:**\n- [ ] Klare Kriterien: was blockiert Deploy\n- [ ] Dokumentiert im Deploy-Runbook\n- [ ] Copilot-/CI-tauglich",
+      "labels": ["v0.4", "deploy", "safety", "documentation"]
+    },
+    {
+      "id": "I-03-02-DEPLOY-PROMPT",
+      "epicId": "EPIC-03-DEPLOY-SAFETY",
+      "title": "Issue 3.2 — Reproduzierbarer Deploy-Prompt (kanonisch)",
+      "body": "**Issue-ID:** I-03-02-DEPLOY-PROMPT\n\n**Beschreibung:**\nKanonischen VS-Copilot Deploy-Prompt dokumentieren (Build → Synth → Diff → Deploy → Verify).\n\n**Akzeptanzkriterien:**\n- [ ] Prompt ist copy/paste-ready\n- [ ] Entspricht dem dokumentierten Stand\n- [ ] Wird als Referenz genutzt",
+      "labels": ["v0.4", "deploy", "documentation"]
+    },
+    {
+      "id": "I-04-01-HEALTH-READY",
+      "epicId": "EPIC-04-OBSERVABILITY",
+      "title": "Issue 4.1 — Health vs Ready sauber trennen",
+      "body": "**Issue-ID:** I-04-01-HEALTH-READY\n\n**Beschreibung:**\nSicherstellen, dass `/api/health` und `/api/ready` klar getrennte Semantik haben (liveness vs readiness).\n\n**Akzeptanzkriterien:**\n- [ ] Health blockiert keine Deploys\n- [ ] Ready spiegelt echte Abhängigkeiten\n- [ ] Dokumentierte Bedeutung",
+      "labels": ["v0.4", "observability", "health-checks"]
+    },
+    {
+      "id": "I-04-02-STATUS-SIGNALS",
+      "epicId": "EPIC-04-OBSERVABILITY",
+      "title": "Issue 4.2 — ECS + ALB Status als Entscheidungssignale",
+      "body": "**Issue-ID:** I-04-02-STATUS-SIGNALS\n\n**Beschreibung:**\nDefiniere die relevanten Status-Signale (ECS Events, Target Health, Probes) als verbindliche Entscheidungsgrundlage.\n\n**Akzeptanzkriterien:**\n- [ ] Klare \\\"Go / No-Go\\\"-Kriterien\n- [ ] Copy/paste-Commands dokumentiert",
+      "labels": ["v0.4", "observability", "documentation"]
+    },
+    {
+      "id": "I-05-01-RUNBOOK-ROLLBACK",
+      "epicId": "EPIC-05-RUNBOOKS",
+      "title": "Issue 5.1 — Runbook: UPDATE_ROLLBACK_COMPLETE",
+      "body": "**Issue-ID:** I-05-01-RUNBOOK-ROLLBACK\n\n**Beschreibung:**\nErstelle ein Runbook für den häufigsten Fehlerfall: UPDATE_ROLLBACK_COMPLETE.\n\n**Akzeptanzkriterien:**\n- [ ] Schrittfolge: CFN → ECS → Logs → Fix\n- [ ] Typische Fehlerbilder enthalten\n- [ ] Copy/paste-ready",
+      "labels": ["v0.4", "documentation", "runbooks", "troubleshooting"]
+    },
+    {
+      "id": "I-05-02-RUNBOOK-SECRETS",
+      "epicId": "EPIC-05-RUNBOOKS",
+      "title": "Issue 5.2 — Runbook: ECS Secret Injection Failures",
+      "body": "**Issue-ID:** I-05-02-RUNBOOK-SECRETS\n\n**Beschreibung:**\nRunbook speziell für Secret-Injection-Fehler (fehlende Keys, falsches Mapping).\n\n**Akzeptanzkriterien:**\n- [ ] Verweist auf Preflight-Checks\n- [ ] Vermeidet Wiederholungsfehler",
+      "labels": ["v0.4", "documentation", "runbooks", "secrets"]
+    },
+    {
+      "id": "I-06-01-RELEASE-REVIEW",
+      "epicId": "EPIC-06-RELEASE-CLOSE",
+      "title": "Issue 6.1 — v0.4 Abschluss-Review & Referenzstand",
+      "body": "**Issue-ID:** I-06-01-RELEASE-REVIEW\n\n**Beschreibung:**\nDokumentiere den finalen v0.4 Stand als Referenz (Was ist stabil? Was bewusst nicht?).\n\n**Akzeptanzkriterien:**\n- [ ] Klarer Scope\n- [ ] Verweis auf Deploy-Prompt & Runbooks\n- [ ] Grundlage für v0.5",
+      "labels": ["v0.4", "release", "documentation"]
+    },
+    {
+      "id": "I-06-02-V05-GO",
+      "epicId": "EPIC-06-RELEASE-CLOSE",
+      "title": "Issue 6.2 — Entscheidungsvorlage für v0.5",
+      "body": "**Issue-ID:** I-06-02-V05-GO\n\n**Beschreibung:**\nKurze Entscheidungsvorlage: Was ist erfüllt, um v0.5 zu starten (DNS/HTTPS, Feature-Arbeit)?\n\n**Akzeptanzkriterien:**\n- [ ] Klare Go/No-Go-Kriterien\n- [ ] Keine offenen Stabilitätsblocker",
+      "labels": ["v0.4", "release", "planning"]
+    }
+  ]
+}
