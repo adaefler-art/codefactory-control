@@ -3,6 +3,7 @@
 !bin/*.js
 !jest.config.js
 !scripts/*.js
+!control-center/prebuild.js
 *.d.ts
 node_modules/
 cdk.out/
