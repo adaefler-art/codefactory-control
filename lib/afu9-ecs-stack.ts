@@ -341,7 +341,7 @@ export class Afu9EcsStack extends cdk.Stack {
       validateSecretKeys(
         this,
         dbSecret,
-        ['host', 'port', 'database', 'username', 'password'],
+        ['host', 'port', 'dbname', 'username', 'password'],
         'Database connection credentials'
       );
     }
@@ -603,9 +603,8 @@ export class Afu9EcsStack extends cdk.Stack {
           ? {
               DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
               DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-              // Application connection secret uses 'database' as the key (defined in Afu9DatabaseStack)
-              // Note: This differs from RDS-generated secrets which use 'dbname'
-              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+              // RDS-generated master secret uses 'dbname' for the database name
+              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'dbname'),
               DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
               DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
             }
