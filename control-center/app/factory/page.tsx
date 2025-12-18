@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { FactoryStatusResponse, FactoryRunSummary, VerdictSummary } from "../../src/lib/types/factory-status";
+import type { FactoryStatusResponse } from "../../src/lib/types/factory-status";
 
 export default function FactoryPage() {
   const [factoryStatus, setFactoryStatus] = useState<FactoryStatusResponse | null>(null);
@@ -60,23 +60,6 @@ export default function FactoryPage() {
         return "bg-gray-500";
       default:
         return "bg-gray-500";
-    }
-  };
-
-  const getStatusTextColor = (status: string) => {
-    switch (status) {
-      case "running":
-        return "text-blue-400";
-      case "completed":
-        return "text-green-400";
-      case "failed":
-        return "text-red-400";
-      case "pending":
-        return "text-yellow-400";
-      case "cancelled":
-        return "text-gray-400";
-      default:
-        return "text-gray-400";
     }
   };
 
