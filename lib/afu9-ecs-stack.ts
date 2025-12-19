@@ -341,7 +341,7 @@ export class Afu9EcsStack extends cdk.Stack {
       validateSecretKeys(
         this,
         dbSecret,
-        ['host', 'port', 'dbname', 'username', 'password'],
+        ['host', 'port', 'database', 'username', 'password'],
         'Database connection credentials'
       );
     }
