@@ -1,0 +1,142 @@
+name: AFU-9 Self-Propelling Issue Demo
+
+# This workflow demonstrates the self-propelling capability of AFU-9
+# by automatically transitioning an issue through all states from CREATED to DONE
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'GitHub Issue number to self-propel'
+        required: true
+        type: number
+      base_branch:
+        description: 'Base branch for PR (default: main)'
+        required: false
+        default: 'main'
+        type: string
+
+  # Optional: Auto-trigger on issues with specific label
+  issues:
+    types: [labeled]
+
+jobs:
+  self-propel-issue:
+    name: Self-Propel Issue
+    runs-on: ubuntu-latest
+    
+    # Only run if manually triggered OR if label is "afu9:self-propel"
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      (github.event_name == 'issues' && github.event.label.name == 'afu9:self-propel')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set issue number
+        id: set-issue
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "issue_number=${{ github.event.inputs.issue_number }}" >> $GITHUB_OUTPUT
+            echo "base_branch=${{ github.event.inputs.base_branch }}" >> $GITHUB_OUTPUT
+          else
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "base_branch=main" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        working-directory: ./control-center
+        run: npm ci
+      
+      - name: Start MCP servers (if needed)
+        run: |
+          echo "Note: MCP servers should be running in ECS or locally"
+          echo "For demo purposes, we'll call the API endpoint directly"
+      
+      - name: Call Self-Propel API
+        id: self-propel
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTROL_CENTER_URL: ${{ secrets.CONTROL_CENTER_URL || 'http://localhost:3000' }}
+        run: |
+          ISSUE_NUM="${{ steps.set-issue.outputs.issue_number }}"
+          BASE_BRANCH="${{ steps.set-issue.outputs.base_branch }}"
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          
+          echo "Triggering self-propelling workflow for issue #$ISSUE_NUM"
+          
+          # Call the self-propel API endpoint
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -d "{\"owner\":\"$OWNER\",\"repo\":\"$REPO\",\"baseBranch\":\"$BASE_BRANCH\"}" \
+            "$CONTROL_CENTER_URL/api/issues/$ISSUE_NUM/self-propel" \
+            -w "\n%{http_code}" -o response.json || echo "500")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Self-propelling workflow triggered successfully"
+            cat response.json
+            echo "execution_id=$(jq -r '.executionId' response.json)" >> $GITHUB_OUTPUT
+            echo "status=$(jq -r '.status' response.json)" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to trigger self-propelling workflow (HTTP $HTTP_CODE)"
+            cat response.json || echo "No response body"
+            exit 1
+          fi
+      
+      - name: Add workflow run comment
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = ${{ steps.set-issue.outputs.issue_number }};
+            const executionId = '${{ steps.self-propel.outputs.execution_id }}';
+            const status = '${{ steps.self-propel.outputs.status }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `## 🤖 Self-Propelling Workflow Triggered
+              
+**GitHub Actions Run**: [View Run](${runUrl})
+**Execution ID**: \`${executionId}\`
+**Status**: ${status}
+**Timestamp**: ${new Date().toISOString()}
+
+The AFU-9 self-propelling workflow has been initiated. This issue will automatically progress through all states:
+
+CREATED → SPEC_READY → IMPLEMENTING → VERIFIED → MERGE_READY → DONE
+
+All transitions will be logged in the comments below. No manual intervention is required.`
+            });
+      
+      - name: Report failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = ${{ steps.set-issue.outputs.issue_number }};
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `## ❌ Self-Propelling Workflow Failed
+              
+**GitHub Actions Run**: [View Run](${runUrl})
+**Timestamp**: ${new Date().toISOString()}
+
+The AFU-9 self-propelling workflow failed to execute. Please check the workflow logs for details.`
+            });
