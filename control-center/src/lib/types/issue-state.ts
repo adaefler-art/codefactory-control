@@ -127,3 +127,49 @@ export function isTerminalState(state: IssueState): boolean {
 export function isActiveState(state: IssueState): boolean {
   return ![IssueState.DONE, IssueState.KILLED, IssueState.HOLD].includes(state);
 }
+
+/**
+ * Determine if actions can be performed on an issue in the given state
+ * 
+ * Terminal states (DONE, KILLED) do not allow any actions.
+ * This prevents "zombie issues" - issues that are killed but continue to execute.
+ * 
+ * @param state - The current issue state
+ * @returns true if actions can be performed, false otherwise
+ */
+export function canPerformAction(state: IssueState): boolean {
+  return !isTerminalState(state);
+}
+
+/**
+ * Validate that an issue is not in KILLED state before performing an action
+ * 
+ * This is the primary guard against zombie issues. Any action that modifies
+ * or executes workflows should call this first.
+ * 
+ * @param state - The current issue state
+ * @throws Error if the issue is in KILLED state
+ */
+export function ensureNotKilled(state: IssueState): void {
+  if (state === IssueState.KILLED) {
+    throw new Error(
+      'Cannot perform action on KILLED issue. Issue has been terminated and cannot be reactivated. ' +
+      'Re-activation requires explicit new intent (e.g., reopening the issue or creating a new one).'
+    );
+  }
+}
+
+/**
+ * Validate that an issue is not in a terminal state before performing an action
+ * 
+ * @param state - The current issue state
+ * @throws Error if the issue is in a terminal state (DONE or KILLED)
+ */
+export function ensureNotTerminal(state: IssueState): void {
+  if (isTerminalState(state)) {
+    throw new Error(
+      `Cannot perform action on issue in terminal state: ${state}. ` +
+      'Terminal states do not allow further actions.'
+    );
+  }
+}

@@ -13,6 +13,9 @@ import {
   getIssueStateDescription,
   isTerminalState,
   isActiveState,
+  canPerformAction,
+  ensureNotKilled,
+  ensureNotTerminal,
 } from '../../src/lib/types/issue-state';
 
 describe('IssueState Enum', () => {
@@ -232,6 +235,61 @@ describe('isActiveState', () => {
     expect(isActiveState(IssueState.DONE)).toBe(false);
     expect(isActiveState(IssueState.KILLED)).toBe(false);
     expect(isActiveState(IssueState.HOLD)).toBe(false);
+  });
+});
+
+describe('canPerformAction', () => {
+  test('should return true for non-terminal states', () => {
+    expect(canPerformAction(IssueState.CREATED)).toBe(true);
+    expect(canPerformAction(IssueState.SPEC_READY)).toBe(true);
+    expect(canPerformAction(IssueState.IMPLEMENTING)).toBe(true);
+    expect(canPerformAction(IssueState.VERIFIED)).toBe(true);
+    expect(canPerformAction(IssueState.MERGE_READY)).toBe(true);
+    expect(canPerformAction(IssueState.HOLD)).toBe(true);
+  });
+
+  test('should return false for terminal states (Issue A5)', () => {
+    expect(canPerformAction(IssueState.DONE)).toBe(false);
+    expect(canPerformAction(IssueState.KILLED)).toBe(false);
+  });
+});
+
+describe('ensureNotKilled (Issue A5)', () => {
+  test('should not throw for non-KILLED states', () => {
+    expect(() => ensureNotKilled(IssueState.CREATED)).not.toThrow();
+    expect(() => ensureNotKilled(IssueState.SPEC_READY)).not.toThrow();
+    expect(() => ensureNotKilled(IssueState.IMPLEMENTING)).not.toThrow();
+    expect(() => ensureNotKilled(IssueState.VERIFIED)).not.toThrow();
+    expect(() => ensureNotKilled(IssueState.MERGE_READY)).not.toThrow();
+    expect(() => ensureNotKilled(IssueState.DONE)).not.toThrow();
+    expect(() => ensureNotKilled(IssueState.HOLD)).not.toThrow();
+  });
+
+  test('should throw for KILLED state', () => {
+    expect(() => ensureNotKilled(IssueState.KILLED)).toThrow();
+    expect(() => ensureNotKilled(IssueState.KILLED)).toThrow(/Cannot perform action on KILLED issue/);
+    expect(() => ensureNotKilled(IssueState.KILLED)).toThrow(/Re-activation requires explicit new intent/);
+  });
+});
+
+describe('ensureNotTerminal (Issue A5)', () => {
+  test('should not throw for non-terminal states', () => {
+    expect(() => ensureNotTerminal(IssueState.CREATED)).not.toThrow();
+    expect(() => ensureNotTerminal(IssueState.SPEC_READY)).not.toThrow();
+    expect(() => ensureNotTerminal(IssueState.IMPLEMENTING)).not.toThrow();
+    expect(() => ensureNotTerminal(IssueState.VERIFIED)).not.toThrow();
+    expect(() => ensureNotTerminal(IssueState.MERGE_READY)).not.toThrow();
+    expect(() => ensureNotTerminal(IssueState.HOLD)).not.toThrow();
+  });
+
+  test('should throw for DONE state', () => {
+    expect(() => ensureNotTerminal(IssueState.DONE)).toThrow();
+    expect(() => ensureNotTerminal(IssueState.DONE)).toThrow(/terminal state/);
+  });
+
+  test('should throw for KILLED state', () => {
+    expect(() => ensureNotTerminal(IssueState.KILLED)).toThrow();
+    expect(() => ensureNotTerminal(IssueState.KILLED)).toThrow(/terminal state/);
   });
 });
 

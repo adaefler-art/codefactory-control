@@ -12,6 +12,7 @@ import {
   validateStateTransition,
   attemptAutomaticTransition,
   evaluateNextStateProgression,
+  validateWorkflowExecution,
   StateTransitionContext,
 } from '../../src/lib/state-transition-guardrails';
 import { IssueState } from '../../src/lib/types/issue-state';
@@ -445,6 +446,54 @@ describe('State Transition Guardrails', () => {
 
       expect(result.allowed).toBe(true);
     });
+
+    test('should block transition from KILLED state (Issue A5)', () => {
+      const context: StateTransitionContext = {};
+
+      const result = validateStateTransition(
+        IssueState.KILLED,
+        IssueState.HOLD,
+        context
+      );
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('terminal state');
+      expect(result.reason).toContain('KILLED');
+      expect(result.conditions[0].name).toBe('terminal_state_check');
+      expect(result.suggestions).toBeDefined();
+      expect(result.suggestions?.[0]).toContain('explicit intent');
+    });
+
+    test('should block transition from DONE state (Issue A5)', () => {
+      const context: StateTransitionContext = {};
+
+      const result = validateStateTransition(
+        IssueState.DONE,
+        IssueState.IMPLEMENTING,
+        context
+      );
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('terminal state');
+      expect(result.reason).toContain('DONE');
+      expect(result.conditions[0].name).toBe('terminal_state_check');
+    });
+
+    test('should prevent any transition from KILLED to any state (Issue A5)', () => {
+      const context: StateTransitionContext = {};
+      const allStates = Object.values(IssueState);
+
+      allStates.forEach(targetState => {
+        const result = validateStateTransition(
+          IssueState.KILLED,
+          targetState,
+          context
+        );
+
+        expect(result.allowed).toBe(false);
+        expect(result.reason).toContain('terminal state');
+      });
+    });
   });
 
   describe('attemptAutomaticTransition', () => {
@@ -626,6 +675,69 @@ describe('State Transition Guardrails', () => {
         expect(result.canProgress).toBe(true);
         expect(result.nextState).toBeDefined();
       }
+    });
+  });
+
+  describe('validateWorkflowExecution (Issue A5)', () => {
+    test('should allow workflow execution for active states', () => {
+      const activeStates = [
+        IssueState.CREATED,
+        IssueState.SPEC_READY,
+        IssueState.IMPLEMENTING,
+        IssueState.VERIFIED,
+        IssueState.MERGE_READY,
+      ];
+
+      activeStates.forEach(state => {
+        const result = validateWorkflowExecution(state);
+        expect(result.allowed).toBe(true);
+        expect(result.reason).toContain('allowed');
+        expect(result.conditions[0].passed).toBe(true);
+      });
+    });
+
+    test('should allow workflow execution for HOLD state', () => {
+      const result = validateWorkflowExecution(IssueState.HOLD);
+      expect(result.allowed).toBe(true);
+    });
+
+    test('should block workflow execution for KILLED state (zombie prevention)', () => {
+      const result = validateWorkflowExecution(IssueState.KILLED);
+      
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('KILLED');
+      expect(result.reason).toContain('zombie issues');
+      expect(result.conditions[0].name).toBe('issue_not_killed');
+      expect(result.conditions[0].passed).toBe(false);
+      expect(result.suggestions).toBeDefined();
+      expect(result.suggestions?.length).toBeGreaterThan(0);
+      expect(result.suggestions?.[0]).toContain('explicit new intent');
+    });
+
+    test('should block workflow execution for DONE state', () => {
+      const result = validateWorkflowExecution(IssueState.DONE);
+      
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('DONE');
+      expect(result.reason).toContain('complete');
+      expect(result.conditions[0].name).toBe('issue_not_done');
+      expect(result.conditions[0].passed).toBe(false);
+      expect(result.suggestions).toBeDefined();
+    });
+
+    test('should provide clear error message for KILLED issues', () => {
+      const result = validateWorkflowExecution(IssueState.KILLED);
+      
+      expect(result.reason).toContain('terminated');
+      expect(result.reason).toContain('blocked');
+      expect(result.suggestions).toContain('Re-activation requires explicit new intent');
+    });
+
+    test('should provide clear error message for DONE issues', () => {
+      const result = validateWorkflowExecution(IssueState.DONE);
+      
+      expect(result.reason).toContain('complete');
+      expect(result.suggestions?.some(s => s.includes('new issue'))).toBe(true);
     });
   });
 });
