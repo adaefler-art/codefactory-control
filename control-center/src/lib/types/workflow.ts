@@ -4,6 +4,8 @@
  * Defines the structure for workflows, executions, and related entities.
  */
 
+import { IssueState } from './issue-state';
+
 /**
  * Workflow definition structure
  */
@@ -46,6 +48,13 @@ export interface WorkflowContext {
     owner: string;
     name: string;
     default_branch?: string;
+  };
+  
+  /** Optional: Issue tracking information */
+  issue?: {
+    number: number;
+    state?: IssueState;
+    title?: string;
   };
 }
 
