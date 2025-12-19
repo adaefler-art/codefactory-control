@@ -15,7 +15,7 @@
  * - VERIFIED → MERGE_READY: Only when diff-gate criteria are met
  */
 
-import { IssueState, isValidTransition } from './types/issue-state';
+import { IssueState, isValidTransition, isTerminalState } from './types/issue-state';
 import { logger } from './logger';
 
 /**
@@ -362,6 +362,28 @@ export function validateStateTransition(
   toState: IssueState,
   context: StateTransitionContext
 ): GuardrailValidationResult {
+  // Issue A5: Enforce terminal state semantics
+  // KILLED and DONE states cannot transition to any other state
+  if (isTerminalState(fromState)) {
+    const suggestions = [];
+    if (fromState === IssueState.KILLED) {
+      suggestions.push('To work on this issue again, create a new issue or reopen with explicit intent');
+    } else {
+      suggestions.push('Issue is complete. Create a new issue if additional work is needed');
+    }
+    
+    return {
+      allowed: false,
+      reason: `Cannot transition from terminal state: ${fromState}. Terminal states (DONE, KILLED) are final and do not allow any forward transitions. Re-activation requires explicit new intent.`,
+      conditions: [{
+        name: 'terminal_state_check',
+        passed: false,
+        message: `${fromState} is a terminal state and cannot transition to any other state`,
+      }],
+      suggestions,
+    };
+  }
+
   // First check if the transition is valid in the state machine
   if (!isValidTransition(fromState, toState)) {
     return {
@@ -487,5 +509,61 @@ export function evaluateNextStateProgression(
     canProgress: validation.allowed,
     nextState: validation.allowed ? nextState : undefined,
     validation,
+  };
+}
+
+/**
+ * Validate that an issue state allows workflow execution
+ * 
+ * Issue A5: Prevents "zombie issues" by blocking workflow execution on terminal states.
+ * KILLED and DONE issues cannot execute workflows.
+ * 
+ * @param issueState - The current issue state
+ * @returns Validation result indicating if workflow can be executed
+ */
+export function validateWorkflowExecution(
+  issueState: IssueState
+): GuardrailValidationResult {
+  if (issueState === IssueState.KILLED) {
+    return {
+      allowed: false,
+      reason: 'Cannot execute workflow on KILLED issue. Issue has been terminated and all workflows are blocked to prevent zombie issues.',
+      conditions: [{
+        name: 'issue_not_killed',
+        passed: false,
+        message: 'Issue is in KILLED state',
+      }],
+      suggestions: [
+        'Re-activation requires explicit new intent',
+        'Create a new issue or reopen this issue with clear justification',
+      ],
+    };
+  }
+  
+  if (issueState === IssueState.DONE) {
+    return {
+      allowed: false,
+      reason: 'Cannot execute workflow on DONE issue. Issue is complete and no further work should be performed.',
+      conditions: [{
+        name: 'issue_not_done',
+        passed: false,
+        message: 'Issue is in DONE state',
+      }],
+      suggestions: [
+        'Issue is complete',
+        'If additional work is needed, create a new issue',
+      ],
+    };
+  }
+  
+  // All non-terminal states allow workflow execution
+  return {
+    allowed: true,
+    reason: `Workflow execution allowed for issue in ${issueState} state`,
+    conditions: [{
+      name: 'issue_state_allows_execution',
+      passed: true,
+      message: `Issue is in ${issueState} state which allows workflow execution`,
+    }],
   };
 }
