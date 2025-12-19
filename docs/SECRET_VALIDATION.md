@@ -1,11 +1,11 @@
 # Secret Key Validation Guardrail
 
-**Issue ID:** I-ECS-DB-02  
+**Issue ID:** I-01-02-SECRET-PREFLIGHT (previously I-ECS-DB-02)  
 **Status:** ✅ Implemented
 
 ## Overview
 
-This guardrail ensures that all required secret keys exist in AWS Secrets Manager before deployment. It prevents runtime failures due to missing or misconfigured secrets by validating secrets during the CDK synth/build phase and optionally before deployment.
+This guardrail ensures that all required secret keys exist in AWS Secrets Manager before deployment. It prevents runtime failures due to missing or misconfigured secrets by **failing the build/synth process** when secrets are invalid.
 
 ## Problem Statement
 
@@ -18,11 +18,12 @@ These failures only occur when ECS tasks start, causing deployment rollbacks and
 
 ## Solution
 
-A multi-layered validation approach:
+A **preflight check** that blocks CDK synth/build/deploy:
 
-1. **CDK Synth-time Validation**: Outputs validation requirements to CloudFormation
-2. **Pre-deployment Script**: Validates actual secrets in AWS Secrets Manager
-3. **CI Integration**: Automatic validation in CI pipelines
+1. **Build Validation**: `npm run build` validates secrets before TypeScript compilation
+2. **Synth Validation**: `npm run synth` validates secrets before CDK synthesis
+3. **Deploy Validation**: `npm run deploy` validates secrets before deployment
+4. **CI Integration**: Automatic validation in CI pipelines (already integrated)
 
 ## Architecture
 
@@ -54,25 +55,60 @@ The system tracks three types of secrets:
 
 ## Usage
 
-### 1. CDK Synth Validation
+### 1. Build with Secret Validation (Recommended)
 
-The validation is automatically integrated into CDK stacks. When you run `cdk synth`, validation metadata is included in the CloudFormation outputs:
+The `npm run build` command now includes automatic secret validation:
 
 ```bash
-npx cdk synth Afu9EcsStack
+npm run build
 ```
 
-Look for outputs like:
-```yaml
-Outputs:
-  SecretValidationafu9github:
-    Description: Secret validation requirements for GitHub API credentials
-    Value: '{"secretName":"afu9/github","requiredKeys":["token","owner","repo"],"description":"GitHub API credentials"}'
+This will:
+1. Validate all secrets in AWS Secrets Manager
+2. If validation fails, build stops with clear error messages
+3. If validation passes, TypeScript compilation proceeds
+
+**For local development without AWS:**
+```bash
+SKIP_SECRET_VALIDATION=true npm run build
 ```
 
-### 2. Pre-deployment Validation Script
+### 2. CDK Synth with Secret Validation (Automatic)
 
-Run the standalone validation script to check actual secrets in AWS:
+The `npm run synth` command now validates secrets **before** synthesis:
+
+```bash
+# Synth all stacks with validation
+npm run synth
+
+# Synth specific stack with validation
+npm run synth -- Afu9EcsStack
+
+# Synth without validation (not recommended)
+npm run synth:no-validation
+# OR
+SKIP_SECRET_VALIDATION=true npm run synth
+```
+
+**Validation behavior:**
+- ✅ Validates all secrets before running CDK synth
+- ❌ **Fails fast** if any secret is missing or has missing keys
+- 📋 Shows clear error messages with secret name and missing keys
+- 🔧 Provides instructions on how to fix the issues
+
+### 3. Deploy with Secret Validation (Automatic)
+
+The `npm run deploy` command validates secrets before deployment:
+
+```bash
+npm run deploy
+```
+
+This ensures secrets are valid before any AWS resources are modified.
+
+### 4. Standalone Validation Script
+
+Run validation without building or deploying:
 
 ```bash
 # Using npm script (recommended)
@@ -91,9 +127,9 @@ ts-node scripts/validate-secrets.ts
 - `1` - One or more secrets failed validation
 - `2` - Script error (e.g., AWS credentials not configured)
 
-### 3. CI/CD Integration
+### 5. CI/CD Integration
 
-Add to your GitHub Actions workflow:
+CI workflows already include validation (no changes needed):
 
 ```yaml
 - name: Validate Secrets
@@ -122,11 +158,57 @@ npm run deploy
 ### Code Structure
 
 ```
-lib/utils/secret-validator.ts    # Core validation logic
-scripts/validate-secrets.ts       # Standalone CLI script
-lib/afu9-database-stack.ts        # Database stack with validation
-lib/afu9-ecs-stack.ts             # ECS stack with validation
+lib/utils/secret-validator.ts       # Core validation logic
+scripts/validate-secrets.ts          # Standalone CLI script
+scripts/synth-with-validation.ts     # CDK synth wrapper with validation
+lib/afu9-database-stack.ts           # Database stack with validation
+lib/afu9-ecs-stack.ts                # ECS stack with validation
+package.json                         # Updated build/synth/deploy scripts
 ```
+
+### Preflight Check Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Developer runs: npm run build / npm run synth              │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Step 1: Validate Secrets                                   │
+│  - Connect to AWS Secrets Manager                           │
+│  - Check afu9/database (required: host, port, database,     │
+│    username, password)                                      │
+│  - Check afu9/github (required: token, owner, repo)         │
+│  - Check afu9/llm (optional keys)                           │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+                ┌────────────┴────────────┐
+                │                         │
+                ▼                         ▼
+     ┌──────────────────┐    ┌──────────────────┐
+     │ All Valid ✓      │    │ Missing Keys ✗   │
+     └────────┬─────────┘    └────────┬─────────┘
+              │                       │
+              ▼                       ▼
+┌─────────────────────────┐ ┌──────────────────────┐
+│ Step 2: Proceed with    │ │ Step 2: FAIL BUILD   │
+│ TypeScript build / CDK  │ │ - Show clear error   │
+│ synth                   │ │ - List missing keys  │
+└─────────────────────────┘ │ - Exit code 1        │
+                            └──────────────────────┘
+```
+
+### NPM Scripts
+
+| Script | Validation | Description |
+|--------|------------|-------------|
+| `npm run build` | ✅ Automatic | Validates secrets, then runs TypeScript compilation |
+| `npm run synth` | ✅ Automatic | Validates secrets, then runs CDK synth |
+| `npm run synth:no-validation` | ❌ Skipped | Direct CDK synth without validation |
+| `npm run deploy` | ✅ Automatic | Validates secrets, then deploys |
+| `npm run validate-secrets` | ✅ Only | Standalone validation (no build/synth) |
+| `SKIP_SECRET_VALIDATION=true npm run synth` | ❌ Skipped | For local dev without AWS |
 
 ### Integration Points
 
@@ -174,7 +256,9 @@ validateSecretKeys(
 
 ## Validation Output Examples
 
-### Success Case
+### Success Case (Build/Synth)
+
+When running `npm run build` or `npm run synth`:
 
 ```
 =====================================
@@ -183,7 +267,7 @@ AFU-9 Preflight Secret Validation
 
 Region: eu-central-1
 
-Validating secrets...
+Validating secrets before CDK synth...
 
 Validating database secret (afu9/database)...
 ✓ database secret validation passed
@@ -201,10 +285,71 @@ Validation Summary
 Total: 3
 
 ✓ All secrets validated successfully!
-You can proceed with deployment.
+
+Proceeding with CDK synth...
+
+=====================================
+Running CDK Synth
+=====================================
+
+Command: npx cdk synth
+
+[CDK synth output follows...]
 ```
 
-### Failure Case
+### Failure Case (Build/Synth Blocked)
+
+When running `npm run build` or `npm run synth` with missing keys:
+
+```
+=====================================
+AFU-9 Preflight Secret Validation
+=====================================
+
+Region: eu-central-1
+
+Validating secrets before CDK synth...
+
+Validating database secret (afu9/database)...
+✗ database secret validation failed: Secret afu9/database is missing required keys: password
+Validating github secret (afu9/github)...
+✓ github secret validation passed
+Validating llm secret (afu9/llm)...
+✓ llm secret validation passed
+
+=====================================
+Validation Summary
+=====================================
+
+✓ Passed: 2
+✗ Failed: 1
+Total: 3
+
+✗ Secret validation FAILED!
+
+Cannot proceed with CDK synth due to missing or invalid secrets:
+
+  ❌ Secret: afu9/database
+     Error: Secret afu9/database is missing required keys: password
+     Missing keys: password
+
+How to fix:
+  1. Go to AWS Secrets Manager console
+  2. Create or update the secret with missing keys
+  3. Ensure all required keys exist with valid values
+  4. Run this command again
+
+For local development, you can skip validation with:
+  SKIP_SECRET_VALIDATION=true npm run synth
+
+Process exited with code 1
+```
+
+**Note:** The build/synth process **stops** and does **not** proceed to CDK synthesis.
+
+### Standalone Validation Success
+
+When running `npm run validate-secrets` directly:
 
 ```
 =====================================
@@ -316,37 +461,66 @@ Add the required IAM permissions:
 
 ### Local Testing
 
-1. **Test without AWS credentials** (should fail gracefully):
+#### 1. Test Build Preflight Check (Missing Secret)
+```bash
+# Remove a required key from a secret in AWS Secrets Manager first
+npm run build
+```
+
+Expected: 
+- Exit code 1
+- Clear error message showing secret name and missing key
+- Build does NOT proceed to TypeScript compilation
+
+#### 2. Test Synth Preflight Check (Valid Secrets)
+```bash
+export AWS_PROFILE=your-profile
+npm run synth
+```
+
+Expected:
+- Exit code 0
+- Validation passes
+- CDK synth proceeds
+- CloudFormation outputs include validation metadata
+
+#### 3. Test Synth Preflight Check (Invalid Secret)
+```bash
+# After removing a required key
+npm run synth -- Afu9EcsStack
+```
+
+Expected:
+- Exit code 1
+- Error message: "Secret afu9/database is missing required keys: password"
+- CDK synth does NOT run
+
+#### 4. Test Local Development Override
+```bash
+# Skip validation for local development
+SKIP_SECRET_VALIDATION=true npm run synth
+```
+
+Expected:
+- Validation skipped with warning message
+- CDK synth proceeds regardless of secret state
+
+#### 5. Test without AWS credentials
 ```bash
 unset AWS_ACCESS_KEY_ID
 unset AWS_SECRET_ACCESS_KEY
-npm run validate-secrets
+unset AWS_PROFILE
+npm run synth
 ```
 
-Expected: Exit code 2 with helpful error message
-
-2. **Test with valid secrets** (requires AWS credentials):
-```bash
-export AWS_PROFILE=your-profile
-npm run validate-secrets
-```
-
-Expected: Exit code 0 with success message
-
-3. **Test CDK synth integration**:
-```bash
-# Without database
-npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=false
-
-# With database
-npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=true
-```
-
-Expected: Successful synth with validation outputs in CloudFormation
+Expected: 
+- Exit code 2
+- Helpful error message about AWS credentials
+- Suggestion to use SKIP_SECRET_VALIDATION=true for local dev
 
 ### CI Testing
 
-Add to `.github/workflows/deploy.yml`:
+CI workflows already include validation (see `.github/workflows/deploy-stage.yml`):
 
 ```yaml
 jobs:
@@ -379,11 +553,14 @@ jobs:
 
 ## Benefits
 
-1. **Early Detection**: Catch configuration issues before deployment
-2. **Clear Error Messages**: Know exactly which keys are missing
-3. **Reproducible**: Works the same locally and in CI
-4. **Zero Runtime Overhead**: Validation happens before deployment
-5. **Documentation**: Validation requirements are self-documenting in CloudFormation outputs
+1. **Fail-Fast at Build Time**: Synth/build fails immediately if secrets are invalid
+2. **Prevents Wasted Deployments**: Catch issues before AWS resources are touched
+3. **Clear Error Messages**: Exact secret name + missing keys listed explicitly
+4. **Blocks Bad Deployments**: Cannot accidentally deploy with misconfigured secrets
+5. **Reproducible**: Works identically locally and in CI
+6. **Zero Runtime Overhead**: Validation at build time, not runtime
+7. **Local Development Friendly**: Can skip validation with environment variable
+8. **CI-Ready**: Already integrated in all deployment workflows
 
 ## Future Enhancements
 
@@ -403,6 +580,20 @@ Potential improvements (not currently implemented):
 - [AWS Deployment Runbook](./AWS_DEPLOY_RUNBOOK.md)
 
 ## Changelog
+
+### 2025-12-19 - Issue I-01-02-SECRET-PREFLIGHT Implementation
+- **Breaking Change**: `npm run build` and `npm run synth` now validate secrets automatically
+- Added `scripts/synth-with-validation.ts` - CDK synth wrapper with preflight check
+- Updated `package.json` scripts:
+  - `build`: Now runs secret validation before TypeScript compilation
+  - `synth`: Now validates secrets before CDK synth (uses wrapper script)
+  - `synth:no-validation`: Added for direct CDK synth without validation
+  - `deploy`: Now validates secrets before deployment
+- **Build/Synth Failure**: Process exits with code 1 if secrets are invalid
+- **Error Messages**: Explicitly names secret and lists all missing keys
+- **Local Dev Support**: Added `SKIP_SECRET_VALIDATION=true` override
+- Updated documentation with preflight check flow diagram
+- Added comprehensive testing instructions
 
 ### 2025-12-17 - Initial Implementation
 - Created `lib/utils/secret-validator.ts` with validation logic
