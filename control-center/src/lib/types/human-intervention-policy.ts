@@ -5,7 +5,8 @@
  * 
  * This module defines and enforces the policy that humans may only
  * intervene in specific, controlled circumstances:
- * - HOLD state (issue is paused)
+ * - HOLD state (issue is paused, can be resumed manually)
+ * - KILLED state (issue is cancelled, terminal state)
  * - HUMAN_REQUIRED verdict (specific action from verdict engine)
  * 
  * No informal intervention in intermediate states is allowed.
@@ -19,7 +20,7 @@ import { FactoryAction } from '@codefactory/deploy-memory';
  */
 export const HUMAN_INTERVENTION_ALLOWED_STATES: readonly IssueState[] = [
   IssueState.HOLD,
-  IssueState.KILLED, // Can manually kill an issue
+  IssueState.KILLED, // Terminal state, can intervene if issue was killed
 ] as const;
 
 /**
