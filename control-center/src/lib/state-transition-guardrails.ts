@@ -15,7 +15,7 @@
  * - VERIFIED → MERGE_READY: Only when diff-gate criteria are met
  */
 
-import { IssueState, isValidTransition, isTerminalState, ensureNotTerminal } from './types/issue-state';
+import { IssueState, isValidTransition, isTerminalState } from './types/issue-state';
 import { logger } from './logger';
 
 /**
@@ -365,6 +365,13 @@ export function validateStateTransition(
   // Issue A5: Enforce terminal state semantics
   // KILLED and DONE states cannot transition to any other state
   if (isTerminalState(fromState)) {
+    const suggestions = [];
+    if (fromState === IssueState.KILLED) {
+      suggestions.push('To work on this issue again, create a new issue or reopen with explicit intent');
+    } else {
+      suggestions.push('Issue is complete. Create a new issue if additional work is needed');
+    }
+    
     return {
       allowed: false,
       reason: `Cannot transition from terminal state: ${fromState}. Terminal states (DONE, KILLED) are final and do not allow any forward transitions. Re-activation requires explicit new intent.`,
@@ -373,11 +380,7 @@ export function validateStateTransition(
         passed: false,
         message: `${fromState} is a terminal state and cannot transition to any other state`,
       }],
-      suggestions: [
-        fromState === IssueState.KILLED 
-          ? 'To work on this issue again, create a new issue or reopen with explicit intent'
-          : 'Issue is complete. Create a new issue if additional work is needed'
-      ],
+      suggestions,
     };
   }
 
