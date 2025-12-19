@@ -113,6 +113,8 @@ CREATE TABLE issue_state_history (
 CREATE INDEX idx_issue_state_history_tracking_id ON issue_state_history(issue_tracking_id);
 CREATE INDEX idx_issue_state_history_transition_at ON issue_state_history(transition_at DESC);
 CREATE INDEX idx_issue_state_history_to_state ON issue_state_history(to_state);
+-- Performance index for transition analysis with window functions
+CREATE INDEX idx_issue_state_history_tracking_id_transition_at ON issue_state_history(issue_tracking_id, transition_at);
 
 -- ========================================
 -- Helper Function: Record State Transition

@@ -75,6 +75,17 @@ if (!result.success) {
 
 ```typescript
 /**
+ * Helper function to get issue from database (implementation specific)
+ */
+async function getIssueFromDB(issueNumber: number) {
+  const result = await db.query(
+    'SELECT * FROM issue_tracking WHERE github_issue_number = $1',
+    [issueNumber]
+  );
+  return result.rows[0];
+}
+
+/**
  * Handle GitHub pull request events and update issue state
  */
 async function handlePullRequestEvent(event: any) {
@@ -224,6 +235,16 @@ async function getStateCycleTimeMetrics() {
 
 ```typescript
 /**
+ * Placeholder notification function (implementation specific)
+ * Replace with your actual notification service (Slack, Teams, etc.)
+ */
+async function sendSlackNotification(channel: string, message: any) {
+  // Example implementation - replace with actual Slack API call
+  console.log(`[${channel}] ${message.text}`, message);
+  // await fetch('https://hooks.slack.com/...', { ... });
+}
+
+/**
  * Send notifications based on state transitions
  */
 async function notifyStateChange(
@@ -267,6 +288,8 @@ async function notifyStateChange(
 ## Example 7: State Machine Visualization
 
 ```typescript
+import { ISSUE_STATE_TRANSITIONS } from '@/lib/types/issue-state';
+
 /**
  * Generate state transition graph data for visualization
  */
