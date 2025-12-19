@@ -13,10 +13,7 @@ let pool: Pool | null = null;
  */
 export function getPool(): Pool {
   if (!pool) {
-    const shouldUseSsl =
-      process.env.DATABASE_SSL === 'true' ||
-      process.env.PGSSLMODE?.toLowerCase() === 'require' ||
-      ['production', 'staging'].includes(process.env.NODE_ENV || '');
+    const shouldUseSsl = process.env.DATABASE_SSL !== 'false';
 
     const sslConfig = shouldUseSsl ? { rejectUnauthorized: false } : undefined;
 

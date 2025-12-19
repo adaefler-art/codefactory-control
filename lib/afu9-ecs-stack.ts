@@ -439,6 +439,22 @@ export class Afu9EcsStack extends cdk.Stack {
     githubSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
+    // Allow application containers to read database secrets when executing commands inside the task
+    taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'DbSecretReadFromTask',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'secretsmanager:GetSecretValue',
+          'secretsmanager:DescribeSecret',
+        ],
+        resources: [
+          'arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database*',
+          'arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master*',
+        ],
+      })
+    );
+
     // Store region and account for ARN construction (reduces repetition)
     const region = cdk.Stack.of(this).region;
     const account = cdk.Stack.of(this).account;
@@ -589,7 +605,15 @@ export class Afu9EcsStack extends cdk.Stack {
       taskRole: taskRole,
     });
 
+    // Cognito auth configuration (imported from Afu9AuthStack exports)
+    const cognitoRegion = cdk.Fn.importValue('Afu9CognitoRegion');
+    const cognitoUserPoolId = cdk.Fn.importValue('Afu9UserPoolId');
+    const cognitoUserPoolClientId = cdk.Fn.importValue('Afu9UserPoolClientId');
+    const cognitoIssuerUrl = cdk.Fn.importValue('Afu9IssuerUrl');
+
     // Control Center container
+    const cookieDomain = domainName ? `.${domainName}` : undefined;
+
     const controlCenterContainer = taskDefinition.addContainer('control-center', {
       image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, imageTag),
       containerName: 'control-center',
@@ -603,12 +627,18 @@ export class Afu9EcsStack extends cdk.Stack {
         ENVIRONMENT: environment, // Add environment variable for app-level detection
         DATABASE_ENABLED: enableDatabase ? 'true' : 'false', // Signal to app whether DB is configured
         DATABASE_SSL: 'true',
+        PGSSLMODE: 'require',
         MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
         MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
         MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
         MCP_GITHUB_URL: 'http://127.0.0.1:3001',
         MCP_DEPLOY_URL: 'http://127.0.0.1:3002',
         MCP_OBSERVABILITY_URL: 'http://127.0.0.1:3003',
+        COGNITO_REGION: cognitoRegion,
+        COGNITO_USER_POOL_ID: cognitoUserPoolId,
+        COGNITO_CLIENT_ID: cognitoUserPoolClientId,
+        COGNITO_ISSUER_URL: cognitoIssuerUrl,
+        ...(cookieDomain ? { AFU9_COOKIE_DOMAIN: cookieDomain } : {}),
       },
       secrets: {
         ...(dbSecret
@@ -629,17 +659,6 @@ export class Afu9EcsStack extends cdk.Stack {
         DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
       },
       essential: true,
-      healthCheck: {
-        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
-        command: [
-          'CMD-SHELL',
-          "node -e \"require('http').get('http://127.0.0.1:3000/api/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
-        ],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
     });
 
     controlCenterContainer.addPortMappings({

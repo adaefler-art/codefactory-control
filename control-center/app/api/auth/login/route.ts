@@ -12,6 +12,7 @@ const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
 const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || 'https://afu-9.com/';
+const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN; // optional: set to .afu-9.com to persist across subdomains
 
 // Initialize Cognito client
 const cognitoClient = new CognitoIdentityProviderClient({
@@ -168,6 +169,7 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       maxAge: 60 * 60, // 1 hour (matches token validity)
       path: '/',
+      domain: AFU9_COOKIE_DOMAIN,
     });
 
     // Access Token (for API calls)
@@ -177,6 +179,7 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       maxAge: 60 * 60, // 1 hour (matches token validity)
       path: '/',
+      domain: AFU9_COOKIE_DOMAIN,
     });
 
     // Optionally store refresh token (longer expiry)
@@ -187,6 +190,7 @@ export async function POST(request: NextRequest) {
         sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 30, // 30 days (matches token validity)
         path: '/',
+        domain: AFU9_COOKIE_DOMAIN,
       });
     }
 

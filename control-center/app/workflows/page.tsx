@@ -177,7 +177,7 @@ export default function WorkflowsPage() {
                       Execute
                     </button>
                     <Link
-                      href={`/workflow/${workflow.id}`}
+                      href={`/workflows/${workflow.id}`}
                       className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm font-medium transition-colors"
                     >
                       View

@@ -5,6 +5,8 @@ ARG APP_DIR=control-center
 
 # Stage 1: Dependencies (install full deps to support build tooling)
 FROM node:20.10.0-bookworm-slim AS deps
+# Install CA certificates so Postgres TLS and HTTPS calls trust AWS endpoints
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ARG APP_DIR
 WORKDIR /app
 COPY packages ./packages
@@ -20,6 +22,8 @@ RUN npm ci && npm cache clean --force
 
 # Stage 2: Build
 FROM node:20.10.0-bookworm-slim AS builder
+# Ensure build stage also trusts AWS CAs for any fetches during build
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ARG APP_DIR
 WORKDIR /app/${APP_DIR}
 
@@ -35,6 +39,8 @@ RUN SKIP_PREBUILD=1 npm run build
 
 # Stage 3: Production
 FROM node:20.10.0-bookworm-slim AS runner
+# Ensure runtime trusts AWS/RDS certificates
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 ARG APP_DIR
 WORKDIR /app/${APP_DIR}
 
