@@ -44,8 +44,23 @@ export async function POST(
       baseBranch,
     });
 
-    // Load workflow definition
-    const workflowPath = path.join(process.cwd(), '..', 'database', 'examples', 'self_propelling_issue.json');
+    // Load workflow definition from database/examples
+    // Note: Using relative path from control-center to database directory
+    const workflowPath = path.join(
+      process.cwd(),
+      '..',
+      'database',
+      'examples',
+      'self_propelling_issue.json'
+    );
+    
+    if (!fs.existsSync(workflowPath)) {
+      return NextResponse.json(
+        { error: 'Workflow definition not found' },
+        { status: 500 }
+      );
+    }
+
     const workflowContent = fs.readFileSync(workflowPath, 'utf-8');
     const selfPropellingWorkflow = JSON.parse(workflowContent) as WorkflowDefinition;
 

@@ -1,6 +1,6 @@
 {
   "name": "self_propelling_issue",
-  "description": "Fully automated workflow to transition an issue from CREATED to DONE without manual intervention. This demonstrates the self-propelling capability of AFU-9.",
+  "description": "Fully automated workflow to transition an issue from CREATED to DONE without manual intervention. This demonstrates the self-propelling capability of AFU-9. Note: Timestamp expressions like ${new Date().toISOString()} are shown as-is in comments for simplicity - in production, timestamps would be generated at runtime.",
   "steps": [
     {
       "name": "fetch_issue",
