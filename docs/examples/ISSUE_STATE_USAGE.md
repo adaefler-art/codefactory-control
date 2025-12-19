@@ -471,8 +471,236 @@ export async function POST(request: Request) {
 7. **Monitor state metrics**: Track time in each state to identify bottlenecks
 8. **Test edge cases**: Ensure HOLD and KILLED states work correctly in all scenarios
 
+## Example 11: Automatic State Transitions with Guardrails (Issue A2)
+
+```typescript
+import { 
+  validateStateTransition, 
+  attemptAutomaticTransition,
+  evaluateNextStateProgression,
+  StateTransitionContext 
+} from '@/lib/state-transition-guardrails';
+
+/**
+ * Automatically transition to SPEC_READY when specification is complete
+ */
+async function autoTransitionToSpecReady(issue: any) {
+  const context: StateTransitionContext = {
+    specification: {
+      exists: true,
+      isComplete: true,
+      hasRequirements: true,
+      hasAcceptanceCriteria: true,
+    },
+  };
+
+  const result = attemptAutomaticTransition(
+    IssueState.CREATED,
+    IssueState.SPEC_READY,
+    context
+  );
+
+  if (result.shouldTransition) {
+    await transitionIssueState(
+      issue.id,
+      IssueState.CREATED,
+      IssueState.SPEC_READY,
+      'Specification complete - auto-transitioned'
+    );
+    console.log('✅ Transitioned to SPEC_READY');
+  } else {
+    console.log('❌ Cannot transition:', result.reason);
+    console.log('Suggestions:', result.suggestions);
+  }
+}
+
+/**
+ * Automatically transition to VERIFIED after QA tests pass
+ */
+async function autoTransitionToVerified(issue: any, testResults: any) {
+  const context: StateTransitionContext = {
+    qaResults: {
+      executed: true,
+      passed: testResults.allPassed,
+      testCount: testResults.total,
+      passedCount: testResults.passed,
+      failedCount: testResults.failed,
+      coveragePercent: testResults.coverage,
+    },
+  };
+
+  const result = attemptAutomaticTransition(
+    IssueState.IMPLEMENTING,
+    IssueState.VERIFIED,
+    context
+  );
+
+  if (result.shouldTransition) {
+    await transitionIssueState(
+      issue.id,
+      IssueState.IMPLEMENTING,
+      IssueState.VERIFIED,
+      'QA tests passed - auto-transitioned'
+    );
+    console.log('✅ Transitioned to VERIFIED');
+  } else {
+    console.log('❌ Cannot transition:', result.reason);
+    console.log('Suggestions:', result.suggestions);
+    // Example: "Fix 3 failing tests"
+  }
+}
+
+/**
+ * Automatically transition to MERGE_READY when diff-gate criteria met
+ */
+async function autoTransitionToMergeReady(issue: any, prData: any) {
+  const context: StateTransitionContext = {
+    diffGate: {
+      hasChanges: prData.changedFiles > 0,
+      conflictsResolved: prData.mergeable,
+      reviewsApproved: prData.approvedReviewCount >= 2,
+      ciPassing: prData.checksConcluded === 'success',
+      securityChecksPassed: prData.securityChecksPassed,
+    },
+  };
+
+  const result = attemptAutomaticTransition(
+    IssueState.VERIFIED,
+    IssueState.MERGE_READY,
+    context
+  );
+
+  if (result.shouldTransition) {
+    await transitionIssueState(
+      issue.id,
+      IssueState.VERIFIED,
+      IssueState.MERGE_READY,
+      'All merge requirements met - auto-transitioned'
+    );
+    console.log('✅ Transitioned to MERGE_READY');
+  } else {
+    console.log('❌ Cannot transition:', result.reason);
+    console.log('Suggestions:', result.suggestions);
+    // Example: "Resolve all merge conflicts", "Fix CI pipeline failures"
+  }
+}
+
+/**
+ * Evaluate and automatically progress to the next natural state
+ */
+async function autoProgressIssue(issue: any) {
+  // Build context based on current state
+  const context = await buildContextForIssue(issue);
+  
+  const progression = evaluateNextStateProgression(
+    issue.state,
+    context
+  );
+
+  if (progression.canProgress) {
+    console.log(`Can automatically progress to ${progression.nextState}`);
+    await transitionIssueState(
+      issue.id,
+      issue.state,
+      progression.nextState!,
+      'Automatic progression - conditions met'
+    );
+    return { success: true, nextState: progression.nextState };
+  } else {
+    console.log('Cannot progress:', progression.validation?.reason);
+    return { 
+      success: false, 
+      reason: progression.validation?.reason,
+      suggestions: progression.validation?.suggestions 
+    };
+  }
+}
+
+/**
+ * Helper to build context for validation
+ */
+async function buildContextForIssue(issue: any): Promise<StateTransitionContext> {
+  const context: StateTransitionContext = {};
+
+  // Add specification data if in early states
+  if ([IssueState.CREATED].includes(issue.state)) {
+    context.specification = await getSpecificationStatus(issue);
+  }
+
+  // Add QA results if in implementation
+  if ([IssueState.IMPLEMENTING].includes(issue.state)) {
+    context.qaResults = await getQATestResults(issue);
+  }
+
+  // Add diff/PR data if in verification
+  if ([IssueState.VERIFIED].includes(issue.state)) {
+    context.diffGate = await getDiffGateStatus(issue);
+  }
+
+  return context;
+}
+```
+
+## Example 12: Workflow Integration with Guardrails
+
+```typescript
+/**
+ * Workflow step that automatically transitions after validation
+ */
+const workflowWithGuardrails = {
+  name: "Automated QA Workflow",
+  steps: [
+    {
+      name: "run_tests",
+      tool: "qa.runTestSuite",
+      params: { issueId: "${issue.id}" },
+      assign: "test_results"
+    },
+    {
+      name: "evaluate_transition",
+      tool: "internal.evaluateTransition",
+      params: {
+        issueId: "${issue.id}",
+        fromState: "${issue.state}",
+        toState: "VERIFIED",
+        context: {
+          qaResults: {
+            executed: true,
+            passed: "${test_results.allPassed}",
+            testCount: "${test_results.total}",
+            passedCount: "${test_results.passed}",
+            failedCount: "${test_results.failed}",
+            coveragePercent: "${test_results.coverage}"
+          }
+        }
+      },
+      assign: "transition_result"
+    },
+    {
+      name: "auto_transition",
+      tool: "github.updateIssueState",
+      params: {
+        issueId: "${issue.id}",
+        newState: "VERIFIED"
+      },
+      condition: "${transition_result.shouldTransition}"
+    },
+    {
+      name: "notify_blocked",
+      tool: "notification.send",
+      params: {
+        message: "Cannot transition: ${transition_result.reason}",
+        suggestions: "${transition_result.suggestions}"
+      },
+      condition: "!${transition_result.shouldTransition}"
+    }
+  ]
+};
+```
+
 ## Related Documentation
 
 - [Issue State Machine Documentation](../ISSUE_STATE_MACHINE.md)
+- [State Transition Guardrails](../STATE_TRANSITION_GUARDRAILS.md) - Automatic rule-based transitions (Issue A2)
 - [Workflow Schema](../WORKFLOW-SCHEMA.md)
 - [Database Schema](../architecture/database-schema.md)
