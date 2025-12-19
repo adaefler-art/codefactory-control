@@ -461,10 +461,20 @@ curl -s http://${ALB_DNS}/api/ready | jq .
 **Fix: Database deaktivieren**
 
 ```bash
-# Option A: Context in cdk.context.json setzen (mit Backup)
-cp cdk.context.json cdk.context.json.backup
-jq '.context."afu9-enable-database" = false' cdk.context.json.backup > cdk.context.json
-git diff cdk.context.json  # Änderung anzeigen
+# Option A: Context in cdk.context.json setzen (mit Backup und Validierung)
+if [ -f cdk.context.json ]; then
+  cp cdk.context.json cdk.context.json.backup
+  if jq '.context."afu9-enable-database" = false' cdk.context.json.backup > cdk.context.json.tmp; then
+    mv cdk.context.json.tmp cdk.context.json
+    git diff cdk.context.json  # Änderung anzeigen
+  else
+    echo "❌ Fehler beim Modifizieren von cdk.context.json"
+    exit 1
+  fi
+else
+  echo "❌ cdk.context.json nicht gefunden"
+  exit 1
+fi
 
 # Option B: Inline Context beim Deploy (empfohlen - keine Dateiänderung nötig)
 npx cdk deploy Afu9EcsStack \
@@ -556,6 +566,7 @@ echo "Task IP: ${TASK_IP}"
 # GitHub Token: https://github.com/settings/tokens
 # Erforderliche Scopes: repo, workflow
 
+# HINWEIS: Passen Sie "owner" und "repo" an Ihre Umgebung an
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
