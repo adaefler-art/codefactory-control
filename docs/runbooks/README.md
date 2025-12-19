@@ -23,6 +23,8 @@ This directory contains operational runbooks for managing and troubleshooting AF
 - Decision trees for troubleshooting
 - No trial-and-error required
 
+**Quick Reference:** [Quick Reference Card](./ecs-circuit-breaker-quick-reference.md) - Print-friendly 1-page cheatsheet
+
 ---
 
 ### 🟡 Specific Issues
