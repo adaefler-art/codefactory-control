@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkflowEngine } from '../../../../../src/lib/workflow-engine';
 import { WorkflowDefinition, WorkflowContext } from '../../../../../src/lib/types/workflow';
-import selfPropellingWorkflow from '../../../../../../database/examples/self_propelling_issue.json';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export async function POST(
   request: NextRequest,
@@ -42,6 +43,11 @@ export async function POST(
       issueNumber: issueNum,
       baseBranch,
     });
+
+    // Load workflow definition
+    const workflowPath = path.join(process.cwd(), '..', 'database', 'examples', 'self_propelling_issue.json');
+    const workflowContent = fs.readFileSync(workflowPath, 'utf-8');
+    const selfPropellingWorkflow = JSON.parse(workflowContent) as WorkflowDefinition;
 
     // Create workflow context
     const context: WorkflowContext = {
