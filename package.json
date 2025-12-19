@@ -7,11 +7,12 @@
     "afu9-deploy-memory-analyze": "bin/afu9-deploy-memory-analyze.ts"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run validate-secrets && tsc",
     "watch": "tsc -w",
     "cdk": "cdk",
-    "synth": "cdk synth",
-    "deploy": "cdk deploy",
+    "synth": "ts-node scripts/synth-with-validation.ts",
+    "synth:no-validation": "cdk synth",
+    "deploy": "npm run validate-secrets && cdk deploy",
     "destroy": "cdk destroy",
     "validate-secrets": "ts-node scripts/validate-secrets.ts",
     "validate-iam": "ts-node scripts/validate-iam-policies.ts",

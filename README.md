@@ -229,14 +229,17 @@ npm install
 # Security checks (EPIC 07)
 npm run security:check
 
-# Validate secrets before deployment (recommended)
+# Build with automatic secret validation (Issue I-01-02)
+npm run build
+
+# Generate CloudFormation with automatic secret validation
+npm run synth
+
+# Deploy to AWS (includes automatic secret validation)
+npm run deploy
+
+# Or validate secrets separately
 npm run validate-secrets
-
-# Generate CloudFormation
-npx cdk synth
-
-# Deploy to AWS
-npx cdk deploy
 ```
 
 Stacks:
@@ -245,9 +248,12 @@ Stacks:
 
 **Pre-deployment Checks:**
 - **Security validation** ensures IAM policies follow least privilege principles (EPIC 07)
-- **Secret validation** ensures all required keys exist in AWS Secrets Manager
-- Prevents runtime failures and security misconfigurations
-- See [Security Validation Guide](docs/SECURITY_VALIDATION_GUIDE.md) for details
+- **Secret preflight check** (Issue I-01-02): Build/synth/deploy **fail** if required secret keys are missing
+  - Validates secrets in AWS Secrets Manager before any build/synth operation
+  - Explicitly names secret and missing keys in error messages
+  - Works locally and in CI
+- See [Secret Validation Guide](docs/SECRET_VALIDATION.md) for details
+- See [Security Validation Guide](docs/SECURITY_VALIDATION_GUIDE.md) for security details
 
 ### Control Center (Next.js)
 
