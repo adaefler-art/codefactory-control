@@ -69,6 +69,11 @@ This document defines the canonical state machine for issues in the AFU-9 system
 - **Reasons**: No longer needed, superseded by other work, out of scope
 - **Exit Criteria**: N/A (terminal state)
 - **Next States**: None (terminal state)
+- **Enforcement**: Issue A5 implements strict enforcement to prevent "zombie issues"
+  - All workflow execution is blocked on KILLED issues
+  - All state transitions from KILLED are blocked
+  - Re-activation requires explicit new intent (reopening issue or creating new one)
+  - See [KILLED State Enforcement](./KILLED_STATE_ENFORCEMENT.md) for details
 
 ## State Transition Diagram
 
@@ -297,6 +302,13 @@ Track state-based metrics:
 - **Review Cycle**: Quarterly review of state machine effectiveness
 
 ## Changelog
+
+### Version 1.1 (2025-12-19)
+- **Issue A5**: Added strict enforcement of KILLED state
+  - Workflow execution blocked on KILLED issues
+  - State transitions from KILLED blocked
+  - Re-activation requires explicit new intent
+  - See [KILLED State Enforcement](./KILLED_STATE_ENFORCEMENT.md)
 
 ### Version 1.0 (2025-12-19)
 - Initial canonical definition
