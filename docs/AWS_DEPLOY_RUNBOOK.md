@@ -572,6 +572,42 @@ Afu9IamStack (independent)
 
 ## Troubleshooting
 
+### ECS Circuit Breaker Triggered
+
+**⚡ Use the Standardized Diagnostic Runbook:**
+
+When deployments fail due to Circuit Breaker triggers, follow the standardized diagnostic process:
+
+**📖 [ECS Circuit Breaker Diagnosis Runbook](./runbooks/ecs-circuit-breaker-diagnosis.md)**
+
+**Features:**
+- ✅ Root cause identification in < 10 minutes
+- ✅ Copy-paste ready commands
+- ✅ Step-by-step diagnostic flow
+- ✅ Common scenarios with immediate fixes
+
+**Quick Start:**
+```bash
+# Set environment
+export AWS_REGION=eu-central-1
+export CLUSTER_NAME=afu9-cluster
+export SERVICE_NAME=afu9-control-center-stage
+
+# Run automated diagnostics
+pwsh scripts/ecs_debug.ps1 -Service ${SERVICE_NAME}
+
+# Or follow manual steps in the runbook
+```
+
+**Common scenarios covered:**
+1. Secret missing or misconfigured (Database, GitHub, LLM)
+2. Health check failures
+3. Container image issues
+4. IAM permission problems
+5. Network/Security group issues
+
+---
+
 ### Issue: CDK Synth Fails
 
 **Symptoms:**

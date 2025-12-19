@@ -465,12 +465,31 @@ View service metrics in CloudWatch:
 
 ## Troubleshooting
 
+### ECS Circuit Breaker Triggered
+
+When the ECS Circuit Breaker triggers and prevents deployment, use the **standardized diagnostic runbook** for rapid root cause identification:
+
+**📖 [ECS Circuit Breaker Diagnosis Runbook](./runbooks/ecs-circuit-breaker-diagnosis.md)**
+
+This runbook provides:
+- ✅ 5-step diagnostic flow with copy-paste commands
+- ✅ Root cause identification in < 10 minutes
+- ✅ Common scenarios with immediate fixes
+- ✅ No trial-and-error required
+
+**Quick diagnostic script:**
+```bash
+pwsh scripts/ecs_debug.ps1 -Service afu9-control-center-stage
+```
+
 ### Task Fails to Start
 
 1. Check CloudWatch logs for errors
 2. Verify ECR images exist with `latest` tag
 3. Check IAM role permissions
 4. Verify Secrets Manager secrets are configured
+
+**Detailed steps:** See [ECS Circuit Breaker Diagnosis Runbook](./runbooks/ecs-circuit-breaker-diagnosis.md) Section 2
 
 ### Cannot Connect to Database
 
@@ -479,12 +498,16 @@ View service metrics in CloudWatch:
 3. Verify RDS instance is running
 4. Check Secrets Manager for correct credentials
 
+**Detailed steps:** See [ECS Circuit Breaker Diagnosis Runbook](./runbooks/ecs-circuit-breaker-diagnosis.md) Section 5.3
+
 ### Service Unhealthy
 
 1. Check ALB target group health checks
 2. Verify Control Center container is listening on port 3000
 3. Check `/api/health` endpoint responds with 200 OK
 4. Review CloudWatch logs for application errors
+
+**Detailed steps:** See [ECS Circuit Breaker Diagnosis Runbook](./runbooks/ecs-circuit-breaker-diagnosis.md) Section 4
 
 ## Scaling
 
