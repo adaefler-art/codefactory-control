@@ -8,7 +8,7 @@
 
 Establish formal constraints on human touchpoints in the AFU-9 system, restricting manual interventions to:
 - **HOLD state** (issue explicitly paused)
-- **RED verdict** (HUMAN_REQUIRED action from verdict engine)
+- **HUMAN_REQUIRED verdict** (specific action from verdict engine)
 
 No informal intervention in intermediate states is permitted.
 

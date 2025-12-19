@@ -6,7 +6,7 @@
  * This module defines and enforces the policy that humans may only
  * intervene in specific, controlled circumstances:
  * - HOLD state (issue is paused)
- * - RED verdict (HUMAN_REQUIRED action from verdict engine)
+ * - HUMAN_REQUIRED verdict (specific action from verdict engine)
  * 
  * No informal intervention in intermediate states is allowed.
  */

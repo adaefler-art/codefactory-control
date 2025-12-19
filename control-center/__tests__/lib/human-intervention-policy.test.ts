@@ -3,7 +3,7 @@
  * 
  * Validates that human touchpoints are restricted to:
  * - HOLD state
- * - RED verdict (HUMAN_REQUIRED action)
+ * - HUMAN_REQUIRED verdict (specific action from verdict engine)
  * 
  * No informal intervention in intermediate states allowed.
  */
