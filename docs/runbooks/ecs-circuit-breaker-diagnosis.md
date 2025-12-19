@@ -461,12 +461,12 @@ curl -s http://${ALB_DNS}/api/ready | jq .
 **Fix: Database deaktivieren**
 
 ```bash
-# Option A: Context in cdk.context.json setzen
-jq '.context."afu9-enable-database" = false' cdk.context.json > cdk.context.json.tmp
-mv cdk.context.json.tmp cdk.context.json
+# Option A: Context in cdk.context.json setzen (mit Backup)
+cp cdk.context.json cdk.context.json.backup
+jq '.context."afu9-enable-database" = false' cdk.context.json.backup > cdk.context.json
 git diff cdk.context.json  # Änderung anzeigen
 
-# Option B: Inline Context beim Deploy
+# Option B: Inline Context beim Deploy (empfohlen - keine Dateiänderung nötig)
 npx cdk deploy Afu9EcsStack \
   -c afu9-enable-database=false \
   --region ${AWS_REGION}
