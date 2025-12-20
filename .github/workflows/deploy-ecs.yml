@@ -85,6 +85,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify AWS OIDC Authentication
+        run: |
+          echo "========================================="
+          echo "Verifying AWS OIDC Authentication"
+          echo "========================================="
+          aws sts get-caller-identity
+          echo ""
+          echo "✅ AWS authentication successful"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
