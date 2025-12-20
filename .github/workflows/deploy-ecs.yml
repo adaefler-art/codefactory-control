@@ -114,34 +114,34 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/aws-wrap-bin
 
-          REAL_AWS="$(command -v aws)"
-          if [ -z "$REAL_AWS" ] || [ ! -x "$REAL_AWS" ]; then
-            echo "Cannot find real aws on PATH" >&2
+          REAL_AWS_PATH="$(command -v aws || true)"
+          if [ -z "$REAL_AWS_PATH" ] || [ ! -x "$REAL_AWS_PATH" ]; then
+            echo "aws wrapper: cannot find real aws binary on PATH" >&2
             exit 127
           fi
-          echo "Real aws: $REAL_AWS"
+          echo "Real aws: $REAL_AWS_PATH"
 
-          cat > /tmp/aws-wrap-bin/aws <<'EOF'
-          #!/usr/bin/env bash
-          set -euo pipefail
-
-          REAL_AWS="$REAL_AWS"
-
-          out_log="$(mktemp)"
-          err_log="$(mktemp)"
-          trap 'rm -f "$out_log" "$err_log"' EXIT
-
-          "$REAL_AWS" "$@" > >(tee "$out_log") 2> >(tee "$err_log" >&2)
-          rc=$?
-
-          if grep -q -E "AccessDenied|not authorized|is not authorized" "$err_log"; then
-            echo "=== AccessDenied (stderr) ===" >&2
-            grep -E "AccessDenied|not authorized|is not authorized" "$err_log" >&2 || true
-            echo "=============================" >&2
-          fi
-
-          exit $rc
-          EOF
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'set -euo pipefail' \
+            '' \
+            "REAL_AWS=\"$REAL_AWS_PATH\"" \
+            '' \
+            'out_log="$(mktemp)"' \
+            'err_log="$(mktemp)"' \
+            'trap '\''rm -f "$out_log" "$err_log"'\'' EXIT' \
+            '' \
+            '"$REAL_AWS" "$@" > >(tee "$out_log") 2> >(tee "$err_log" >&2)' \
+            'rc=$?' \
+            '' \
+            'if grep -q -E "AccessDenied|not authorized|is not authorized" "$err_log"; then' \
+            '  echo "=== AccessDenied (stderr) ===" >&2' \
+            '  grep -E "AccessDenied|not authorized|is not authorized" "$err_log" >&2 || true' \
+            '  echo "=============================" >&2' \
+            'fi' \
+            '' \
+            'exit $rc' \
+            > /tmp/aws-wrap-bin/aws
 
           chmod +x /tmp/aws-wrap-bin/aws
           echo "/tmp/aws-wrap-bin" >> "$GITHUB_PATH"
