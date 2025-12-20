@@ -62,40 +62,45 @@ jobs:
             exit 1
           fi
 
-      - name: Set deployment variables
-        id: vars
-        shell: bash
+      - name: Resolve deploy target (guarded)
+        id: target
+        shell: pwsh
         run: |
-          set -euo pipefail
-          DEPLOY_ENV="${{ env.DEPLOY_ENV }}"
+          $deployEnv = "${{ env.DEPLOY_ENV }}"
+          if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
+            Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
+          }
 
-          if [ "$DEPLOY_ENV" != "production" ] && [ "$DEPLOY_ENV" != "staging" ]; then
-            echo "Unsupported environment: $DEPLOY_ENV" >&2
-            exit 1
-          fi
+          if ($deployEnv -eq 'production') {
+            $tagPrefix = 'prod'
+            $ecsService = 'afu9-control-center'
+            $ecsCluster = 'afu9-cluster'
+            $envLabel = 'Production'
+            $readyHost = 'afu-9.com'
+          } else {
+            $tagPrefix = 'stage'
+            $ecsService = 'afu9-control-center-staging'
+            $ecsCluster = 'afu9-cluster-staging'
+            $envLabel = 'Staging'
+            $readyHost = 'stage.afu-9.com'
+          }
 
-          if [ "$DEPLOY_ENV" = "production" ]; then
-            TAG_PREFIX="prod"
-            ECS_SERVICE="afu9-control-center"
-            ECS_CLUSTER="afu9-cluster"
-            ENV_LABEL="Production"
-          else
-            TAG_PREFIX="stage"
-            ECS_SERVICE="afu9-control-center-staging"
-            ECS_CLUSTER="afu9-cluster-staging"
-            ENV_LABEL="Staging"
-          fi
+          if ($deployEnv -eq 'staging' -and $ecsService -eq 'afu9-control-center') {
+            Write-Error "Staging deployment would target production service (afu9-control-center)."; exit 1
+          }
+          if ($deployEnv -eq 'staging' -and ($ecsService -notmatch 'staging')) {
+            Write-Error "Staging deployment must use a staging service name. Got: $ecsService"; exit 1
+          }
+          if ($deployEnv -eq 'production' -and ($ecsService -match 'staging')) {
+            Write-Error "Production deployment must not target a staging service name. Got: $ecsService"; exit 1
+          }
 
-          if [ "$DEPLOY_ENV" = "staging" ] && [ "$ECS_SERVICE" = "afu9-control-center" ]; then
-            echo "❌ Staging deployment would target production service (afu9-control-center). Aborting." >&2
-            exit 1
-          fi
-
-          echo "deploy_env=$DEPLOY_ENV" >> "$GITHUB_OUTPUT"
-          echo "tag_prefix=$TAG_PREFIX" >> "$GITHUB_OUTPUT"
-          echo "ecs_service=$ECS_SERVICE" >> "$GITHUB_OUTPUT"
-          echo "env_label=$ENV_LABEL" >> "$GITHUB_OUTPUT"
-          echo "ecs_cluster=$ECS_CLUSTER" >> "$GITHUB_OUTPUT"
+          "deploy_env=$deployEnv" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag_prefix=$tagPrefix" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ecs_service=$ecsService" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "env_label=$envLabel" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ecs_cluster=$ecsCluster" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ready_host=$readyHost" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -160,7 +165,7 @@ jobs:
       - name: Resolve database connection string
         id: db-connection
         env:
-          DEPLOY_ENV: ${{ steps.vars.outputs.deploy_env }}
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
           AWS_REGION: ${{ env.AWS_REGION }}
           DB_SECRET_NAME: ${{ vars.DB_SECRET_NAME }}
           PROD_DB_SECRET_NAME: ${{ vars.PROD_DB_SECRET_NAME }}
@@ -241,11 +246,11 @@ jobs:
           build-args: |
             BUILD_VERSION=0.4.0
             BUILD_COMMIT_HASH=${{ steps.image-tags.outputs.short_sha }}
-            BUILD_ENV=${{ steps.vars.outputs.deploy_env }}
+            BUILD_ENV=${{ steps.target.outputs.deploy_env }}
           tags: |
-            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-latest
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -256,9 +261,9 @@ jobs:
           file: ./mcp-servers/github/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-latest
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -269,9 +274,9 @@ jobs:
           file: ./mcp-servers/deploy/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-latest
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -282,9 +287,9 @@ jobs:
           file: ./mcp-servers/observability/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-latest
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -293,11 +298,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Creating new task definition for ${{ steps.vars.outputs.env_label }} with env-tagged images..."
+          echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
 
           SERVICE_JSON=$(aws ecs describe-services \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
-            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --output json)
 
@@ -308,16 +313,16 @@ jobs:
           fi
 
           if [ "$(echo "$SERVICE_JSON" | jq -r '.services | length')" = "0" ]; then
-            echo "❌ ECS service ${{ steps.vars.outputs.ecs_service }} not found in cluster ${{ steps.vars.outputs.ecs_cluster }}" >&2
+            echo "❌ ECS service ${{ steps.target.outputs.ecs_service }} not found in cluster ${{ steps.target.outputs.ecs_cluster }}" >&2
             echo "Listing services for debugging:" >&2
-            aws ecs list-services --cluster "${{ steps.vars.outputs.ecs_cluster }}" --region "${{ env.AWS_REGION }}" --output json >&2
+            aws ecs list-services --cluster "${{ steps.target.outputs.ecs_cluster }}" --region "${{ env.AWS_REGION }}" --output json >&2
             exit 1
           fi
 
           TASK_DEF_ARN=$(echo "$SERVICE_JSON" | jq -r '.services[0].taskDefinition // ""')
 
           if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
-            echo "❌ Task definition is empty for service ${{ steps.vars.outputs.ecs_service }}" >&2
+            echo "❌ Task definition is empty for service ${{ steps.target.outputs.ecs_service }}" >&2
             echo "$SERVICE_JSON" | jq '.services[0]' >&2
             exit 1
           fi
@@ -329,10 +334,10 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
 
-          jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
-             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
-             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
-             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+           jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              '.containerDefinitions |= map(
                if .name == "control-center" then .image = $cc_image
                elif .name == "mcp-github" then .image = $gh_image
@@ -359,12 +364,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "🏗️ Running database migrations for ${{ steps.vars.outputs.env_label }}..."
+          echo "🏗️ Running database migrations for ${{ steps.target.outputs.env_label }}..."
 
           # Reuse the service's awsvpc network configuration
           aws ecs describe-services \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
-            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'services[0].networkConfiguration.awsvpcConfiguration' \
             --output json > awsvpc.json
@@ -389,7 +394,7 @@ jobs:
           }')
 
           TASK_ARN=$(aws ecs run-task \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --launch-type FARGATE \
             --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
             --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$ASSIGN_PUBLIC_IP}" \
@@ -407,12 +412,12 @@ jobs:
           echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
 
           aws ecs wait tasks-stopped \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --tasks "$TASK_ARN" \
             --region "${{ env.AWS_REGION }}"
 
           EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --tasks "$TASK_ARN" \
             --region "${{ env.AWS_REGION }}" \
             --query 'tasks[0].containers[?name==`control-center`].exitCode | [0]' \
@@ -446,19 +451,17 @@ jobs:
           set -euo pipefail
           echo "Updating ECS service with new task definition..."
           aws ecs update-service \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
-            --service "${{ steps.vars.outputs.ecs_service }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --service "${{ steps.target.outputs.ecs_service }}" \
             --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
             --region "${{ env.AWS_REGION }}"
 
-      - name: Wait for service stability
-        shell: bash
+      - name: Wait for ECS service stable
+        shell: pwsh
         run: |
-          set -euo pipefail
-          echo "Waiting for service to reach stable state..."
           aws ecs wait services-stable \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
-            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}"
 
       - name: Get service status
@@ -468,32 +471,70 @@ jobs:
           set -euo pipefail
           echo "Service deployment status:"
           aws ecs describe-services \
-            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
-            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
             --output table
 
-      - name: Get ALB DNS for verification
-        id: alb-dns
-        shell: bash
+      - name: Post-deploy readiness (/api/ready)
+        shell: pwsh
+        env:
+          ALB_DNS_NAME: ${{ steps.alb-dns.outputs.alb_dns_name }}
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
         run: |
-          set -euo pipefail
-          ALB_DNS=$(aws cloudformation describe-stacks \
-            --stack-name Afu9NetworkStack \
-            --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
-            --output text 2>/dev/null || echo "")
+          $target = if ($env:ALB_DNS_NAME) { $env:ALB_DNS_NAME } else { $env:READY_HOST }
+          $uri = "https://$target/api/ready"
+          $host = $env:READY_HOST
+          Write-Host "Probing readiness at $uri (Host: $host)"
+          for ($i = 1; $i -le 30; $i++) {
+            try {
+              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $host } -UseBasicParsing -TimeoutSec 10
+              if ($resp.StatusCode -eq 200) { Write-Host "Ready (attempt $i)"; break }
+            } catch {}
+            if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
+            Start-Sleep -Seconds 5
+          }
 
-          if [ -z "$ALB_DNS" ]; then
-            echo "Warning: Could not fetch ALB DNS from CloudFormation, trying alternative method..."
-            ALB_DNS=$(aws elbv2 describe-load-balancers \
-              --names afu9-alb \
-              --query 'LoadBalancers[0].DNSName' \
-              --output text 2>/dev/null || echo "")
-          fi
+      - name: Resolve ALB DNS
+        id: resolve_alb
+        shell: pwsh
+        run: |
+          # $env:GITHUB_OUTPUT exists in GitHub Actions; locally it can be null. Write to it only when present.
+          $writeOutput = $false
+          if ($env:GITHUB_OUTPUT) { $writeOutput = $true }
 
-          echo "alb_dns=${ALB_DNS}" >> "$GITHUB_OUTPUT"
-          echo "ALB DNS: ${ALB_DNS}"
+          $cluster = "${{ steps.target.outputs.ecs_cluster }}"
+          $service = "${{ steps.target.outputs.ecs_service }}"
+
+          # 1) Describe service to get target group ARN
+          $svcJson = aws ecs describe-services --cluster $cluster --services $service --region "${{ env.AWS_REGION }}" --output json
+          $tgArn = ($svcJson | ConvertFrom-Json).services[0].loadBalancers[0].targetGroupArn
+          if (-not $tgArn) {
+            Write-Error "No loadBalancers attached to service $service in cluster $cluster"; exit 1
+          }
+
+          # 2) Describe target group to get ALB ARN
+          $tgJson = aws elbv2 describe-target-groups --target-group-arns $tgArn --region "${{ env.AWS_REGION }}" --output json
+          $albArn = ($tgJson | ConvertFrom-Json).TargetGroups[0].LoadBalancerArns[0]
+          if (-not $albArn) {
+            Write-Error "No LoadBalancerArn found for target group $tgArn"; exit 1
+          }
+
+          # 3) Describe load balancer to get DNS name
+          $albJson = aws elbv2 describe-load-balancers --load-balancer-arns $albArn --region "${{ env.AWS_REGION }}" --output json
+          $albDns = ($albJson | ConvertFrom-Json).LoadBalancers[0].DNSName
+          if (-not $albDns) {
+            Write-Error "No DNSName found for ALB $albArn"; exit 1
+          }
+
+          if ($writeOutput) {
+            "alb_dns=$albDns" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            Write-Host "alb_dns=$albDns"
+          }
+
+          Write-Host "Resolved ALB DNS: $albDns"
 
       - name: Run post-deployment verification
         shell: bash
@@ -502,10 +543,10 @@ jobs:
           echo "Running automated post-deployment verification..."
           chmod +x ./scripts/post-deploy-verification.sh
           ./scripts/post-deploy-verification.sh \
-            "${{ steps.vars.outputs.tag_prefix }}" \
-            "${{ steps.vars.outputs.ecs_cluster }}" \
-            "${{ steps.vars.outputs.ecs_service }}" \
-            "${{ steps.alb-dns.outputs.alb_dns }}"
+            "${{ steps.target.outputs.tag_prefix }}" \
+            "${{ steps.target.outputs.ecs_cluster }}" \
+            "${{ steps.target.outputs.ecs_service }}" \
+              "${{ steps.alb-dns.outputs.alb_dns_name }}"
 
       - name: Deployment summary
         shell: bash
@@ -515,23 +556,23 @@ jobs:
             echo "## Deployment Summary"
             echo ""
             echo "✅ **Deployment completed successfully**"
-            echo "Environment: ${{ steps.vars.outputs.env_label }}"
+            echo "Environment: ${{ steps.target.outputs.env_label }}"
             echo ""
             echo "### Images deployed:"
-            echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
             echo ""
             echo "### ECS Configuration:"
-            echo "- Cluster: \`${{ steps.vars.outputs.ecs_cluster }}\`"
-            echo "- Service: \`${{ steps.vars.outputs.ecs_service }}\`"
+            echo "- Cluster: \`${{ steps.target.outputs.ecs_cluster }}\`"
+            echo "- Service: \`${{ steps.target.outputs.ecs_service }}\`"
             echo "- Region: \`${{ env.AWS_REGION }}\`"
             echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`"
-            echo "- ALB DNS: ${{ steps.alb-dns.outputs.alb_dns }}"
+            echo "- ALB DNS: ${{ steps.alb-dns.outputs.alb_dns_name }}"
             echo ""
             echo "### Rollback Information:"
             echo "- Git SHA: \`${{ github.sha }}\`"
             echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- Environment: ${{ steps.vars.outputs.env_label }}"
+            echo "- Environment: ${{ steps.target.outputs.env_label }}"
           } >> "$GITHUB_STEP_SUMMARY"
