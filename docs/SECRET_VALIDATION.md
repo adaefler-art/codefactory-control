@@ -520,7 +520,7 @@ Expected:
 
 ### CI Testing
 
-CI workflows already include validation (see `.github/workflows/deploy-stage.yml`):
+CI workflows already include validation (see `.github/workflows/deploy-ecs.yml`):
 
 ```yaml
 jobs:
