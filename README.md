@@ -116,6 +116,7 @@ See [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) for the **complete 
 Also available:
 - [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) - Detailed ECS deployment guide
 - [docs/HTTPS-DNS-SETUP.md](docs/HTTPS-DNS-SETUP.md) - HTTPS/DNS configuration
+- [docs/CONTEXT_KEYS_REFERENCE.md](docs/CONTEXT_KEYS_REFERENCE.md) - **Canonical CDK context keys reference**
 
 **Quick Staging Deploy:**
 

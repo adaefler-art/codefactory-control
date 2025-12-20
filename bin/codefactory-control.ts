@@ -14,23 +14,26 @@ import { Afu9IamStack } from '../lib/afu9-iam-stack';
 import { Afu9AuthStack } from '../infra/stacks/afu9-auth-stack';
 import { Afu9RoutingStack } from '../lib/afu9-routing-stack';
 import { Afu9DeployMemoryStack } from '../lib/afu9-deploy-memory-stack';
+import { getValidatedContext } from '../lib/utils/context-validator';
 
 const app = new cdk.App();
 
 /**
  * Helper function to check if multi-environment mode is enabled
+ * Uses validated context to ensure canonical keys are used
  */
 function isMultiEnvEnabled(app: cdk.App): boolean {
-  const contextValue = app.node.tryGetContext('afu9-multi-env');
+  const contextValue = getValidatedContext<boolean | string>(app, 'afu9-multi-env');
   return contextValue === true || contextValue === 'true';
 }
 
 /**
  * Helper function to check if database integration should be enabled
+ * Uses validated context to ensure canonical keys are used
  * @returns true if database is enabled (default), false if explicitly disabled
  */
 function isDatabaseEnabled(app: cdk.App): boolean {
-  const enableDatabaseContext = app.node.tryGetContext('afu9-enable-database');
+  const enableDatabaseContext = getValidatedContext<boolean | string>(app, 'afu9-enable-database');
   return enableDatabaseContext === undefined ? true : enableDatabaseContext !== false && enableDatabaseContext !== 'false';
 }
 
@@ -51,8 +54,10 @@ const env = {
 const multiEnvEnabled = isMultiEnvEnabled(app);
 
 // DNS and Certificate stack (optional, for HTTPS)
-const enableHttpsContext = app.node.tryGetContext('afu9-enable-https');
-const enableHttps = enableHttpsContext === undefined ? true : enableHttpsContext !== false && enableHttpsContext !== 'false';
+const enableHttps = (() => {
+  const value = getValidatedContext<boolean | string>(app, 'afu9-enable-https');
+  return value === undefined ? true : value !== false && value !== 'false';
+})();
 let dnsStack: Afu9DnsStack | undefined;
 
 if (enableHttps) {
@@ -175,8 +180,8 @@ if (multiEnvEnabled) {
   }
 
   // CloudWatch Alarms for Stage
-  const alarmEmail = app.node.tryGetContext('afu9-alarm-email');
-  const webhookUrl = app.node.tryGetContext('afu9-webhook-url');
+  const alarmEmail = getValidatedContext<string>(app, 'afu9-alarm-email');
+  const webhookUrl = getValidatedContext<string>(app, 'afu9-webhook-url');
   new Afu9AlarmsStack(app, 'Afu9AlarmsStageStack', {
     env,
     description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for Stage environment',
@@ -256,8 +261,8 @@ if (multiEnvEnabled) {
   }
 
   // CloudWatch Alarms stack (depends on ECS and database)
-  const alarmEmail = app.node.tryGetContext('afu9-alarm-email');
-  const webhookUrl = app.node.tryGetContext('afu9-webhook-url');
+  const alarmEmail = getValidatedContext<string>(app, 'afu9-alarm-email');
+  const webhookUrl = getValidatedContext<string>(app, 'afu9-webhook-url');
   new Afu9AlarmsStack(app, 'Afu9AlarmsStack', {
     env,
     description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB with email and webhook notifications',
@@ -272,8 +277,8 @@ if (multiEnvEnabled) {
 }
 
 // IAM stack for deployment automation (independent)
-const githubOrg = app.node.tryGetContext('github-org') || 'adaefler-art';
-const githubRepo = app.node.tryGetContext('github-repo') || 'codefactory-control';
+const githubOrg = getValidatedContext<string>(app, 'github-org') || 'adaefler-art';
+const githubRepo = getValidatedContext<string>(app, 'github-repo') || 'codefactory-control';
 new Afu9IamStack(app, 'Afu9IamStack', {
   env,
   description: 'AFU-9 v0.2 IAM: Deployment roles for GitHub Actions',
@@ -282,7 +287,7 @@ new Afu9IamStack(app, 'Afu9IamStack', {
 });
 
 // Authentication stack (independent)
-const cognitoDomainPrefix = app.node.tryGetContext('afu9-cognito-domain-prefix');
+const cognitoDomainPrefix = getValidatedContext<string>(app, 'afu9-cognito-domain-prefix');
 new Afu9AuthStack(app, 'Afu9AuthStack', {
   env,
   description: 'AFU-9 v0.2 Authentication: Cognito User Pool for Control Center',
