@@ -315,6 +315,7 @@ AFU-9 implements standardized health and readiness endpoints for reliable deploy
 - Post-deployment verification tests all endpoints
 
 **Documentation**:
+- [ECS + ALB Status Signals](docs/ECS_ALB_STATUS_SIGNALS.md) - **CANONICAL**: Go/No-Go decision criteria for deployments
 - [Health Check Decision Summary](docs/HEALTH_CHECK_DECISION_SUMMARY.md) - Complete decision tree and related issues
 - [Health & Readiness Verification](docs/HEALTH_READINESS_VERIFICATION.md) - Endpoint specifications
 - [ECS Health Checks Runbook](docs/runbooks/ecs-healthchecks.md) - Troubleshooting guide

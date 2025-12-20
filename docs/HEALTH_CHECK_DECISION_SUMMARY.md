@@ -13,6 +13,9 @@ Following PR #228 which fixed ECS health check rollbacks by updating the ALB hea
 3. Provides guidance on related open issues
 4. Defines the contract requirements for CI/CD
 
+**Related Documentation:**
+- **[ECS + ALB Status Signals](./ECS_ALB_STATUS_SIGNALS.md)** - Comprehensive Go/No-Go decision criteria based on ECS Events, Target Health, and Health Probes (Issue I-04-02)
+
 ## 1. Current State (Post PR #228)
 
 ### ALB Health Check Configuration
@@ -306,6 +309,7 @@ readinessProbe:
 ## 10. References
 
 - **PR #228:** Fix ECS health check rollbacks by updating ALB path
+- **ECS + ALB Status Signals:** `docs/ECS_ALB_STATUS_SIGNALS.md` (Go/No-Go decision criteria - Issue I-04-02)
 - **Control Plane Spec v1:** `docs/CONTROL_PLANE_SPEC.md`
 - **Health & Readiness Verification:** `docs/HEALTH_READINESS_VERIFICATION.md`
 - **ECS Health Checks Runbook:** `docs/runbooks/ecs-healthchecks.md`
