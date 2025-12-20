@@ -113,6 +113,9 @@ npm install && npm run dev
 
 See [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) for the **complete staging deployment runbook** (Source of Truth).
 
+**🚀 For VS Copilot Users:**
+- [docs/CANONICAL_DEPLOY_PROMPT.md](docs/CANONICAL_DEPLOY_PROMPT.md) - **Copy/paste-ready deployment prompt** (Build → Synth → Diff → Deploy → Verify)
+
 Also available:
 - [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) - Detailed ECS deployment guide
 - [docs/HTTPS-DNS-SETUP.md](docs/HTTPS-DNS-SETUP.md) - HTTPS/DNS configuration
