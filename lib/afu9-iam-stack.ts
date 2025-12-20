@@ -142,7 +142,6 @@ export class Afu9IamStack extends cdk.Stack {
         actions: [
           'ecs:DescribeServices',
           'ecs:DescribeTasks',
-          'ecs:DescribeTaskDefinition',
           'ecs:ListTasks',
           'ecs:UpdateService',
         ],
@@ -151,8 +150,20 @@ export class Afu9IamStack extends cdk.Stack {
           `arn:aws:ecs:${this.region}:${this.account}:cluster/afu9-cluster`,
           `arn:aws:ecs:${this.region}:${this.account}:service/afu9-cluster/*`,
           `arn:aws:ecs:${this.region}:${this.account}:task/afu9-cluster/*`,
-          `arn:aws:ecs:${this.region}:${this.account}:task-definition/afu9-*:*`,
         ],
+      })
+    );
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ECSTaskDefinitionManagement',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecs:DescribeTaskDefinition',
+          'ecs:RegisterTaskDefinition',
+        ],
+        // Task definition APIs require wildcard resources to cover revisions created at runtime
+        resources: ['*'],
       })
     );
 

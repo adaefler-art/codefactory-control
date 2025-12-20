@@ -106,6 +106,23 @@ jobs:
           aws sts get-caller-identity
           echo "✅ AWS authentication successful"
 
+      - name: Diagnose deploy role permissions
+        shell: bash
+        env:
+          DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          echo "Inspecting deploy role: ${DEPLOY_ROLE_ARN}"
+          ROLE_NAME=$(basename "$DEPLOY_ROLE_ARN")
+          aws iam get-role --role-name "$ROLE_NAME" --query '{RoleArn:Role.Arn,PermissionsBoundary:Role.PermissionsBoundary}' --output json || true
+
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          aws iam simulate-principal-policy \
+            --policy-source-arn "$DEPLOY_ROLE_ARN" \
+            --action-names ecs:DescribeTaskDefinition ecs:RegisterTaskDefinition \
+            --resource-arns "arn:aws:ecs:${AWS_REGION}:${ACCOUNT_ID}:task-definition/*" \
+            --output json
+
       - name: Install database client tooling
         shell: bash
         run: |
