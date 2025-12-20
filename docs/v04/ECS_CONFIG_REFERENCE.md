@@ -193,11 +193,11 @@ When `enableDatabase=true`:
 
 | Variable | Secret Name | Key | Description |
 |----------|-------------|-----|-------------|
-| `DATABASE_HOST` | `afu9/database` | `host` | RDS endpoint address |
-| `DATABASE_PORT` | `afu9/database` | `port` | Database port (5432) |
-| `DATABASE_NAME` | `afu9/database` | `database` | Database name (`afu9`) |
-| `DATABASE_USER` | `afu9/database` | `username` | Database username |
-| `DATABASE_PASSWORD` | `afu9/database` | `password` | Database password |
+| `DATABASE_HOST` | `afu9-database` | `host` | RDS endpoint address |
+| `DATABASE_PORT` | `afu9-database` | `port` | Database port (5432) |
+| `DATABASE_NAME` | `afu9-database` | `database` | Database name (`afu9`) |
+| `DATABASE_USER` | `afu9-database` | `username` | Database username |
+| `DATABASE_PASSWORD` | `afu9-database` | `password` | Database password |
 
 Always injected:
 
@@ -238,7 +238,7 @@ Always injected:
 
 **Required Keys:** `openai_api_key`, `anthropic_api_key`, `deepseek_api_key`
 
-### Secret: `afu9/database` (when `enableDatabase=true`)
+### Secret: `afu9-database` (when `enableDatabase=true`)
 
 ```json
 {
@@ -256,7 +256,7 @@ Always injected:
 
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query 'SecretString' \
   --output text | jq 'has("host", "port", "database", "username", "password")'

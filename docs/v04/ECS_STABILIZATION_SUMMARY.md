@@ -126,7 +126,7 @@ dbSecret.grantRead(taskExecutionRole);
 ```bash
 # Verify all required keys exist
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query 'SecretString' --output text | \
   jq 'has("host", "port", "database", "username", "password")'
 ```

@@ -501,7 +501,7 @@ Target Tracking Scaling Policy:
     "private_key": "-----BEGIN RSA PRIVATE KEY-----...",
     "webhook_secret": "whs_xxxxxxxxxxxxxxxxx"
   },
-  "afu9/database": {
+  "afu9-database": {
     "host": "afu9-db.xxxx.eu-central-1.rds.amazonaws.com",
     "port": "5432",
     "database": "afu9",

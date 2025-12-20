@@ -244,7 +244,7 @@ echo "Database Endpoint: $DB_ENDPOINT"
 - `DbEndpoint`: afu9-postgres.xxxxx.eu-central-1.rds.amazonaws.com
 - `DbPort`: 5432
 - `DbName`: afu9
-- `DbSecretArn`: arn:aws:secretsmanager:...:secret:afu9/database-xxxxx
+- `DbSecretArn`: arn:aws:secretsmanager:...:secret:afu9-database-xxxxx
 
 **Duration:** ~5-8 minutes
 
@@ -396,7 +396,7 @@ aws secretsmanager get-secret-value --secret-id afu9-llm \
 The database secret is automatically created during database stack deployment:
 
 ```bash
-aws secretsmanager get-secret-value --secret-id afu9/database \
+aws secretsmanager get-secret-value --secret-id afu9-database \
   --query SecretString --output text | jq .
 ```
 
@@ -605,7 +605,7 @@ aws elbv2 describe-target-health --target-group-arn $TG_ARN
 
 # Get database credentials
 DB_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query SecretString \
   --output text)
 
@@ -774,7 +774,7 @@ aws ec2 describe-security-groups \
     --output text)
 
 # 3. Verify database secret is correct
-aws secretsmanager get-secret-value --secret-id afu9/database
+aws secretsmanager get-secret-value --secret-id afu9-database
 ```
 
 ### Issue: Stack Update Fails

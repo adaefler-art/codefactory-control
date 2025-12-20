@@ -211,7 +211,7 @@ aws secretsmanager describe-secret \
 
 # Database Secret (nur wenn enableDatabase=true)
 aws secretsmanager describe-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessedDate:LastAccessedDate}' \
   --output table
@@ -240,7 +240,7 @@ aws secretsmanager get-secret-value \
 
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'has("host", "port", "database", "username", "password")'
@@ -261,7 +261,7 @@ aws secretsmanager get-secret-value \
 
 # Database Secret (nur Keys anzeigen)
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'keys'
@@ -331,7 +331,7 @@ aws ecs describe-task-definition \
 
 ### Fix 6.1: Database deaktiviert (enableDatabase=false)
 
-**Problem:** `afu9/database` Secret wird erwartet, aber nicht benötigt.
+**Problem:** `afu9-database` Secret wird erwartet, aber nicht benötigt.
 
 **Lösung:** ECS Stack mit `enableDatabase=false` deployen.
 
@@ -386,7 +386,7 @@ curl http://${ALB_DNS}/api/ready | jq .
 
 ### Fix 6.2: Database aktiviert (enableDatabase=true)
 
-**Problem:** `afu9/database` Secret fehlt oder hat falsche Struktur.
+**Problem:** `afu9-database` Secret fehlt oder hat falsche Struktur.
 
 #### Schritt 1: Database Secret erstellen/updaten
 
@@ -400,7 +400,7 @@ RDS_ENDPOINT=$(aws cloudformation describe-stacks \
 
 # Secrets Manager Secret mit korrekter Struktur erstellen
 aws secretsmanager create-secret \
-  --name afu9/database \
+  --name afu9-database \
   --secret-string "{
     \"host\": \"${RDS_ENDPOINT}\",
     \"port\": \"5432\",
@@ -416,7 +416,7 @@ aws secretsmanager create-secret \
 ```bash
 # Bestehenden Secret updaten
 aws secretsmanager update-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --secret-string "{
     \"host\": \"${RDS_ENDPOINT}\",
     \"port\": \"5432\",
@@ -439,7 +439,7 @@ aws cloudformation describe-stacks \
 
 # Credentials aus existierendem Secret (falls schon erstellt von CDK)
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq .
@@ -618,7 +618,7 @@ aws secretsmanager get-secret-value \
   --query 'SecretString' \
   --output text | jq .
 
-# In afu9/database Secret übertragen (Schritt 6.2)
+# In afu9-database Secret übertragen (Schritt 6.2)
 ```
 
 ---

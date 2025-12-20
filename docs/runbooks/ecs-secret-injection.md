@@ -416,7 +416,7 @@ aws ecs update-service \
 **Check that secret names match exactly:**
 
 Required secret names:
-- `afu9/github` (NOT `afu9-github` or `github`)
+- `afu9-github` (NOT `afu9-github` or `github`)
 - `afu9-llm` (NOT `afu9-llm` or `llm`)
 - `afu9-database` (NOT `afu9-database` or `database`)
 

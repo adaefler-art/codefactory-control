@@ -25,8 +25,8 @@ AFU-9 Preflight Secret Validation
 
 Cannot proceed with CDK synth due to missing or invalid secrets:
 
-  ❌ Secret: afu9/database
-     Error: Secret afu9/database is missing required keys: password
+  ❌ Secret: afu9-database
+     Error: Secret afu9-database is missing required keys: password
      Missing keys: password
 
 Process exited with code 1
@@ -36,14 +36,14 @@ Process exited with code 1
 
 **Implementation:**
 - Error output explicitly lists:
-  - Secret name (e.g., `afu9/database`)
+  - Secret name (e.g., `afu9-database`)
   - Missing keys (e.g., `password`)
 - Format: `Secret: <name>` and `Missing keys: <key1, key2, ...>`
 
 **Evidence:**
 ```
-  ❌ Secret: afu9/database
-     Error: Secret afu9/database is missing required keys: password
+  ❌ Secret: afu9-database
+     Error: Secret afu9-database is missing required keys: password
      Missing keys: password
 ```
 
@@ -112,7 +112,7 @@ Process exited with code 1
 
 ### Secret Requirements (from AFU9_SECRET_CONFIGS)
 
-#### afu9/database
+#### afu9-database
 Required keys:
 - `host` - Database endpoint
 - `port` - Database port
@@ -156,22 +156,22 @@ Expected: Validation passes, synth proceeds
 
 #### Scenario 2: Missing Secret Key
 ```bash
-# After removing 'password' from afu9/database in AWS
+# After removing 'password' from afu9-database in AWS
 npm run synth
 ```
 Expected: 
 - Exit code 1
-- Error message: "Secret afu9/database is missing required keys: password"
+- Error message: "Secret afu9-database is missing required keys: password"
 - Synth does NOT run
 
 #### Scenario 3: Missing Secret
 ```bash
-# If afu9/database doesn't exist
+# If afu9-database doesn't exist
 npm run synth
 ```
 Expected:
 - Exit code 1
-- Error message: "Failed to validate secret afu9/database: ResourceNotFoundException"
+- Error message: "Failed to validate secret afu9-database: ResourceNotFoundException"
 - Synth does NOT run
 
 #### Scenario 4: Skip Validation (Local Dev)

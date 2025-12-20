@@ -155,7 +155,7 @@ aws ecs describe-tasks \
 }
 ```
 
-→ **Root Cause:** Secret `afu9-database` oder `afu9/github` oder `afu9-llm` fehlt  
+→ **Root Cause:** Secret `afu9-database` oder `afu9-github` oder `afu9-llm` fehlt  
 → **Aktion:** Weiter zu Abschnitt 5.1
 
 **Beispiel: App-Crash**

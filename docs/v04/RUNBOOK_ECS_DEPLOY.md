@@ -247,7 +247,7 @@ aws secretsmanager describe-secret \
 
 # Check Database secret (if enableDatabase=true)
 aws secretsmanager describe-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessedDate:LastAccessedDate}' \
   --output table
@@ -272,7 +272,7 @@ aws secretsmanager get-secret-value \
 
 # Verify Database secret has required keys (if enableDatabase=true)
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'has("host", "port", "database", "username", "password")'
@@ -317,7 +317,7 @@ Reason: Key 'port' not found in secret JSON
 
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --secret-string '{"host":"...","port":"5432","database":"afu9","username":"...","password":"..."}' \
   --region ${AWS_REGION}
 ```
@@ -457,7 +457,7 @@ aws ec2 authorize-security-group-ingress \
 ```bash
 # Update secret with all required keys
 aws secretsmanager update-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --secret-string '{"host":"afu9-postgres.xxx.eu-central-1.rds.amazonaws.com","port":"5432","database":"afu9","username":"afu9_admin","password":"..."}' \
   --region ${AWS_REGION}
 
@@ -517,7 +517,7 @@ aws ecr describe-images \
 |------------|---------------|-------|
 | `afu9-github` | `token`, `owner`, `repo` | GitHub API access |
 | `afu9-llm` | `openai_api_key`, `anthropic_api_key`, `deepseek_api_key` | LLM API keys |
-| `afu9/database` | `host`, `port`, `database`, `username`, `password` | Only if `enableDatabase=true` |
+| `afu9-database` | `host`, `port`, `database`, `username`, `password` | Only if `enableDatabase=true` |
 
 ### Required Environment Variables (in Task Definition)
 

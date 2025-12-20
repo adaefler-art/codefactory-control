@@ -337,7 +337,7 @@ All sensitive credentials are stored in AWS Secrets Manager with encryption at r
 
 ### Secrets Structure
 
-#### 1. Database Secret (`afu9/database`)
+#### 1. Database Secret (`afu9-database`)
 
 Created automatically by `Afu9DatabaseStack` when RDS instance is created.
 
@@ -703,7 +703,7 @@ aws logs put-metric-filter \
 ```bash
 # Automated rotation via Secrets Manager
 aws secretsmanager rotate-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --rotation-lambda-arn arn:aws:lambda:region:account:function:afu9-rotate-db-password
 ```
 

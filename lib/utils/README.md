@@ -188,10 +188,10 @@ interface DatabaseSecrets {
 ### Functions
 
 #### `getGithubSecrets(options?: SecretLoadOptions): Promise<GithubSecrets>`
-Load GitHub credentials from `afu9/github` secret.
+Load GitHub credentials from `afu9-github` secret.
 
 #### `getLlmSecrets(options?: SecretLoadOptions): Promise<LlmSecrets>`
-Load LLM API keys from `afu9/llm` secret.
+Load LLM API keys from `afu9-llm` secret.
 
 #### `getDatabaseSecrets(secretName?: string, options?: SecretLoadOptions): Promise<DatabaseSecrets>`
 Load database credentials from `afu9-database` secret (or custom secret name).

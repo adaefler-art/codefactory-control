@@ -38,7 +38,7 @@ AFU-9 manages three categories of secrets:
    - DeepSeek API key (DeepSeek models)
    - Used for: AI-powered code generation and analysis
 
-3. **Database Credentials** (`afu9/database`):
+3. **Database Credentials** (`afu9-database`):
    - RDS PostgreSQL connection details
    - Host, port, database name, username, password
    - Used for: Workflow state persistence
@@ -52,7 +52,7 @@ AFU-9 manages three categories of secrets:
 │ AWS Secrets Manager                                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  afu9-github          afu9-llm              afu9/database       │
+│  afu9-github          afu9-llm              afu9-database       │
 │  ├─ token             ├─ openai_api_key    ├─ host             │
 │  ├─ owner             ├─ anthropic_api_key ├─ port             │
 │  └─ repo              └─ deepseek_api_key  ├─ database         │
@@ -177,7 +177,7 @@ Database secrets are automatically created by the `Afu9DatabaseStack` with secur
 To view database credentials:
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq .

@@ -82,7 +82,7 @@ All wildcard resource usages are **documented and justified**:
 
 ### Secret Rotation Wildcards
 
-Database secret ARNs use trailing wildcards (`afu9-database/master*`) to support AWS Secrets Manager rotation, which appends suffixes to secret names.
+Database secret ARNs use trailing wildcards (`afu9/database/master*`) to support AWS Secrets Manager rotation, which appends suffixes to secret names.
 
 ## Security Validation Tools
 

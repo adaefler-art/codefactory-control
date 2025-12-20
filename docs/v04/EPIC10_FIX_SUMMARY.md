@@ -110,7 +110,7 @@ npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=tr
 }
 ```
 
-### RDS-Generated Master Secret: `afu9-database/master`
+### RDS-Generated Master Secret: `afu9/database/master`
 ```json
 {
   "username": "afu9_admin",

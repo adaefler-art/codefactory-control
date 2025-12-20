@@ -552,7 +552,7 @@ aws secretsmanager create-secret \
 # Database credentials (auto-generated during CDK deployment)
 # Or create manually:
 aws secretsmanager create-secret \
-  --name afu9/database \
+  --name afu9-database \
   --description "AFU-9 RDS Postgres credentials" \
   --secret-string "{\"username\":\"afu9_admin\",\"password\":\"$(openssl rand -base64 32)\"}" \
   --region $AWS_REGION
@@ -614,7 +614,7 @@ npx cdk deploy Afu9DatabaseStack
 # - DbEndpoint: afu9-postgres.xxxxx.eu-central-1.rds.amazonaws.com
 # - DbPort: 5432
 # - DbName: afu9
-# - DbSecretArn: arn:aws:secretsmanager:eu-central-1:xxx:secret:afu9/database-xxx
+# - DbSecretArn: arn:aws:secretsmanager:eu-central-1:xxx:secret:afu9-database-xxx
 ```
 
 **Note**: RDS deployment takes approximately 10-15 minutes.
@@ -652,7 +652,7 @@ If you prefer to run migrations manually:
 ```bash
 # Get database credentials from Secrets Manager
 DB_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query SecretString \
   --output text \
   --region $AWS_REGION)
@@ -753,13 +753,13 @@ cd codefactory-control
 ```bash
 # Connect to database
 export PGPASSWORD=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query SecretString \
   --output text \
   --region $AWS_REGION | jq -r '.password')
 
 DB_HOST=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query SecretString \
   --output text \
   --region $AWS_REGION | jq -r '.host')

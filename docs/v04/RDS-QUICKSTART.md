@@ -61,7 +61,7 @@ This script automatically:
 ```bash
 # Get credentials
 export $(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r 'to_entries|map("PG\(.key|ascii_upcase)=\(.value|tostring)")|.[]')
@@ -131,7 +131,7 @@ aws cloudformation describe-stacks \
 
 # From Secrets Manager
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r '.host'
@@ -142,7 +142,7 @@ aws secretsmanager get-secret-value \
 ```bash
 # Get all credentials
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r '.'
@@ -164,7 +164,7 @@ aws secretsmanager get-secret-value \
 ```bash
 # Load credentials
 export $(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r 'to_entries|map("PG\(.key|ascii_upcase)=\(.value|tostring)")|.[]')
@@ -316,7 +316,7 @@ aws rds restore-db-instance-from-db-snapshot \
 3. **Test network connectivity**:
    ```bash
    DB_HOST=$(aws secretsmanager get-secret-value \
-     --secret-id afu9/database \
+     --secret-id afu9-database \
      --region eu-central-1 \
      --query SecretString \
      --output text | jq -r '.host')
@@ -398,7 +398,7 @@ Notes:
 3. **Configure Secret Rotation**:
    ```bash
    aws secretsmanager rotate-secret \
-     --secret-id afu9/database/master \
+     --secret-id afu9-database/master \
      --rotation-lambda-arn arn:aws:lambda:... \
      --rotation-rules AutomaticallyAfterDays=90 \
      --region eu-central-1

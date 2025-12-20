@@ -369,7 +369,7 @@ npx cdk deploy Afu9DatabaseStack
 
 **Step 2:** Get database secret ARN
 ```bash
-DB_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id afu9-database/master --query 'ARN' --output text)
+DB_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id afu9/database/master --query 'ARN' --output text)
 ```
 
 **Step 3:** Deploy ECS with database enabled

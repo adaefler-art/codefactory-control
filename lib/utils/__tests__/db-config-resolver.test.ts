@@ -332,6 +332,6 @@ describe('Database Configuration Resolution', () => {
  * 
  * 6. Verify secret validation:
  *    npx cdk synth Afu9EcsStack -c afu9-enable-database=false | grep SecretValidation
- *    - Should show: afu9/github and afu9-llm
- *    - Should NOT show: afu9/database
+ *    - Should show: afu9-github and afu9-llm
+ *    - Should NOT show: afu9-database
  */

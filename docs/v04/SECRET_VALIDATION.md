@@ -31,7 +31,7 @@ A **preflight check** that blocks CDK synth/build/deploy:
 
 The system tracks three types of secrets:
 
-#### 1. Database Secret (`afu9/database`)
+#### 1. Database Secret (`afu9-database`)
 **Required Keys:**
 - `host` - Database endpoint address
 - `port` - Database port number
@@ -177,7 +177,7 @@ package.json                         # Updated build/synth/deploy scripts
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 1: Validate Secrets                                   │
 │  - Connect to AWS Secrets Manager                           │
-│  - Check afu9/database (required: host, port, database,     │
+│  - Check afu9-database (required: host, port, database,     │
 │    username, password)                                      │
 │  - Check afu9-github (required: token, owner, repo)         │
 │  - Check afu9-llm (optional keys)                           │
@@ -269,7 +269,7 @@ Region: eu-central-1
 
 Validating secrets before CDK synth...
 
-Validating database secret (afu9/database)...
+Validating database secret (afu9-database)...
 ✓ database secret validation passed
 Validating github secret (afu9-github)...
 ✓ github secret validation passed
@@ -310,8 +310,8 @@ Region: eu-central-1
 
 Validating secrets before CDK synth...
 
-Validating database secret (afu9/database)...
-✗ database secret validation failed: Secret afu9/database is missing required keys: password
+Validating database secret (afu9-database)...
+✗ database secret validation failed: Secret afu9-database is missing required keys: password
 Validating github secret (afu9-github)...
 ✓ github secret validation passed
 Validating llm secret (afu9-llm)...
@@ -329,8 +329,8 @@ Total: 3
 
 Cannot proceed with CDK synth due to missing or invalid secrets:
 
-  ❌ Secret: afu9/database
-     Error: Secret afu9/database is missing required keys: password
+  ❌ Secret: afu9-database
+     Error: Secret afu9-database is missing required keys: password
      Missing keys: password
 
 How to fix:
@@ -360,8 +360,8 @@ Region: eu-central-1
 
 Validating secrets...
 
-Validating database secret (afu9/database)...
-✗ database secret validation failed: Secret afu9/database is missing required keys: password
+Validating database secret (afu9-database)...
+✗ database secret validation failed: Secret afu9-database is missing required keys: password
 Validating github secret (afu9-github)...
 ✓ github secret validation passed
 Validating llm secret (afu9-llm)...
@@ -379,8 +379,8 @@ Total: 3
 
 The following secrets have issues:
 
-  ❌ afu9/database
-     Error: Secret afu9/database is missing required keys: password
+  ❌ afu9-database
+     Error: Secret afu9-database is missing required keys: password
      Missing keys: password
 
 Please fix the above errors before deploying.
@@ -397,7 +397,7 @@ To fix missing keys:
 ### Common Issues
 
 #### 1. Secret Not Found
-**Error:** `Failed to validate secret afu9/database: The security token included in the request is invalid`
+**Error:** `Failed to validate secret afu9-database: The security token included in the request is invalid`
 
 **Solution:** 
 - Ensure AWS credentials are configured: `aws configure`
@@ -405,11 +405,11 @@ To fix missing keys:
 - Check that you're using the correct AWS profile: `export AWS_PROFILE=your-profile`
 
 #### 2. Missing Keys
-**Error:** `Secret afu9/database is missing required keys: password`
+**Error:** `Secret afu9-database is missing required keys: password`
 
 **Solution:**
 1. Go to AWS Secrets Manager console
-2. Find the secret `afu9/database`
+2. Find the secret `afu9-database`
 3. Click "Retrieve secret value"
 4. Click "Edit"
 5. Add the missing key in JSON format:
@@ -492,7 +492,7 @@ npm run synth -- Afu9EcsStack
 
 Expected:
 - Exit code 1
-- Error message: "Secret afu9/database is missing required keys: password"
+- Error message: "Secret afu9-database is missing required keys: password"
 - CDK synth does NOT run
 
 #### 4. Test Local Development Override

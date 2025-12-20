@@ -214,7 +214,7 @@ Least-privilege IAM roles:
 All secrets stored in AWS Secrets Manager:
 
 **Secrets**:
-- `afu9/database` - Database connection (auto-managed)
+- `afu9-database` - Database connection (auto-managed)
 - `afu9-github` - GitHub token and repository info
 - `afu9-llm` - OpenAI and Anthropic API keys
 
