@@ -1,3 +1,4 @@
+# Archived on 2025-12-20: One-off v0.3 roadmap issue importer; v0.4 tracking uses dedicated import-v04 package. Retained for history.
 name: Create AFU-9 Issues from Roadmap
 
 on:

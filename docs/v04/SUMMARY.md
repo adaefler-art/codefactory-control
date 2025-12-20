@@ -9,18 +9,18 @@ This package contains everything needed to import 6 EPICs (as GitHub milestones)
 ### Scripts
 - **`import-afu9-v04-issues.ts`** - TypeScript script for programmatic import via GitHub API
 - **`import-afu9-v04-issues.sh`** - Bash wrapper using GitHub CLI (`gh`)
-- **`../package.json`** - Added npm script: `npm run import-v04-issues`
+- **`../../package.json`** - Added npm script: `npm run import-v04-issues`
 
 ### Data
 - **`afu9-v04-issues-data.json`** - Complete structured data for all EPICs and issues
 
 ### Automation
-- **`../.github/workflows/import-v04-issues.yml`** - GitHub Actions workflow for one-click import
+- **`../../.github/workflows/_archived/import-v04-issues.yml`** - GitHub Actions workflow for one-click import (archived after execution)
 
 ### Documentation
-- **`README-V04-ISSUES.md`** - Comprehensive usage documentation
-- **`EXECUTION-INSTRUCTIONS.md`** - Step-by-step execution guide
-- **`SUMMARY.md`** - This summary document
+- **`docs/v04/README-V04-ISSUES.md`** - Comprehensive usage documentation
+- **`docs/v04/EXECUTION-INSTRUCTIONS.md`** - Step-by-step execution guide
+- **`docs/v04/SUMMARY.md`** - This summary document
 
 ## 🚀 Quick Execution Guide
 
@@ -119,15 +119,17 @@ After import, verify:
 codefactory-control/
 ├── .github/
 │   └── workflows/
-│       └── import-v04-issues.yml      # GitHub Actions workflow
+│       └── _archived/import-v04-issues.yml  # GitHub Actions workflow (archived)
+├── docs/
+│   └── v04/
+│       ├── README-V04-ISSUES.md           # Comprehensive documentation
+│       ├── EXECUTION-INSTRUCTIONS.md      # Step-by-step guide
+│       └── SUMMARY.md                     # This file
 ├── scripts/
-│   ├── afu9-v04-issues-data.json      # Structured data (SOURCE OF TRUTH)
-│   ├── import-afu9-v04-issues.ts      # TypeScript import script
-│   ├── import-afu9-v04-issues.sh      # Bash import script
-│   ├── README-V04-ISSUES.md           # Comprehensive documentation
-│   ├── EXECUTION-INSTRUCTIONS.md      # Step-by-step guide
-│   └── SUMMARY.md                     # This file
-└── package.json                       # Contains: npm run import-v04-issues
+│   ├── afu9-v04-issues-data.json          # Structured data (SOURCE OF TRUTH)
+│   ├── import-afu9-v04-issues.ts          # TypeScript import script
+│   ├── import-afu9-v04-issues.sh          # Bash import script
+└── package.json                           # Contains: npm run import-v04-issues
 ```
 
 ## 🎯 Next Steps After Import
@@ -140,10 +142,10 @@ codefactory-control/
 
 ## 📚 Additional Resources
 
-- **AWS Deploy Runbook**: `docs/AWS_DEPLOY_RUNBOOK.md`
-- **ECS Deployment Guide**: `docs/ECS-DEPLOYMENT.md`
-- **Secret Validation**: `docs/SECRET_VALIDATION.md`
-- **Post-Deploy Verification**: `docs/POST_DEPLOY_VERIFICATION.md`
+- **AWS Deploy Runbook**: `../AWS_DEPLOY_RUNBOOK.md`
+- **ECS Deployment Guide**: `../ECS-DEPLOYMENT.md`
+- **Secret Validation**: `../SECRET_VALIDATION.md`
+- **Post-Deploy Verification**: `../POST_DEPLOY_VERIFICATION.md`
 
 ## 🆘 Support
 
@@ -153,7 +155,7 @@ If you encounter issues:
 2. Verify GitHub API rate limits haven't been exceeded
 3. Ensure you have write access to the repository
 4. Check that your token/credentials have `repo` scope
-5. Review the detailed docs: `README-V04-ISSUES.md`
+5. Review the detailed docs: `docs/v04/README-V04-ISSUES.md`
 
 ## 📝 Summary
 

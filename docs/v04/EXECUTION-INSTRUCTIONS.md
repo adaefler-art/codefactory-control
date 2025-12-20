@@ -41,8 +41,8 @@ gh auth status
 ### Method 4: Manual Creation
 
 If automation isn't possible, manually create issues using the data in:
-- **Data file**: `scripts/afu9-v04-issues-data.json`
-- **Documentation**: `scripts/README-V04-ISSUES.md`
+- **Data file**: `../../scripts/afu9-v04-issues-data.json`
+- **Documentation**: `docs/v04/README-V04-ISSUES.md`
 
 ## What Gets Created
 
@@ -80,9 +80,9 @@ If automation isn't possible, manually create issues using the data in:
 - ✅ `scripts/import-afu9-v04-issues.ts` - TypeScript import script
 - ✅ `scripts/import-afu9-v04-issues.sh` - Bash wrapper using gh CLI
 - ✅ `scripts/afu9-v04-issues-data.json` - Structured data (all issues & epics)
-- ✅ `scripts/README-V04-ISSUES.md` - Comprehensive documentation
-- ✅ `scripts/EXECUTION-INSTRUCTIONS.md` - This file
-- ✅ `.github/workflows/import-v04-issues.yml` - GitHub Actions workflow
+- ✅ `docs/v04/README-V04-ISSUES.md` - Comprehensive documentation
+- ✅ `docs/v04/EXECUTION-INSTRUCTIONS.md` - This file
+- ✅ `.github/workflows/_archived/import-v04-issues.yml` - GitHub Actions workflow (archived)
 - ✅ `package.json` - Added npm script: `import-v04-issues`
 
 ## Verification After Import

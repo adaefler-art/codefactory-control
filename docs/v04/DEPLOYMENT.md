@@ -248,7 +248,7 @@ Before deploying to production:
 
 - [ ] Verify stage deployment is stable and tested
 - [ ] Review all changes in the deployment
-- [ ] Ensure database migrations are applied
+- [ ] Ensure database migrations are applied (Deploy ECS workflow now runs [scripts/db-migrate.sh](scripts/db-migrate.sh) via Secrets Manager; set DB secret name via repo/organization vars `PROD_DB_SECRET_NAME`, `STAGE_DB_SECRET_NAME`, or `DB_SECRET_NAME`)
 - [ ] Check current production health metrics
 - [ ] Notify team of upcoming deployment
 - [ ] Have rollback plan ready

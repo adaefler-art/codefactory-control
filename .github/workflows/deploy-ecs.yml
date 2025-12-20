@@ -68,6 +68,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Guard AWS_DEPLOY_ROLE_ARN
+        run: |
+          if [ -z "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ]; then
+            echo "❌ AWS_DEPLOY_ROLE_ARN is missing (secret is empty or undefined)" >&2
+            exit 1
+          fi
+
       - name: Set deployment variables
         id: vars
         run: |
@@ -108,6 +115,11 @@ jobs:
           echo ""
           echo "✅ AWS authentication successful"
 
+      - name: Install database client tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -122,6 +134,61 @@ jobs:
           echo "🔍 Validating secrets before deployment..."
           npm run validate-secrets
           echo "✅ All secrets validated successfully"
+
+      - name: Resolve database connection string
+        id: db-connection
+        env:
+          DEPLOY_ENV: ${{ steps.vars.outputs.deploy_env }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          DB_SECRET_NAME: ${{ vars.DB_SECRET_NAME }}
+          PROD_DB_SECRET_NAME: ${{ vars.PROD_DB_SECRET_NAME }}
+          STAGE_DB_SECRET_NAME: ${{ vars.STAGE_DB_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+
+          DEFAULT_SECRET="afu9/database/master"
+          SECRET_NAME="$DB_SECRET_NAME"
+
+          if [ "$DEPLOY_ENV" = "production" ] && [ -n "${PROD_DB_SECRET_NAME:-}" ]; then
+            SECRET_NAME="$PROD_DB_SECRET_NAME"
+          elif [ "$DEPLOY_ENV" = "staging" ] && [ -n "${STAGE_DB_SECRET_NAME:-}" ]; then
+            SECRET_NAME="$STAGE_DB_SECRET_NAME"
+          fi
+
+          if [ -z "${SECRET_NAME:-}" ]; then
+            SECRET_NAME="$DEFAULT_SECRET"
+          fi
+
+          echo "Using database secret: $SECRET_NAME"
+
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_NAME" \
+            --region "$AWS_REGION" \
+            --query SecretString \
+            --output text)
+
+          if [ -z "$SECRET_JSON" ] || [ "$SECRET_JSON" = "None" ]; then
+            echo "❌ Failed to retrieve database secret" >&2
+            exit 1
+          fi
+
+          DATABASE_URL=$(echo "$SECRET_JSON" | jq -r '"postgresql://\(.username):\(.password)@\(.host):\(.port)/\(.database // .dbname)"')
+
+          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
+            echo "❌ Could not construct DATABASE_URL from secret (expected keys: username, password, host, port, database/dbname)" >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$DATABASE_URL"
+          echo "database_url=$DATABASE_URL" >> $GITHUB_OUTPUT
+
+      - name: Run database migrations (gate)
+        env:
+          DATABASE_URL: ${{ steps.db-connection.outputs.database_url }}
+        run: |
+          echo "🏗️ Running database migrations for ${{ steps.vars.outputs.env_label }}..."
+          bash ./scripts/db-migrate.sh
+          echo "✅ Database migrations applied"
 
       - name: Login to Amazon ECR
         id: login-ecr

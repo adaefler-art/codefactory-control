@@ -190,7 +190,7 @@ After importing the issues:
 
 ## Related Documentation
 
-- [AWS Deploy Runbook](../docs/AWS_DEPLOY_RUNBOOK.md)
-- [ECS Deployment Guide](../docs/ECS-DEPLOYMENT.md)
-- [Post-Deploy Verification](../docs/POST_DEPLOY_VERIFICATION.md)
-- [Secret Validation](../docs/SECRET_VALIDATION.md)
+- [AWS Deploy Runbook](../AWS_DEPLOY_RUNBOOK.md)
+- [ECS Deployment Guide](../ECS-DEPLOYMENT.md)
+- [Post-Deploy Verification](../POST_DEPLOY_VERIFICATION.md)
+- [Secret Validation](../SECRET_VALIDATION.md)
