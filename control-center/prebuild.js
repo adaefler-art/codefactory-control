@@ -20,8 +20,14 @@ function generateBuildMetadata() {
 
   // Try to get git commit hash
   try {
-    const commitHash = execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
-    metadata.commitHash = commitHash.substring(0, 7);
+    // Prioritize BUILD_COMMIT_HASH from environment (set during Docker build)
+    if (process.env.BUILD_COMMIT_HASH) {
+      metadata.commitHash = process.env.BUILD_COMMIT_HASH;
+    } else {
+      // Fallback to git command if available
+      const commitHash = execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
+      metadata.commitHash = commitHash.substring(0, 7);
+    }
   } catch (error) {
     console.warn('Warning: Could not get git commit hash');
     metadata.commitHash = 'unknown';

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Environment configuration
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
+const AFU9_ACCESS_COOKIE = process.env.AFU9_ACCESS_COOKIE || 'afu9_access';
+const AFU9_REFRESH_COOKIE = process.env.AFU9_REFRESH_COOKIE || 'afu9_refresh';
 const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 
 /**
@@ -38,8 +40,8 @@ export async function POST(request: NextRequest) {
 
   // Clear all authentication cookies
   response.cookies.delete(AFU9_AUTH_COOKIE);
-  response.cookies.delete('afu9_access');
-  response.cookies.delete('afu9_refresh');
+  response.cookies.delete(AFU9_ACCESS_COOKIE);
+  response.cookies.delete(AFU9_REFRESH_COOKIE);
 
   return response;
 }
@@ -56,8 +58,8 @@ export async function GET(request: NextRequest) {
 
   // Clear all authentication cookies
   response.cookies.delete(AFU9_AUTH_COOKIE);
-  response.cookies.delete('afu9_access');
-  response.cookies.delete('afu9_refresh');
+  response.cookies.delete(AFU9_ACCESS_COOKIE);
+  response.cookies.delete(AFU9_REFRESH_COOKIE);
 
   return response;
 }
