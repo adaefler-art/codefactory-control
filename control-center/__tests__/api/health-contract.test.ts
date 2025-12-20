@@ -188,6 +188,31 @@ describe('Ready Endpoint Contract', () => {
     expect(body.dependencies).toHaveProperty('optional');
   });
 
+  test('/api/ready required dependencies list reflects actual configuration', async () => {
+    // When database is disabled, it should not be in required list
+    process.env.DATABASE_ENABLED = 'false';
+    
+    const responseDisabled = await readyHandler();
+    const bodyDisabled = await responseDisabled.json();
+    
+    expect(bodyDisabled.dependencies.required).toEqual(['environment']);
+    expect(bodyDisabled.dependencies.required).not.toContain('database');
+    
+    // When database is enabled, it should be in required list
+    process.env.DATABASE_ENABLED = 'true';
+    process.env.DATABASE_HOST = 'localhost';
+    process.env.DATABASE_PORT = '5432';
+    process.env.DATABASE_NAME = 'testdb';
+    process.env.DATABASE_USER = 'testuser';
+    process.env.DATABASE_PASSWORD = 'testpass';
+    
+    const responseEnabled = await readyHandler();
+    const bodyEnabled = await responseEnabled.json();
+    
+    expect(bodyEnabled.dependencies.required).toContain('environment');
+    expect(bodyEnabled.dependencies.required).toContain('database');
+  });
+
   test('/api/ready does NOT fail on MCP server unavailability', async () => {
     // MCP servers should be optional dependencies
     process.env.DATABASE_ENABLED = 'false';

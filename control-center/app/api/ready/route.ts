@@ -108,6 +108,9 @@ export async function GET() {
       { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
     ];
 
+    // Extract MCP server names for consistent reference
+    const mcpServerNames = mcpServers.map(s => s.name);
+
     if (shouldCheckMCPServers) {
       for (const server of mcpServers) {
         try {
@@ -140,9 +143,10 @@ export async function GET() {
     }
 
     // Determine overall readiness
+    // MCP servers are optional, so exclude them from failure detection
     const hasFailures = Object.entries(checks).some(([name, check]) => {
-      if (['mcp-github', 'mcp-deploy', 'mcp-observability'].includes(name)) {
-        return false;
+      if (mcpServerNames.includes(name)) {
+        return false; // MCP servers are optional dependencies
       }
       return check.status === 'error' || check.status === 'failed';
     });
@@ -157,6 +161,12 @@ export async function GET() {
 
     const ready = !hasFailures;
 
+    // Build required dependencies list based on actual configuration
+    const requiredDeps = ['environment'];
+    if (databaseEnabled) {
+      requiredDeps.push('database');
+    }
+
     const response = {
       ready,
       service: 'afu9-control-center',
@@ -164,9 +174,9 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       checks,
       dependencies: {
-        required: ['database', 'environment'],
+        required: requiredDeps,
         optional: shouldCheckMCPServers 
-          ? ['mcp-github', 'mcp-deploy', 'mcp-observability']
+          ? mcpServerNames
           : [],
       },
       ...(errors.length > 0 && { errors }),
@@ -178,6 +188,14 @@ export async function GET() {
     );
   } catch (error) {
     console.error('Readiness check failed:', error);
+    
+    // Build required dependencies list for error response
+    const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
+    const requiredDeps = ['environment'];
+    if (databaseEnabled) {
+      requiredDeps.push('database');
+    }
+    
     return NextResponse.json(
       {
         ready: false,
@@ -189,7 +207,7 @@ export async function GET() {
           service: { status: 'error', message: 'Readiness check exception' }
         },
         dependencies: {
-          required: ['database', 'environment'],
+          required: requiredDeps,
           optional: [],
         },
       },
