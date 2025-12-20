@@ -1,0 +1,403 @@
+﻿{
+    "taskDefinitionArn": "arn:aws:ecs:eu-central-1:313095875771:task-definition/afu9-control-center:30",
+    "containerDefinitions": [
+        {
+            "name": "mcp-github",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-github:staging-latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3001,
+                    "hostPort": 3001,
+                    "protocol": "tcp",
+                    "name": "mcp-github-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "3001"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "production"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "GITHUB_TOKEN",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:token::"
+                }
+            ],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/afu9/mcp-github",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-github"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3001/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "control-center",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/control-center:staging-latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp",
+                    "name": "control-center-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "3000"
+                },
+                {
+                    "name": "ENVIRONMENT",
+                    "value": "stage"
+                },
+                {
+                    "name": "PGSSLMODE",
+                    "value": "require"
+                },
+                {
+                    "name": "COGNITO_USER_POOL_ID",
+                    "value": "eu-central-1_XYQjr7oX6"
+                },
+                {
+                    "name": "MCP_GITHUB_ENDPOINT",
+                    "value": "http://localhost:3001"
+                },
+                {
+                    "name": "MCP_OBSERVABILITY_ENDPOINT",
+                    "value": "http://localhost:3003"
+                },
+                {
+                    "name": "MCP_OBSERVABILITY_URL",
+                    "value": "http://127.0.0.1:3003"
+                },
+                {
+                    "name": "COGNITO_ISSUER_URL",
+                    "value": "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_XYQjr7oX6"
+                },
+                {
+                    "name": "DATABASE_SSL",
+                    "value": "true"
+                },
+                {
+                    "name": "MCP_DEPLOY_URL",
+                    "value": "http://127.0.0.1:3002"
+                },
+                {
+                    "name": "DATABASE_ENABLED",
+                    "value": "true"
+                },
+                {
+                    "name": "MCP_DEPLOY_ENDPOINT",
+                    "value": "http://localhost:3002"
+                },
+                {
+                    "name": "COGNITO_REGION",
+                    "value": "eu-central-1"
+                },
+                {
+                    "name": "MCP_GITHUB_URL",
+                    "value": "http://127.0.0.1:3001"
+                },
+                {
+                    "name": "AFU9_COOKIE_DOMAIN",
+                    "value": ".afu-9.com"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "production"
+                },
+                {
+                    "name": "COGNITO_CLIENT_ID",
+                    "value": "3rmgq2qf1p84mo64tnhvk9cr6s"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "DATABASE_HOST",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:host::"
+                },
+                {
+                    "name": "DATABASE_PORT",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:port::"
+                },
+                {
+                    "name": "DATABASE_NAME",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:dbname::"
+                },
+                {
+                    "name": "DATABASE_USER",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:username::"
+                },
+                {
+                    "name": "DATABASE_PASSWORD",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:password::"
+                },
+                {
+                    "name": "GITHUB_TOKEN",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:token::"
+                },
+                {
+                    "name": "GITHUB_OWNER",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:owner::"
+                },
+                {
+                    "name": "GITHUB_REPO",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:repo::"
+                },
+                {
+                    "name": "OPENAI_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/llm:openai_api_key::"
+                },
+                {
+                    "name": "ANTHROPIC_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/llm:anthropic_api_key::"
+                },
+                {
+                    "name": "DEEPSEEK_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/llm:deepseek_api_key::"
+                }
+            ],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/afu9/control-center",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "control-center"
+                },
+                "secretOptions": []
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "mcp-observability",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-observability:staging-latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3003,
+                    "hostPort": 3003,
+                    "protocol": "tcp",
+                    "name": "mcp-observability-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "3003"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "eu-central-1"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "production"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/afu9/mcp-observability",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-observability"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3003/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "mcp-deploy",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-deploy:staging-latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3002,
+                    "hostPort": 3002,
+                    "protocol": "tcp",
+                    "name": "mcp-deploy-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "3002"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "eu-central-1"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "production"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/afu9/mcp-deploy",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-deploy"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3002/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        }
+    ],
+    "family": "afu9-control-center",
+    "taskRoleArn": "arn:aws:iam::313095875771:role/afu9-ecs-task-role",
+    "executionRoleArn": "arn:aws:iam::313095875771:role/afu9-ecs-task-execution-role",
+    "networkMode": "awsvpc",
+    "revision": 30,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "ecs.capability.secrets.asm.environment-variables"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.17"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.task-iam-role"
+        },
+        {
+            "name": "ecs.capability.container-health-check"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "FARGATE",
+        "MANAGED_INSTANCES"
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "registeredAt": "2025-12-19T09:19:56.565000+01:00",
+    "registeredBy": "arn:aws:sts::313095875771:assumed-role/cdk-hnb659fds-cfn-exec-role-313095875771-eu-central-1/AWSCloudFormation"
+}
