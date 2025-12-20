@@ -1,28 +1,59 @@
 # AFU-9 ECS healthchecks runbook
 
-## Incident
-- ECS circuit breaker triggered by false-negative container healthcheck on `control-center`.
-- Tasks marked UNHEALTHY after ~5–6 minutes despite `/api/ready` returning Ready; deployments rolled back to desired=0.
+## Incident (Historical - Resolved)
+- ECS circuit breaker triggered by misconfigured health checks.
+- Tasks marked UNHEALTHY despite application being ready.
 
-## Symptoms
+## Symptoms (Historical)
 - ECS events: `Service ... (port 3000) is unhealthy in target-group ...` followed by circuit breaker rollback.
 - Task status: desired=1 → running=1 → UNHEALTHY, then service scaled to 0.
 - Application logs showed readiness success before task termination.
 
-## Root cause
-- Container-level HTTP health probe in `control-center` produced intermittent failures; ALB target group healthcheck was never reached, so tasks failed ECS health.
+## Root Cause (Historical)
+- ALB health check pointed to `/api/ready` which performs deep dependency checks
+- `/api/ready` returned 503 during startup when database/MCP not yet available
+- ECS Circuit Breaker interpreted 503 as failure → rollback
 
-## Fix (current state)
-- Disabled container healthcheck for `control-center` task definition.
-- ALB target group `/api/ready` remains the health gate (HTTP 200 expected).
-- MCP containers retain their existing health checks.
+## Fix (Current State - As of PR #228)
+✅ **ALB Target Group health check uses `/api/health`**
+- Path: `/api/health` (liveness probe, no dependencies)
+- Always returns 200 when Node.js process is running
+- No false negatives during startup
 
-## Verification
-- ECS service `afu9-control-center`: desired=1, running=1, no UNHEALTHY events for at least one full ALB healthcheck interval.
-- Target group `afu9-tg`: healthy targets = 1.
-- Manual check (optional): `curl https://afu-9.com/api/ready` or ALB DNS → expect HTTP 200 and readiness JSON.
+✅ **Container health checks use `/api/health`**
+- Control Center container: HTTP probe on `http://127.0.0.1:3000/api/health`
+- MCP containers: HTTP probe on `http://127.0.0.1:300X/health`
+- startPeriod: 120s to allow for cold start
 
-## Optional follow-up
-- Consider lighter container probes: TCP only, or HTTP no-op endpoint with zero dependencies.
-- Harden `/api/ready`: ensure fast path, minimal dependencies, clear failure metrics.
-- If re-enabling container checks, align intervals/timeouts with app startup and ALB health expectations to avoid overlap-induced false negatives.
+✅ **`/api/ready` remains available for optional readiness checks**
+- Not used by ALB or ECS health checks
+- Can return 503 if dependencies unavailable
+- Use for manual verification or future K8s readiness probes
+
+## Verification (Current)
+```bash
+# Check ALB target health
+aws elbv2 describe-target-health \
+  --target-group-arn arn:aws:elasticloadbalancing:REGION:ACCOUNT:targetgroup/afu9-tg/ID
+
+# Expected: State = "healthy" for all targets
+
+# Check ECS service health
+aws ecs describe-services \
+  --cluster afu9-cluster \
+  --services afu9-control-center
+
+# Expected: runningCount = desiredCount, no UNHEALTHY events
+
+# Manual health endpoint check
+curl https://afu-9.com/api/health | jq .
+# Expected: {"status":"ok","service":"afu9-control-center",...}
+
+# Optional readiness check (may return 503 during startup)
+curl https://afu-9.com/api/ready | jq .
+```
+
+## Optional Follow-up
+- Monitor CloudWatch metrics for health check success rate
+- Set up alarms for sustained health check failures
+- Review health check intervals if deployment times change

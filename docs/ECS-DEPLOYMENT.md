@@ -430,8 +430,8 @@ Open the URL in your browser. You should see the AFU-9 Control Center UI.
 **URL Mappings:**
 - **HTTPS with custom domain**: `https://afu9.yourdomain.com`
 - **HTTP with ALB DNS**: `http://afu9-alb-xxxxx.eu-central-1.elb.amazonaws.com`
-- **Health Check**: `/api/health` - Basic liveness check
-- **Readiness Check**: `/api/ready` - Comprehensive readiness check (used by ALB)
+- **Health Check**: `/api/health` - Basic liveness check (used by ALB)
+- **Readiness Check**: `/api/ready` - Comprehensive readiness check (manual/optional)
 - **API Endpoints**: `/api/*`
 - **GitHub Webhooks**: `/api/webhooks/github`
 

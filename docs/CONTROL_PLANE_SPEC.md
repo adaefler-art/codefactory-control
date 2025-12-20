@@ -281,7 +281,7 @@ Empfohlene Health Check Konfiguration:
 {
   healthCheck: {
     enabled: true,
-    path: '/ready',
+    path: '/health',  // Für Control Center: /api/health, für MCP Server: /health
     protocol: 'HTTP',
     port: 'traffic-port',
     interval: cdk.Duration.seconds(30),
@@ -294,6 +294,12 @@ Empfohlene Health Check Konfiguration:
   }
 }
 ```
+
+**Wichtig:** ALB Health Checks müssen auf `/health` (bzw. `/api/health` für Control Center) zeigen.
+Dies ist ein **Liveness Probe** ohne Dependencies.
+
+`/ready` ist für **Readiness Checks** gedacht und kann 503 zurückgeben wenn Dependencies fehlen.
+Verwende `/ready` nicht für ALB Health Checks.
 
 ---
 
