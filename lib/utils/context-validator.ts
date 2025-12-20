@@ -87,6 +87,7 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
   },
 
   // Database configuration (when afu9-enable-database=true)
+  // Note: These keys don't have afu9- prefix for backward compatibility with CDK conventions
   'dbSecretArn': {
     type: 'string',
     description: 'ARN of database connection secret',
@@ -112,6 +113,9 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
 /**
  * Deprecated context keys that should no longer be used
  * Maps old key -> new key
+ * 
+ * Note: This mapping is intentionally explicit (not derived from CANONICAL_CONTEXT_KEYS)
+ * for clarity and ease of use. The duplication is minimal and makes the API clearer.
  */
 export const DEPRECATED_CONTEXT_KEYS: Record<string, string> = {
   'enableDatabase': 'afu9-enable-database',
