@@ -2,12 +2,14 @@
 
 **EPIC 2 Implementation** - Provides governance, auditability, and deterministic verdict evaluation for AFU-9.  
 **EPIC B Implementation** - Canonical verdict types for decision authority.  
-**Issue B2 Implementation** - Simplified Verdict → Action Mapping (GREEN/RED/HOLD/RETRY).
+**Issue B2 Implementation** - Simplified Verdict → Action Mapping (GREEN/RED/HOLD/RETRY).  
+**Issue B3 Implementation** - Verdict als Gate vor Deploy (Deployment gating).
 
 **📖 Complete Documentation:** 
 - [Confidence Score Schema](../../docs/CONFIDENCE_SCORE_SCHEMA.md) - Confidence score normalization
 - [Verdict Types](../../docs/VERDICT_TYPES.md) - Canonical verdict types and decision logic
 - [Issue B2 Implementation](./ISSUE_B2_IMPLEMENTATION.md) - Simplified verdict system
+- [Issue B3 Implementation](../../IMPLEMENTATION_SUMMARY_ISSUE_B3.md) - Deployment gate
 
 ## Overview
 
@@ -17,6 +19,7 @@ The Verdict Engine v1.1 enhances the AFU-9 system with:
 2. **Confidence Score Normalization** (Issue 2.2): Deterministic 0-100 scale confidence scoring
 3. **Canonical Verdict Types** (EPIC B): Standardized decision outcomes (APPROVED, REJECTED, DEFERRED, etc.)
 4. **Simplified Verdict System** (Issue B2): 1:1 verdict-to-action mapping (GREEN→ADVANCE, RED→ABORT, etc.)
+5. **Deployment Gate** (Issue B3): No deployment without GREEN verdict
 
 ## Key Features
 
@@ -106,7 +109,50 @@ switch (action) {
 - ESCALATED, BLOCKED → HOLD
 - DEFERRED, PENDING → RETRY
 
-### 3. Normalized Confidence Scores
+### 3. Deployment Gate (Issue B3)
+
+**No deployment without GREEN verdict** - The deployment gate ensures that only GREEN verdicts allow deployments to proceed.
+
+```typescript
+import { 
+  checkDeploymentGate,
+  validateDeploymentGate,
+  isDeploymentAllowed,
+} from '@codefactory/verdict-engine';
+
+// Check if deployment should be allowed
+const gateResult = checkDeploymentGate(verdict);
+if (gateResult.allowed) {
+  console.log('✅ Deploying to production');
+  await deployToProduction();
+} else {
+  console.error('❌ Deployment blocked:', gateResult.reason);
+  // Example: "Deployment BLOCKED: Verdict is RED (critical failure detected)"
+}
+
+// Or validate (throws if not allowed)
+try {
+  validateDeploymentGate(verdict);
+  await deployToProduction();
+} catch (error) {
+  console.error('Deployment gate check failed:', error.message);
+}
+
+// Or simple boolean check
+if (isDeploymentAllowed(verdict)) {
+  await deployToProduction();
+}
+```
+
+**Deployment Gate Rules:**
+- ✅ **GREEN** → Deployment ALLOWED
+- ❌ **RED** → Deployment BLOCKED (critical failure)
+- ❌ **HOLD** → Deployment BLOCKED (requires human review)
+- ❌ **RETRY** → Deployment BLOCKED (transient condition)
+
+**For complete documentation including CI/CD integration, see:** [Issue B3 Implementation](../../IMPLEMENTATION_SUMMARY_ISSUE_B3.md)
+
+### 4. Normalized Confidence Scores
 
 All confidence scores are normalized to a 0-100 integer scale:
 
@@ -122,7 +168,7 @@ const rawConfidence = 0.9; // From classifier
 const normalizedScore = normalizeConfidenceScore(rawConfidence); // Returns 90
 ```
 
-### 3. Immutable Policy Snapshots
+### 5. Immutable Policy Snapshots
 
 Every verdict references an immutable policy snapshot:
 

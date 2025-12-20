@@ -198,6 +198,18 @@ jobs:
           echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
           echo "New task definition: $NEW_TASK_DEF_ARN"
 
+      # Issue B3: Verdict Gate - Check deployment verdict before proceeding
+      - name: Check deployment verdict gate
+        env:
+          DEPLOYMENT_VERDICT: ${{ vars.DEPLOYMENT_VERDICT || 'GREEN' }}
+        run: |
+          echo "🔍 Checking deployment verdict gate..."
+          echo "Issue B3: No deployment without GREEN verdict"
+          echo ""
+          node scripts/check-deployment-gate.js "$DEPLOYMENT_VERDICT"
+          echo ""
+          echo "✅ Verdict gate check passed - proceeding with deployment"
+
       - name: Update ECS service
         run: |
           echo "Updating ECS service with new task definition..."

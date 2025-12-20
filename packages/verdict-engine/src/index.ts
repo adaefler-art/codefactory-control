@@ -6,6 +6,7 @@
  * - Issue 2.2: Confidence Score Normalization
  * - EPIC B: Verdict Types for Decision Authority
  * - Issue B2: Simplified Verdict → Action Mapping
+ * - Issue B3: Verdict als Gate vor Deploy
  * 
  * Main exports for the Verdict Engine package
  */
@@ -24,6 +25,18 @@ export {
   getActionForVerdictType,
   validateSimpleVerdictMapping,
 } from './engine';
+
+// Issue B3: Deployment gate functions
+export {
+  checkDeploymentGate,
+  validateDeploymentGate,
+  isDeploymentAllowed,
+  getDeploymentStatus,
+} from './deployment-gate';
+
+export type {
+  DeploymentGateResult,
+} from './deployment-gate';
 
 // Database layer
 export {
