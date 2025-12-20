@@ -10,23 +10,13 @@ name: Deploy AFU-9 to ECS
 # Environments:
 # - Staging: Auto-deploys on push to main branch
 # - Production: Manual workflow_dispatch only
-#
-# See docs/DEPLOYMENT_CONSOLIDATED.md for complete deployment guide
 # ============================================================================
-
-# Build Determinism:
-# - Uses git commit SHA as the primary deterministic identifier
-# - Docker images are built with pinned versions (node:20.10.0-alpine)
-# - Dependencies installed via npm ci (uses lockfiles)
-# - SOURCE_DATE_EPOCH=0 ensures reproducible timestamps
-# - Timestamp tags are supplementary for human readability only
-# See docs/BUILD_DETERMINISM_CRITERIA.md for details
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy to'
+        description: "Environment to deploy to"
         required: true
         type: choice
         options:
@@ -37,9 +27,9 @@ on:
     branches:
       - main
     paths:
-      - 'control-center/**'
-      - 'mcp-servers/**'
-      - '.github/workflows/deploy-ecs.yml'
+      - "control-center/**"
+      - "mcp-servers/**"
+      - ".github/workflows/deploy-ecs.yml"
 
 permissions:
   id-token: write
@@ -75,11 +65,13 @@ jobs:
 
       - name: Set deployment variables
         id: vars
+        shell: bash
         run: |
+          set -euo pipefail
           DEPLOY_ENV="${{ env.DEPLOY_ENV }}"
 
           if [ "$DEPLOY_ENV" != "production" ] && [ "$DEPLOY_ENV" != "staging" ]; then
-            echo "Unsupported environment: $DEPLOY_ENV"
+            echo "Unsupported environment: $DEPLOY_ENV" >&2
             exit 1
           fi
 
@@ -93,10 +85,10 @@ jobs:
             ENV_LABEL="Staging"
           fi
 
-          echo "deploy_env=$DEPLOY_ENV" >> $GITHUB_OUTPUT
-          echo "tag_prefix=$TAG_PREFIX" >> $GITHUB_OUTPUT
-          echo "ecs_service=$ECS_SERVICE" >> $GITHUB_OUTPUT
-          echo "env_label=$ENV_LABEL" >> $GITHUB_OUTPUT
+          echo "deploy_env=$DEPLOY_ENV" >> "$GITHUB_OUTPUT"
+          echo "tag_prefix=$TAG_PREFIX" >> "$GITHUB_OUTPUT"
+          echo "ecs_service=$ECS_SERVICE" >> "$GITHUB_OUTPUT"
+          echo "env_label=$ENV_LABEL" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -105,30 +97,38 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify AWS OIDC Authentication
+        shell: bash
         run: |
+          set -euo pipefail
           echo "========================================="
           echo "Verifying AWS OIDC Authentication"
           echo "========================================="
           aws sts get-caller-identity
-          echo ""
           echo "✅ AWS authentication successful"
 
       - name: Install database client tooling
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y postgresql-client jq
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: "18"
+          cache: "npm"
 
       - name: Install root dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
 
       - name: Validate secrets in AWS Secrets Manager
+        shell: bash
         run: |
+          set -euo pipefail
           echo "🔍 Validating secrets before deployment..."
           npm run validate-secrets
           echo "✅ All secrets validated successfully"
@@ -141,11 +141,12 @@ jobs:
           DB_SECRET_NAME: ${{ vars.DB_SECRET_NAME }}
           PROD_DB_SECRET_NAME: ${{ vars.PROD_DB_SECRET_NAME }}
           STAGE_DB_SECRET_NAME: ${{ vars.STAGE_DB_SECRET_NAME }}
+        shell: bash
         run: |
           set -euo pipefail
 
           DEFAULT_SECRET="afu9/database/master"
-          SECRET_NAME="$DB_SECRET_NAME"
+          SECRET_NAME="${DB_SECRET_NAME:-}"
 
           if [ "$DEPLOY_ENV" = "production" ] && [ -n "${PROD_DB_SECRET_NAME:-}" ]; then
             SECRET_NAME="$PROD_DB_SECRET_NAME"
@@ -170,6 +171,7 @@ jobs:
             exit 1
           fi
 
+          # Accept "database" (preferred) and "dbname" (fallback)
           DATABASE_URL=$(echo "$SECRET_JSON" | jq -r '"postgresql://\(.username):\(.password)@\(.host):\(.port)/\(.database // .dbname)"')
 
           if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
@@ -178,15 +180,7 @@ jobs:
           fi
 
           echo "::add-mask::$DATABASE_URL"
-          echo "database_url=$DATABASE_URL" >> $GITHUB_OUTPUT
-
-      - name: Run database migrations (gate)
-        env:
-          DATABASE_URL: ${{ steps.db-connection.outputs.database_url }}
-        run: |
-          echo "🏗️ Running database migrations for ${{ steps.vars.outputs.env_label }}..."
-          bash ./scripts/db-migrate.sh
-          echo "✅ Database migrations applied"
+          echo "database_url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -197,25 +191,23 @@ jobs:
 
       - name: Get ECR repository URIs
         id: ecr-uris
+        shell: bash
         run: |
-          echo "control_center=$(aws ecr describe-repositories --repository-names afu9/control-center --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
-          echo "mcp_github=$(aws ecr describe-repositories --repository-names afu9/mcp-github --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
-          echo "mcp_deploy=$(aws ecr describe-repositories --repository-names afu9/mcp-deploy --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
-          echo "mcp_observability=$(aws ecr describe-repositories --repository-names afu9/mcp-observability --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          echo "control_center=$(aws ecr describe-repositories --repository-names afu9/control-center --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_github=$(aws ecr describe-repositories --repository-names afu9/mcp-github --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_deploy=$(aws ecr describe-repositories --repository-names afu9/mcp-deploy --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_observability=$(aws ecr describe-repositories --repository-names afu9/mcp-observability --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
 
       - name: Generate image tags
         id: image-tags
+        shell: bash
         run: |
-          # Primary deterministic identifier: Git commit SHA
-          # This ensures reproducible builds - same commit = same image
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          
-          # Supplementary timestamp for human readability and rollback convenience
-          # NOTE: Timestamp is NOT used for build determinism validation
-          echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
 
-      # Build and push Control Center
       - name: Build and push Control Center
         uses: docker/build-push-action@v5
         with:
@@ -233,7 +225,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build and push MCP GitHub Server
       - name: Build and push MCP GitHub Server
         uses: docker/build-push-action@v5
         with:
@@ -247,7 +238,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build and push MCP Deploy Server
       - name: Build and push MCP Deploy Server
         uses: docker/build-push-action@v5
         with:
@@ -261,7 +251,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build and push MCP Observability Server
       - name: Build and push MCP Observability Server
         uses: docker/build-push-action@v5
         with:
@@ -277,26 +266,25 @@ jobs:
 
       - name: Create new task definition with environment tags
         id: task-def
+        shell: bash
         run: |
+          set -euo pipefail
           echo "Creating new task definition for ${{ steps.vars.outputs.env_label }} with env-tagged images..."
-          
-          # Get current task definition
+
           TASK_DEF_ARN=$(aws ecs describe-services \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ steps.vars.outputs.ecs_service }} \
-            --region ${{ env.AWS_REGION }} \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
             --query 'services[0].taskDefinition' \
             --output text)
-          
+
           echo "Current task definition: $TASK_DEF_ARN"
-          
-          # Get task definition JSON
+
           aws ecs describe-task-definition \
             --task-definition "$TASK_DEF_ARN" \
-            --region ${{ env.AWS_REGION }} \
+            --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
-          
-          # Update container images with environment-specific tags
+
           jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
@@ -307,68 +295,151 @@ jobs:
                elif .name == "mcp-deploy" then .image = $dp_image
                elif .name == "mcp-observability" then .image = $ob_image
                else . end
-             ) | 
+             ) |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
              task-def.json > new-task-def.json
-          
-          # Register new task definition
+
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://new-task-def.json \
-            --region ${{ env.AWS_REGION }} \
+            --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
-          
-          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "New task definition: $NEW_TASK_DEF_ARN"
 
-      # Issue B3: Verdict Gate - Check deployment verdict before proceeding
+      - name: Run database migrations (gate)
+        id: migrate
+        env:
+          DATABASE_URL: ${{ steps.db-connection.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "🏗️ Running database migrations for ${{ steps.vars.outputs.env_label }}..."
+
+          # Reuse the service's awsvpc network configuration
+          aws ecs describe-services \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+            --output json > awsvpc.json
+
+          SUBNETS=$(jq -r '.subnets | join(",")' awsvpc.json)
+          SGS=$(jq -r '.securityGroups | join(",")' awsvpc.json)
+          ASSIGN_PUBLIC_IP=$(jq -r '.assignPublicIp // "DISABLED"' awsvpc.json)
+
+          if [ -z "${SUBNETS:-}" ] || [ -z "${SGS:-}" ]; then
+            echo "❌ Could not determine VPC networking from ECS service" >&2
+            cat awsvpc.json >&2 || true
+            exit 1
+          fi
+
+          # Run a one-off Fargate task using the NEW task definition and override the command
+          OVERRIDES_JSON=$(jq -nc --arg db "$DATABASE_URL" '{
+            containerOverrides: [{
+              name: "control-center",
+              command: ["sh","-lc","npm run db:migrate"],
+              environment: [{ name: "DATABASE_URL", value: $db }]
+            }]
+          }')
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --launch-type FARGATE \
+            --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$ASSIGN_PUBLIC_IP}" \
+            --overrides "$OVERRIDES_JSON" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          if [ -z "${TASK_ARN:-}" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "❌ Failed to start migration task" >&2
+            exit 1
+          fi
+
+          echo "Migration task: $TASK_ARN"
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+
+          aws ecs wait tasks-stopped \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --tasks "$TASK_ARN" \
+            --region "${{ env.AWS_REGION }}"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --tasks "$TASK_ARN" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'tasks[0].containers[?name==`control-center`].exitCode | [0]' \
+            --output text)
+
+          echo "Migration exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "❌ Database migrations failed" >&2
+            exit 1
+          fi
+
+          echo "✅ Database migrations applied"
+
       - name: Check deployment verdict gate
         env:
-          DEPLOYMENT_VERDICT: ${{ vars.DEPLOYMENT_VERDICT || 'GREEN' }}
+          DEPLOYMENT_VERDICT: ${{ vars.DEPLOYMENT_VERDICT }}
+        shell: bash
         run: |
+          set -euo pipefail
           echo "🔍 Checking deployment verdict gate..."
           echo "Issue B3: No deployment without GREEN verdict"
           echo ""
-          node scripts/check-deployment-gate.js "$DEPLOYMENT_VERDICT"
+          VERDICT="${DEPLOYMENT_VERDICT:-GREEN}"
+          node scripts/check-deployment-gate.js "$VERDICT"
           echo ""
           echo "✅ Verdict gate check passed - proceeding with deployment"
 
       - name: Update ECS service
+        shell: bash
         run: |
+          set -euo pipefail
           echo "Updating ECS service with new task definition..."
           aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ steps.vars.outputs.ecs_service }} \
-            --task-definition ${{ steps.task-def.outputs.new_task_def_arn }} \
-            --region ${{ env.AWS_REGION }}
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --service "${{ steps.vars.outputs.ecs_service }}" \
+            --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
+            --region "${{ env.AWS_REGION }}"
 
       - name: Wait for service stability
+        shell: bash
         run: |
+          set -euo pipefail
           echo "Waiting for service to reach stable state..."
           aws ecs wait services-stable \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ steps.vars.outputs.ecs_service }} \
-            --region ${{ env.AWS_REGION }}
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}"
 
       - name: Get service status
         if: always()
+        shell: bash
         run: |
+          set -euo pipefail
           echo "Service deployment status:"
           aws ecs describe-services \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ steps.vars.outputs.ecs_service }} \
-            --region ${{ env.AWS_REGION }} \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ steps.vars.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
             --output table
 
       - name: Get ALB DNS for verification
         id: alb-dns
+        shell: bash
         run: |
+          set -euo pipefail
           ALB_DNS=$(aws cloudformation describe-stacks \
             --stack-name Afu9NetworkStack \
             --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
             --output text 2>/dev/null || echo "")
-          
+
           if [ -z "$ALB_DNS" ]; then
             echo "Warning: Could not fetch ALB DNS from CloudFormation, trying alternative method..."
             ALB_DNS=$(aws elbv2 describe-load-balancers \
@@ -376,42 +447,47 @@ jobs:
               --query 'LoadBalancers[0].DNSName' \
               --output text 2>/dev/null || echo "")
           fi
-          
-          echo "alb_dns=${ALB_DNS}" >> $GITHUB_OUTPUT
+
+          echo "alb_dns=${ALB_DNS}" >> "$GITHUB_OUTPUT"
           echo "ALB DNS: ${ALB_DNS}"
 
       - name: Run post-deployment verification
+        shell: bash
         run: |
+          set -euo pipefail
           echo "Running automated post-deployment verification..."
           chmod +x ./scripts/post-deploy-verification.sh
           ./scripts/post-deploy-verification.sh \
-            ${{ steps.vars.outputs.tag_prefix }} \
-            ${{ env.ECS_CLUSTER }} \
-            ${{ steps.vars.outputs.ecs_service }} \
-            ${{ steps.alb-dns.outputs.alb_dns }}
+            "${{ steps.vars.outputs.tag_prefix }}" \
+            "${{ env.ECS_CLUSTER }}" \
+            "${{ steps.vars.outputs.ecs_service }}" \
+            "${{ steps.alb-dns.outputs.alb_dns }}"
 
       - name: Deployment summary
+        shell: bash
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: ${{ steps.vars.outputs.env_label }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Images deployed:" >> $GITHUB_STEP_SUMMARY
-          echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ECS Configuration:" >> $GITHUB_STEP_SUMMARY
-          echo "- Cluster: \`${{ env.ECS_CLUSTER }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Service: \`${{ steps.vars.outputs.ecs_service }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Region: \`${{ env.AWS_REGION }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- ALB DNS: ${{ steps.alb-dns.outputs.alb_dns }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Rollback Information:" >> $GITHUB_STEP_SUMMARY
-          echo "- Git SHA: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Environment: ${{ steps.vars.outputs.env_label }}" >> $GITHUB_STEP_SUMMARY
-          echo "- See [DEPLOYMENT.md](../docs/DEPLOYMENT.md) for rollback procedures" >> $GITHUB_STEP_SUMMARY
+          set -euo pipefail
+          {
+            echo "## Deployment Summary"
+            echo ""
+            echo "✅ **Deployment completed successfully**"
+            echo "Environment: ${{ steps.vars.outputs.env_label }}"
+            echo ""
+            echo "### Images deployed:"
+            echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo ""
+            echo "### ECS Configuration:"
+            echo "- Cluster: \`${{ env.ECS_CLUSTER }}\`"
+            echo "- Service: \`${{ steps.vars.outputs.ecs_service }}\`"
+            echo "- Region: \`${{ env.AWS_REGION }}\`"
+            echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`"
+            echo "- ALB DNS: ${{ steps.alb-dns.outputs.alb_dns }}"
+            echo ""
+            echo "### Rollback Information:"
+            echo "- Git SHA: \`${{ github.sha }}\`"
+            echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- Environment: ${{ steps.vars.outputs.env_label }}"
+          } >> "$GITHUB_STEP_SUMMARY"
