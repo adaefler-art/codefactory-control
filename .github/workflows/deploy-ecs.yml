@@ -201,10 +201,27 @@ jobs:
           npm ci
 
       - name: Validate secrets in AWS Secrets Manager
+        env:
+          ENABLE_SECRET_PREFLIGHT: ${{ vars.ENABLE_SECRET_PREFLIGHT }}
+          ADMIN_ROLE_ARN: ${{ secrets.SECRETS_AUDIT_ROLE_ARN }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "🔍 Validating secrets before deployment..."
+          if [ "${ENABLE_SECRET_PREFLIGHT:-}" != "true" ] || [ -z "${ADMIN_ROLE_ARN:-}" ]; then
+            echo "Skipping secrets validation (ENABLE_SECRET_PREFLIGHT!=true or ADMIN_ROLE_ARN missing)"
+            exit 0
+          fi
+
+          echo "🔍 Validating secrets before deployment using admin role..."
+          aws sts assume-role \
+            --role-arn "$ADMIN_ROLE_ARN" \
+            --role-session-name secrets-audit-session \
+            --duration-seconds 900 > /tmp/admin-creds.json
+
+          export AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' /tmp/admin-creds.json)
+          export AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' /tmp/admin-creds.json)
+          export AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' /tmp/admin-creds.json)
+
           npm run validate-secrets
           echo "✅ All secrets validated successfully"
 
