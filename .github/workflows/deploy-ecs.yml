@@ -67,6 +67,9 @@ jobs:
         shell: pwsh
         run: |
           $deployEnv = "${{ env.DEPLOY_ENV }}"
+          $stagingCluster = "${{ vars.STAGING_ECS_CLUSTER }}"
+          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster-staging' }
+
           if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
             Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
           }
@@ -80,7 +83,7 @@ jobs:
           } else {
             $tagPrefix = 'stage'
             $ecsService = 'afu9-control-center-staging'
-            $ecsCluster = 'afu9-cluster-staging'
+            $ecsCluster = $stagingCluster
             $envLabel = 'Staging'
             $readyHost = 'stage.afu-9.com'
           }
