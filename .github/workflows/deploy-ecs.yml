@@ -41,7 +41,6 @@ concurrency:
 
 env:
   AWS_REGION: eu-central-1
-  ECS_CLUSTER: afu9-cluster
   DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
 
 jobs:
@@ -77,18 +76,26 @@ jobs:
 
           if [ "$DEPLOY_ENV" = "production" ]; then
             TAG_PREFIX="prod"
-            ECS_SERVICE="afu9-control-center-prod"
+            ECS_SERVICE="afu9-control-center"
+            ECS_CLUSTER="afu9-cluster"
             ENV_LABEL="Production"
           else
             TAG_PREFIX="stage"
-            ECS_SERVICE="afu9-control-center-stage"
+            ECS_SERVICE="afu9-control-center-staging"
+            ECS_CLUSTER="afu9-cluster-staging"
             ENV_LABEL="Staging"
+          fi
+
+          if [ "$DEPLOY_ENV" = "staging" ] && [ "$ECS_SERVICE" = "afu9-control-center" ]; then
+            echo "❌ Staging deployment would target production service (afu9-control-center). Aborting." >&2
+            exit 1
           fi
 
           echo "deploy_env=$DEPLOY_ENV" >> "$GITHUB_OUTPUT"
           echo "tag_prefix=$TAG_PREFIX" >> "$GITHUB_OUTPUT"
           echo "ecs_service=$ECS_SERVICE" >> "$GITHUB_OUTPUT"
           echo "env_label=$ENV_LABEL" >> "$GITHUB_OUTPUT"
+          echo "ecs_cluster=$ECS_CLUSTER" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -289,7 +296,7 @@ jobs:
           echo "Creating new task definition for ${{ steps.vars.outputs.env_label }} with env-tagged images..."
 
           SERVICE_JSON=$(aws ecs describe-services \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --services "${{ steps.vars.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --output json)
@@ -301,9 +308,9 @@ jobs:
           fi
 
           if [ "$(echo "$SERVICE_JSON" | jq -r '.services | length')" = "0" ]; then
-            echo "❌ ECS service ${{ steps.vars.outputs.ecs_service }} not found in cluster ${{ env.ECS_CLUSTER }}" >&2
+            echo "❌ ECS service ${{ steps.vars.outputs.ecs_service }} not found in cluster ${{ steps.vars.outputs.ecs_cluster }}" >&2
             echo "Listing services for debugging:" >&2
-            aws ecs list-services --cluster "${{ env.ECS_CLUSTER }}" --region "${{ env.AWS_REGION }}" --output json >&2
+            aws ecs list-services --cluster "${{ steps.vars.outputs.ecs_cluster }}" --region "${{ env.AWS_REGION }}" --output json >&2
             exit 1
           fi
 
@@ -356,7 +363,7 @@ jobs:
 
           # Reuse the service's awsvpc network configuration
           aws ecs describe-services \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --services "${{ steps.vars.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'services[0].networkConfiguration.awsvpcConfiguration' \
@@ -382,7 +389,7 @@ jobs:
           }')
 
           TASK_ARN=$(aws ecs run-task \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --launch-type FARGATE \
             --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
             --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$ASSIGN_PUBLIC_IP}" \
@@ -400,12 +407,12 @@ jobs:
           echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
 
           aws ecs wait tasks-stopped \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --tasks "$TASK_ARN" \
             --region "${{ env.AWS_REGION }}"
 
           EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --tasks "$TASK_ARN" \
             --region "${{ env.AWS_REGION }}" \
             --query 'tasks[0].containers[?name==`control-center`].exitCode | [0]' \
@@ -439,7 +446,7 @@ jobs:
           set -euo pipefail
           echo "Updating ECS service with new task definition..."
           aws ecs update-service \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --service "${{ steps.vars.outputs.ecs_service }}" \
             --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
             --region "${{ env.AWS_REGION }}"
@@ -450,7 +457,7 @@ jobs:
           set -euo pipefail
           echo "Waiting for service to reach stable state..."
           aws ecs wait services-stable \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --services "${{ steps.vars.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}"
 
@@ -461,7 +468,7 @@ jobs:
           set -euo pipefail
           echo "Service deployment status:"
           aws ecs describe-services \
-            --cluster "${{ env.ECS_CLUSTER }}" \
+            --cluster "${{ steps.vars.outputs.ecs_cluster }}" \
             --services "${{ steps.vars.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
@@ -496,7 +503,7 @@ jobs:
           chmod +x ./scripts/post-deploy-verification.sh
           ./scripts/post-deploy-verification.sh \
             "${{ steps.vars.outputs.tag_prefix }}" \
-            "${{ env.ECS_CLUSTER }}" \
+            "${{ steps.vars.outputs.ecs_cluster }}" \
             "${{ steps.vars.outputs.ecs_service }}" \
             "${{ steps.alb-dns.outputs.alb_dns }}"
 
@@ -517,7 +524,7 @@ jobs:
             echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
             echo ""
             echo "### ECS Configuration:"
-            echo "- Cluster: \`${{ env.ECS_CLUSTER }}\`"
+            echo "- Cluster: \`${{ steps.vars.outputs.ecs_cluster }}\`"
             echo "- Service: \`${{ steps.vars.outputs.ecs_service }}\`"
             echo "- Region: \`${{ env.AWS_REGION }}\`"
             echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`"

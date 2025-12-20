@@ -270,6 +270,13 @@ export class Afu9EcsStack extends cdk.Stack {
     const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName } = resolveEcsConfig(this, props);
     this.domainName = domainName;
 
+    const isProd = environment === ENVIRONMENT.PROD;
+    const clusterName = isProd ? 'afu9-cluster' : 'afu9-cluster-staging';
+    const serviceName = isProd ? 'afu9-control-center' : 'afu9-control-center-staging';
+    const environmentTag = isProd ? 'production' : 'staging';
+    const deployEnv = isProd ? 'production' : 'staging';
+    const appNodeEnv = isProd ? 'production' : 'staging';
+
     // Environment-specific defaults
     const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
 
@@ -371,17 +378,18 @@ export class Afu9EcsStack extends cdk.Stack {
     // Create cluster only in stage environment, import in others
     if (environment === ENVIRONMENT.STAGE) {
       this.cluster = new ecs.Cluster(this, 'Afu9Cluster', {
-        clusterName: 'afu9-cluster',
+        clusterName,
         vpc,
         containerInsights: true,
       });
 
-      cdk.Tags.of(this.cluster).add('Name', 'afu9-cluster');
+      cdk.Tags.of(this.cluster).add('Name', clusterName);
       cdk.Tags.of(this.cluster).add('Project', 'AFU-9');
+      cdk.Tags.of(this.cluster).add('Environment', environmentTag);
     } else {
       // Import existing cluster for prod and legacy environments
       this.cluster = ecs.Cluster.fromClusterAttributes(this, 'Afu9Cluster', {
-        clusterName: 'afu9-cluster',
+        clusterName,
         vpc,
         securityGroups: [],
       });
@@ -427,9 +435,7 @@ export class Afu9EcsStack extends cdk.Stack {
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
-    const taskRoleName = environment === ENVIRONMENT.PROD
-      ? 'afu9-ecs-task-role-prod'
-      : 'afu9-ecs-task-role';
+    const taskRoleName = isProd ? 'afu9-ecs-task-role-prod' : 'afu9-ecs-task-role';
 
     // Task role (used by application code for AWS API calls)
     const taskRole = new iam.Role(this, 'TaskRole', {
@@ -500,9 +506,9 @@ export class Afu9EcsStack extends cdk.Stack {
         ],
         resources: [
           // Scope to AFU-9 ECS resources only
-          `arn:aws:ecs:${region}:${account}:cluster/afu9-cluster`,
-          `arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`,
-          `arn:aws:ecs:${region}:${account}:task/afu9-cluster/*`,
+          `arn:aws:ecs:${region}:${account}:cluster/${clusterName}`,
+          `arn:aws:ecs:${region}:${account}:service/${clusterName}/*`,
+          `arn:aws:ecs:${region}:${account}:task/${clusterName}/*`,
           `arn:aws:ecs:${region}:${account}:task-definition/afu9-*:*`,
         ],
       })
@@ -515,7 +521,7 @@ export class Afu9EcsStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['ecs:UpdateService'],
         resources: [
-          `arn:aws:ecs:${region}:${account}:service/afu9-cluster/*`,
+          `arn:aws:ecs:${region}:${account}:service/${clusterName}/*`,
         ],
       })
     );
@@ -601,7 +607,8 @@ export class Afu9EcsStack extends cdk.Stack {
         logGroup: controlCenterLogGroup,
       }),
       environment: {
-        NODE_ENV: 'production',
+        NODE_ENV: appNodeEnv,
+        DEPLOY_ENV: deployEnv,
         PORT: '3000',
         ENVIRONMENT: environment, // Add environment variable for app-level detection
         DATABASE_ENABLED: enableDatabase ? 'true' : 'false', // Signal to app whether DB is configured
@@ -661,7 +668,8 @@ export class Afu9EcsStack extends cdk.Stack {
         logGroup: mcpGithubLogGroup,
       }),
       environment: {
-        NODE_ENV: 'production',
+        NODE_ENV: appNodeEnv,
+        DEPLOY_ENV: deployEnv,
         PORT: '3001',
       },
       secrets: {
@@ -696,7 +704,8 @@ export class Afu9EcsStack extends cdk.Stack {
         logGroup: mcpDeployLogGroup,
       }),
       environment: {
-        NODE_ENV: 'production',
+        NODE_ENV: appNodeEnv,
+        DEPLOY_ENV: deployEnv,
         PORT: '3002',
         AWS_REGION: cdk.Stack.of(this).region,
       },
@@ -729,7 +738,8 @@ export class Afu9EcsStack extends cdk.Stack {
         logGroup: mcpObservabilityLogGroup,
       }),
       environment: {
-        NODE_ENV: 'production',
+        NODE_ENV: appNodeEnv,
+        DEPLOY_ENV: deployEnv,
         PORT: '3003',
         AWS_REGION: cdk.Stack.of(this).region,
       },
@@ -756,10 +766,6 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
     // ECS Service
     // ========================================
-
-    const serviceName = environment === ENVIRONMENT.PROD
-      ? 'afu9-control-center-prod'
-      : 'afu9-control-center';
 
     this.service = new ecs.FargateService(this, 'Service', {
       cluster: this.cluster,
@@ -793,8 +799,8 @@ export class Afu9EcsStack extends cdk.Stack {
       },
     };
 
-    cdk.Tags.of(this.service).add('Name', 'afu9-control-center-service');
-    cdk.Tags.of(this.service).add('Environment', 'production');
+    cdk.Tags.of(this.service).add('Name', `${serviceName}-service`);
+    cdk.Tags.of(this.service).add('Environment', environmentTag);
     cdk.Tags.of(this.service).add('Project', 'AFU-9');
 
     // ========================================
