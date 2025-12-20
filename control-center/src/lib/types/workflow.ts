@@ -60,8 +60,11 @@ export interface WorkflowContext {
 
 /**
  * Workflow execution status
+ * 
+ * Issue B4: 'paused' status enforces HOLD state - workflow stops completely
+ * and can only be resumed by explicit human action (no automatic timeout)
  */
-export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused';
 
 /**
  * Workflow step execution status
@@ -109,4 +112,29 @@ export interface WorkflowExecutionConfig {
   
   /** Enable verbose debug logging */
   debugMode?: boolean;
+}
+
+/**
+ * Workflow pause metadata (Issue B4)
+ * 
+ * Tracks pause/resume information for HOLD enforcement
+ */
+export interface WorkflowPauseMetadata {
+  /** When the workflow was paused */
+  pausedAt: Date;
+  
+  /** Who paused the workflow */
+  pausedBy: string;
+  
+  /** Reason for pausing */
+  reason: string;
+  
+  /** When the workflow was resumed (if applicable) */
+  resumedAt?: Date;
+  
+  /** Who resumed the workflow (if applicable) */
+  resumedBy?: string;
+  
+  /** Step index at which workflow was paused */
+  pausedAtStepIndex?: number;
 }

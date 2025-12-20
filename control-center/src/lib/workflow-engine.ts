@@ -15,6 +15,7 @@ import {
   WorkflowExecutionResult,
   WorkflowExecutionConfig,
 } from './types/workflow';
+import { IssueState } from './types/issue-state';
 import {
   createExecution,
   updateExecutionStatus,
@@ -23,6 +24,7 @@ import {
   createStep,
   updateStep,
   incrementStepRetry,
+  pauseExecution,
 } from './workflow-persistence';
 import { checkDatabase, getPool } from './db';
 import { logger } from './logger';
@@ -275,6 +277,36 @@ export class WorkflowEngine {
               console.error('[Workflow Engine] Failed to update execution context:', dbError);
             }
           }
+        }
+
+        // Issue B4: Check if workflow should be paused due to HOLD state
+        if (this.shouldPauseForHold(context)) {
+          console.log(`[Workflow Engine] HOLD state detected - pausing workflow at step ${i}`);
+          
+          if (dbAvailable) {
+            try {
+              await pauseExecution(
+                executionId,
+                'system',
+                'HOLD state triggered - workflow paused pending human review',
+                i
+              );
+              status = 'paused';
+              
+              if (isDebugEnabled) {
+                logger.debug('Workflow paused due to HOLD state', {
+                  executionId,
+                  stepIndex: i,
+                  issueState: context.issue?.state,
+                }, 'WorkflowEngine');
+              }
+            } catch (pauseError) {
+              console.error('[Workflow Engine] Failed to pause execution:', pauseError);
+            }
+          }
+          
+          // Break execution loop - no timeout continuation
+          break;
         }
       }
 
@@ -589,6 +621,24 @@ export class WorkflowEngine {
       console.error(`[Workflow Engine] Error evaluating condition: ${condition}`, error);
       return false;
     }
+  }
+
+  /**
+   * Check if workflow should be paused due to HOLD state (Issue B4)
+   * 
+   * HOLD enforcement: If the issue is in HOLD state, the workflow must pause
+   * and cannot continue automatically. Human intervention is required to resume.
+   * 
+   * @param context - Workflow execution context
+   * @returns true if workflow should pause, false otherwise
+   */
+  private shouldPauseForHold(context: WorkflowContext): boolean {
+    // Check multiple locations where HOLD state might be present
+    return (
+      context.issue?.state === IssueState.HOLD ||
+      context.variables?.issue?.state === IssueState.HOLD ||
+      context.variables?.issueState === IssueState.HOLD
+    );
   }
 
   /**

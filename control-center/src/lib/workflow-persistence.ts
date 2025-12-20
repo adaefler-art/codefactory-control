@@ -10,6 +10,7 @@ import {
   WorkflowStatus,
   StepStatus,
   WorkflowContext,
+  WorkflowPauseMetadata,
 } from './types/workflow';
 
 /**
@@ -28,6 +29,7 @@ export interface WorkflowExecutionRow {
   triggered_by: string | null;
   github_run_id: string | null;
   policy_snapshot_id: string | null;
+  pause_metadata: WorkflowPauseMetadata | null; // Issue B4
   created_at: Date;
   updated_at: Date;
 }
@@ -349,6 +351,156 @@ export async function updateExecutionPolicySnapshot(
     console.log('[Workflow Persistence] Updated policy snapshot:', { executionId, policySnapshotId });
   } catch (error) {
     console.error('[Workflow Persistence] Failed to update policy snapshot:', error);
+    throw error;
+  }
+}
+
+/**
+ * Pause a workflow execution (Issue B4)
+ * 
+ * HOLD enforcement: Pauses the workflow and requires explicit human action to resume.
+ * No automatic timeout continuation is allowed.
+ * 
+ * @param executionId - The workflow execution ID
+ * @param pausedBy - User/system that paused the workflow
+ * @param reason - Reason for pausing (e.g., "HOLD state triggered")
+ * @param pausedAtStepIndex - Optional step index where pause occurred
+ * @throws Error if execution does not exist or is not in 'running' status
+ */
+export async function pauseExecution(
+  executionId: string,
+  pausedBy: string,
+  reason: string,
+  pausedAtStepIndex?: number
+): Promise<void> {
+  const pool = getPool();
+  
+  const pauseMetadata = {
+    pausedAt: new Date().toISOString(),
+    pausedBy,
+    reason,
+    pausedAtStepIndex,
+  };
+  
+  // Update only if status is 'running' to prevent race conditions
+  const query = `
+    UPDATE workflow_executions
+    SET status = 'paused',
+        pause_metadata = $2,
+        updated_at = NOW()
+    WHERE id = $1 AND status = 'running'
+    RETURNING id
+  `;
+
+  const values = [executionId, JSON.stringify(pauseMetadata)];
+
+  try {
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Cannot pause execution ${executionId}: execution not found or not in 'running' status`
+      );
+    }
+    
+    console.log('[Workflow Persistence] Paused execution:', {
+      executionId,
+      pausedBy,
+      reason,
+      pausedAtStepIndex,
+    });
+  } catch (error) {
+    console.error('[Workflow Persistence] Failed to pause execution:', error);
+    throw error;
+  }
+}
+
+/**
+ * Resume a paused workflow execution (Issue B4)
+ * 
+ * HOLD enforcement: Resumes a paused workflow with explicit human approval.
+ * Updates pause metadata to track who resumed and when.
+ * 
+ * @param executionId - The workflow execution ID
+ * @param resumedBy - User who approved the resume
+ * @throws Error if execution does not exist or is not in 'paused' status
+ */
+export async function resumeExecution(
+  executionId: string,
+  resumedBy: string
+): Promise<void> {
+  const pool = getPool();
+  
+  // Single atomic query to get metadata and update status
+  // Only updates if status is 'paused' to prevent race conditions
+  const query = `
+    UPDATE workflow_executions
+    SET status = 'running',
+        pause_metadata = jsonb_set(
+          COALESCE(pause_metadata, '{}'::jsonb),
+          '{resumedAt}',
+          to_jsonb($2::text)
+        ) || jsonb_build_object('resumedBy', $3),
+        updated_at = NOW()
+    WHERE id = $1 AND status = 'paused'
+    RETURNING id, pause_metadata
+  `;
+  
+  const values = [
+    executionId,
+    new Date().toISOString(),
+    resumedBy,
+  ];
+  
+  try {
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Cannot resume execution ${executionId}: execution not found or not in 'paused' status`
+      );
+    }
+    
+    console.log('[Workflow Persistence] Resumed execution:', {
+      executionId,
+      resumedBy,
+    });
+  } catch (error) {
+    console.error('[Workflow Persistence] Failed to resume execution:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get all paused workflow executions (Issue B4)
+ * 
+ * Returns all workflows that are currently paused and waiting for human action.
+ */
+export async function getPausedExecutions(): Promise<WorkflowExecutionRow[]> {
+  const pool = getPool();
+  const query = `
+    SELECT 
+      id,
+      workflow_id,
+      status,
+      started_at,
+      pause_metadata,
+      context,
+      input,
+      triggered_by,
+      github_run_id,
+      created_at,
+      updated_at
+    FROM workflow_executions
+    WHERE status = 'paused'
+    ORDER BY started_at DESC
+  `;
+
+  try {
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error('[Workflow Persistence] Failed to get paused executions:', error);
     throw error;
   }
 }
