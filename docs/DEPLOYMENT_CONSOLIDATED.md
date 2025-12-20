@@ -204,7 +204,7 @@ GitHub Action
              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
            },
            "StringLike": {
-             "token.actions.githubusercontent.com:sub": "repo:adaefler-art/codefactory-control:*"
+             "token.actions.githubusercontent.com:sub": "repo:YOUR-ORG/YOUR-REPO:*"
            }
          }
        }
@@ -749,7 +749,7 @@ aws logs tail /ecs/afu9-control-center --follow --since 10m
 
 ### Getting Help
 
-- **Issue Tracking:** GitHub Issues in `adaefler-art/codefactory-control`
+- **Issue Tracking:** GitHub Issues in your repository (e.g., `YOUR-ORG/YOUR-REPO`)
 - **Documentation:**
   - [AWS_DEPLOY_RUNBOOK.md](AWS_DEPLOY_RUNBOOK.md) - Detailed staging deployment runbook
   - [ECS-DEPLOYMENT.md](ECS-DEPLOYMENT.md) - ECS-specific deployment details

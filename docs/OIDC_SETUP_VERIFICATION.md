@@ -51,7 +51,7 @@ aws iam get-role --role-name GitHubActionsDeployRole
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:adaefler-art/codefactory-control:*"
+          "token.actions.githubusercontent.com:sub": "repo:YOUR-ORG/YOUR-REPO:*"
         }
       }
     }
@@ -157,7 +157,7 @@ aws cloudtrail lookup-events \
 3. OIDC provider thumbprint mismatch
 
 **Fix:**
-- Update trust policy `sub` to: `repo:adaefler-art/codefactory-control:*`
+- Update trust policy `sub` to: `repo:YOUR-ORG/YOUR-REPO:*`
 - Ensure `aud` is: `sts.amazonaws.com`
 
 ### Issue: "Role lacks permissions for deployment"
