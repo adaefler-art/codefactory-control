@@ -112,33 +112,40 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          REAL_AWS="$(command -v aws)"
           mkdir -p /tmp/aws-wrap-bin
           cat > /tmp/aws-wrap-bin/aws <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
 
-          aws_wrap() {
-            set +e
-            local out_log err_log rc
-            out_log="$(mktemp)"
-            err_log="$(mktemp)"
-            trap 'rm -f "$out_log" "$err_log"' RETURN
+          # Resolve real aws binary (avoid recursion)
+          REAL_AWS="/usr/bin/aws"
+          if [ ! -x "$REAL_AWS" ]; then
+            REAL_AWS="$(command -v aws || true)"
+          fi
 
-            "${REAL_AWS}" "$@" > >(tee "$out_log") 2> >(tee "$err_log" >&2)
-            rc=$?
+          if [ -z "${REAL_AWS:-}" ] || [ ! -x "$REAL_AWS" ]; then
+            echo "aws wrapper: cannot find real aws binary" >&2
+            exit 127
+          fi
 
-            if grep -q "AccessDenied" "$err_log"; then
-              echo "=== AccessDenied (stderr) ===" >&2
-              grep -E "AccessDenied|not authorized|is not authorized" "$err_log" >&2 || true
-              echo "=============================" >&2
-            fi
+          case "$REAL_AWS" in
+            "/tmp/aws-wrap-bin/aws"|"/tmp/aws-wrap-bin/"*) REAL_AWS="/usr/bin/aws" ;;
+          esac
 
-            set -e
-            return $rc
-          }
+          out_log="$(mktemp)"
+          err_log="$(mktemp)"
+          trap 'rm -f "$out_log" "$err_log"' EXIT
 
-          aws_wrap "$@"
+          "$REAL_AWS" "$@" > >(tee "$out_log") 2> >(tee "$err_log" >&2)
+          rc=$?
+
+          if grep -q -E "AccessDenied|not authorized|is not authorized" "$err_log"; then
+            echo "=== AccessDenied (stderr) ===" >&2
+            grep -E "AccessDenied|not authorized|is not authorized" "$err_log" >&2 || true
+            echo "=============================" >&2
+          fi
+
+          exit $rc
           EOF
           chmod +x /tmp/aws-wrap-bin/aws
           echo "/tmp/aws-wrap-bin" >> "$GITHUB_PATH"
