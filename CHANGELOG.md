@@ -2,6 +2,67 @@
 
 Alle wesentlichen Änderungen an diesem Projekt werden hier dokumentiert.
 
+## 2024-12-20 - v0.5 Go/No-Go Decision Template (Issue I-06-02)
+
+### Added - v0.5 Planning Documentation
+
+**Issue #I-06-02-V05-GO: Entscheidungsvorlage für v0.5**
+
+Comprehensive decision template for evaluating v0.5 release readiness with clear Go/No-Go criteria.
+
+#### v0.5 Decision Document
+- **docs/v05/V05_GO_NOGO_DECISION.md**: Complete v0.5 Go/No-Go decision template
+  - Executive summary with quick assessment (DNS/HTTPS, Features, Stability)
+  - Detailed Go/No-Go criteria (MUSS vs. SOLL criteria)
+  - DNS/HTTPS status and deployment scenarios
+  - Feature readiness assessment (v0.4 stable foundation + v0.5 candidates)
+  - Stability evaluation (no critical blockers identified)
+  - Risk analysis with mitigation strategies
+  - Recommended actions (pre-v0.5, during development, pre-release)
+  - Decision matrix with weighted scoring
+  - Deployment commands and validation checklists
+
+#### v0.5 Documentation Hub
+- **docs/v05/README.md**: Central hub for v0.5 documentation
+  - Quick links to decision documents
+  - v0.5 scope overview (P1/P2 features)
+  - Timeline and milestones
+  - Key decision points
+  - Stability assessment
+  - Risk management summary
+
+#### Key Findings
+
+**DNS/HTTPS Status:**
+- ✅ Infrastructure fully implemented and tested
+- ✅ CDK stacks (Afu9DnsStack, Afu9NetworkStack) production-ready
+- ✅ Complete documentation available (HTTPS-DNS-SETUP.md)
+- 🟡 Optional for v0.5 (requires domain name decision)
+
+**Feature Work Readiness:**
+- ✅ Solid v0.4 foundation (7 production-ready components)
+- ✅ Experimental features documented with clear limitations
+- ✅ v0.5 candidate features identified and prioritized (5 P1 features)
+- 🟡 Scope decision required (P1 focus recommended)
+
+**Stability Assessment:**
+- ✅ No critical stability blockers
+- ✅ All MUSS-criteria fulfilled
+- ✅ Known limitations documented and acceptable
+- ✅ Automated safety gates operational
+
+**Overall Recommendation:** ✅ **GO for v0.5** (Score: 4.65/5.0)
+
+**Conditions:**
+1. DNS/HTTPS decision within 2 weeks
+2. Focus on P1 features
+3. Ensure team capacity
+4. Maintain continuous validation
+
+**Status**: ✅ Complete - v0.5 Decision Template Ready
+
+---
+
 ## 2024-12-20 - v0.4 Release Review (Issue I-06-01)
 
 ### Added - Release Documentation
