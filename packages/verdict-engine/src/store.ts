@@ -137,12 +137,13 @@ export async function storeVerdict(
       service,
       confidence_score,
       proposed_action,
+      verdict_type,
       tokens,
       signals,
       playbook_id,
       metadata
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING 
       id,
       execution_id,
@@ -152,6 +153,7 @@ export async function storeVerdict(
       service,
       confidence_score,
       proposed_action,
+      verdict_type,
       tokens,
       signals,
       playbook_id,
@@ -167,6 +169,7 @@ export async function storeVerdict(
     verdict.service,
     verdict.confidence_score,
     verdict.proposed_action,
+    verdict.verdict_type,
     verdict.tokens,
     JSON.stringify(verdict.signals),
     verdict.playbook_id,
@@ -183,6 +186,7 @@ export async function storeVerdict(
     service: row.service,
     confidence_score: row.confidence_score,
     proposed_action: row.proposed_action,
+    verdict_type: row.verdict_type,
     tokens: row.tokens,
     signals: row.signals,
     playbook_id: row.playbook_id,
@@ -212,6 +216,7 @@ export async function getVerdictsByExecution(
       service,
       confidence_score,
       proposed_action,
+      verdict_type,
       tokens,
       signals,
       playbook_id,
@@ -271,6 +276,11 @@ export async function queryVerdicts(
     values.push(params.proposed_action);
   }
 
+  if (params.verdict_type) {
+    conditions.push(`verdict_type = $${paramIndex++}`);
+    values.push(params.verdict_type);
+  }
+
   const whereClause = conditions.length > 0 
     ? `WHERE ${conditions.join(' AND ')}` 
     : '';
@@ -288,6 +298,7 @@ export async function queryVerdicts(
       service,
       confidence_score,
       proposed_action,
+      verdict_type,
       tokens,
       signals,
       playbook_id,
@@ -328,6 +339,7 @@ export async function getVerdictWithPolicy(
       service,
       confidence_score,
       proposed_action,
+      verdict_type,
       tokens,
       signals,
       playbook_id,
@@ -358,6 +370,7 @@ export async function getVerdictWithPolicy(
     service: row.service,
     confidence_score: row.confidence_score,
     proposed_action: row.proposed_action,
+    verdict_type: row.verdict_type,
     tokens: row.tokens,
     signals: row.signals,
     playbook_id: row.playbook_id,
@@ -448,6 +461,7 @@ function mapRowToVerdict(row: any): Verdict {
     service: row.service,
     confidence_score: row.confidence_score,
     proposed_action: row.proposed_action,
+    verdict_type: row.verdict_type,
     tokens: row.tokens,
     signals: row.signals,
     playbook_id: row.playbook_id,

@@ -4,6 +4,8 @@
  * Centralized constants for the Verdict Engine
  */
 
+import { VerdictType } from './types';
+
 /**
  * Factory actions that can be proposed by verdicts
  */
@@ -12,6 +14,34 @@ export const FACTORY_ACTIONS = [
   'OPEN_ISSUE',
   'HUMAN_REQUIRED',
 ] as const;
+
+/**
+ * Canonical verdict types for decision authority
+ * 
+ * Array of all valid verdict types in the system.
+ * @see VerdictType enum in types.ts for detailed documentation
+ */
+export const VERDICT_TYPES = [
+  VerdictType.APPROVED,
+  VerdictType.REJECTED,
+  VerdictType.DEFERRED,
+  VerdictType.ESCALATED,
+  VerdictType.WARNING,
+  VerdictType.BLOCKED,
+  VerdictType.PENDING,
+] as const;
+
+/**
+ * Mapping of factory actions to verdict types
+ * 
+ * This mapping determines the verdict type based on the proposed factory action.
+ * Can be overridden in special cases based on confidence or error class.
+ */
+export const ACTION_TO_VERDICT_TYPE: Record<string, VerdictType> = {
+  'WAIT_AND_RETRY': VerdictType.DEFERRED,
+  'OPEN_ISSUE': VerdictType.REJECTED,
+  'HUMAN_REQUIRED': VerdictType.ESCALATED,
+} as const;
 
 /**
  * API version for Factory Status API
