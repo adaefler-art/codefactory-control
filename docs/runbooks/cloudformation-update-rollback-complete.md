@@ -205,11 +205,11 @@ aws secretsmanager update-secret \
   --secret-id afu9/database \
   --region ${AWS_REGION} \
   --secret-string '{
-    "DATABASE_HOST": "afu9-db.xxxx.eu-central-1.rds.amazonaws.com",
+    "DATABASE_HOST": "YOUR_DB_ENDPOINT_HERE.rds.amazonaws.com",
     "DATABASE_PORT": "5432",
     "DATABASE_NAME": "afu9",
-    "DATABASE_USER": "admin",
-    "DATABASE_PASSWORD": "xxxxx"
+    "DATABASE_USER": "YOUR_DB_USERNAME_HERE",
+    "DATABASE_PASSWORD": "YOUR_DB_PASSWORD_HERE"
   }'
 
 # Nach Secret-Fix: Stack löschen und neu deployen
@@ -320,7 +320,7 @@ ResourceStatusReason: "The maximum number of security groups for network interfa
 aws ec2 describe-vpcs --region ${AWS_REGION} --query 'Vpcs[*].VpcId' --output table
 
 # Security Groups Limits
-aws ec2 describe-security-groups --region ${AWS_REGION} --query 'SecurityGroups[*].GroupId' --output text | wc -w
+aws ec2 describe-security-groups --region ${AWS_REGION} --query 'length(SecurityGroups[*].GroupId)' --output text
 
 # Elastic IPs Limits
 aws ec2 describe-addresses --region ${AWS_REGION} --query 'Addresses[*].AllocationId' --output table
