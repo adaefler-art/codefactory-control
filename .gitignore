@@ -60,3 +60,6 @@ dist/
 **/dist/
 
 .local/
+
+# Test snapshots (generated files)
+test/snapshots/

@@ -34,8 +34,9 @@ export interface Afu9AlarmsStackProps extends cdk.StackProps {
 
   /**
    * RDS database instance identifier
+   * Optional - if not provided, RDS alarms will not be created
    */
-  dbInstanceIdentifier: string;
+  dbInstanceIdentifier?: string;
 
   /**
    * ALB full name (from LoadBalancer.loadBalancerFullName)
@@ -311,68 +312,70 @@ exports.handler = async (event) => {
     ecsLowTaskCountAlarm.addAlarmAction(alarmAction);
 
     // ========================================
-    // RDS Database Alarms
+    // RDS Database Alarms (only if database is enabled)
     // ========================================
 
-    // High CPU Utilization
-    const rdsHighCpuAlarm = new cloudwatch.Alarm(this, 'RdsHighCpuAlarm', {
-      alarmName: 'afu9-rds-high-cpu',
-      alarmDescription: 'RDS database CPU utilization is above 80% for 10 minutes',
-      metric: new cloudwatch.Metric({
-        namespace: 'AWS/RDS',
-        metricName: 'CPUUtilization',
-        dimensionsMap: {
-          DBInstanceIdentifier: dbInstanceIdentifier,
-        },
-        statistic: 'Average',
-        period: cdk.Duration.minutes(5),
-      }),
-      threshold: 80,
-      evaluationPeriods: 2,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-    });
-    rdsHighCpuAlarm.addAlarmAction(alarmAction);
+    if (dbInstanceIdentifier) {
+      // High CPU Utilization
+      const rdsHighCpuAlarm = new cloudwatch.Alarm(this, 'RdsHighCpuAlarm', {
+        alarmName: 'afu9-rds-high-cpu',
+        alarmDescription: 'RDS database CPU utilization is above 80% for 10 minutes',
+        metric: new cloudwatch.Metric({
+          namespace: 'AWS/RDS',
+          metricName: 'CPUUtilization',
+          dimensionsMap: {
+            DBInstanceIdentifier: dbInstanceIdentifier,
+          },
+          statistic: 'Average',
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 80,
+        evaluationPeriods: 2,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      rdsHighCpuAlarm.addAlarmAction(alarmAction);
 
-    // Low Free Storage Space
-    const rdsLowStorageAlarm = new cloudwatch.Alarm(this, 'RdsLowStorageAlarm', {
-      alarmName: 'afu9-rds-low-storage',
-      alarmDescription: 'RDS database has less than 2GB free storage',
-      metric: new cloudwatch.Metric({
-        namespace: 'AWS/RDS',
-        metricName: 'FreeStorageSpace',
-        dimensionsMap: {
-          DBInstanceIdentifier: dbInstanceIdentifier,
-        },
-        statistic: 'Average',
-        period: cdk.Duration.minutes(5),
-      }),
-      threshold: 2 * 1024 * 1024 * 1024, // 2 GB in bytes
-      evaluationPeriods: 1,
-      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-    });
-    rdsLowStorageAlarm.addAlarmAction(alarmAction);
+      // Low Free Storage Space
+      const rdsLowStorageAlarm = new cloudwatch.Alarm(this, 'RdsLowStorageAlarm', {
+        alarmName: 'afu9-rds-low-storage',
+        alarmDescription: 'RDS database has less than 2GB free storage',
+        metric: new cloudwatch.Metric({
+          namespace: 'AWS/RDS',
+          metricName: 'FreeStorageSpace',
+          dimensionsMap: {
+            DBInstanceIdentifier: dbInstanceIdentifier,
+          },
+          statistic: 'Average',
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 2 * 1024 * 1024 * 1024, // 2 GB in bytes
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      rdsLowStorageAlarm.addAlarmAction(alarmAction);
 
-    // High Database Connections
-    const rdsHighConnectionsAlarm = new cloudwatch.Alarm(this, 'RdsHighConnectionsAlarm', {
-      alarmName: 'afu9-rds-high-connections',
-      alarmDescription: 'RDS database has more than 80 connections',
-      metric: new cloudwatch.Metric({
-        namespace: 'AWS/RDS',
-        metricName: 'DatabaseConnections',
-        dimensionsMap: {
-          DBInstanceIdentifier: dbInstanceIdentifier,
-        },
-        statistic: 'Average',
-        period: cdk.Duration.minutes(5),
-      }),
-      threshold: 80,
-      evaluationPeriods: 2,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-    });
-    rdsHighConnectionsAlarm.addAlarmAction(alarmAction);
+      // High Database Connections
+      const rdsHighConnectionsAlarm = new cloudwatch.Alarm(this, 'RdsHighConnectionsAlarm', {
+        alarmName: 'afu9-rds-high-connections',
+        alarmDescription: 'RDS database has more than 80 connections',
+        metric: new cloudwatch.Metric({
+          namespace: 'AWS/RDS',
+          metricName: 'DatabaseConnections',
+          dimensionsMap: {
+            DBInstanceIdentifier: dbInstanceIdentifier,
+          },
+          statistic: 'Average',
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 80,
+        evaluationPeriods: 2,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      rdsHighConnectionsAlarm.addAlarmAction(alarmAction);
+    }
 
     // ========================================
     // ALB Alarms

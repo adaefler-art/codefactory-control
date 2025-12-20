@@ -69,14 +69,17 @@ const networkStack = new Afu9NetworkStack(app, 'Afu9NetworkStack', {
   certificateArn: dnsStack?.certificate.certificateArn,
 });
 
-// Database stack (depends on network)
-const databaseStack = new Afu9DatabaseStack(app, 'Afu9DatabaseStack', {
+// Check if database should be enabled globally
+const globalEnableDatabase = isDatabaseEnabled(app);
+
+// Database stack (depends on network, only created if database is enabled)
+const databaseStack = globalEnableDatabase ? new Afu9DatabaseStack(app, 'Afu9DatabaseStack', {
   env,
   description: 'AFU-9 v0.2 Database: RDS Postgres 15 with automated backups',
   vpc: networkStack.vpc,
   dbSecurityGroup: networkStack.dbSecurityGroup,
   multiAz: false, // Set to true for production high availability
-});
+}) : undefined;
 
 if (multiEnvEnabled) {
   // ========================================
@@ -129,7 +132,7 @@ if (multiEnvEnabled) {
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: stageTargetGroup,
     enableDatabase,
-    dbSecretArn: enableDatabase ? databaseStack.dbSecret.secretArn : undefined,
+    dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
     environment: 'stage',
     imageTag: 'stage-latest',
     desiredCount: 1,
@@ -145,7 +148,7 @@ if (multiEnvEnabled) {
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: prodTargetGroup,
     enableDatabase,
-    dbSecretArn: enableDatabase ? databaseStack.dbSecret.secretArn : undefined,
+    dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
     environment: 'prod',
     imageTag: 'prod-latest',
     desiredCount: 2,
@@ -179,7 +182,7 @@ if (multiEnvEnabled) {
     description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for Stage environment',
     ecsClusterName: ecsStageStack.cluster.clusterName,
     ecsServiceName: ecsStageStack.service.serviceName,
-    dbInstanceIdentifier: databaseStack.dbInstance.instanceIdentifier,
+    dbInstanceIdentifier: databaseStack?.dbInstance.instanceIdentifier,
     albFullName: networkStack.loadBalancer.loadBalancerFullName,
     targetGroupFullName: stageTargetGroup.targetGroupFullName,
     alarmEmail,
@@ -192,7 +195,7 @@ if (multiEnvEnabled) {
     description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for Production environment',
     ecsClusterName: ecsProdStack.cluster.clusterName,
     ecsServiceName: ecsProdStack.service.serviceName,
-    dbInstanceIdentifier: databaseStack.dbInstance.instanceIdentifier,
+    dbInstanceIdentifier: databaseStack?.dbInstance.instanceIdentifier,
     albFullName: networkStack.loadBalancer.loadBalancerFullName,
     targetGroupFullName: prodTargetGroup.targetGroupFullName,
     alarmEmail,
@@ -215,7 +218,7 @@ if (multiEnvEnabled) {
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: networkStack.targetGroup,
     enableDatabase,
-    dbSecretArn: enableDatabase ? databaseStack.dbSecret.secretArn : undefined,
+    dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
   });
 
   // If DNS stack exists, add Route53 A record to point to ALB
@@ -260,7 +263,7 @@ if (multiEnvEnabled) {
     description: 'AFU-9 v0.2 CloudWatch Alarms: Monitoring for ECS, RDS, and ALB with email and webhook notifications',
     ecsClusterName: ecsStack.cluster.clusterName,
     ecsServiceName: ecsStack.service.serviceName,
-    dbInstanceIdentifier: databaseStack.dbInstance.instanceIdentifier,
+    dbInstanceIdentifier: databaseStack?.dbInstance.instanceIdentifier,
     albFullName: networkStack.loadBalancer.loadBalancerFullName,
     targetGroupFullName: networkStack.targetGroup.targetGroupFullName,
     alarmEmail,
