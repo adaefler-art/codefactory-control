@@ -4,11 +4,13 @@
  * Implements EPIC 2: Governance & Auditability
  * - Issue 2.1: Policy Snapshotting per Run
  * - Issue 2.2: Confidence Score Normalization
+ * - Issue B2: Simplified Verdict → Action Mapping
  * 
  * Wraps the Deploy Memory classifier with:
  * - Normalized confidence scores (0-100 scale)
  * - Deterministic verdict generation
  * - Immutable policy snapshots
+ * - Simplified verdict system (GREEN/RED/HOLD/RETRY)
  */
 
 import {
@@ -25,8 +27,15 @@ import {
   CreateVerdictInput, 
   PolicySnapshot,
   VerdictType,
+  SimpleVerdict,
+  SimpleAction,
 } from './types';
-import { ACTION_TO_VERDICT_TYPE, ESCALATION_CONFIDENCE_THRESHOLD } from './constants';
+import { 
+  ACTION_TO_VERDICT_TYPE, 
+  ESCALATION_CONFIDENCE_THRESHOLD,
+  SIMPLE_VERDICT_TO_ACTION,
+  VERDICT_TYPE_TO_SIMPLE,
+} from './constants';
 
 /**
  * Normalize confidence score from 0-1 range to 0-100 integer scale
@@ -332,5 +341,129 @@ export function auditVerdict(
     compliant: issues.length === 0,
     issues,
     policy_version: policySnapshot.version,
+  };
+}
+
+/**
+ * Issue B2: Simplified Verdict System Functions
+ */
+
+/**
+ * Convert VerdictType to SimpleVerdict
+ * 
+ * Maps detailed verdict types to simplified operational verdicts.
+ * This provides a higher-level abstraction for workflow automation.
+ * 
+ * @param verdictType Detailed verdict type
+ * @returns Simplified verdict
+ * 
+ * @example
+ * toSimpleVerdict(VerdictType.APPROVED)   // Returns SimpleVerdict.GREEN
+ * toSimpleVerdict(VerdictType.REJECTED)   // Returns SimpleVerdict.RED
+ * toSimpleVerdict(VerdictType.ESCALATED)  // Returns SimpleVerdict.HOLD
+ * toSimpleVerdict(VerdictType.DEFERRED)   // Returns SimpleVerdict.RETRY
+ */
+export function toSimpleVerdict(verdictType: VerdictType): SimpleVerdict {
+  return VERDICT_TYPE_TO_SIMPLE[verdictType];
+}
+
+/**
+ * Get action for a SimpleVerdict
+ * 
+ * Returns the exact action that should be taken for a given simple verdict.
+ * Each verdict maps to exactly one action (1:1 mapping).
+ * 
+ * @param simpleVerdict Simplified verdict
+ * @returns Action to take
+ * 
+ * @example
+ * getSimpleAction(SimpleVerdict.GREEN)  // Returns SimpleAction.ADVANCE
+ * getSimpleAction(SimpleVerdict.RED)    // Returns SimpleAction.ABORT
+ * getSimpleAction(SimpleVerdict.HOLD)   // Returns SimpleAction.FREEZE
+ * getSimpleAction(SimpleVerdict.RETRY)  // Returns SimpleAction.RETRY_OPERATION
+ */
+export function getSimpleAction(simpleVerdict: SimpleVerdict): SimpleAction {
+  return SIMPLE_VERDICT_TO_ACTION[simpleVerdict];
+}
+
+/**
+ * Get action directly from VerdictType
+ * 
+ * Convenience function that combines toSimpleVerdict and getSimpleAction.
+ * Converts a detailed verdict type directly to its corresponding action.
+ * 
+ * @param verdictType Detailed verdict type
+ * @returns Action to take
+ * 
+ * @example
+ * getActionForVerdictType(VerdictType.APPROVED)   // Returns SimpleAction.ADVANCE
+ * getActionForVerdictType(VerdictType.REJECTED)   // Returns SimpleAction.ABORT
+ * getActionForVerdictType(VerdictType.ESCALATED)  // Returns SimpleAction.FREEZE
+ * getActionForVerdictType(VerdictType.DEFERRED)   // Returns SimpleAction.RETRY_OPERATION
+ */
+export function getActionForVerdictType(verdictType: VerdictType): SimpleAction {
+  const simpleVerdict = toSimpleVerdict(verdictType);
+  return getSimpleAction(simpleVerdict);
+}
+
+/**
+ * Validate that the simple verdict mapping is complete and consistent
+ * 
+ * Ensures that:
+ * 1. All VerdictTypes map to a SimpleVerdict
+ * 2. All SimpleVerdicts map to a SimpleAction
+ * 3. The mapping is deterministic (same input always gives same output)
+ * 
+ * @returns Validation result with any issues found
+ */
+export function validateSimpleVerdictMapping(): {
+  valid: boolean;
+  issues: string[];
+} {
+  const issues: string[] = [];
+
+  // Check that all VerdictTypes have a mapping
+  const verdictTypes: VerdictType[] = [
+    VerdictType.APPROVED,
+    VerdictType.REJECTED,
+    VerdictType.DEFERRED,
+    VerdictType.ESCALATED,
+    VerdictType.WARNING,
+    VerdictType.BLOCKED,
+    VerdictType.PENDING,
+  ];
+
+  for (const vt of verdictTypes) {
+    if (!VERDICT_TYPE_TO_SIMPLE[vt]) {
+      issues.push(`Missing mapping for VerdictType.${vt}`);
+    }
+  }
+
+  // Check that all SimpleVerdicts have an action
+  const simpleVerdicts: SimpleVerdict[] = [
+    SimpleVerdict.GREEN,
+    SimpleVerdict.RED,
+    SimpleVerdict.HOLD,
+    SimpleVerdict.RETRY,
+  ];
+
+  for (const sv of simpleVerdicts) {
+    if (!SIMPLE_VERDICT_TO_ACTION[sv]) {
+      issues.push(`Missing action for SimpleVerdict.${sv}`);
+    }
+  }
+
+  // Test determinism: same input should give same output
+  for (const vt of verdictTypes) {
+    const result1 = getActionForVerdictType(vt);
+    const result2 = getActionForVerdictType(vt);
+    if (result1 !== result2) {
+      issues.push(`Non-deterministic mapping for VerdictType.${vt}`);
+    }
+  }
+
+  return {
+    valid: issues.length === 0,
+    issues,
   };
 }

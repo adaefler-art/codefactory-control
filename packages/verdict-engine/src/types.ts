@@ -5,6 +5,7 @@
  * - Issue 2.1: Policy Snapshotting per Run
  * - Issue 2.2: Confidence Score Normalization
  * - EPIC B: Verdict Types for Decision Authority
+ * - Issue B2: Simplified Verdict → Action Mapping
  */
 
 import { ErrorClass, FactoryAction, CfnFailureSignal } from '@codefactory/deploy-memory';
@@ -104,6 +105,96 @@ export enum VerdictType {
    * Typical factory actions: None yet
    */
   PENDING = 'PENDING',
+}
+
+/**
+ * Simplified Verdict System (Issue B2)
+ * 
+ * A simplified verdict classification for operational decision-making.
+ * Each verdict type maps to exactly one action.
+ * 
+ * This complements the detailed VerdictType enum above, providing a
+ * higher-level abstraction for workflow automation.
+ */
+export enum SimpleVerdict {
+  /**
+   * GREEN - Advance/Deploy/Next State
+   * 
+   * The operation succeeded or can proceed to the next state.
+   * System should automatically advance the workflow.
+   * 
+   * Typical mappings:
+   * - VerdictType.APPROVED → GREEN
+   * - VerdictType.WARNING → GREEN (proceed with caution)
+   */
+  GREEN = 'GREEN',
+
+  /**
+   * RED - Abort/Rollback/Kill
+   * 
+   * Critical failure detected. The operation must be aborted.
+   * System should stop processing and potentially rollback.
+   * 
+   * Typical mappings:
+   * - VerdictType.REJECTED → RED
+   */
+  RED = 'RED',
+
+  /**
+   * HOLD - Freeze + Human Review
+   * 
+   * Uncertain situation requiring human intervention.
+   * System should pause and wait for manual decision.
+   * 
+   * Typical mappings:
+   * - VerdictType.ESCALATED → HOLD
+   * - VerdictType.BLOCKED → HOLD
+   */
+  HOLD = 'HOLD',
+
+  /**
+   * RETRY - Deterministic retry attempt
+   * 
+   * Transient condition detected. System should retry the operation
+   * after a deterministic delay.
+   * 
+   * Typical mappings:
+   * - VerdictType.DEFERRED → RETRY
+   * - VerdictType.PENDING → RETRY (if in progress)
+   */
+  RETRY = 'RETRY',
+}
+
+/**
+ * Simple Action Types (Issue B2)
+ * 
+ * Each SimpleVerdict maps to exactly one SimpleAction.
+ * These actions represent the operational response to a verdict.
+ */
+export enum SimpleAction {
+  /**
+   * ADVANCE - Continue to next state
+   * Move workflow to next phase or mark as complete
+   */
+  ADVANCE = 'ADVANCE',
+
+  /**
+   * ABORT - Stop and rollback
+   * Terminate the workflow and potentially rollback changes
+   */
+  ABORT = 'ABORT',
+
+  /**
+   * FREEZE - Pause for human review
+   * Stop workflow and wait for manual intervention
+   */
+  FREEZE = 'FREEZE',
+
+  /**
+   * RETRY_OPERATION - Retry with delay
+   * Re-attempt the operation after a deterministic delay
+   */
+  RETRY_OPERATION = 'RETRY_OPERATION',
 }
 
 /**
