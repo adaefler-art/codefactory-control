@@ -9,10 +9,11 @@ import {
   generateVerdict, 
   validateDeterminism,
   calculateConsistencyMetrics,
-  auditVerdict
+  auditVerdict,
+  determineVerdictType,
 } from '../src/engine';
 import { CfnFailureSignal } from '@codefactory/deploy-memory/src/types';
-import { Verdict, PolicySnapshot } from '../src/types';
+import { Verdict, PolicySnapshot, VerdictType } from '../src/types';
 
 describe('Verdict Engine - Confidence Score Normalization', () => {
   describe('normalizeConfidenceScore', () => {
@@ -82,6 +83,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
       expect(verdict.confidence_score).toBeGreaterThanOrEqual(0);
       expect(verdict.confidence_score).toBeLessThanOrEqual(100);
       expect(verdict.proposed_action).toBe('WAIT_AND_RETRY');
+      expect(verdict.verdict_type).toBe(VerdictType.DEFERRED);
       expect(verdict.fingerprint_id).toBeTruthy();
       expect(verdict.signals).toEqual(signals);
     });
@@ -105,6 +107,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
       expect(verdict.error_class).toBe('MISSING_SECRET');
       expect(verdict.confidence_score).toBe(85); // 0.85 * 100
       expect(verdict.proposed_action).toBe('OPEN_ISSUE');
+      expect(verdict.verdict_type).toBe(VerdictType.REJECTED);
     });
 
     test('generates verdict for CloudFormation rollback', () => {
@@ -126,6 +129,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
       expect(verdict.error_class).toBe('CFN_ROLLBACK_LOCK');
       expect(verdict.confidence_score).toBe(95); // 0.95 * 100
       expect(verdict.proposed_action).toBe('OPEN_ISSUE');
+      expect(verdict.verdict_type).toBe(VerdictType.BLOCKED);
     });
 
     test('includes tokens extracted from signals', () => {
@@ -146,6 +150,80 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
 
       expect(verdict.tokens.length).toBeGreaterThan(0);
       expect(verdict.tokens).toContain('AWS::Lambda::Function');
+    });
+  });
+
+  describe('determineVerdictType', () => {
+    test('returns DEFERRED for WAIT_AND_RETRY action', () => {
+      const verdictType = determineVerdictType(
+        'ACM_DNS_VALIDATION_PENDING',
+        'WAIT_AND_RETRY',
+        90
+      );
+      expect(verdictType).toBe(VerdictType.DEFERRED);
+    });
+
+    test('returns REJECTED for OPEN_ISSUE action', () => {
+      const verdictType = determineVerdictType(
+        'MISSING_SECRET',
+        'OPEN_ISSUE',
+        85
+      );
+      expect(verdictType).toBe(VerdictType.REJECTED);
+    });
+
+    test('returns ESCALATED for HUMAN_REQUIRED action', () => {
+      const verdictType = determineVerdictType(
+        'ROUTE53_DELEGATION_PENDING',
+        'HUMAN_REQUIRED',
+        90
+      );
+      expect(verdictType).toBe(VerdictType.ESCALATED);
+    });
+
+    test('returns BLOCKED for CFN_IN_PROGRESS_LOCK regardless of action', () => {
+      const verdictType = determineVerdictType(
+        'CFN_IN_PROGRESS_LOCK',
+        'WAIT_AND_RETRY',
+        95
+      );
+      expect(verdictType).toBe(VerdictType.BLOCKED);
+    });
+
+    test('returns BLOCKED for CFN_ROLLBACK_LOCK regardless of action', () => {
+      const verdictType = determineVerdictType(
+        'CFN_ROLLBACK_LOCK',
+        'OPEN_ISSUE',
+        95
+      );
+      expect(verdictType).toBe(VerdictType.BLOCKED);
+    });
+
+    test('returns WARNING for DEPRECATED_CDK_API regardless of action', () => {
+      const verdictType = determineVerdictType(
+        'DEPRECATED_CDK_API',
+        'OPEN_ISSUE',
+        75
+      );
+      expect(verdictType).toBe(VerdictType.WARNING);
+    });
+
+    test('returns ESCALATED for low confidence scores', () => {
+      const verdictType = determineVerdictType(
+        'UNKNOWN',
+        'OPEN_ISSUE',
+        50
+      );
+      expect(verdictType).toBe(VerdictType.ESCALATED);
+    });
+
+    test('respects action mapping for normal confidence scores', () => {
+      const verdictType = determineVerdictType(
+        'MISSING_ENV_VAR',
+        'OPEN_ISSUE',
+        80
+      );
+      expect(verdictType).toBe(VerdictType.REJECTED);
     });
   });
 
@@ -218,6 +296,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 90,
           proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
           tokens: ['ACM'],
           signals: [],
           created_at: new Date().toISOString(),
@@ -246,6 +325,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 90,
           proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
           tokens: ['ACM'],
           signals: [],
           created_at: new Date().toISOString(),
@@ -259,6 +339,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 90, // Same confidence
           proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
           tokens: ['ACM'],
           signals: [],
           created_at: new Date().toISOString(),
@@ -283,6 +364,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 90,
           proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
           tokens: ['ACM'],
           signals: [],
           created_at: new Date().toISOString(),
@@ -296,6 +378,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 50,
           proposed_action: 'OPEN_ISSUE',
+          verdict_type: VerdictType.REJECTED,
           tokens: ['ACM'],
           signals: [],
           created_at: new Date().toISOString(),
@@ -318,6 +401,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 90,
           proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
           tokens: [],
           signals: [],
           created_at: new Date().toISOString(),
@@ -331,6 +415,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'ACM',
           confidence_score: 80,
           proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
           tokens: [],
           signals: [],
           created_at: new Date().toISOString(),
@@ -344,6 +429,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
           service: 'SecretsManager',
           confidence_score: 85,
           proposed_action: 'OPEN_ISSUE',
+          verdict_type: VerdictType.REJECTED,
           tokens: [],
           signals: [],
           created_at: new Date().toISOString(),
@@ -399,6 +485,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
         service: 'ACM',
         confidence_score: 90,
         proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
         tokens: ['ACM'],
         signals: [
           {
@@ -428,6 +515,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
         service: 'ACM',
         confidence_score: 90,
         proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
         tokens: ['ACM'],
         signals: [
           {
@@ -456,6 +544,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
         service: 'ACM',
         confidence_score: 150, // Invalid!
         proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
         tokens: ['ACM'],
         signals: [
           {
@@ -484,6 +573,7 @@ describe('Verdict Engine - Confidence Score Normalization', () => {
         service: 'ACM',
         confidence_score: 90,
         proposed_action: 'WAIT_AND_RETRY',
+          verdict_type: VerdictType.DEFERRED,
         tokens: ['ACM'],
         signals: [], // No signals!
         created_at: new Date().toISOString(),

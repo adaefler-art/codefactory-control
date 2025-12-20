@@ -23,8 +23,10 @@ import {
 import { 
   Verdict, 
   CreateVerdictInput, 
-  PolicySnapshot 
+  PolicySnapshot,
+  VerdictType,
 } from './types';
+import { ACTION_TO_VERDICT_TYPE, ESCALATION_CONFIDENCE_THRESHOLD } from './constants';
 
 /**
  * Normalize confidence score from 0-1 range to 0-100 integer scale
@@ -57,13 +59,67 @@ export function normalizeConfidenceScore(rawConfidence: number): number {
 }
 
 /**
+ * Determine verdict type based on error class, factory action, and confidence
+ * 
+ * EPIC B: Verdict Types for Decision Authority
+ * 
+ * This function implements the decision logic to map error classifications
+ * and proposed actions to canonical verdict types.
+ * 
+ * @param errorClass Classified error type
+ * @param proposedAction Recommended factory action
+ * @param confidenceScore Normalized confidence (0-100)
+ * @returns Canonical verdict type
+ * @throws Error if proposedAction is not a valid FactoryAction
+ * 
+ * @example
+ * determineVerdictType('ACM_DNS_VALIDATION_PENDING', 'WAIT_AND_RETRY', 90)
+ * // Returns VerdictType.DEFERRED
+ * 
+ * determineVerdictType('MISSING_SECRET', 'OPEN_ISSUE', 85)
+ * // Returns VerdictType.REJECTED
+ */
+export function determineVerdictType(
+  errorClass: ErrorClass,
+  proposedAction: FactoryAction,
+  confidenceScore: number
+): VerdictType {
+  // Special case: CFN locks are blocking issues
+  if (errorClass === 'CFN_IN_PROGRESS_LOCK' || errorClass === 'CFN_ROLLBACK_LOCK') {
+    return VerdictType.BLOCKED;
+  }
+
+  // Special case: Deprecated APIs are warnings, not failures
+  if (errorClass === 'DEPRECATED_CDK_API') {
+    return VerdictType.WARNING;
+  }
+
+  // Low confidence verdicts should be escalated for human review
+  if (confidenceScore < ESCALATION_CONFIDENCE_THRESHOLD) {
+    return VerdictType.ESCALATED;
+  }
+
+  // Validate and map based on proposed action
+  const verdictType = ACTION_TO_VERDICT_TYPE[proposedAction];
+  
+  if (!verdictType) {
+    throw new Error(
+      `Unknown factory action: ${proposedAction}. Expected one of: ${Object.keys(ACTION_TO_VERDICT_TYPE).join(', ')}`
+    );
+  }
+
+  return verdictType;
+}
+
+/**
  * Generate a verdict from failure signals
  * 
  * This is the core verdict generation function that:
  * 1. Classifies the failure using deploy-memory classifier
  * 2. Normalizes confidence score to 0-100 scale
  * 3. Determines proposed action from playbook
- * 4. Returns a complete verdict (without persistence)
+ * 4. Determines canonical verdict type
+ * 5. Returns a complete verdict (without persistence)
  * 
  * @param input Verdict creation input with signals and policy reference
  * @returns Complete verdict ready for persistence
@@ -80,6 +136,13 @@ export function generateVerdict(input: CreateVerdictInput): Omit<Verdict, 'id' |
   // Get playbook and proposed action
   const playbook = getPlaybook(classification.errorClass);
   
+  // Determine canonical verdict type (EPIC B)
+  const verdict_type = determineVerdictType(
+    classification.errorClass,
+    playbook.proposedFactoryAction,
+    confidence_score
+  );
+  
   // Extract tokens for searchability
   const tokens = extractTokens(signals);
   
@@ -91,6 +154,7 @@ export function generateVerdict(input: CreateVerdictInput): Omit<Verdict, 'id' |
     service: classification.service,
     confidence_score, // Normalized 0-100 scale
     proposed_action: playbook.proposedFactoryAction,
+    verdict_type, // Canonical verdict type
     tokens,
     signals,
     playbook_id: playbook.fingerprintId,

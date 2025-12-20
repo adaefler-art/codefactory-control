@@ -1,8 +1,11 @@
 # Verdict Engine v1.1 - Governance & Auditability
 
-**EPIC 2 Implementation** - Provides governance, auditability, and deterministic verdict evaluation for AFU-9.
+**EPIC 2 Implementation** - Provides governance, auditability, and deterministic verdict evaluation for AFU-9.  
+**EPIC B Implementation** - Canonical verdict types for decision authority.
 
-**📖 Complete Documentation:** See [Confidence Score Schema](../../docs/CONFIDENCE_SCORE_SCHEMA.md) for comprehensive confidence score normalization documentation.
+**📖 Complete Documentation:** 
+- [Confidence Score Schema](../../docs/CONFIDENCE_SCORE_SCHEMA.md) - Confidence score normalization
+- [Verdict Types](../../docs/VERDICT_TYPES.md) - Canonical verdict types and decision logic
 
 ## Overview
 
@@ -10,10 +13,40 @@ The Verdict Engine v1.1 enhances the AFU-9 system with:
 
 1. **Policy Snapshotting** (Issue 2.1): Immutable policy snapshots per run for full auditability
 2. **Confidence Score Normalization** (Issue 2.2): Deterministic 0-100 scale confidence scoring
+3. **Canonical Verdict Types** (EPIC B): Standardized decision outcomes (APPROVED, REJECTED, DEFERRED, etc.)
 
 ## Key Features
 
-### 1. Normalized Confidence Scores
+### 1. Canonical Verdict Types
+
+Seven standardized verdict types for decision authority:
+
+- **APPROVED** ✅ - Safe to proceed, no issues detected
+- **REJECTED** ❌ - Critical issues, must not proceed
+- **DEFERRED** ⏸️ - Postponed, awaiting time or information
+- **ESCALATED** 👤 - Requires human intervention
+- **WARNING** ⚠️ - Minor issues, proceed with caution
+- **BLOCKED** 🚫 - Cannot proceed due to locks/constraints
+- **PENDING** ⏳ - Decision not yet determined
+
+**For complete documentation including use cases, examples, and mapping logic, see:** [Verdict Types](../../docs/VERDICT_TYPES.md)
+
+```typescript
+import { VerdictType, determineVerdictType } from '@codefactory/verdict-engine';
+
+// Verdict type is automatically determined during verdict generation
+const verdict = generateVerdict({
+  execution_id: 'exec-123',
+  policy_snapshot_id: 'policy-v1',
+  signals: [/* ... */],
+});
+
+console.log(verdict.verdict_type); // VerdictType.DEFERRED
+console.log(verdict.error_class);  // 'ACM_DNS_VALIDATION_PENDING'
+console.log(verdict.proposed_action); // 'WAIT_AND_RETRY'
+```
+
+### 2. Normalized Confidence Scores
 
 All confidence scores are normalized to a 0-100 integer scale:
 
@@ -29,7 +62,7 @@ const rawConfidence = 0.9; // From classifier
 const normalizedScore = normalizeConfidenceScore(rawConfidence); // Returns 90
 ```
 
-### 2. Immutable Policy Snapshots
+### 3. Immutable Policy Snapshots
 
 Every verdict references an immutable policy snapshot:
 

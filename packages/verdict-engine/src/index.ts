@@ -4,6 +4,7 @@
  * Implements EPIC 2: Governance & Auditability
  * - Issue 2.1: Policy Snapshotting per Run
  * - Issue 2.2: Confidence Score Normalization
+ * - EPIC B: Verdict Types for Decision Authority
  * 
  * Main exports for the Verdict Engine package
  */
@@ -15,6 +16,7 @@ export {
   validateDeterminism,
   calculateConsistencyMetrics,
   auditVerdict,
+  determineVerdictType,
 } from './engine';
 
 // Database layer
@@ -36,6 +38,9 @@ export {
   FACTORY_STATUS_API_VERSION,
   MAX_QUERY_LIMIT,
   CONFIDENCE_SCALE,
+  VERDICT_TYPES,
+  ACTION_TO_VERDICT_TYPE,
+  ESCALATION_CONFIDENCE_THRESHOLD,
 } from './constants';
 
 // Types
@@ -49,3 +54,6 @@ export type {
   VerdictQueryParams,
   VerdictAuditEntry,
 } from './types';
+
+// Enums
+export { VerdictType } from './types';
