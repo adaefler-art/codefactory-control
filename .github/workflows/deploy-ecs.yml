@@ -114,27 +114,31 @@ jobs:
           set -euo pipefail
           REAL_AWS="$(command -v aws)"
           mkdir -p /tmp/aws-wrap-bin
-          cat > /tmp/aws-wrap-bin/aws <<EOF
+          cat > /tmp/aws-wrap-bin/aws <<'EOF'
           #!/usr/bin/env bash
-          set -o pipefail
-          REAL_AWS="${REAL_AWS}"
-          err_log="$(mktemp)"
-          out_log="$(mktemp)"
+          set -euo pipefail
 
-          # Execute underlying aws CLI while tee-ing stderr/stdout for visibility
-          "${REAL_AWS}" "$@" 2> >(tee "${err_log}" >&2) | tee "${out_log}"
-          status=${PIPESTATUS[0]}
+          aws_wrap() {
+            set +e
+            local out_log err_log rc
+            out_log="$(mktemp)"
+            err_log="$(mktemp)"
+            trap 'rm -f "$out_log" "$err_log"' RETURN
 
-          if [ ${status} -ne 0 ]; then
-            if grep -qi 'AccessDenied' "${err_log}"; then
-              echo "❌ AccessDenied detected while running: aws $*" >&2
-              grep -i 'AccessDenied' "${err_log}" >&2 || true
-              grep -i 'is not authorized' "${err_log}" >&2 || true
+            "${REAL_AWS}" "$@" > >(tee "$out_log") 2> >(tee "$err_log" >&2)
+            rc=$?
+
+            if grep -q "AccessDenied" "$err_log"; then
+              echo "=== AccessDenied (stderr) ===" >&2
+              grep -E "AccessDenied|not authorized|is not authorized" "$err_log" >&2 || true
+              echo "=============================" >&2
             fi
-          fi
 
-          rm -f "${err_log}" "${out_log}"
-          exit ${status}
+            set -e
+            return $rc
+          }
+
+          aws_wrap "$@"
           EOF
           chmod +x /tmp/aws-wrap-bin/aws
           echo "/tmp/aws-wrap-bin" >> "$GITHUB_PATH"
