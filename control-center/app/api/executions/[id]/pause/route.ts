@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { pauseExecution, getExecution } from '@/lib/workflow-persistence';
+import { pauseExecution } from '@/lib/workflow-persistence';
 import { checkDatabase } from '@/lib/db';
 
 export async function POST(
@@ -38,23 +38,7 @@ export async function POST(
       );
     }
 
-    // Check if execution exists and is running
-    const execution = await getExecution(executionId);
-    if (!execution) {
-      return NextResponse.json(
-        { error: 'Execution not found' },
-        { status: 404 }
-      );
-    }
-
-    if (execution.status !== 'running') {
-      return NextResponse.json(
-        { error: `Cannot pause execution in status: ${execution.status}` },
-        { status: 400 }
-      );
-    }
-
-    // Pause the execution
+    // Pause the execution (validates status internally)
     await pauseExecution(
       executionId,
       pausedBy,
@@ -71,9 +55,13 @@ export async function POST(
     });
   } catch (error) {
     console.error('[API] Failed to pause execution:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Failed to pause execution';
+    const statusCode = errorMessage.includes('not found') || errorMessage.includes('not in') ? 400 : 500;
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to pause execution' },
-      { status: 500 }
+      { error: errorMessage },
+      { status: statusCode }
     );
   }
 }

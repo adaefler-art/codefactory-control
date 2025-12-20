@@ -365,6 +365,7 @@ export async function updateExecutionPolicySnapshot(
  * @param pausedBy - User/system that paused the workflow
  * @param reason - Reason for pausing (e.g., "HOLD state triggered")
  * @param pausedAtStepIndex - Optional step index where pause occurred
+ * @throws Error if execution does not exist or is not in 'running' status
  */
 export async function pauseExecution(
   executionId: string,
@@ -381,18 +382,27 @@ export async function pauseExecution(
     pausedAtStepIndex,
   };
   
+  // Update only if status is 'running' to prevent race conditions
   const query = `
     UPDATE workflow_executions
     SET status = 'paused',
         pause_metadata = $2,
         updated_at = NOW()
-    WHERE id = $1
+    WHERE id = $1 AND status = 'running'
+    RETURNING id
   `;
 
   const values = [executionId, JSON.stringify(pauseMetadata)];
 
   try {
-    await pool.query(query, values);
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Cannot pause execution ${executionId}: execution not found or not in 'running' status`
+      );
+    }
+    
     console.log('[Workflow Persistence] Paused execution:', {
       executionId,
       pausedBy,
@@ -413,6 +423,7 @@ export async function pauseExecution(
  * 
  * @param executionId - The workflow execution ID
  * @param resumedBy - User who approved the resume
+ * @throws Error if execution does not exist or is not in 'paused' status
  */
 export async function resumeExecution(
   executionId: string,
@@ -420,37 +431,35 @@ export async function resumeExecution(
 ): Promise<void> {
   const pool = getPool();
   
-  // First get the current pause metadata
-  const getQuery = `
-    SELECT pause_metadata FROM workflow_executions
+  // Single atomic query to get metadata and update status
+  // Only updates if status is 'paused' to prevent race conditions
+  const query = `
+    UPDATE workflow_executions
+    SET status = 'running',
+        pause_metadata = jsonb_set(
+          COALESCE(pause_metadata, '{}'::jsonb),
+          '{resumedAt}',
+          to_jsonb($2::text)
+        ) || jsonb_build_object('resumedBy', $3),
+        updated_at = NOW()
     WHERE id = $1 AND status = 'paused'
+    RETURNING id, pause_metadata
   `;
   
+  const values = [
+    executionId,
+    new Date().toISOString(),
+    resumedBy,
+  ];
+  
   try {
-    const getResult = await pool.query(getQuery, [executionId]);
+    const result = await pool.query(query, values);
     
-    if (getResult.rows.length === 0) {
-      throw new Error(`Execution ${executionId} is not paused or does not exist`);
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Cannot resume execution ${executionId}: execution not found or not in 'paused' status`
+      );
     }
-    
-    const pauseMetadata = getResult.rows[0].pause_metadata || {};
-    
-    // Update pause metadata with resume information
-    const updatedMetadata = {
-      ...pauseMetadata,
-      resumedAt: new Date().toISOString(),
-      resumedBy,
-    };
-    
-    const updateQuery = `
-      UPDATE workflow_executions
-      SET status = 'running',
-          pause_metadata = $2,
-          updated_at = NOW()
-      WHERE id = $1
-    `;
-    
-    await pool.query(updateQuery, [executionId, JSON.stringify(updatedMetadata)]);
     
     console.log('[Workflow Persistence] Resumed execution:', {
       executionId,
@@ -470,7 +479,19 @@ export async function resumeExecution(
 export async function getPausedExecutions(): Promise<WorkflowExecutionRow[]> {
   const pool = getPool();
   const query = `
-    SELECT * FROM workflow_executions
+    SELECT 
+      id,
+      workflow_id,
+      status,
+      started_at,
+      pause_metadata,
+      context,
+      input,
+      triggered_by,
+      github_run_id,
+      created_at,
+      updated_at
+    FROM workflow_executions
     WHERE status = 'paused'
     ORDER BY started_at DESC
   `;

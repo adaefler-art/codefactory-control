@@ -633,22 +633,12 @@ export class WorkflowEngine {
    * @returns true if workflow should pause, false otherwise
    */
   private shouldPauseForHold(context: WorkflowContext): boolean {
-    // Check if issue state is HOLD
-    if (context.issue?.state === IssueState.HOLD) {
-      return true;
-    }
-    
-    // Check if issue state in variables is HOLD
-    if (context.variables?.issue?.state === IssueState.HOLD) {
-      return true;
-    }
-    
-    // Check if any variable indicates HOLD state
-    if (context.variables?.issueState === IssueState.HOLD) {
-      return true;
-    }
-    
-    return false;
+    // Check multiple locations where HOLD state might be present
+    return (
+      context.issue?.state === IssueState.HOLD ||
+      context.variables?.issue?.state === IssueState.HOLD ||
+      context.variables?.issueState === IssueState.HOLD
+    );
   }
 
   /**
