@@ -6,6 +6,25 @@ This directory contains operational runbooks for managing and troubleshooting AF
 
 ### 🔴 Critical Operations
 
+#### [CloudFormation UPDATE_ROLLBACK_COMPLETE](./cloudformation-update-rollback-complete.md)
+**ID:** I-05-01-RUNBOOK-ROLLBACK  
+**Purpose:** Standardisierter Diagnoseprozess für UPDATE_ROLLBACK_COMPLETE  
+**Time to Resolution:** < 15 minutes
+
+**Use when:**
+- CloudFormation stack is in UPDATE_ROLLBACK_COMPLETE state
+- Stack update fails and cannot be updated
+- Need to recover from failed CloudFormation deployment
+- CDK deployment fails and rolls back
+
+**Key Features:**
+- 4-step diagnostic flow: CFN → ECS → Logs → Fix
+- Common failure scenarios with immediate solutions
+- Copy-paste ready commands
+- Covers 6 most common scenarios (Secrets, IAM, Circuit Breaker, Limits, Dependencies, Parameters)
+
+---
+
 #### [ECS Circuit Breaker Diagnosis](./ecs-circuit-breaker-diagnosis.md)
 **ID:** I-01-03-ECS-CIRCUIT-DIAG  
 **Purpose:** Standardized diagnostic process for ECS Circuit Breaker events  
@@ -52,7 +71,23 @@ This directory contains operational runbooks for managing and troubleshooting AF
 
 ## Quick Start: Troubleshooting Workflow
 
-### 1. Deployment Failure?
+### 1. CloudFormation Stack in UPDATE_ROLLBACK_COMPLETE?
+
+Start with: **[CloudFormation UPDATE_ROLLBACK_COMPLETE](./cloudformation-update-rollback-complete.md)**
+
+```bash
+# Check stack status
+export STACK_NAME=Afu9EcsStack
+aws cloudformation describe-stacks --stack-name ${STACK_NAME} \
+  --query 'Stacks[0].StackStatus'
+
+# Quick fix: Delete and redeploy
+aws cloudformation delete-stack --stack-name ${STACK_NAME}
+aws cloudformation wait stack-delete-complete --stack-name ${STACK_NAME}
+npx cdk deploy ${STACK_NAME} -c domainName=afu-9.com
+```
+
+### 2. ECS Deployment Failure?
 
 Start with: **[ECS Circuit Breaker Diagnosis](./ecs-circuit-breaker-diagnosis.md)**
 
@@ -62,7 +97,7 @@ export SERVICE_NAME=afu9-control-center-stage
 pwsh scripts/ecs_debug.ps1 -Service ${SERVICE_NAME}
 ```
 
-### 2. Health Check Issues?
+### 3. Health Check Issues?
 
 See: **[ECS Health Checks](./ecs-healthchecks.md)**
 
@@ -71,9 +106,9 @@ See: **[ECS Health Checks](./ecs-healthchecks.md)**
 aws elbv2 describe-target-health --target-group-arn <TG_ARN>
 ```
 
-### 3. Need Full Deployment Guide?
+### 4. Need Full Deployment Guide?
 
-See: **[AWS Deployment Runbook](../AWS_DEPLOY_RUNBOOK.md)** (Source of Truth)
+See: **[AWS Deployment Runbook](../v04/AWS_DEPLOY_RUNBOOK.md)** (Source of Truth)
 
 ---
 
