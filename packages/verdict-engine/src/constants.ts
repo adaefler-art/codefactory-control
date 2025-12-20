@@ -5,6 +5,7 @@
  */
 
 import { VerdictType } from './types';
+import type { FactoryAction } from '@codefactory/deploy-memory';
 
 /**
  * Factory actions that can be proposed by verdicts
@@ -37,11 +38,19 @@ export const VERDICT_TYPES = [
  * This mapping determines the verdict type based on the proposed factory action.
  * Can be overridden in special cases based on confidence or error class.
  */
-export const ACTION_TO_VERDICT_TYPE: Record<string, VerdictType> = {
+export const ACTION_TO_VERDICT_TYPE: Record<FactoryAction, VerdictType> = {
   'WAIT_AND_RETRY': VerdictType.DEFERRED,
   'OPEN_ISSUE': VerdictType.REJECTED,
   'HUMAN_REQUIRED': VerdictType.ESCALATED,
 } as const;
+
+/**
+ * Confidence threshold below which verdicts are escalated for human review
+ * 
+ * Verdicts with confidence scores below this threshold are automatically
+ * assigned VerdictType.ESCALATED to ensure human oversight of uncertain decisions.
+ */
+export const ESCALATION_CONFIDENCE_THRESHOLD = 60;
 
 /**
  * API version for Factory Status API

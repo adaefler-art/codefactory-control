@@ -70,6 +70,7 @@ export interface FactoryKPIs {
  * Verdict summary for Factory Status API
  * 
  * EPIC 2: Verdict Engine v1.1 - Governance & Auditability
+ * EPIC B: Verdict Types for Decision Authority
  */
 export interface VerdictSummary {
   id: string;
@@ -78,6 +79,7 @@ export interface VerdictSummary {
   service: string;
   confidenceScore: number; // Normalized 0-100 scale (Issue 2.2)
   proposedAction: 'WAIT_AND_RETRY' | 'OPEN_ISSUE' | 'HUMAN_REQUIRED';
+  verdictType: 'APPROVED' | 'REJECTED' | 'DEFERRED' | 'ESCALATED' | 'WARNING' | 'BLOCKED' | 'PENDING'; // EPIC B
   fingerprintId: string;
   policyVersion: string; // Policy snapshot version (Issue 2.1)
   createdAt: string;
@@ -101,6 +103,17 @@ export interface VerdictKPIs {
     waitAndRetry: number;
     openIssue: number;
     humanRequired: number;
+  };
+
+  /** Verdicts by type (EPIC B) */
+  byType: {
+    approved: number;
+    rejected: number;
+    deferred: number;
+    escalated: number;
+    warning: number;
+    blocked: number;
+    pending: number;
   };
   
   /** Top error classes */

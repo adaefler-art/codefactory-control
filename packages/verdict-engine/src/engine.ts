@@ -26,7 +26,7 @@ import {
   PolicySnapshot,
   VerdictType,
 } from './types';
-import { ACTION_TO_VERDICT_TYPE } from './constants';
+import { ACTION_TO_VERDICT_TYPE, ESCALATION_CONFIDENCE_THRESHOLD } from './constants';
 
 /**
  * Normalize confidence score from 0-1 range to 0-100 integer scale
@@ -70,6 +70,7 @@ export function normalizeConfidenceScore(rawConfidence: number): number {
  * @param proposedAction Recommended factory action
  * @param confidenceScore Normalized confidence (0-100)
  * @returns Canonical verdict type
+ * @throws Error if proposedAction is not a valid FactoryAction
  * 
  * @example
  * determineVerdictType('ACM_DNS_VALIDATION_PENDING', 'WAIT_AND_RETRY', 90)
@@ -94,12 +95,20 @@ export function determineVerdictType(
   }
 
   // Low confidence verdicts should be escalated for human review
-  if (confidenceScore < 60) {
+  if (confidenceScore < ESCALATION_CONFIDENCE_THRESHOLD) {
     return VerdictType.ESCALATED;
   }
 
-  // Default mapping based on proposed action
-  return ACTION_TO_VERDICT_TYPE[proposedAction] || VerdictType.PENDING;
+  // Validate and map based on proposed action
+  const verdictType = ACTION_TO_VERDICT_TYPE[proposedAction];
+  
+  if (!verdictType) {
+    throw new Error(
+      `Unknown factory action: ${proposedAction}. Expected one of: ${Object.keys(ACTION_TO_VERDICT_TYPE).join(', ')}`
+    );
+  }
+
+  return verdictType;
 }
 
 /**

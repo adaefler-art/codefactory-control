@@ -40,6 +40,7 @@ export {
   CONFIDENCE_SCALE,
   VERDICT_TYPES,
   ACTION_TO_VERDICT_TYPE,
+  ESCALATION_CONFIDENCE_THRESHOLD,
 } from './constants';
 
 // Types
