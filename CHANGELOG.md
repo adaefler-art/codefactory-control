@@ -2,6 +2,61 @@
 
 Alle wesentlichen Änderungen an diesem Projekt werden hier dokumentiert.
 
+## 2024-12-20 - v0.4 Release Review (Issue I-06-01)
+
+### Added - Release Documentation
+
+**Issue #I-06-01-RELEASE-REVIEW: v0.4 Abschluss-Review & Referenzstand**
+
+Comprehensive v0.4 release review documentation establishing clear scope and reference state.
+
+#### Release Review Document
+- **docs/v04/V04_RELEASE_REVIEW.md**: Complete v0.4 release review and reference documentation
+  - Executive summary of v0.4 achievements
+  - Clear delineation: What is stable & production-ready vs. experimental/unstable
+  - Architecture overview with diagrams
+  - Complete deployment guides and runbooks reference
+  - Security & governance documentation
+  - KPI system and observability details
+  - Known limitations and constraints
+  - Foundation for v0.5 planning with candidate features
+  - Quick reference links to all canonical documentation
+
+#### What is Stable & Production-Ready
+- ✅ Core Infrastructure (v0.2 ECS Architecture)
+- ✅ MCP Pattern Implementation (GitHub, Deploy, Observability servers)
+- ✅ Deployment Workflows (GitHub Actions with safety gates)
+- ✅ Database & Persistence (PostgreSQL with migrations)
+- ✅ Security Implementation (EPIC 07 - Least privilege IAM)
+- ✅ Build Determinism (EPIC 05 - ≥95% reproducibility)
+- ✅ Health & Monitoring System (Red/Yellow/Green indicators)
+- ✅ Comprehensive Documentation (150+ production-ready docs)
+- ✅ KPI System (EPIC 03 - 12 Factory KPIs)
+- ✅ Cost Attribution Engine (EPIC 09)
+- ✅ Prompt Library (EPIC 06)
+
+#### What is Experimental/Unstable
+- ⚠️ Workflow Engine & Execution (functional but needs refinement)
+- ⚠️ Control Center UI (functional MVP, needs UX polish)
+- ⚠️ LLM Integration & Agent System (basic integration)
+- ⚠️ Webhook Event Processing (basic implementation)
+- ⚠️ v0.1 Lambda Pipeline (legacy, deprecated)
+
+#### Documentation Updates
+- Updated `docs/v04/README.md` to highlight release review as canonical reference
+- Updated main `README.md` to reference v0.4 release review
+- Added comprehensive quick reference links to all documentation
+
+#### Foundation for v0.5
+- Established clear scope for v0.4 stable features
+- Identified v0.5 candidate features based on v0.4 limitations
+- Documented Go/No-Go criteria for v0.5 planning
+- References Issue I-06-02-V05-GO for v0.5 decision process
+
+**Status**: ✅ Complete - v0.4 Reference State Established
+
+---
+
 ## 2024-12-17 - EPIC 07: Security & Blast Radius – Minimale Angriffsfläche
 
 ### Added - Security Hardening & Policy Validation
