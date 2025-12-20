@@ -8,6 +8,12 @@
 
 This runbook provides step-by-step instructions for deploying AFU-9 Control Center to AWS staging environment. It ensures reproducible, deterministic deployments with proper secret management and validation.
 
+## Pre-flight Before Any `cdk deploy`
+
+1. Run `cdk diff` for the target stack.
+2. Scan the diff for **Replacement** or **Deletion/Destruction** entries.
+3. If critical resources are affected (DB, ALB, ECS service, secrets, DNS), pause and request a manual review before proceeding.
+
 ## Prerequisites
 
 ### Required Tools

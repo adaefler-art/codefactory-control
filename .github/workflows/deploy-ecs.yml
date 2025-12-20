@@ -27,10 +27,18 @@ on:
       - 'mcp-servers/**'
       - '.github/workflows/deploy-ecs.yml'
 
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-ecs-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
 env:
   AWS_REGION: eu-central-1
   ECS_CLUSTER: afu9-cluster
-  ECS_SERVICE: afu9-control-center
+  DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
 
 jobs:
   build-and-deploy:
@@ -39,10 +47,37 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      DEPLOY_ENV: ${{ env.DEPLOY_ENV }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set deployment variables
+        id: vars
+        run: |
+          DEPLOY_ENV="${{ env.DEPLOY_ENV }}"
+
+          if [ "$DEPLOY_ENV" != "production" ] && [ "$DEPLOY_ENV" != "staging" ]; then
+            echo "Unsupported environment: $DEPLOY_ENV"
+            exit 1
+          fi
+
+          if [ "$DEPLOY_ENV" = "production" ]; then
+            TAG_PREFIX="prod"
+            ECS_SERVICE="afu9-control-center-prod"
+            ENV_LABEL="Production"
+          else
+            TAG_PREFIX="stage"
+            ECS_SERVICE="afu9-control-center-stage"
+            ENV_LABEL="Staging"
+          fi
+
+          echo "deploy_env=$DEPLOY_ENV" >> $GITHUB_OUTPUT
+          echo "tag_prefix=$TAG_PREFIX" >> $GITHUB_OUTPUT
+          echo "ecs_service=$ECS_SERVICE" >> $GITHUB_OUTPUT
+          echo "env_label=$ENV_LABEL" >> $GITHUB_OUTPUT
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -100,9 +135,9 @@ jobs:
           file: ./control-center/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.control_center }}:staging-latest
+            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -114,9 +149,9 @@ jobs:
           file: ./mcp-servers/github/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_github }}:staging-latest
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -128,9 +163,9 @@ jobs:
           file: ./mcp-servers/deploy/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:staging-latest
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -142,21 +177,21 @@ jobs:
           file: ./mcp-servers/observability/Dockerfile
           push: true
           tags: |
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:staging-latest
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create new task definition with SHA tags
+      - name: Create new task definition with environment tags
         id: task-def
         run: |
-          echo "Creating new task definition with SHA-tagged images..."
+          echo "Creating new task definition for ${{ steps.vars.outputs.env_label }} with env-tagged images..."
           
           # Get current task definition
           TASK_DEF_ARN=$(aws ecs describe-services \
             --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }} \
+            --services ${{ steps.vars.outputs.ecs_service }} \
             --region ${{ env.AWS_REGION }} \
             --query 'services[0].taskDefinition' \
             --output text)
@@ -169,11 +204,11 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --query 'taskDefinition' > task-def.json
           
-          # Update container images with SHA tags
-          jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.short_sha }}" \
-             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.short_sha }}" \
-             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.short_sha }}" \
-             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.short_sha }}" \
+          # Update container images with environment-specific tags
+          jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              '.containerDefinitions |= map(
                if .name == "control-center" then .image = $cc_image
                elif .name == "mcp-github" then .image = $gh_image
@@ -211,7 +246,7 @@ jobs:
           echo "Updating ECS service with new task definition..."
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
+            --service ${{ steps.vars.outputs.ecs_service }} \
             --task-definition ${{ steps.task-def.outputs.new_task_def_arn }} \
             --region ${{ env.AWS_REGION }}
 
@@ -220,7 +255,7 @@ jobs:
           echo "Waiting for service to reach stable state..."
           aws ecs wait services-stable \
             --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }} \
+            --services ${{ steps.vars.outputs.ecs_service }} \
             --region ${{ env.AWS_REGION }}
 
       - name: Get service status
@@ -229,30 +264,62 @@ jobs:
           echo "Service deployment status:"
           aws ecs describe-services \
             --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }} \
+            --services ${{ steps.vars.outputs.ecs_service }} \
             --region ${{ env.AWS_REGION }} \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
             --output table
+
+      - name: Get ALB DNS for verification
+        id: alb-dns
+        run: |
+          ALB_DNS=$(aws cloudformation describe-stacks \
+            --stack-name Afu9NetworkStack \
+            --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -z "$ALB_DNS" ]; then
+            echo "Warning: Could not fetch ALB DNS from CloudFormation, trying alternative method..."
+            ALB_DNS=$(aws elbv2 describe-load-balancers \
+              --names afu9-alb \
+              --query 'LoadBalancers[0].DNSName' \
+              --output text 2>/dev/null || echo "")
+          fi
+          
+          echo "alb_dns=${ALB_DNS}" >> $GITHUB_OUTPUT
+          echo "ALB DNS: ${ALB_DNS}"
+
+      - name: Run post-deployment verification
+        run: |
+          echo "Running automated post-deployment verification..."
+          chmod +x ./scripts/post-deploy-verification.sh
+          ./scripts/post-deploy-verification.sh \
+            ${{ steps.vars.outputs.tag_prefix }} \
+            ${{ env.ECS_CLUSTER }} \
+            ${{ steps.vars.outputs.ecs_service }} \
+            ${{ steps.alb-dns.outputs.alb_dns }}
 
       - name: Deployment summary
         run: |
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "Environment: ${{ steps.vars.outputs.env_label }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images deployed:" >> $GITHUB_STEP_SUMMARY
-          echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### ECS Configuration:" >> $GITHUB_STEP_SUMMARY
           echo "- Cluster: \`${{ env.ECS_CLUSTER }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Service: \`${{ env.ECS_SERVICE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Service: \`${{ steps.vars.outputs.ecs_service }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Region: \`${{ env.AWS_REGION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- ALB DNS: ${{ steps.alb-dns.outputs.alb_dns }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Rollback Information:" >> $GITHUB_STEP_SUMMARY
           echo "- Git SHA: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- See [ROLLBACK.md](../docs/ROLLBACK.md) for rollback procedures" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ steps.vars.outputs.env_label }}" >> $GITHUB_STEP_SUMMARY
+          echo "- See [DEPLOYMENT.md](../docs/DEPLOYMENT.md) for rollback procedures" >> $GITHUB_STEP_SUMMARY

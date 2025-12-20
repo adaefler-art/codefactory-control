@@ -9,20 +9,22 @@ This directory contains GitHub Actions workflows for AFU-9 automation.
 Automated CI/CD pipeline for building and deploying AFU-9 Docker images to AWS ECS.
 
 **Triggers:**
-- **Automatic**: Push to `main` branch with changes in:
+- **Automatic (staging)**: Push to `main` branch with changes in:
   - `control-center/**`
   - `mcp-servers/**`
   - `.github/workflows/deploy-ecs.yml`
-- **Manual**: Workflow dispatch from GitHub Actions UI
+  - Defaults to the **staging** environment on push
+- **Manual**: Workflow dispatch from GitHub Actions UI with an explicit `staging` or `production` choice
 
 **What it does:**
 1. Builds Docker images for all 4 containers
-2. Pushes images to ECR with multiple tags:
-   - `latest` - Always points to the most recent build
-   - `<commit-sha>` - Tagged with the 7-character commit SHA
-   - `<timestamp>` - Tagged with build timestamp (YYYYMMDD-HHMMSS)
-3. Forces new deployment of ECS service
-4. Waits for service to stabilize
+2. Pushes images to ECR with environment-scoped tags:
+   - `<env>-<commit-sha>` (deterministic primary tag)
+   - `<env>-<timestamp>` (human-friendly traceability)
+   - `<env>-latest` (moving pointer per environment)
+3. Updates the ECS task definition and service for the selected environment (staging or production)
+4. Runs post-deployment verification via `scripts/post-deploy-verification.sh`
+5. Waits for service to stabilize and records deployment metadata in the run summary
 
 **Setup Requirements:**
 
