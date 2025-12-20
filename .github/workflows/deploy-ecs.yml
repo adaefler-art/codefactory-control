@@ -200,79 +200,6 @@ jobs:
           set -euo pipefail
           npm ci
 
-      - name: Validate secrets in AWS Secrets Manager
-        env:
-          ENABLE_SECRET_PREFLIGHT: ${{ vars.ENABLE_SECRET_PREFLIGHT }}
-          ADMIN_ROLE_ARN: ${{ secrets.SECRETS_AUDIT_ROLE_ARN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${ENABLE_SECRET_PREFLIGHT:-}" != "true" ] || [ -z "${ADMIN_ROLE_ARN:-}" ]; then
-            echo "Skipping secrets validation (ENABLE_SECRET_PREFLIGHT!=true or ADMIN_ROLE_ARN missing)"
-            exit 0
-          fi
-
-          echo "🔍 Validating secrets before deployment using admin role..."
-          aws sts assume-role \
-            --role-arn "$ADMIN_ROLE_ARN" \
-            --role-session-name secrets-audit-session \
-            --duration-seconds 900 > /tmp/admin-creds.json
-
-          export AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' /tmp/admin-creds.json)
-          export AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' /tmp/admin-creds.json)
-          export AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' /tmp/admin-creds.json)
-
-          npm run validate-secrets
-          echo "✅ All secrets validated successfully"
-
-      - name: Resolve database connection string
-        id: db-connection
-        env:
-          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-          DB_SECRET_NAME: ${{ vars.DB_SECRET_NAME }}
-          PROD_DB_SECRET_NAME: ${{ vars.PROD_DB_SECRET_NAME }}
-          STAGE_DB_SECRET_NAME: ${{ vars.STAGE_DB_SECRET_NAME }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          DEFAULT_SECRET="afu9/database/master"
-          SECRET_NAME="${DB_SECRET_NAME:-}"
-
-          if [ "$DEPLOY_ENV" = "production" ] && [ -n "${PROD_DB_SECRET_NAME:-}" ]; then
-            SECRET_NAME="$PROD_DB_SECRET_NAME"
-          elif [ "$DEPLOY_ENV" = "staging" ] && [ -n "${STAGE_DB_SECRET_NAME:-}" ]; then
-            SECRET_NAME="$STAGE_DB_SECRET_NAME"
-          fi
-
-          if [ -z "${SECRET_NAME:-}" ]; then
-            SECRET_NAME="$DEFAULT_SECRET"
-          fi
-
-          echo "Using database secret: $SECRET_NAME"
-
-          SECRET_JSON=$(aws secretsmanager get-secret-value \
-            --secret-id "$SECRET_NAME" \
-            --region "$AWS_REGION" \
-            --query SecretString \
-            --output text)
-
-          if [ -z "$SECRET_JSON" ] || [ "$SECRET_JSON" = "None" ]; then
-            echo "❌ Failed to retrieve database secret" >&2
-            exit 1
-          fi
-
-          # Accept "database" (preferred) and "dbname" (fallback)
-          DATABASE_URL=$(echo "$SECRET_JSON" | jq -r '"postgresql://\(.username):\(.password)@\(.host):\(.port)/\(.database // .dbname)"')
-
-          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
-            echo "❌ Could not construct DATABASE_URL from secret (expected keys: username, password, host, port, database/dbname)" >&2
-            exit 1
-          fi
-
-          echo "::add-mask::$DATABASE_URL"
-          echo "database_url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -422,8 +349,6 @@ jobs:
 
       - name: Run database migrations (gate)
         id: migrate
-        env:
-          DATABASE_URL: ${{ steps.db-connection.outputs.database_url }}
         shell: bash
         run: |
           set -euo pipefail
@@ -448,11 +373,11 @@ jobs:
           fi
 
           # Run a one-off Fargate task using the NEW task definition and override the command
-          OVERRIDES_JSON=$(jq -nc --arg db "$DATABASE_URL" '{
+          OVERRIDES_JSON=$(jq -nc '{
             containerOverrides: [{
               name: "control-center",
               command: ["sh","-lc","npm run db:migrate"],
-              environment: [{ name: "DATABASE_URL", value: $db }]
+              environment: []
             }]
           }')
 
