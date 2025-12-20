@@ -117,7 +117,7 @@ AlarmsStack (no RDS alarms)
         "secretsmanager:GetSecretValue",
         "secretsmanager:DescribeSecret"
       ],
-      "Resource": "arn:aws:secretsmanager:...:secret:afu9/database*"
+      "Resource": "arn:aws:secretsmanager:...:secret:afu9-database*"
     }
   ]
 }
@@ -256,7 +256,7 @@ mkdir -p test/snapshots
 npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false \
   -o test/snapshots/db-off
 npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
-  -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+  -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
   -o test/snapshots/db-on
 
 # Compare snapshots
@@ -369,7 +369,7 @@ npx cdk deploy Afu9DatabaseStack
 
 **Step 2:** Get database secret ARN
 ```bash
-DB_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id afu9/database/master --query 'ARN' --output text)
+DB_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id afu9-database/master --query 'ARN' --output text)
 ```
 
 **Step 3:** Deploy ECS with database enabled

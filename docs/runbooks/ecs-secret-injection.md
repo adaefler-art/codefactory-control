@@ -154,17 +154,17 @@ aws secretsmanager describe-secret \
 
 # Check LLM secret
 aws secretsmanager describe-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessed:LastAccessedDate}' \
-  --output table 2>&1 || echo "❌ afu9/llm NOT FOUND"
+  --output table 2>&1 || echo "❌ afu9-llm NOT FOUND"
 
 # Check Database secret (only if database enabled)
 aws secretsmanager describe-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessed:LastAccessedDate}' \
-  --output table 2>&1 || echo "❌ afu9/database NOT FOUND"
+  --output table 2>&1 || echo "❌ afu9-database NOT FOUND"
 ```
 
 **Expected:** All secrets should return table output with Name, ARN, and LastAccessed date.
@@ -184,8 +184,8 @@ npm run validate-secrets
 
 This automatically validates:
 - **afu9/github**: Requires `token`, `owner`, `repo`
-- **afu9/database**: Requires `host`, `port`, `database`, `username`, `password`
-- **afu9/llm**: Optional keys (no required keys)
+- **afu9-database**: Requires `host`, `port`, `database`, `username`, `password`
+- **afu9-llm**: Optional keys (no required keys)
 
 **Example output when valid:**
 ```
@@ -198,7 +198,7 @@ This automatically validates:
 
 **Example output when invalid:**
 ```
-✗ database secret validation failed: Secret afu9/database is missing required keys: password
+✗ database secret validation failed: Secret afu9-database is missing required keys: password
 
 Missing keys: password
 ```
@@ -217,7 +217,7 @@ aws secretsmanager get-secret-value \
 
 # Validate Database secret structure
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'has("host", "port", "database", "username", "password")'
@@ -298,7 +298,7 @@ aws ecs describe-task-definition \
   },
   {
     "name": "DATABASE_HOST",
-    "valueFrom": "arn:aws:secretsmanager:eu-central-1:...:secret:afu9/database:host::"
+    "valueFrom": "arn:aws:secretsmanager:eu-central-1:...:secret:afu9-database:host::"
   },
   ...
 ]
@@ -339,11 +339,11 @@ aws ecs update-service \
   --region ${AWS_REGION}
 ```
 
-#### For afu9/llm
+#### For afu9-llm
 
 ```bash
 aws secretsmanager create-secret \
-  --name afu9/llm \
+  --name afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-YOUR_OPENAI_KEY",
     "anthropic_api_key": "sk-ant-YOUR_ANTHROPIC_KEY",
@@ -359,7 +359,7 @@ aws ecs update-service \
   --region ${AWS_REGION}
 ```
 
-#### For afu9/database
+#### For afu9-database
 
 **⚠️ Only create if database is enabled (`enableDatabase=true`)**
 
@@ -391,7 +391,7 @@ DB_PASSWORD=$(echo $RDS_CREDENTIALS | jq -r '.password')
 
 # Create application database secret
 aws secretsmanager create-secret \
-  --name afu9/database \
+  --name afu9-database \
   --secret-string "{
     \"host\": \"${RDS_ENDPOINT}\",
     \"port\": \"5432\",
@@ -417,8 +417,8 @@ aws ecs update-service \
 
 Required secret names:
 - `afu9/github` (NOT `afu9-github` or `github`)
-- `afu9/llm` (NOT `afu9-llm` or `llm`)
-- `afu9/database` (NOT `afu9-database` or `database`)
+- `afu9-llm` (NOT `afu9-llm` or `llm`)
+- `afu9-database` (NOT `afu9-database` or `database`)
 
 **List all secrets with prefix:**
 ```bash
@@ -450,7 +450,7 @@ aws secretsmanager update-secret \
   --region ${AWS_REGION}
 ```
 
-**For afu9/database:**
+**For afu9-database:**
 
 Required keys: `host`, `port`, `database`, `username`, `password`
 
@@ -459,7 +459,7 @@ Required keys: `host`, `port`, `database`, `username`, `password`
 ```bash
 # Get current secret value
 CURRENT_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text)
@@ -469,7 +469,7 @@ echo $CURRENT_SECRET | jq .
 
 # Update with missing keys (example: adding 'password')
 aws secretsmanager update-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --secret-string '{
     "host": "your-rds-endpoint.eu-central-1.rds.amazonaws.com",
     "port": "5432",
@@ -563,7 +563,7 @@ aws ecs update-service \
 
 | Wrong Key | Correct Key | Secret |
 |-----------|-------------|--------|
-| `dbname` | `database` | afu9/database |
+| `dbname` | `database` | afu9-database |
 | `github_token` | `token` | afu9/github |
 | `repository` | `repo` | afu9/github |
 | `org` | `owner` | afu9/github |
@@ -573,12 +573,12 @@ aws ecs update-service \
 ```bash
 # Show current keys
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'keys'
 
-# Expected for afu9/database:
+# Expected for afu9-database:
 # ["database", "host", "password", "port", "username"]
 
 # If keys are wrong, update the secret with correct structure

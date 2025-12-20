@@ -27,12 +27,12 @@ AFU-9 uses AWS Secrets Manager for storing and managing all sensitive credential
 
 AFU-9 manages three categories of secrets:
 
-1. **GitHub Credentials** (`afu9/github`):
+1. **GitHub Credentials** (`afu9-github`):
    - GitHub Personal Access Token or App credentials
    - Repository owner and name
    - Used for: Issue tracking, PR creation, branch management
 
-2. **LLM API Keys** (`afu9/llm`):
+2. **LLM API Keys** (`afu9-llm`):
    - OpenAI API key (GPT models)
    - Anthropic API key (Claude models)
    - DeepSeek API key (DeepSeek models)
@@ -52,7 +52,7 @@ AFU-9 manages three categories of secrets:
 │ AWS Secrets Manager                                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  afu9/github          afu9/llm              afu9/database       │
+│  afu9-github          afu9-llm              afu9/database       │
 │  ├─ token             ├─ openai_api_key    ├─ host             │
 │  ├─ owner             ├─ anthropic_api_key ├─ port             │
 │  └─ repo              └─ deepseek_api_key  ├─ database         │
@@ -146,7 +146,7 @@ After deploying the CDK stacks, secrets are created with placeholder values. You
 
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --secret-string '{
     "token": "ghp_your_github_token",
     "owner": "your-github-org",
@@ -159,7 +159,7 @@ aws secretsmanager update-secret \
 
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-your-openai-key",
     "anthropic_api_key": "sk-ant-your-anthropic-key",
@@ -192,8 +192,8 @@ After updating secrets, verify ECS tasks can access them:
 aws logs tail /ecs/afu9/control-center --follow
 
 # Look for successful secret loading:
-# [Secrets] Loading secret from AWS: afu9/github
-# [Secrets] Successfully loaded secret: afu9/github
+# [Secrets] Loading secret from AWS: afu9-github
+# [Secrets] Successfully loaded secret: afu9-github
 ```
 
 ## Secret Rotation
@@ -206,7 +206,7 @@ To rotate a secret:
 2. Update the secret in AWS Secrets Manager:
    ```bash
    aws secretsmanager update-secret \
-     --secret-id afu9/github \
+     --secret-id afu9-github \
      --secret-string '{"token":"ghp_new_token","owner":"org","repo":"repo"}'
    ```
 3. Restart ECS tasks to pick up new secrets:
@@ -252,12 +252,12 @@ AWS Secrets Manager supports automatic rotation via Lambda functions. This can b
 
 ### Secret Not Found
 
-**Error:** `Failed to load secret afu9/github: ResourceNotFoundException`
+**Error:** `Failed to load secret afu9-github: ResourceNotFoundException`
 
 **Solution:**
 1. Verify the secret exists:
    ```bash
-   aws secretsmanager describe-secret --secret-id afu9/github
+   aws secretsmanager describe-secret --secret-id afu9-github
    ```
 2. Check the secret name matches exactly
 3. Verify you're in the correct AWS region
@@ -273,14 +273,14 @@ AWS Secrets Manager supports automatic rotation via Lambda functions. This can b
 
 ### Invalid Secret Format
 
-**Error:** `Secret afu9/github is missing required fields: token`
+**Error:** `Secret afu9-github is missing required fields: token`
 
 **Solution:**
 1. Verify the secret contains all required fields
 2. Check JSON formatting is valid
 3. Update the secret with complete data:
    ```bash
-   aws secretsmanager get-secret-value --secret-id afu9/github
+   aws secretsmanager get-secret-value --secret-id afu9-github
    # Fix and update with correct structure
    ```
 

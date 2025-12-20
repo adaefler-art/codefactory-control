@@ -119,7 +119,7 @@ See [validate-iam-policies.ts](scripts/validate-iam-policies.ts) for complete li
 **100% Compliance**: All resources are scoped to AFU-9 namespaces
 
 **Namespace Conventions**:
-- Secrets: `afu9/*` prefix (e.g., `afu9/github`, `afu9/llm`, `afu9/database`)
+- Secrets: `afu9-*` prefix (e.g., `afu9-github`, `afu9-llm`, `afu9-database`)
 - ECR Repositories: `afu9/*` (e.g., `afu9/control-center`, `afu9/mcp-github`)
 - ECS Resources: `afu9-cluster`, `afu9-*` task definitions, `afu9-*` services
 - CloudWatch Logs: `/ecs/afu9/*` log groups

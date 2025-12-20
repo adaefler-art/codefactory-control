@@ -103,7 +103,7 @@ Both wildcards are due to AWS service limitations and are fully documented:
 
 All resources properly scoped to AFU-9 namespaces:
 
-- **Secrets**: `afu9/*` (e.g., `afu9/github`, `afu9/llm`, `afu9/database`)
+- **Secrets**: `afu9-*` (e.g., `afu9-github`, `afu9-llm`, `afu9-database`)
 - **ECR Repositories**: `afu9/*` (e.g., `afu9/control-center`, `afu9/mcp-github`)
 - **ECS Resources**: `afu9-cluster`, `afu9-*` task definitions/services
 - **CloudWatch Logs**: `/ecs/afu9/*` log groups

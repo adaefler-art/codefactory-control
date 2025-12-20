@@ -41,13 +41,13 @@ The system tracks three types of secrets:
 
 **Note:** The key is `database`, not `dbname`. This is the application connection secret created by `Afu9DatabaseStack`, which differs from RDS-generated secrets.
 
-#### 2. GitHub Secret (`afu9/github`)
+#### 2. GitHub Secret (`afu9-github`)
 **Required Keys:**
 - `token` - GitHub personal access token or app token
 - `owner` - GitHub repository owner (organization or user)
 - `repo` - GitHub repository name
 
-#### 3. LLM Secret (`afu9/llm`)
+#### 3. LLM Secret (`afu9-llm`)
 **Optional Keys (at least one recommended):**
 - `openai_api_key` - OpenAI API key
 - `anthropic_api_key` - Anthropic (Claude) API key
@@ -179,8 +179,8 @@ package.json                         # Updated build/synth/deploy scripts
 │  - Connect to AWS Secrets Manager                           │
 │  - Check afu9/database (required: host, port, database,     │
 │    username, password)                                      │
-│  - Check afu9/github (required: token, owner, repo)         │
-│  - Check afu9/llm (optional keys)                           │
+│  - Check afu9-github (required: token, owner, repo)         │
+│  - Check afu9-llm (optional keys)                           │
 └────────────────────────────┬────────────────────────────────┘
                              │
                 ┌────────────┴────────────┐
@@ -271,9 +271,9 @@ Validating secrets before CDK synth...
 
 Validating database secret (afu9/database)...
 ✓ database secret validation passed
-Validating github secret (afu9/github)...
+Validating github secret (afu9-github)...
 ✓ github secret validation passed
-Validating llm secret (afu9/llm)...
+Validating llm secret (afu9-llm)...
 ✓ llm secret validation passed
 
 =====================================
@@ -312,9 +312,9 @@ Validating secrets before CDK synth...
 
 Validating database secret (afu9/database)...
 ✗ database secret validation failed: Secret afu9/database is missing required keys: password
-Validating github secret (afu9/github)...
+Validating github secret (afu9-github)...
 ✓ github secret validation passed
-Validating llm secret (afu9/llm)...
+Validating llm secret (afu9-llm)...
 ✓ llm secret validation passed
 
 =====================================
@@ -362,9 +362,9 @@ Validating secrets...
 
 Validating database secret (afu9/database)...
 ✗ database secret validation failed: Secret afu9/database is missing required keys: password
-Validating github secret (afu9/github)...
+Validating github secret (afu9-github)...
 ✓ github secret validation passed
-Validating llm secret (afu9/llm)...
+Validating llm secret (afu9-llm)...
 ✓ llm secret validation passed
 
 =====================================

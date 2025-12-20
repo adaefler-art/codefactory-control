@@ -355,7 +355,7 @@ Configure secrets in AWS Secrets Manager. The ECS stack creates placeholder secr
 ```bash
 # Update with your GitHub credentials
 aws secretsmanager update-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --secret-string '{
     "token": "ghp_your_github_personal_access_token",
     "owner": "adaefler-art",
@@ -365,7 +365,7 @@ aws secretsmanager update-secret \
 
 **Verification:**
 ```bash
-aws secretsmanager get-secret-value --secret-id afu9/github \
+aws secretsmanager get-secret-value --secret-id afu9-github \
   --query SecretString --output text | jq .
 ```
 
@@ -374,7 +374,7 @@ aws secretsmanager get-secret-value --secret-id afu9/github \
 ```bash
 # Update with your LLM API keys
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-your-openai-key",
     "anthropic_api_key": "sk-ant-your-anthropic-key",
@@ -386,7 +386,7 @@ aws secretsmanager update-secret \
 
 **Verification:**
 ```bash
-aws secretsmanager get-secret-value --secret-id afu9/llm \
+aws secretsmanager get-secret-value --secret-id afu9-llm \
   --query SecretString --output text | jq 'keys'
 # Expected: ["openai_api_key", "anthropic_api_key", "deepseek_api_key"]
 ```
@@ -713,7 +713,7 @@ npm run build
 
 2. **Secrets not configured**
    ```bash
-   aws secretsmanager get-secret-value --secret-id afu9/github
+   aws secretsmanager get-secret-value --secret-id afu9-github
    ```
    Solution: Update secrets (Phase 3)
 
@@ -881,7 +881,7 @@ aws ecs update-service \
 ```bash
 # Update GitHub token
 aws secretsmanager update-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --secret-string '{"token":"new_token","owner":"...","repo":"..."}'
 
 # Force ECS service restart to pick up new secret

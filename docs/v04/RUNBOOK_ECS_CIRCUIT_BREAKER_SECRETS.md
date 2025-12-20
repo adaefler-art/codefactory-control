@@ -197,14 +197,14 @@ Error: Environment variable DATABASE_PORT is not set
 ```bash
 # GitHub Secret
 aws secretsmanager describe-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessedDate:LastAccessedDate}' \
   --output table
 
 # LLM Secret
 aws secretsmanager describe-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessedDate:LastAccessedDate}' \
   --output table
@@ -225,7 +225,7 @@ aws secretsmanager describe-secret \
 
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'has("token", "owner", "repo")'
@@ -254,7 +254,7 @@ aws secretsmanager get-secret-value \
 ```bash
 # GitHub Secret (ohne sensitive Werte zu loggen)
 aws secretsmanager get-secret-value \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'keys'
@@ -500,7 +500,7 @@ curl http://${ALB_DNS}/api/ready | jq .
 
 ```bash
 aws secretsmanager create-secret \
-  --name afu9/github \
+  --name afu9-github \
   --secret-string '{
     "token": "ghp_DEIN_GITHUB_TOKEN",
     "owner": "adaefler-art",
@@ -510,7 +510,7 @@ aws secretsmanager create-secret \
 
 # Falls Secret existiert
 aws secretsmanager update-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --secret-string '{
     "token": "ghp_DEIN_GITHUB_TOKEN",
     "owner": "adaefler-art",
@@ -532,7 +532,7 @@ aws ecs update-service \
 
 ```bash
 aws secretsmanager create-secret \
-  --name afu9/llm \
+  --name afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-DEIN_OPENAI_KEY",
     "anthropic_api_key": "sk-ant-DEIN_ANTHROPIC_KEY",
@@ -542,7 +542,7 @@ aws secretsmanager create-secret \
 
 # Falls Secret existiert
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-DEIN_OPENAI_KEY",
     "anthropic_api_key": "sk-ant-DEIN_ANTHROPIC_KEY",

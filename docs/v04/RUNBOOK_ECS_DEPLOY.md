@@ -233,14 +233,14 @@ Secrets and IAM issues prevent tasks from starting or accessing resources.
 ```bash
 # Check GitHub secret
 aws secretsmanager describe-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessedDate:LastAccessedDate}' \
   --output table
 
 # Check LLM secret
 aws secretsmanager describe-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --region ${AWS_REGION} \
   --query '{Name:Name,ARN:ARN,LastAccessedDate:LastAccessedDate}' \
   --output table
@@ -258,14 +258,14 @@ aws secretsmanager describe-secret \
 ```bash
 # Verify GitHub secret has required keys
 aws secretsmanager get-secret-value \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'has("token", "owner", "repo")'
 
 # Verify LLM secret has required keys
 aws secretsmanager get-secret-value \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'has("openai_api_key", "anthropic_api_key", "deepseek_api_key")'
@@ -515,8 +515,8 @@ aws ecr describe-images \
 
 | Secret Name | Required Keys | Notes |
 |------------|---------------|-------|
-| `afu9/github` | `token`, `owner`, `repo` | GitHub API access |
-| `afu9/llm` | `openai_api_key`, `anthropic_api_key`, `deepseek_api_key` | LLM API keys |
+| `afu9-github` | `token`, `owner`, `repo` | GitHub API access |
+| `afu9-llm` | `openai_api_key`, `anthropic_api_key`, `deepseek_api_key` | LLM API keys |
 | `afu9/database` | `host`, `port`, `database`, `username`, `password` | Only if `enableDatabase=true` |
 
 ### Required Environment Variables (in Task Definition)

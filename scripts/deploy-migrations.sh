@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 AWS_REGION="${AWS_REGION:-eu-central-1}"
-SECRET_NAME="${DB_SECRET_NAME:-afu9/database}"
+SECRET_NAME="${DB_SECRET_NAME:-afu9-database}"
 MIGRATION_FILE="${1:-}"
 
 echo "=================================================="

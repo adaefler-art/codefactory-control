@@ -36,7 +36,7 @@ export GITHUB_TOKEN=ghp_your_token_here
 
 In production, the token is automatically loaded from AWS Secrets Manager:
 
-- **Secret Name**: `afu9/github`
+- **Secret Name**: `afu9-github`
 - **Secret Key**: `token`
 
 The ECS task definition is configured to inject this secret as the `GITHUB_TOKEN` environment variable.

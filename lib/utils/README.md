@@ -112,7 +112,7 @@ const secrets = await getGithubSecrets({ useEnvFallback: false });
 const secrets = await getGithubSecrets({ awsRegion: 'us-east-1' });
 
 // Custom database secret (for multi-database scenarios)
-const dbSecrets = await getDatabaseSecrets('afu9/database-replica');
+const dbSecrets = await getDatabaseSecrets('afu9-database-replica');
 ```
 
 ### Validating Secrets
@@ -194,7 +194,7 @@ Load GitHub credentials from `afu9/github` secret.
 Load LLM API keys from `afu9/llm` secret.
 
 #### `getDatabaseSecrets(secretName?: string, options?: SecretLoadOptions): Promise<DatabaseSecrets>`
-Load database credentials from `afu9/database` secret (or custom secret name).
+Load database credentials from `afu9-database` secret (or custom secret name).
 
 #### `loadSecret<T>(secretName: string, options?: SecretLoadOptions): Promise<T>`
 Generic function to load any secret from AWS Secrets Manager.

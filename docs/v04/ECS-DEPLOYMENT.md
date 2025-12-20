@@ -226,7 +226,7 @@ aws secretsmanager update-secret \
 
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-your-openai-key-here"
   }' \
@@ -245,7 +245,7 @@ aws secretsmanager get-secret-value \
 
 # Check LLM secret
 aws secretsmanager get-secret-value \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --query SecretString \
   --output text \
   --region eu-central-1
@@ -354,7 +354,7 @@ Or run migrations from local machine with database endpoint:
 ```bash
 # Get database credentials from Secrets Manager
 DB_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query SecretString --output text --region eu-central-1)
 
 # Extract values and run migrations

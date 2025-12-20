@@ -110,7 +110,7 @@ describe('Database Configuration Resolution', () => {
       // Command:
       //   npx cdk synth Afu9EcsStack \
       //     -c afu9-enable-database=true \
-      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
       //     | grep DATABASE_HOST
       // 
       // Expected Result:
@@ -125,7 +125,7 @@ describe('Database Configuration Resolution', () => {
       // Command:
       //   npx cdk synth Afu9EcsStack \
       //     -c afu9-enable-database=true \
-      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
       //     | grep DbSecretRead
       // 
       // Expected Result:
@@ -140,7 +140,7 @@ describe('Database Configuration Resolution', () => {
       // Command:
       //   npx cdk synth Afu9EcsStack \
       //     -c afu9-enable-database=true \
-      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
       //     | grep "SecretValidation"
       // 
       // Expected Result:
@@ -154,7 +154,7 @@ describe('Database Configuration Resolution', () => {
       // Command:
       //   npx cdk synth Afu9EcsStack \
       //     -c afu9-enable-database=true \
-      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+      //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
       //     -o /tmp/cdk.out
       //   cat /tmp/cdk.out/Afu9EcsStack.template.json | jq '.Resources.TaskDefinition*.Properties.ContainerDefinitions[0].Environment'
       // 
@@ -314,7 +314,7 @@ describe('Database Configuration Resolution', () => {
  * 
  * 2. Test DB enabled with correct key:
  *    npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
- *      -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf
+ *      -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf
  *    - Should show: Database Enabled: true
  *    - Should have: DATABASE_HOST, DATABASE_PORT, etc.
  * 
@@ -332,6 +332,6 @@ describe('Database Configuration Resolution', () => {
  * 
  * 6. Verify secret validation:
  *    npx cdk synth Afu9EcsStack -c afu9-enable-database=false | grep SecretValidation
- *    - Should show: afu9/github and afu9/llm
+ *    - Should show: afu9/github and afu9-llm
  *    - Should NOT show: afu9/database
  */

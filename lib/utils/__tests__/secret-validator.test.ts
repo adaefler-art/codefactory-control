@@ -24,7 +24,7 @@ describe('Secret Validation Configuration', () => {
   test('Database secret config should have correct structure', () => {
     const config = AFU9_SECRET_CONFIGS.database;
     
-    expect(config.secretName).toBe('afu9/database');
+    expect(config.secretName).toBe('afu9-database');
     expect(config.requiredKeys).toContain('host');
     expect(config.requiredKeys).toContain('port');
     expect(config.requiredKeys).toContain('database'); // Not 'dbname'!
@@ -36,7 +36,7 @@ describe('Secret Validation Configuration', () => {
   test('GitHub secret config should have correct structure', () => {
     const config = AFU9_SECRET_CONFIGS.github;
     
-    expect(config.secretName).toBe('afu9/github');
+    expect(config.secretName).toBe('afu9-github');
     expect(config.requiredKeys).toContain('token');
     expect(config.requiredKeys).toContain('owner');
     expect(config.requiredKeys).toContain('repo');
@@ -46,7 +46,7 @@ describe('Secret Validation Configuration', () => {
   test('LLM secret config should have optional keys', () => {
     const config = AFU9_SECRET_CONFIGS.llm;
     
-    expect(config.secretName).toBe('afu9/llm');
+    expect(config.secretName).toBe('afu9-llm');
     expect(config.requiredKeys).toHaveLength(0); // All keys are optional
     expect(config.optionalKeys).toContain('openai_api_key');
     expect(config.optionalKeys).toContain('anthropic_api_key');
@@ -65,9 +65,9 @@ describe('Secret Validation Configuration', () => {
  *    export AWS_REGION=eu-central-1
  * 
  * 2. Create test secrets in Secrets Manager:
- *    - afu9/database with keys: host, port, database, username, password
- *    - afu9/github with keys: token, owner, repo
- *    - afu9/llm with optional keys: openai_api_key, etc.
+ *    - afu9-database with keys: host, port, database, username, password
+ *    - afu9-github with keys: token, owner, repo
+ *    - afu9-llm with optional keys: openai_api_key, etc.
  * 
  * 3. Run the validation script:
  *    npm run validate-secrets
@@ -76,7 +76,7 @@ describe('Secret Validation Configuration', () => {
  *    ✓ All secrets validated successfully!
  * 
  * 5. Test failure case by removing a required key:
- *    - Edit afu9/database and remove 'password' key
+ *    - Edit afu9-database and remove 'password' key
  *    - Run: npm run validate-secrets
  *    - Expected: Error message listing missing key
  * 
@@ -111,7 +111,7 @@ describe('Manual Test Cases', () => {
     // 
     // Expected Result:
     //   Exit code: 1
-    //   Output: ✗ Secret afu9/database is missing required keys: password
+    //   Output: ✗ Secret afu9-database is missing required keys: password
   });
 
   test('README: Test Case 3 - Secret does not exist', () => {
@@ -123,7 +123,7 @@ describe('Manual Test Cases', () => {
     // 
     // Expected Result:
     //   Exit code: 1
-    //   Output: Failed to validate secret afu9/database: ResourceNotFoundException
+    //   Output: Failed to validate secret afu9-database: ResourceNotFoundException
   });
 
   test('README: Test Case 4 - No AWS credentials', () => {
@@ -164,7 +164,7 @@ describe('Manual Test Cases', () => {
     // 
     // Expected Result:
     //   Exit code: 1
-    //   Output: ✗ Secret afu9/database is missing required keys: database
+    //   Output: ✗ Secret afu9-database is missing required keys: database
     // 
     // Note: This validates the fix for the dbname/database mismatch issue
   });

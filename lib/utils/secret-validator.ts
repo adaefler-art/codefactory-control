@@ -17,7 +17,7 @@
  * 
  * Usage as standalone script:
  * ```bash
- * ts-node lib/utils/secret-validator.ts --secret afu9/database --keys host,port,database,username,password
+ * ts-node lib/utils/secret-validator.ts --secret afu9-database --keys host,port,database,username,password
  * ```
  */
 
@@ -141,17 +141,17 @@ export function validateSecrets(
  */
 export const AFU9_SECRET_CONFIGS: Record<string, SecretValidationConfig> = {
   database: {
-    secretName: 'afu9/database',
+    secretName: 'afu9-database',
     requiredKeys: ['host', 'port', 'database', 'username', 'password'],
     description: 'Database connection credentials (application secret, not RDS-generated)',
   },
   github: {
-    secretName: 'afu9/github',
+    secretName: 'afu9-github',
     requiredKeys: ['token', 'owner', 'repo'],
     description: 'GitHub API credentials',
   },
   llm: {
-    secretName: 'afu9/llm',
+    secretName: 'afu9-llm',
     requiredKeys: [], // All LLM keys are optional
     optionalKeys: ['openai_api_key', 'anthropic_api_key', 'deepseek_api_key'],
     description: 'LLM API keys',

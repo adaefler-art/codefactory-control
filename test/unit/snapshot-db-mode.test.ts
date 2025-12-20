@@ -79,7 +79,7 @@ describe('Snapshot Tests - DB-Off Mode', () => {
  * 
  * MANUAL TEST COMMAND:
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
- *     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+ *     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
  *     -o test/snapshots/db-on
  * 
  * EXPECTED RESULTS:
@@ -96,7 +96,7 @@ describe('Snapshot Tests - DB-On Mode', () => {
     // Command:
     //   mkdir -p test/snapshots
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
-    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
     //     -o test/snapshots/db-on
     // 
     // Expected Result:
@@ -144,7 +144,7 @@ describe('Snapshot Tests - DB-On Mode', () => {
     //   Policy statement with:
     //   - Sid: "DbSecretRead"
     //   - Actions: secretsmanager:GetSecretValue, secretsmanager:DescribeSecret
-    //   - Resources: arn:aws:secretsmanager:...:secret:afu9/database*
+    //   - Resources: arn:aws:secretsmanager:...:secret:afu9-database*
   });
 });
 
@@ -170,7 +170,7 @@ describe('Snapshot Tests - DB-On vs DB-Off Diff', () => {
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false \
     //     -o test/snapshots/db-off
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
-    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
     //     -o test/snapshots/db-on
     // 
     // Expected Result:
@@ -315,7 +315,7 @@ describe('Snapshot Tests - Metrics and Analysis', () => {
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false \
  *     -o test/snapshots/db-off
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
- *     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf \
+ *     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf \
  *     -o test/snapshots/db-on
  * 
  * STEP 2: Verify DB-off snapshot

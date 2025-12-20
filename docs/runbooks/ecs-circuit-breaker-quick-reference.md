@@ -45,7 +45,7 @@ pwsh scripts/ecs_debug.ps1 -Service ${SERVICE_NAME}
 **Symptom:** `ResourceInitializationError: unable to pull secrets`
 ```bash
 # Prüfen
-aws secretsmanager describe-secret --secret-id afu9/database
+aws secretsmanager describe-secret --secret-id afu9-database
 # Fix: Siehe Abschnitt 5.1-5.7
 ```
 
@@ -53,7 +53,7 @@ aws secretsmanager describe-secret --secret-id afu9/database
 **Symptom:** `Environment variable DATABASE_HOST is not set`
 ```bash
 # Prüfen
-aws secretsmanager get-secret-value --secret-id afu9/database \
+aws secretsmanager get-secret-value --secret-id afu9-database \
   --query 'SecretString' --output text | jq 'keys'
 # Fix: Abschnitt 5.3
 ```

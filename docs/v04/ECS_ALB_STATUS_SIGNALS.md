@@ -528,7 +528,7 @@ curl -s http://${ALB_DNS}/api/ready | jq '{ready: .ready, checks: .checks}'
 
 # If database check fails, verify secrets
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --query 'SecretString' \
   --output text | jq .
 

@@ -324,14 +324,14 @@ export class Afu9EcsStack extends cdk.Stack {
     const githubSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'GithubSecret',
-      'afu9/github'
+      'afu9-github'
     );
 
     // Import LLM API keys secret (shared across environments)
     const llmSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'LlmSecret',
-      'afu9/llm'
+      'afu9-llm'
     );
 
     // ========================================
@@ -413,7 +413,7 @@ export class Afu9EcsStack extends cdk.Stack {
       dbSecret.grantRead(taskExecutionRole);
 
       // Belt-and-suspenders policy to cover rotated/aliased secret ARNs (name suffixed by AWS)
-      // Resource is scoped to afu9/database/* to allow for AWS secret rotation (suffix added by AWS)
+      // Resource is scoped to afu9-database* to allow for AWS secret rotation (suffix added by AWS)
       const secretResourceArn = dbSecretArn ?? `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:${dbSecretName}*`;
       taskExecutionRole.addToPolicy(
         new iam.PolicyStatement({

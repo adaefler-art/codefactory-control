@@ -111,9 +111,9 @@ These keys are only relevant when `afu9-enable-database=true`.
 
 #### `dbSecretName`
 - **Type**: string
-- **Default**: `afu9/database/master`
+- **Default**: `afu9-database/master`
 - **Description**: Name of database connection secret
-- **Example**: `npx cdk deploy -c dbSecretName=afu9/database`
+- **Example**: `npx cdk deploy -c dbSecretName=afu9-database`
 - **Mutually exclusive with**: `dbSecretArn`
 
 ### Environment Configuration

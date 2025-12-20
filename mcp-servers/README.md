@@ -48,7 +48,7 @@ All MCP servers inherit these endpoints and implement service-specific dependenc
 - `PORT` - Server port (default: 3001)
 
 **Authentication**:
-The server supports both GitHub Personal Access Tokens (PAT) and GitHub App tokens. In production environments, tokens are loaded from AWS Secrets Manager (secret: `afu9/github`). The token must have appropriate permissions for the operations being performed (see [ADDING-TOOLS.md](github/ADDING-TOOLS.md) for required scopes).
+The server supports both GitHub Personal Access Tokens (PAT) and GitHub App tokens. In production environments, tokens are loaded from AWS Secrets Manager (secret: `afu9-github`). The token must have appropriate permissions for the operations being performed (see [ADDING-TOOLS.md](github/ADDING-TOOLS.md) for required scopes).
 
 **Dependency Checks** (for `/ready` endpoint):
 - `github_api` - Verifies GitHub API is reachable (https://api.github.com/zen)

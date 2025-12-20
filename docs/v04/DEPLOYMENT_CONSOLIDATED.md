@@ -620,7 +620,7 @@ Stack is in UPDATE_ROLLBACK_COMPLETE state and can not be updated
 2. **Add missing secrets:**
    ```bash
    aws secretsmanager put-secret-value \
-     --secret-id afu9/github \
+     --secret-id afu9-github \
      --secret-string '{"GITHUB_TOKEN":"ghp_..."}'
    ```
 

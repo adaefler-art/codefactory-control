@@ -151,19 +151,19 @@ All sensitive data is stored in AWS Secrets Manager:
 
 ```json
 {
-  "afu9/github": {
+  "afu9-github": {
     "token": "ghp_...",
     "app_id": "...",
     "private_key": "..."
   },
-  "afu9/database": {
+  "afu9-database": {
     "host": "afu9-db.xxxx.eu-central-1.rds.amazonaws.com",
     "port": "5432",
     "database": "afu9",
     "username": "afu9_admin",
     "password": "..."
   },
-  "afu9/llm": {
+  "afu9-llm": {
     "openai_api_key": "sk-...",
     "anthropic_api_key": "sk-ant-..."
   }

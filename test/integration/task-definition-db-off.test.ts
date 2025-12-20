@@ -257,10 +257,10 @@ describe('Task Definition DB-Off - IAM Permissions', () => {
     // Command:
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false -o /tmp/cdk.out
     //   cat /tmp/cdk.out/Afu9EcsStack.template.json | \
-    //     jq '.Resources | to_entries[] | select(.value.Type == "AWS::IAM::Policy") | .value.Properties.PolicyDocument.Statement[] | select(.Action[0] == "secretsmanager:GetSecretValue" and (.Resource | tostring | contains("afu9/github")))'
+    //     jq '.Resources | to_entries[] | select(.value.Type == "AWS::IAM::Policy") | .value.Properties.PolicyDocument.Statement[] | select(.Action[0] == "secretsmanager:GetSecretValue" and (.Resource | tostring | contains("afu9-github")))'
     // 
     // Expected Result:
-    //   Policy statement for afu9/github secret access
+    //   Policy statement for afu9-github secret access
   });
 
   test('README: TaskExecutionRole still has LLM secret access', () => {
@@ -270,10 +270,10 @@ describe('Task Definition DB-Off - IAM Permissions', () => {
     // Command:
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false -o /tmp/cdk.out
     //   cat /tmp/cdk.out/Afu9EcsStack.template.json | \
-    //     jq '.Resources | to_entries[] | select(.value.Type == "AWS::IAM::Policy") | .value.Properties.PolicyDocument.Statement[] | select(.Action[0] == "secretsmanager:GetSecretValue" and (.Resource | tostring | contains("afu9/llm")))'
+    //     jq '.Resources | to_entries[] | select(.value.Type == "AWS::IAM::Policy") | .value.Properties.PolicyDocument.Statement[] | select(.Action[0] == "secretsmanager:GetSecretValue" and (.Resource | tostring | contains("afu9-llm")))'
     // 
     // Expected Result:
-    //   Policy statement for afu9/llm secret access
+    //   Policy statement for afu9-llm secret access
   });
 });
 

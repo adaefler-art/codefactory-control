@@ -118,7 +118,7 @@ If you prefer manual control:
 ```bash
 # Load database credentials
 export $(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r 'to_entries|map("PG\(.key|ascii_upcase)=\(.value|tostring)")|.[]')
@@ -299,7 +299,7 @@ import { Pool } from 'pg';
 // Get credentials from Secrets Manager
 const client = new SecretsManagerClient({ region: 'eu-central-1' });
 const secret = await client.send(
-  new GetSecretValueCommand({ SecretId: 'afu9/database' })
+  new GetSecretValueCommand({ SecretId: 'afu9-database' })
 );
 const credentials = JSON.parse(secret.SecretString);
 
@@ -330,7 +330,7 @@ See [docs/DATABASE-LOCAL-DEVELOPMENT.md](../docs/DATABASE-LOCAL-DEVELOPMENT.md) 
 ```bash
 # Load credentials
 source <(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r 'to_entries|map("export PG\(.key|ascii_upcase)=\(.value|tostring)")|.[]')

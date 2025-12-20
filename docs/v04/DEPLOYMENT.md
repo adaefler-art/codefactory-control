@@ -537,14 +537,14 @@ Store sensitive data in AWS Secrets Manager:
 ```bash
 # GitHub credentials
 aws secretsmanager create-secret \
-  --name afu9/github \
+  --name afu9-github \
   --description "AFU-9 GitHub credentials" \
   --secret-string "{\"token\":\"$GITHUB_TOKEN\"}" \
   --region $AWS_REGION
 
 # LLM API keys
 aws secretsmanager create-secret \
-  --name afu9/llm \
+  --name afu9-llm \
   --description "AFU-9 LLM API keys" \
   --secret-string "{\"openai_api_key\":\"$OPENAI_API_KEY\"}" \
   --region $AWS_REGION
@@ -1327,7 +1327,7 @@ npx cdk destroy Afu9InfrastructureStack
 
 # Delete secrets (if no longer needed)
 aws secretsmanager delete-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --force-delete-without-recovery \
   --region $AWS_REGION
 ```

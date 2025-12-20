@@ -90,8 +90,8 @@ const FORBIDDEN_WILDCARD_ACTIONS = [
 // Required prefixes for resource ARNs - ensures proper resource scoping
 // All resources must be scoped to AFU-9 specific prefixes to prevent cross-application access
 const REQUIRED_RESOURCE_PREFIXES: Record<string, string[]> = {
-  'secretsmanager:GetSecretValue': ['afu9/'],
-  'secretsmanager:DescribeSecret': ['afu9/'],  
+  'secretsmanager:GetSecretValue': ['afu9-'],
+  'secretsmanager:DescribeSecret': ['afu9-'],  
   'ecr:PutImage': ['afu9/'],
   'ecr:BatchCheckLayerAvailability': ['afu9/'],
   'ecr:InitiateLayerUpload': ['afu9/'],
@@ -110,10 +110,10 @@ const REQUIRED_RESOURCE_PREFIXES: Record<string, string[]> = {
 
 // Variable names that are known to contain properly scoped ARNs
 const KNOWN_SCOPED_VARIABLES = [
-  'secretResourceArn',  // Contains afu9/database/* ARN
+  'secretResourceArn',  // Contains afu9-database/* ARN
   'dbSecretArn',        // Database secret ARN from props
-  'githubSecret',       // GitHub secret ARN (afu9/github)
-  'llmSecret',          // LLM secret ARN (afu9/llm)
+  'githubSecret',       // GitHub secret ARN (afu9-github)
+  'llmSecret',          // LLM secret ARN (afu9-llm)
 ];
 
 function parseTypeScriptFile(filePath: string): ts.SourceFile {

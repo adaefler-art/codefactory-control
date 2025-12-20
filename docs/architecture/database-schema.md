@@ -165,7 +165,7 @@ CREATE INDEX idx_mcp_servers_enabled ON mcp_servers(enabled);
   ],
   "auth": {
     "type": "secrets_manager",
-    "secret_name": "afu9/github"
+    "secret_name": "afu9-github"
   }
 }
 ```

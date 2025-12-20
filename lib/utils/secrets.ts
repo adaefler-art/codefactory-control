@@ -292,7 +292,7 @@ async function loadSecretWithEnvFallback<T extends Record<string, any>>(
 /**
  * Get GitHub secrets (token, owner, repo)
  * 
- * In production: Loads from AWS Secrets Manager (afu9/github)
+ * In production: Loads from AWS Secrets Manager (afu9-github)
  * In development: Falls back to GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO env vars
  * 
  * @param options - Loading options
@@ -302,7 +302,7 @@ export async function getGithubSecrets(
   options: SecretLoadOptions = {}
 ): Promise<GithubSecrets> {
   return loadSecretWithEnvFallback<GithubSecrets>(
-    'afu9/github',
+    'afu9-github',
     {
       token: 'GITHUB_TOKEN',
       owner: 'GITHUB_OWNER',
@@ -315,7 +315,7 @@ export async function getGithubSecrets(
 /**
  * Get LLM API keys (OpenAI, Anthropic, DeepSeek, etc.)
  * 
- * In production: Loads from AWS Secrets Manager (afu9/llm)
+ * In production: Loads from AWS Secrets Manager (afu9-llm)
  * In development: Falls back to OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
  * 
  * @param options - Loading options
@@ -325,7 +325,7 @@ export async function getLlmSecrets(
   options: SecretLoadOptions = {}
 ): Promise<LlmSecrets> {
   return loadSecretWithEnvFallback<LlmSecrets>(
-    'afu9/llm',
+    'afu9-llm',
     {
       openai_api_key: 'OPENAI_API_KEY',
       anthropic_api_key: 'ANTHROPIC_API_KEY',
@@ -338,15 +338,15 @@ export async function getLlmSecrets(
 /**
  * Get database connection secrets
  * 
- * In production: Loads from AWS Secrets Manager (afu9/database or custom ARN)
+ * In production: Loads from AWS Secrets Manager (afu9-database or custom ARN)
  * In development: Falls back to DATABASE_HOST, DATABASE_PORT, etc.
  * 
- * @param secretName - Custom secret name or ARN (optional, defaults to afu9/database)
+ * @param secretName - Custom secret name or ARN (optional, defaults to afu9-database)
  * @param options - Loading options
  * @returns Database secrets
  */
 export async function getDatabaseSecrets(
-  secretName: string = 'afu9/database',
+  secretName: string = 'afu9-database',
   options: SecretLoadOptions = {}
 ): Promise<DatabaseSecrets> {
   return loadSecretWithEnvFallback<DatabaseSecrets>(

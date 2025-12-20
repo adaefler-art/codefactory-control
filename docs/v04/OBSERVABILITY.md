@@ -215,8 +215,8 @@ All secrets stored in AWS Secrets Manager:
 
 **Secrets**:
 - `afu9/database` - Database connection (auto-managed)
-- `afu9/github` - GitHub token and repository info
-- `afu9/llm` - OpenAI and Anthropic API keys
+- `afu9-github` - GitHub token and repository info
+- `afu9-llm` - OpenAI and Anthropic API keys
 
 **Features**:
 - Encryption at rest with KMS
@@ -341,8 +341,8 @@ See [Observability Deployment Guide](OBSERVABILITY-DEPLOYMENT.md) for step-by-st
 npx cdk deploy Afu9AlarmsStack -c afu9-alarm-email=ops@yourdomain.com
 
 # Update secrets
-aws secretsmanager update-secret --secret-id afu9/github --secret-string '{...}'
-aws secretsmanager update-secret --secret-id afu9/llm --secret-string '{...}'
+aws secretsmanager update-secret --secret-id afu9-github --secret-string '{...}'
+aws secretsmanager update-secret --secret-id afu9-llm --secret-string '{...}'
 
 # Restart service
 aws ecs update-service --cluster afu9-cluster --service afu9-control-center --force-new-deployment

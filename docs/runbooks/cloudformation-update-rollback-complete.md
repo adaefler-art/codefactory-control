@@ -190,19 +190,19 @@ ResourceStatusReason: "ResourceInitializationError: unable to pull secrets or re
 ```bash
 # Secret prüfen
 aws secretsmanager describe-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION}
 
 # Secret-Wert anzeigen (vorsichtig!)
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' --output text | jq
 
 # Secret aktualisieren (falls nötig)
 # ⚠️ WICHTIG: Ersetze die Platzhalter mit echten Werten!
 aws secretsmanager update-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --secret-string '{
     "DATABASE_HOST": "YOUR_DB_ENDPOINT_HERE.rds.amazonaws.com",

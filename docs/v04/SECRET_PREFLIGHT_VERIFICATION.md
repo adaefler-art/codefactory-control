@@ -120,13 +120,13 @@ Required keys:
 - `username` - Database user
 - `password` - Database password
 
-#### afu9/github
+#### afu9-github
 Required keys:
 - `token` - GitHub token
 - `owner` - Repository owner
 - `repo` - Repository name
 
-#### afu9/llm
+#### afu9-llm
 Optional keys (no validation failure):
 - `openai_api_key`
 - `anthropic_api_key`

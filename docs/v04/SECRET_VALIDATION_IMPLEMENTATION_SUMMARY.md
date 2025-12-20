@@ -121,7 +121,7 @@ All acceptance criteria from I-ECS-DB-02 have been met:
 
 ## Secret Key Requirements
 
-### Database Secret (`afu9/database`)
+### Database Secret (`afu9-database`)
 **Required keys:**
 - `host` - Database endpoint address
 - `port` - Database port number
@@ -129,13 +129,13 @@ All acceptance criteria from I-ECS-DB-02 have been met:
 - `username` - Database username
 - `password` - Database password
 
-### GitHub Secret (`afu9/github`)
+### GitHub Secret (`afu9-github`)
 **Required keys:**
 - `token` - GitHub API token
 - `owner` - Repository owner
 - `repo` - Repository name
 
-### LLM Secret (`afu9/llm`)
+### LLM Secret (`afu9-llm`)
 **Optional keys:**
 - `openai_api_key`
 - `anthropic_api_key`
@@ -167,15 +167,15 @@ All acceptance criteria from I-ECS-DB-02 have been met:
 ```
 SecretValidationafu9database2345:
   Description: Secret validation requirements for Database connection credentials
-  Value: '{"secretName":"afu9/database","requiredKeys":["host","port","database","username","password"],...}'
+  Value: '{"secretName":"afu9-database","requiredKeys":["host","port","database","username","password"],...}'
 
 SecretValidationafu9github1063:
   Description: Secret validation requirements for GitHub API credentials
-  Value: '{"secretName":"afu9/github","requiredKeys":["token","owner","repo"],...}'
+  Value: '{"secretName":"afu9-github","requiredKeys":["token","owner","repo"],...}'
 
 SecretValidationafu9llm745:
   Description: Secret validation requirements for LLM API keys (all optional)
-  Value: '{"secretName":"afu9/llm","requiredKeys":[],...}'
+  Value: '{"secretName":"afu9-llm","requiredKeys":[],...}'
 ```
 
 ## Files Changed
@@ -228,11 +228,11 @@ Region: eu-central-1
 
 Validating secrets...
 
-Validating database secret (afu9/database)...
+Validating database secret (afu9-database)...
 ✓ database secret validation passed
-Validating github secret (afu9/github)...
+Validating github secret (afu9-github)...
 ✓ github secret validation passed
-Validating llm secret (afu9/llm)...
+Validating llm secret (afu9-llm)...
 ✓ llm secret validation passed
 
 =====================================
@@ -253,8 +253,8 @@ You can proceed with deployment.
 
 The following secrets have issues:
 
-  ❌ afu9/database
-     Error: Secret afu9/database is missing required keys: password
+  ❌ afu9-database
+     Error: Secret afu9-database is missing required keys: password
      Missing keys: password
 
 Please fix the above errors before deploying.

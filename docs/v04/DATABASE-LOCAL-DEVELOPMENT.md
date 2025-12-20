@@ -79,7 +79,7 @@ Get the database endpoint from the stack outputs:
 ```bash
 # Get database credentials
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r '.'
@@ -96,7 +96,7 @@ INSTANCE_ID=$(aws ec2 describe-instances \
 
 # Get DB endpoint from secret
 DB_HOST=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r '.host')
@@ -115,7 +115,7 @@ In a new terminal:
 ```bash
 # Get credentials from Secrets Manager
 DB_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text)
@@ -143,7 +143,7 @@ Ensure you have an EC2 instance in the VPC with:
 ```bash
 # Get database endpoint
 DB_HOST=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r '.host')
@@ -180,7 +180,7 @@ aws ec2 authorize-security-group-ingress \
 
 # Connect directly
 DB_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text)
@@ -208,7 +208,7 @@ For local development, you can set environment variables to simplify connections
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
 export AFU9_AWS_REGION="eu-central-1"
-export AFU9_DB_SECRET_NAME="afu9/database"
+export AFU9_DB_SECRET_NAME="afu9-database"
 
 # Helper function to load database credentials
 afu9_db_env() {
@@ -254,7 +254,7 @@ From the project root:
 ```bash
 # Load credentials
 source <(aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region eu-central-1 \
   --query SecretString \
   --output text | jq -r 'to_entries|map("export PG\(.key|ascii_upcase)=\(.value|tostring)")|.[]')
@@ -334,7 +334,7 @@ SELECT * FROM workflows;
 2. **Verify database endpoint**
    ```bash
    aws secretsmanager get-secret-value \
-     --secret-id afu9/database \
+     --secret-id afu9-database \
      --region eu-central-1 | jq -r '.SecretString | fromjson'
    ```
 

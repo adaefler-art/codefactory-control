@@ -179,7 +179,7 @@ describe('DB-Off Mode - CDK Diff', () => {
  * 
  * MANUAL TEST COMMAND:
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
- *     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf
+ *     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf
  * 
  * EXPECTED RESULTS:
  *   1. Console output shows: "Database Enabled: true"
@@ -195,7 +195,7 @@ describe('DB-On Mode - Backward Compatibility', () => {
     // 
     // Command:
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
-    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf | \
+    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf | \
     //     grep DATABASE_HOST
     // 
     // Expected Result:
@@ -209,7 +209,7 @@ describe('DB-On Mode - Backward Compatibility', () => {
     // 
     // Command:
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
-    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf | \
+    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf | \
     //     grep -A1 "DATABASE_ENABLED"
     // 
     // Expected Result:
@@ -224,7 +224,7 @@ describe('DB-On Mode - Backward Compatibility', () => {
     // 
     // Command:
     //   npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
-    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf | \
+    //     -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf | \
     //     grep DbSecretRead
     // 
     // Expected Result:
@@ -246,7 +246,7 @@ describe('DB-On Mode - Backward Compatibility', () => {
  * 
  * 2. Test DB enabled:
  *    npx cdk synth Afu9EcsStack -c afu9-enable-database=true -c afu9-enable-https=false \
- *      -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9/database-AbCdEf
+ *      -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123:secret:afu9-database-AbCdEf
  *    ✓ Should show: Database Enabled: true
  *    ✓ Should have: DATABASE_HOST, DATABASE_PORT, etc.
  *    ✓ Should have: DATABASE_ENABLED=true

@@ -87,7 +87,7 @@ Diese Implementierung stellt sicher, dass nur kanonische Kontextnamen (mit `afu9
 | `github-repo` | string | codefactory-control | - |
 | `environment` | string | staging | `stage` ❌ |
 | `dbSecretArn` | string | - | - |
-| `dbSecretName` | string | afu9/database/master | - |
+| `dbSecretName` | string | afu9-database/master | - |
 
 ## Validation-Logik
 

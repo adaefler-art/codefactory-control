@@ -155,7 +155,7 @@ aws ecs describe-tasks \
 }
 ```
 
-→ **Root Cause:** Secret `afu9/database` oder `afu9/github` oder `afu9/llm` fehlt  
+→ **Root Cause:** Secret `afu9-database` oder `afu9/github` oder `afu9-llm` fehlt  
 → **Aktion:** Weiter zu Abschnitt 5.1
 
 **Beispiel: App-Crash**
@@ -227,7 +227,7 @@ done
     at Module._compile (node:internal/modules/cjs/loader:1369:14)
 ```
 
-→ **Root Cause:** `afu9/database` Secret hat nicht alle erforderlichen Keys  
+→ **Root Cause:** `afu9-database` Secret hat nicht alle erforderlichen Keys  
 → **Fix:** Abschnitt 5.2 – Secret-Struktur validieren und updaten
 
 ---
@@ -292,7 +292,7 @@ Basierend auf den vorherigen Schritten, hier die häufigsten Root Causes und ihr
 
 ```bash
 # Prüfen ob Secrets existieren
-for SECRET_NAME in afu9/github afu9/llm afu9/database; do
+for SECRET_NAME in afu9/github afu9-llm afu9-database; do
   echo "=== Checking $SECRET_NAME ==="
   aws secretsmanager describe-secret \
     --secret-id $SECRET_NAME \
@@ -332,7 +332,7 @@ aws secretsmanager get-secret-value \
 
 # Database Secret prüfen (nur wenn enableDatabase=true)
 aws secretsmanager get-secret-value \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --region ${AWS_REGION} \
   --query 'SecretString' \
   --output text | jq 'keys'
@@ -376,7 +376,7 @@ DB_NAME=$(echo $RDS_CREDENTIALS | jq -r '.dbname // "afu9"')
 
 # Secret erstellen oder updaten
 aws secretsmanager update-secret \
-  --secret-id afu9/database \
+  --secret-id afu9-database \
   --secret-string "{
     \"host\": \"${RDS_ENDPOINT}\",
     \"port\": \"5432\",
@@ -386,7 +386,7 @@ aws secretsmanager update-secret \
   }" \
   --region ${AWS_REGION} 2>&1 || \
 aws secretsmanager create-secret \
-  --name afu9/database \
+  --name afu9-database \
   --secret-string "{
     \"host\": \"${RDS_ENDPOINT}\",
     \"port\": \"5432\",
@@ -598,7 +598,7 @@ aws ecs update-service \
 
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-YOUR_OPENAI_KEY",
     "anthropic_api_key": "sk-ant-YOUR_ANTHROPIC_KEY",
@@ -606,7 +606,7 @@ aws secretsmanager update-secret \
   }' \
   --region ${AWS_REGION} 2>&1 || \
 aws secretsmanager create-secret \
-  --name afu9/llm \
+  --name afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-YOUR_OPENAI_KEY",
     "anthropic_api_key": "sk-ant-YOUR_ANTHROPIC_KEY",

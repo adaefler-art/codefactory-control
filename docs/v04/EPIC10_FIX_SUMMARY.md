@@ -63,7 +63,7 @@ npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=fa
 **Test 2: With Database (enableDatabase=true)**
 ```bash
 npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=true \
-  -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123456789012:secret:afu9/database-XXXXXX
+  -c dbSecretArn=arn:aws:secretsmanager:eu-central-1:123456789012:secret:afu9-database-XXXXXX
 ```
 **Result:** ✅ SUCCESS - CloudFormation shows correct secret mapping:
 ```yaml
@@ -99,7 +99,7 @@ npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=tr
 
 ## Secret Structure Reference
 
-### Application Connection Secret: `afu9/database`
+### Application Connection Secret: `afu9-database`
 ```json
 {
   "host": "afu9-postgres.xxxxx.eu-central-1.rds.amazonaws.com",
@@ -110,7 +110,7 @@ npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=tr
 }
 ```
 
-### RDS-Generated Master Secret: `afu9/database/master`
+### RDS-Generated Master Secret: `afu9-database/master`
 ```json
 {
   "username": "afu9_admin",
@@ -119,7 +119,7 @@ npx cdk synth Afu9EcsStack -c afu9-enable-https=false -c afu9-enable-database=tr
 }
 ```
 
-**Note:** The ECS stack uses the **application connection secret** (`afu9/database`), not the RDS-generated master secret. This is why the key is `'database'` not `'dbname'`.
+**Note:** The ECS stack uses the **application connection secret** (`afu9-database`), not the RDS-generated master secret. This is why the key is `'database'` not `'dbname'`.
 
 ## Definition of Done
 

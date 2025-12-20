@@ -192,7 +192,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     // Note: host/port are not sensitive as database is in private subnet,
     // but keeping all connection details together for convenience
     const appConnectionSecret = new secretsmanager.Secret(this, 'AppConnectionSecret', {
-      secretName: 'afu9/database',
+      secretName: 'afu9-database',
       description: 'Database connection details for AFU-9 application',
       secretObjectValue: {
         host: cdk.SecretValue.unsafePlainText(this.dbInstance.dbInstanceEndpointAddress),

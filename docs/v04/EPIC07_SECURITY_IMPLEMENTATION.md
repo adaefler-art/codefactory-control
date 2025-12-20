@@ -29,7 +29,7 @@ This document describes the security hardening measures implemented in EPIC 07 t
 All MCP servers follow strict IAM policies with resource-level scoping:
 
 #### GitHub MCP Server (`mcp-github`)
-- **Secrets Access**: Scoped to `afu9/github` only
+- **Secrets Access**: Scoped to `afu9-github` only
 - **No AWS Permissions**: Uses GitHub token for API access
 - **Authentication**: Token stored in AWS Secrets Manager
 
@@ -82,7 +82,7 @@ All wildcard resource usages are **documented and justified**:
 
 ### Secret Rotation Wildcards
 
-Database secret ARNs use trailing wildcards (`afu9/database/master*`) to support AWS Secrets Manager rotation, which appends suffixes to secret names.
+Database secret ARNs use trailing wildcards (`afu9-database/master*`) to support AWS Secrets Manager rotation, which appends suffixes to secret names.
 
 ## Security Validation Tools
 

@@ -495,7 +495,7 @@ Target Tracking Scaling Policy:
 **Secrets:**
 ```json
 {
-  "afu9/github": {
+  "afu9-github": {
     "token": "ghp_xxxxxxxxxxxxxxxxxxxx",
     "app_id": "123456",
     "private_key": "-----BEGIN RSA PRIVATE KEY-----...",
@@ -508,7 +508,7 @@ Target Tracking Scaling Policy:
     "username": "afu9_admin",
     "password": "xxxxxxxxxxxxxxxxxx"
   },
-  "afu9/llm": {
+  "afu9-llm": {
     "anthropic_api_key": "sk-ant-api03-xxxxxxxxxx",
     "openai_api_key": "sk-xxxxxxxxxxxxxxxxxx"
   },

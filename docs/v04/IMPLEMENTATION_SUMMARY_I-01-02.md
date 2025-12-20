@@ -72,7 +72,7 @@ These were already implemented and are now integrated into the build/synth/deplo
 $ npm run synth
 # If secret key missing:
 ✗ Secret validation FAILED!
-  ❌ Secret: afu9/database
+  ❌ Secret: afu9-database
      Missing keys: password
 Process exited with code 1
 # Synth does NOT proceed
@@ -85,8 +85,8 @@ Process exited with code 1
 
 **Example Error:**
 ```
-  ❌ Secret: afu9/database
-     Error: Secret afu9/database is missing required keys: password
+  ❌ Secret: afu9-database
+     Error: Secret afu9-database is missing required keys: password
      Missing keys: password
 ```
 
@@ -125,7 +125,7 @@ SKIP_SECRET_VALIDATION=true npm run synth
 
 ## Secret Requirements
 
-### afu9/database
+### afu9-database
 Required keys:
 - `host` - Database endpoint
 - `port` - Database port
@@ -133,13 +133,13 @@ Required keys:
 - `username` - Database user
 - `password` - Database password
 
-### afu9/github
+### afu9-github
 Required keys:
 - `token` - GitHub token
 - `owner` - Repository owner
 - `repo` - Repository name
 
-### afu9/llm
+### afu9-llm
 Optional keys (no required keys):
 - `openai_api_key`
 - `anthropic_api_key`

@@ -353,7 +353,7 @@ Created automatically by `Afu9DatabaseStack` when RDS instance is created.
 
 **Rotation**: Automatic every 90 days
 
-#### 2. GitHub Secret (`afu9/github`)
+#### 2. GitHub Secret (`afu9-github`)
 
 Created by `Afu9EcsStack` with placeholder values.
 
@@ -368,7 +368,7 @@ Created by `Afu9EcsStack` with placeholder values.
 **Update after deployment**:
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --secret-string '{
     "token": "ghp_your_real_token",
     "owner": "your-org",
@@ -383,7 +383,7 @@ aws secretsmanager update-secret \
 
 **Rotation**: Manual, when token expires or is compromised
 
-#### 3. LLM API Keys Secret (`afu9/llm`)
+#### 3. LLM API Keys Secret (`afu9-llm`)
 
 Created by `Afu9EcsStack` with placeholder values.
 
@@ -397,7 +397,7 @@ Created by `Afu9EcsStack` with placeholder values.
 **Update after deployment**:
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-your-openai-key",
     "anthropic_api_key": "sk-ant-api03-your-anthropic-key"

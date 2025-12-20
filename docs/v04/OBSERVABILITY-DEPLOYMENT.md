@@ -73,7 +73,7 @@ Update the placeholder secrets created during ECS stack deployment:
 **GitHub Credentials**:
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/github \
+  --secret-id afu9-github \
   --secret-string '{
     "token": "ghp_YOUR_GITHUB_TOKEN",
     "owner": "your-github-org",
@@ -94,7 +94,7 @@ aws secretsmanager update-secret \
 **LLM API Keys**:
 ```bash
 aws secretsmanager update-secret \
-  --secret-id afu9/llm \
+  --secret-id afu9-llm \
   --secret-string '{
     "openai_api_key": "sk-YOUR_OPENAI_KEY",
     "anthropic_api_key": "sk-ant-api03-YOUR_ANTHROPIC_KEY"
@@ -110,7 +110,7 @@ aws secretsmanager list-secrets \
   --output table
 
 # Verify secret structure (without showing values)
-aws secretsmanager describe-secret --secret-id afu9/github
+aws secretsmanager describe-secret --secret-id afu9-github
 ```
 
 ### 4. Restart ECS Service

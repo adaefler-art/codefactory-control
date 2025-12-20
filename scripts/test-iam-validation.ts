@@ -133,7 +133,7 @@ const testCases: TestCase[] = [
     policy: {
       sid: 'DbSecretAccess',
       actions: ['secretsmanager:GetSecretValue'],
-      resources: ['arn:aws:secretsmanager:region:account:secret:afu9/database/*'],
+      resources: ['arn:aws:secretsmanager:region:account:secret:afu9-database/*'],
     },
     expectedErrors: 0,
     expectedWarnings: 0,

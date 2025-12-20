@@ -47,7 +47,7 @@ async function main() {
     console.log(`   - Token: ${githubSecrets.token ? 'ghp_***' + githubSecrets.token.slice(-4) : 'not set'}`);
     
     // Validate required fields
-    validateSecretFields(githubSecrets, ['token', 'owner', 'repo'], 'afu9/github');
+    validateSecretFields(githubSecrets, ['token', 'owner', 'repo'], 'afu9-github');
     console.log('   ✅ All required fields validated');
   } catch (error) {
     console.error('   ❌ Failed to load GitHub secrets:', error instanceof Error ? error.message : String(error));
@@ -97,7 +97,7 @@ async function main() {
     console.log(`   - Password: ***${dbSecrets.password.slice(-4)}`);
     
     // Validate required fields
-    validateSecretFields(dbSecrets, ['host', 'port', 'database', 'username', 'password'], 'afu9/database');
+    validateSecretFields(dbSecrets, ['host', 'port', 'database', 'username', 'password'], 'afu9-database');
     console.log('   ✅ All required fields validated');
   } catch (error) {
     console.error('   ❌ Failed to load database secrets:', error instanceof Error ? error.message : String(error));

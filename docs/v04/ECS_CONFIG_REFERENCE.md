@@ -203,18 +203,18 @@ Always injected:
 
 | Variable | Secret Name | Key | Description |
 |----------|-------------|-----|-------------|
-| `GITHUB_TOKEN` | `afu9/github` | `token` | GitHub personal access token |
-| `GITHUB_OWNER` | `afu9/github` | `owner` | GitHub organization |
-| `GITHUB_REPO` | `afu9/github` | `repo` | GitHub repository name |
-| `OPENAI_API_KEY` | `afu9/llm` | `openai_api_key` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | `afu9/llm` | `anthropic_api_key` | Anthropic API key |
-| `DEEPSEEK_API_KEY` | `afu9/llm` | `deepseek_api_key` | DeepSeek API key |
+| `GITHUB_TOKEN` | `afu9-github` | `token` | GitHub personal access token |
+| `GITHUB_OWNER` | `afu9-github` | `owner` | GitHub organization |
+| `GITHUB_REPO` | `afu9-github` | `repo` | GitHub repository name |
+| `OPENAI_API_KEY` | `afu9-llm` | `openai_api_key` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | `afu9-llm` | `anthropic_api_key` | Anthropic API key |
+| `DEEPSEEK_API_KEY` | `afu9-llm` | `deepseek_api_key` | DeepSeek API key |
 
 ---
 
 ## Secret Structure
 
-### Secret: `afu9/github`
+### Secret: `afu9-github`
 
 ```json
 {
@@ -226,7 +226,7 @@ Always injected:
 
 **Required Keys:** `token`, `owner`, `repo`
 
-### Secret: `afu9/llm`
+### Secret: `afu9-llm`
 
 ```json
 {
