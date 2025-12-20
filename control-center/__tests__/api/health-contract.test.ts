@@ -39,6 +39,25 @@ describe('Health Endpoint Contract', () => {
     expect(body).not.toHaveProperty('error');
     expect(body).not.toHaveProperty('errors');
   });
+
+  test('/api/health never blocks deployments by always returning 200', async () => {
+    // This test validates the critical guarantee: health NEVER blocks deploys
+    // Even if internal errors occur, the endpoint returns 200
+    
+    const response = await healthHandler();
+    
+    // CRITICAL: Must be 200, never 500/503
+    expect(response.status).toBe(200);
+    
+    // Status field should always be 'ok' for deployment safety
+    const body = await response.json();
+    expect(body.status).toBe('ok');
+    
+    // This guarantee ensures:
+    // 1. ECS health checks don't kill healthy containers
+    // 2. ALB doesn't remove healthy targets
+    // 3. Deployments proceed even during transient issues
+  });
 });
 
 describe('Ready Endpoint Contract', () => {
@@ -167,6 +186,31 @@ describe('Ready Endpoint Contract', () => {
     expect(body).toHaveProperty('dependencies');
     expect(body.dependencies).toHaveProperty('required');
     expect(body.dependencies).toHaveProperty('optional');
+  });
+
+  test('/api/ready required dependencies list reflects actual configuration', async () => {
+    // When database is disabled, it should not be in required list
+    process.env.DATABASE_ENABLED = 'false';
+    
+    const responseDisabled = await readyHandler();
+    const bodyDisabled = await responseDisabled.json();
+    
+    expect(bodyDisabled.dependencies.required).toEqual(['environment']);
+    expect(bodyDisabled.dependencies.required).not.toContain('database');
+    
+    // When database is enabled, it should be in required list
+    process.env.DATABASE_ENABLED = 'true';
+    process.env.DATABASE_HOST = 'localhost';
+    process.env.DATABASE_PORT = '5432';
+    process.env.DATABASE_NAME = 'testdb';
+    process.env.DATABASE_USER = 'testuser';
+    process.env.DATABASE_PASSWORD = 'testpass';
+    
+    const responseEnabled = await readyHandler();
+    const bodyEnabled = await responseEnabled.json();
+    
+    expect(bodyEnabled.dependencies.required).toContain('environment');
+    expect(bodyEnabled.dependencies.required).toContain('database');
   });
 
   test('/api/ready does NOT fail on MCP server unavailability', async () => {

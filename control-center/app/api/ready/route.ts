@@ -4,19 +4,55 @@ import { NextResponse } from 'next/server';
 // In a production system, this could be read from process.env.APP_VERSION
 const VERSION = '0.2.5';
 
+// MCP Server configuration - single source of truth
+const MCP_SERVERS = [
+  { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://127.0.0.1:3001' },
+  { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://127.0.0.1:3002' },
+  { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
+] as const;
+
 /**
- * Readiness check endpoint for Kubernetes-style readiness probes
+ * Build the list of required dependencies based on current configuration
+ */
+function getRequiredDependencies(): string[] {
+  const requiredDeps = ['environment'];
+  const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
+  
+  if (databaseEnabled) {
+    requiredDeps.push('database');
+  }
+  
+  return requiredDeps;
+}
+
+/**
+ * Readiness check endpoint for validating service readiness to accept traffic
  * 
- * This endpoint performs deeper checks than /api/health:
- * - Database connectivity (if configured)
- * - MCP server availability (if in production mode)
+ * **READINESS PROBE** - This endpoint checks if the service is ready to handle requests.
+ * 
+ * Unlike /api/health (liveness probe), this endpoint:
+ * - Validates all critical dependencies (database, environment)
+ * - Checks optional dependencies (MCP servers) without blocking
+ * - Returns 503 if any REQUIRED dependency is unavailable
+ * - Can safely fail without triggering deployment rollbacks
+ * 
+ * Critical dependencies (MUST be available):
+ * - Database connectivity (if DATABASE_ENABLED=true)
+ * - Essential environment variables
+ * 
+ * Optional dependencies (monitored but non-blocking):
+ * - MCP servers (mcp-github, mcp-deploy, mcp-observability)
  * 
  * Returns:
  * - 200 OK if service is ready to accept traffic
- * - 503 Service Unavailable if service is not ready
+ * - 503 Service Unavailable if service is not ready (missing required dependencies)
  * 
- * ALB should use this endpoint for health checks to ensure traffic
- * is only routed to fully initialized instances.
+ * Response time target: < 5 seconds
+ * 
+ * NOTE: Do NOT use this endpoint for ECS/ALB health checks as it can return 503
+ * during startup or when dependencies are temporarily unavailable. Use /api/health instead.
+ * 
+ * @see /api/health for liveness checks (always returns 200)
  */
 export async function GET() {
   try {
@@ -87,14 +123,12 @@ export async function GET() {
     // Check MCP servers health in production/staging, but do NOT gate readiness
     const env = process.env.NODE_ENV;
     const shouldCheckMCPServers = env === 'production' || env === 'staging';
-    const mcpServers = [
-      { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://127.0.0.1:3001' },
-      { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://127.0.0.1:3002' },
-      { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
-    ];
+    
+    // Extract MCP server names for consistent reference
+    const mcpServerNames = MCP_SERVERS.map(s => s.name);
 
     if (shouldCheckMCPServers) {
-      for (const server of mcpServers) {
+      for (const server of MCP_SERVERS) {
         try {
           const startTime = Date.now();
           const response = await fetch(`${server.url}/health`, {
@@ -125,9 +159,10 @@ export async function GET() {
     }
 
     // Determine overall readiness
+    // MCP servers are optional, so exclude them from failure detection
     const hasFailures = Object.entries(checks).some(([name, check]) => {
-      if (['mcp-github', 'mcp-deploy', 'mcp-observability'].includes(name)) {
-        return false;
+      if (mcpServerNames.includes(name)) {
+        return false; // MCP servers are optional dependencies
       }
       return check.status === 'error' || check.status === 'failed';
     });
@@ -149,9 +184,9 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       checks,
       dependencies: {
-        required: ['database', 'environment'],
+        required: getRequiredDependencies(),
         optional: shouldCheckMCPServers 
-          ? ['mcp-github', 'mcp-deploy', 'mcp-observability']
+          ? mcpServerNames
           : [],
       },
       ...(errors.length > 0 && { errors }),
@@ -163,6 +198,7 @@ export async function GET() {
     );
   } catch (error) {
     console.error('Readiness check failed:', error);
+    
     return NextResponse.json(
       {
         ready: false,
@@ -174,7 +210,7 @@ export async function GET() {
           service: { status: 'error', message: 'Readiness check exception' }
         },
         dependencies: {
-          required: ['database', 'environment'],
+          required: getRequiredDependencies(),
           optional: [],
         },
       },
