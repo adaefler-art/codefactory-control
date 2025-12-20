@@ -400,11 +400,12 @@ curl http://${ALB_DNS}/api/ready | jq '.database.status'
 - ⚠️ Use DB-off mode only if database is genuinely not needed
 
 ### Cost Optimization
-- DB-off mode saves:
-  - RDS instance costs (~$15-50/month for db.t4g.micro)
+- DB-off mode saves (estimates as of December 2025, subject to change):
+  - RDS instance costs (~$15-50/month for db.t4g.micro in eu-central-1)
   - RDS storage costs
   - RDS backup costs
   - Database secret rotation Lambda costs
+- Check current AWS pricing for accurate cost estimates
 
 ## Implementation Details
 
