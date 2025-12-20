@@ -131,8 +131,8 @@ AWS_REGION=eu-central-1 \
 - `curl` installed (for HTTP requests)
 - Permissions to:
   - `ecs:DescribeServices`
-  - `elbv2:DescribeTargetGroups`
-  - `elbv2:DescribeTargetHealth`
+  - `elasticloadbalancing:DescribeTargetGroups`
+  - `elasticloadbalancing:DescribeTargetHealth`
 
 ## Exit Codes
 
