@@ -43,7 +43,7 @@ export class CodefactoryControlStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: ['secretsmanager:GetSecretValue'],
       resources: [
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9-*`,
       ],
     });
 
