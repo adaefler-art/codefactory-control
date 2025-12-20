@@ -1,5 +1,15 @@
 name: Deploy CDK Stack with Diff Gate
 
+# ============================================================================
+# CANONICAL CDK INFRASTRUCTURE DEPLOYMENT WORKFLOW
+# ============================================================================
+# Purpose: Deploy AWS infrastructure changes via AWS CDK
+# When to use: Infrastructure changes (VPC, IAM, RDS, ALB, ECS cluster config)
+# When NOT to use: Application code changes (use deploy-ecs.yml instead)
+# 
+# See docs/DEPLOYMENT_CONSOLIDATED.md for complete deployment guide
+# ============================================================================
+
 # Example workflow demonstrating CDK diff-gate validation
 # This workflow should be used when deploying CDK infrastructure stacks
 # (not just ECS task definition updates)

@@ -4,6 +4,27 @@
 
 This document provides the **complete deployment process** for AFU-9, covering both infrastructure (CDK) and application (ECS) deployments.
 
+## Quick Reference
+
+### 🚀 Need to Deploy Right Now?
+
+**Deploying Code Changes?** → Use [ECS Workflow](#application-deployment-ecs)
+```
+GitHub Actions → Deploy AFU-9 to ECS
+Environment: staging (auto) or production (manual)
+```
+
+**Deploying Infrastructure Changes?** → Use [CDK Workflow](#infrastructure-deployment-cdk)
+```
+GitHub Actions → Deploy CDK Stack with Diff Gate
+Stack: Select appropriate stack
+Environment: staging or production
+```
+
+**Still Not Sure?** → See [Decision Logic](#decision-logic)
+
+---
+
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
@@ -216,6 +237,9 @@ This command:
   "Arn": "arn:aws:sts::123456789012:assumed-role/GitHubActionsDeployRole/..."
 }
 ```
+
+**📋 Complete OIDC Setup Checklist:**  
+See [OIDC_SETUP_VERIFICATION.md](OIDC_SETUP_VERIFICATION.md) for a comprehensive verification checklist.
 
 ---
 
