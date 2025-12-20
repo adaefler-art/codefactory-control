@@ -42,6 +42,69 @@ Required AWS permissions:
 - Personal Access Token with `repo` and `workflow` permissions
 - Store securely for later secret configuration
 
+## Diff Gate: Pre-Deployment Validation
+
+**⚠️ MANDATORY:** Before every deployment, run the CDK Diff Gate to validate infrastructure changes.
+
+The Diff Gate analyzes CDK diff output to identify potentially dangerous changes that could cause:
+- Service downtime (ECS Service replacement)
+- DNS resolution failures (Route53 changes)
+- HTTPS outages (ACM Certificate changes)
+- Network connectivity issues (Security Group deletions)
+
+### Running the Diff Gate
+
+```bash
+# Validate before deploying any stack
+npm run validate:diff -- <StackName>
+
+# Examples:
+npm run validate:diff -- Afu9NetworkStack
+npm run validate:diff -- Afu9EcsStack
+npm run validate:diff -- Afu9DatabaseStack
+```
+
+### Diff Gate Results
+
+**✓ PASS (Exit 0):** Diff contains only safe changes
+- Proceed with deployment
+- Example: ECS Task Definition image update, new resources
+
+**⚠️ PASS with Warnings (Exit 0):** Diff contains changes requiring review
+- Review warnings carefully
+- Proceed with caution
+- Example: Security Group rule modifications, IAM changes
+
+**✗ BLOCKED (Exit 1):** Diff contains blocking changes
+- **DO NOT DEPLOY** without manual review and approval
+- Document justification
+- Get team approval
+- Example: ECS Service replacement, DNS deletions, ACM Certificate changes
+
+### Blocking Changes
+
+The following changes **PREVENT** deployment:
+
+1. **ECS Service Replacement** - Causes downtime
+2. **DNS Record Deletion/Replacement** - Breaks service availability
+3. **ACM Certificate Deletion/Replacement** - Breaks HTTPS
+4. **Security Group Deletion** - Breaks connectivity
+5. **RDS Instance Replacement** - Requires migration
+6. **Load Balancer Replacement** - Changes DNS endpoint
+
+### Override Process (Emergency Only)
+
+If blocking changes are **intentional and approved**:
+
+```bash
+# 1. Document justification in PR/issue
+# 2. Get team approval
+# 3. Deploy with gate skip (NOT recommended)
+SKIP_DIFF_GATE=true npm run validate:diff -- <StackName>
+```
+
+**📖 For complete diff-gate rules and examples, see [DIFF_GATE_RULES.md](./DIFF_GATE_RULES.md)**
+
 ## Architecture Overview
 
 ```
@@ -109,6 +172,10 @@ Deploy infrastructure stacks in the correct order. The stacks have dependencies 
 #### 2.1: Network Stack (VPC, ALB, Security Groups)
 
 ```bash
+# STEP 1: Validate diff before deployment
+npm run validate:diff -- Afu9NetworkStack -c afu9-enable-https=false -c environment=staging
+
+# STEP 2: If validation passes, deploy
 # Staging: Deploy without HTTPS
 npx cdk deploy Afu9NetworkStack \
   --context afu9-enable-https=false \
@@ -148,6 +215,10 @@ aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerN
 #### 2.2: Database Stack (RDS PostgreSQL)
 
 ```bash
+# STEP 1: Validate diff before deployment
+npm run validate:diff -- Afu9DatabaseStack -c environment=staging -c multiAz=false
+
+# STEP 2: If validation passes, deploy
 npx cdk deploy Afu9DatabaseStack \
   --context environment=staging \
   --context multiAz=false \
@@ -183,6 +254,10 @@ aws rds describe-db-instances --db-instance-identifier afu9-postgres \
 #### 2.3: ECS Stack (Fargate, ECR, Task Definition)
 
 ```bash
+# STEP 1: Validate diff before deployment
+npm run validate:diff -- Afu9EcsStack -c environment=staging -c imageTag=staging-latest
+
+# STEP 2: If validation passes, deploy
 npx cdk deploy Afu9EcsStack \
   --context environment=staging \
   --context imageTag=staging-latest \

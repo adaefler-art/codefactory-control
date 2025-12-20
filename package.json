@@ -16,6 +16,7 @@
     "destroy": "cdk destroy",
     "validate-secrets": "ts-node scripts/validate-secrets.ts",
     "validate-iam": "ts-node scripts/validate-iam-policies.ts",
+    "validate:diff": "ts-node scripts/validate-cdk-diff.ts",
     "security:check": "npm run validate-iam",
     "ecs:diagnose": "pwsh -File scripts/ecs_diagnose.ps1",
     "smoke:epic4": "pwsh -File scripts/smoke_epic4.ps1",
