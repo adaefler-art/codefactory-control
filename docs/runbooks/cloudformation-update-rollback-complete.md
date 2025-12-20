@@ -200,6 +200,7 @@ aws secretsmanager get-secret-value \
   --query 'SecretString' --output text | jq
 
 # Secret aktualisieren (falls nötig)
+# ⚠️ WICHTIG: Ersetze die Platzhalter mit echten Werten!
 aws secretsmanager update-secret \
   --secret-id afu9/database \
   --region ${AWS_REGION} \
@@ -319,7 +320,7 @@ ResourceStatusReason: "The maximum number of security groups for network interfa
 aws ec2 describe-vpcs --region ${AWS_REGION} --query 'Vpcs[*].VpcId' --output table
 
 # Security Groups Limits
-aws ec2 describe-security-groups --region ${AWS_REGION} --query 'SecurityGroups[*].GroupId' --output table | wc -l
+aws ec2 describe-security-groups --region ${AWS_REGION} --query 'SecurityGroups[*].GroupId' --output text | wc -w
 
 # Elastic IPs Limits
 aws ec2 describe-addresses --region ${AWS_REGION} --query 'Addresses[*].AllocationId' --output table
