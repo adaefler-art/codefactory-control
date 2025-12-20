@@ -215,8 +215,6 @@ describe('Issue B6: Reproduzierbare Verdict-Simulation', () => {
       // Verify complete mapping chain
       const directAction = getActionForVerdictType(verdict.verdict_type);
       expect(directAction).toBe(SimpleAction.ABORT);
-
-      console.log('✅ RED verdict successfully triggered (Missing Secret scenario)');
     });
 
     test('should generate RED verdict for missing environment variable (REJECTED)', () => {
@@ -239,8 +237,6 @@ describe('Issue B6: Reproduzierbare Verdict-Simulation', () => {
       // Verify action mapping
       const action = getSimpleAction(simpleVerdict);
       expect(action).toBe(SimpleAction.ABORT);
-
-      console.log('✅ RED verdict successfully triggered (Missing Env Var scenario)');
     });
 
     test('RED verdict should trigger ABORT action', () => {
@@ -315,8 +311,6 @@ describe('Issue B6: Reproduzierbare Verdict-Simulation', () => {
       // Verify complete mapping chain
       const directAction = getActionForVerdictType(verdict.verdict_type);
       expect(directAction).toBe(SimpleAction.FREEZE);
-
-      console.log('✅ HOLD verdict successfully triggered (Route53 Delegation scenario)');
     });
 
     test('should generate HOLD verdict for CloudFormation in-progress lock (BLOCKED)', () => {
@@ -339,8 +333,6 @@ describe('Issue B6: Reproduzierbare Verdict-Simulation', () => {
       // Verify action mapping
       const action = getSimpleAction(simpleVerdict);
       expect(action).toBe(SimpleAction.FREEZE);
-
-      console.log('✅ HOLD verdict successfully triggered (CFN In-Progress Lock scenario)');
     });
 
     test('should generate HOLD verdict for CloudFormation rollback lock (BLOCKED)', () => {
@@ -363,8 +355,6 @@ describe('Issue B6: Reproduzierbare Verdict-Simulation', () => {
       // Verify action mapping
       const action = getSimpleAction(simpleVerdict);
       expect(action).toBe(SimpleAction.FREEZE);
-
-      console.log('✅ HOLD verdict successfully triggered (CFN Rollback Lock scenario)');
     });
 
     test('HOLD verdict should trigger FREEZE action', () => {
@@ -435,8 +425,6 @@ describe('Issue B6: Reproduzierbare Verdict-Simulation', () => {
       // Verify action mapping
       const action = getSimpleAction(simpleVerdict);
       expect(action).toBe(SimpleAction.RETRY_OPERATION);
-
-      console.log('✅ RETRY verdict successfully triggered (ACM DNS Validation scenario)');
     });
 
     test('RETRY verdict should trigger RETRY_OPERATION action', () => {
