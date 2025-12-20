@@ -61,8 +61,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    env:
-      DEPLOY_ENV: ${{ env.DEPLOY_ENV }}
 
     steps:
       - name: Checkout code
