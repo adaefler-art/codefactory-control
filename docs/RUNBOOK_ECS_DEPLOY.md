@@ -207,7 +207,7 @@ aws elbv2 describe-target-health \
 | Target State | Reason | Root Cause | Next Step |
 |-------------|--------|------------|-----------|
 | `healthy` | n/a | Target is healthy | No action needed |
-| `unhealthy` | `Target.FailedHealthChecks` | `/api/ready` not returning 200 | Check logs (Step 3) |
+| `unhealthy` | `Target.FailedHealthChecks` | `/api/health` not returning 200 | Check logs (Step 3) |
 | `unhealthy` | `Target.Timeout` | App not responding in time | Increase health check timeout |
 | `draining` | n/a | Target is being deregistered | Wait for new tasks |
 | `unavailable` | `Target.NotRegistered` | No tasks running | Check ECS service events |
@@ -220,7 +220,7 @@ Target              Health  State     Reason
 10.0.11.45:3000     unhealthy  Target.FailedHealthChecks
 ```
 
-**Action:** Container is running but `/api/ready` is not returning 200. Check logs for app errors.
+**Action:** Container is running but `/api/health` is not returning 200. This indicates the Node.js process may have crashed or is unresponsive. Check logs for app errors.
 
 ---
 
@@ -490,19 +490,22 @@ aws ecr describe-images \
 # See docs/ECS-DEPLOYMENT.md for build instructions
 ```
 
-### Scenario 4: Health Check Failing (Database Disabled)
+### Scenario 4: Health Check Failing Despite Running Process
 
 **Symptoms:**
 - Service events: "circuit breaker"
 - Stopped tasks: "Task failed ELB health checks"
-- Logs: No errors, but health check endpoint returns 503
+- Logs: Application shows "Ready" but ALB health checks fail
 
-**Root Cause:** `enableDatabase=false` but app still tries to connect to DB, or `/api/ready` endpoint logic has a bug.
+**Root Cause (FIXED in this version):** 
+- In previous versions: ALB was checking `/api/ready` which returns 503 during startup or when dependencies are initializing
+- Current version: ALB checks `/api/health` which returns 200 as soon as Node.js is running
 
-**Fix:**
-- Verify `DATABASE_ENABLED=false` env var is set in task definition
-- Check `/api/ready` endpoint logic handles `DATABASE_ENABLED=false` correctly
-- Test locally: `curl http://<ALB_DNS>/api/ready` should return 200 with `database: {status: "not_configured"}`
+**Verification:**
+- Test ALB health endpoint: `curl http://<ALB_DNS>/api/health` should return 200
+- Test readiness separately: `curl http://<ALB_DNS>/api/ready` shows detailed dependency status
+- When `DATABASE_ENABLED=false`: Both endpoints return 200
+- When `DATABASE_ENABLED=true` but secrets missing: `/api/health` returns 200, `/api/ready` returns 503
 
 ---
 
@@ -527,6 +530,24 @@ aws ecr describe-images \
 
 ### Health Check Endpoints
 
+AFU-9 Control Center provides two health endpoints with distinct purposes:
+
+#### `/api/health` (Liveness Probe)
+- **Purpose:** Check if the Node.js process is alive
+- **Dependencies:** None (no DB, MCP, or auth)
+- **Response:** Always 200 OK once process starts
+- **Used by:** ALB TargetGroup health checks, ECS Container HealthCheck
+- **Timeout:** Fast response (< 100ms)
+
+#### `/api/ready` (Readiness Probe)
+- **Purpose:** Check if service is ready to accept traffic
+- **Dependencies:** Database (if enabled), Environment variables
+- **Response:** 200 OK if ready, 503 if critical dependencies fail
+- **Used by:** Optional manual checks, future K8s deployments, monitoring
+- **Timeout:** May take longer due to dependency checks
+
+**Important:** ALB and ECS Container HealthCheck use `/api/health` to avoid false negatives during startup.
+
 | Endpoint | Purpose | Expected Response |
 |----------|---------|-------------------|
 | `/api/health` | Liveness probe | `200 OK` always (unless process crashed) |
@@ -536,7 +557,7 @@ aws ecr describe-images \
 - `/api/ready` returns `200 OK` with `checks.database = {status: "not_configured"}`
 
 **When `DATABASE_ENABLED=true`:**
-- `/api/ready` returns `200 OK` if DB is reachable, `503` if not
+- `/api/ready` returns `200 OK` if DB configuration is valid, `503` if credentials are missing or invalid
 
 ---
 

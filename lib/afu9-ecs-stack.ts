@@ -218,11 +218,14 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
   const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
   const dbSecretName = ctxDbSecretName;
 
-  // Validation: If database is enabled, we need either ARN or name (before applying defaults)
+  // Fail-fast validation: If database is enabled, we need either ARN or name (before applying defaults)
+  // This prevents deployments with invalid configuration before they reach ECS
   if (enableDatabase && !dbSecretArn && !dbSecretName) {
     throw new Error(
-      'enableDatabase is true but neither dbSecretArn nor dbSecretName is provided. ' +
-      `Set -c dbSecretArn=... or -c dbSecretName=${DEFAULT_DB_SECRET_NAME} or disable database with -c afu9-enable-database=false`
+      'DATABASE_ENABLED=true requires dbSecretArn or dbSecretName in CDK context. ' +
+      `Provide via: -c dbSecretArn=arn:aws:secretsmanager:... ` +
+      `or -c dbSecretName=${DEFAULT_DB_SECRET_NAME} ` +
+      `or disable database with -c afu9-enable-database=false`
     );
   }
 
