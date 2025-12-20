@@ -37,6 +37,35 @@ AFU-9 v0.2 includes comprehensive observability and security features for produc
 
 ## Features
 
+### 0. ECS + ALB Status Signals (EPIC 4)
+
+**NEW**: Canonical Go/No-Go decision criteria for deployment verification.
+
+**Key Features**:
+- **ECS Service Events**: Detect Circuit Breaker activations, placement failures, and deployment errors
+- **ALB Target Health**: Validate task registration and health check status
+- **Health Probes**: Application-level liveness and readiness validation
+- **Decision Tree**: Structured Go/No-Go logic for deployment decisions
+- **Copy-Paste Commands**: Rapid manual verification and troubleshooting
+
+**Status Signal Categories**:
+- ECS Events (Circuit Breaker, steady state, task placement)
+- ALB Target Health (healthy/unhealthy states, failure reasons)
+- Liveness Probe (`/api/health` - always returns 200)
+- Readiness Probe (`/api/ready` - dependency validation)
+
+**Use Cases**:
+- Post-deployment verification (automated CI/CD gates)
+- Manual deployment validation
+- Troubleshooting deployment failures
+- Production readiness assessment
+- Rollback decisions
+
+**Documentation**:
+- [ECS + ALB Status Signals](./ECS_ALB_STATUS_SIGNALS.md) - Complete Go/No-Go criteria and commands (Issue I-04-02)
+- [Health Check Decision Summary](./HEALTH_CHECK_DECISION_SUMMARY.md) - Liveness vs readiness decision tree
+- [Post-Deployment Verification](./POST_DEPLOY_VERIFICATION.md) - Automated verification script
+
 ### 1. KPI System & Telemetry (EPIC 3)
 
 **NEW**: Comprehensive KPI system for factory steering and transparency.
@@ -478,6 +507,9 @@ AWS-provided metrics:
 
 ## References
 
+- [ECS + ALB Status Signals](ECS_ALB_STATUS_SIGNALS.md) - Go/No-Go decision criteria (Issue I-04-02)
+- [Health Check Decision Summary](HEALTH_CHECK_DECISION_SUMMARY.md) - Liveness vs readiness
+- [Post-Deployment Verification](POST_DEPLOY_VERIFICATION.md) - Automated verification
 - [Logging Guide](LOGGING.md) - Comprehensive logging concept and best practices
 - [Observability Deployment Guide](OBSERVABILITY-DEPLOYMENT.md)
 - [Observability Runbook](OBSERVABILITY-RUNBOOK.md)
