@@ -1,3 +1,4 @@
+# Archived on 2025-12-20: Legacy v0.1 bugfix trigger superseded by current ECS/CDK deploy workflows; retained for reference only.
 name: AFU-9 Bugfix Pipeline (v0.1)
 
 on:
