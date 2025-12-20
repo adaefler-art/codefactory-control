@@ -340,6 +340,11 @@ Application Load Balancer uses `/api/health` for health checks:
 **Note:** ALB health checks use `/api/health` (liveness) to avoid false negatives during startup.
 `/api/ready` remains available for manual readiness checks and future Kubernetes deployments.
 
+**Historical Context (PR #228):** Previously, ALB health checks used `/api/ready`, which caused ECS 
+Circuit Breaker rollbacks when database or MCP dependencies were temporarily unavailable during 
+startup. The health check was changed to `/api/health` to ensure deterministic liveness checks 
+that only verify the process is running, not dependency availability.
+
 ## KPIs
 
 ### Factory Uptime

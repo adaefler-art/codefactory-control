@@ -307,9 +307,9 @@ healthCheck: {
 - 2 consecutive successes = healthy
 - 3 consecutive failures = unhealthy
 
-**Historical Note:** Previously used `/api/ready`, but this caused ECS rollbacks when database
-or MCP dependencies were temporarily unavailable during startup. Changed to `/api/health` for
-deterministic liveness checks.
+**Historical Note (PR #228):** Previously used `/api/ready`, but this caused ECS rollbacks when database
+or MCP dependencies were temporarily unavailable during startup. Changed to `/api/health` in PR #228
+for deterministic liveness checks. See also: [ECS Healthchecks Runbook](./runbooks/ecs-healthchecks.md)
 
 ---
 

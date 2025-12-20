@@ -327,6 +327,11 @@ healthCheck: {
 **Important:** ALB uses `/api/health` to avoid false negatives during startup.
 Use `/api/ready` for manual readiness checks only.
 
+**Historical Context (PR #228):** Previously, ALB health checks used `/api/ready`, causing ECS 
+Circuit Breaker rollbacks when database or MCP dependencies were initializing. The change to 
+`/api/health` ensures stable deployments by checking only process liveness, not dependency 
+readiness.
+
 ### Health Check Grace Period
 
 ```typescript
