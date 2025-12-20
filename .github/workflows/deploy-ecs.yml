@@ -68,7 +68,7 @@ jobs:
         run: |
           $deployEnv = "${{ env.DEPLOY_ENV }}"
           $stagingCluster = "${{ vars.STAGING_ECS_CLUSTER }}"
-          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster-staging' }
+          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster' }
 
           if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
             Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
@@ -289,6 +289,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
+
+          echo "Listing clusters for debugging..."
+          aws ecs list-clusters --region "${{ env.AWS_REGION }}" --output text || true
+          echo "Using cluster=${{ steps.target.outputs.ecs_cluster }} service=${{ steps.target.outputs.ecs_service }}"
 
           SERVICE_JSON=$(aws ecs describe-services \
             --cluster "${{ steps.target.outputs.ecs_cluster }}" \
