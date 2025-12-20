@@ -48,6 +48,26 @@ This directory contains operational runbooks for managing and troubleshooting AF
 
 ### 🟡 Specific Issues
 
+#### [ECS Secret Injection Failures](./ecs-secret-injection.md)
+**ID:** I-05-02-RUNBOOK-SECRETS  
+**Purpose:** Diagnose and fix ECS secret injection failures  
+**Time to Resolution:** < 5 minutes
+
+**Use when:**
+- ECS tasks fail with `ResourceInitializationError: unable to pull secrets`
+- Container logs show missing environment variables from secrets
+- Wrong secret keys mapped to environment variables
+- IAM permission issues accessing secrets
+
+**Key Features:**
+- References preflight checks to avoid repetition errors
+- Copy-paste ready commands for quick diagnosis
+- Decision trees for common secret injection scenarios
+- Validates secret structure and IAM permissions
+- Prevents secret-related deployment failures
+
+---
+
 #### [ECS Health Checks](./ecs-healthchecks.md)
 **Purpose:** Troubleshooting ECS/ALB health check issues  
 **Scope:** Container-level and target group health checks
@@ -120,8 +140,9 @@ See: **[AWS Deployment Runbook](../v04/AWS_DEPLOY_RUNBOOK.md)** (Source of Truth
 - **[ECS Config Reference](../ECS_CONFIG_REFERENCE.md)** - Configuration options
 
 ### Specialized Runbooks
-- **[RUNBOOK_ECS_DEPLOY.md](../RUNBOOK_ECS_DEPLOY.md)** - General ECS deployment diagnostics
-- **[RUNBOOK_ECS_CIRCUIT_BREAKER_SECRETS.md](../RUNBOOK_ECS_CIRCUIT_BREAKER_SECRETS.md)** - Secret-specific circuit breaker issues
+- **[ECS Secret Injection Failures](./ecs-secret-injection.md)** - Quick diagnosis and fix for secret injection issues
+- **[RUNBOOK_ECS_DEPLOY.md](../v04/RUNBOOK_ECS_DEPLOY.md)** - General ECS deployment diagnostics
+- **[RUNBOOK_ECS_CIRCUIT_BREAKER_SECRETS.md](../v04/RUNBOOK_ECS_CIRCUIT_BREAKER_SECRETS.md)** - Secret-specific circuit breaker issues
 
 ### Other Operational Docs
 - **[Secret Validation](../SECRET_VALIDATION.md)** - Secret structure and validation
