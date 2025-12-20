@@ -352,27 +352,20 @@ This document integrates with the broader observability framework:
 
 These status signals are automatically checked in CI/CD:
 
-**Staging Deployment** (`.github/workflows/deploy-stage.yml`):
+**ECS Deployment Workflow** (`.github/workflows/deploy-ecs.yml`):
 ```yaml
 - name: Post-Deployment Verification
   run: |
     ./scripts/post-deploy-verification.sh \
-      stage \
+      ${{ steps.vars.outputs.tag_prefix }} \
       afu9-cluster \
-      afu9-control-center-stage \
-      ${{ steps.get_alb.outputs.alb_dns }}
+      ${{ steps.vars.outputs.ecs_service }} \
+      ${{ steps.alb-dns.outputs.alb_dns }}
 ```
 
-**Production Deployment** (`.github/workflows/deploy-prod.yml`):
-```yaml
-- name: Post-Deployment Verification
-  run: |
-    ./scripts/post-deploy-verification.sh \
-      prod \
-      afu9-cluster \
-      afu9-control-center-prod \
-      ${{ steps.get_alb.outputs.alb_dns }}
-```
+This workflow handles both staging and production deployments:
+- **Staging**: `tag_prefix=stage`, `ecs_service=afu9-control-center-stage`
+- **Production**: `tag_prefix=prod`, `ecs_service=afu9-control-center-prod`
 
 The verification script exits with:
 - **Exit 0** = All signals pass (GO) ✅

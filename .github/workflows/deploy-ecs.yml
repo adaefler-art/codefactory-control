@@ -1,5 +1,19 @@
 name: Deploy AFU-9 to ECS
 
+# ============================================================================
+# CANONICAL ECS APPLICATION DEPLOYMENT WORKFLOW
+# ============================================================================
+# Purpose: Build and deploy application Docker images to ECS
+# When to use: Code changes, dependency updates, application configuration
+# When NOT to use: Infrastructure changes (use deploy-cdk-stack.yml instead)
+#
+# Environments:
+# - Staging: Auto-deploys on push to main branch
+# - Production: Manual workflow_dispatch only
+#
+# See docs/DEPLOYMENT_CONSOLIDATED.md for complete deployment guide
+# ============================================================================
+
 # Build Determinism:
 # - Uses git commit SHA as the primary deterministic identifier
 # - Docker images are built with pinned versions (node:20.10.0-alpine)
@@ -84,6 +98,15 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS OIDC Authentication
+        run: |
+          echo "========================================="
+          echo "Verifying AWS OIDC Authentication"
+          echo "========================================="
+          aws sts get-caller-identity
+          echo ""
+          echo "✅ AWS authentication successful"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

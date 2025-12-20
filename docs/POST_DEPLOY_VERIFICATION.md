@@ -89,8 +89,9 @@ The verification script performs 5 critical checks:
 
 The verification script is automatically executed after every deployment:
 
-- **Staging**: After `deploy-stage.yml` workflow completes
-- **Production**: After `deploy-prod.yml` workflow completes
+- **Workflow**: `.github/workflows/deploy-ecs.yml`
+- **Staging**: After automatic deployment on push to main
+- **Production**: After manual workflow_dispatch deployment
 
 The workflow will **fail** if any verification check fails, preventing bad deployments from being marked as successful.
 
@@ -263,18 +264,17 @@ aws logs tail /ecs/afu9-control-center --since 10m
 
 ## Integration with CI/CD
 
-The verification script is integrated into both staging and production workflows:
+The verification script is integrated into the canonical ECS deployment workflow:
 
-### Staging Workflow (`deploy-stage.yml`)
+### ECS Deployment Workflow (`deploy-ecs.yml`)
 1. Build and push Docker images
 2. Update ECS task definition
 3. Update ECS service
 4. **Wait for service stability** (AWS ECS waiter)
-5. **Run post-deployment verification** ← New step
+5. **Run post-deployment verification** ← Automatic verification
 6. Generate deployment summary
 
-### Production Workflow (`deploy-prod.yml`)
-Same steps as staging, but with manual approval gate before deployment.
+This workflow handles both staging and production deployments with environment-specific configuration.
 
 ### Workflow Enhancement
 

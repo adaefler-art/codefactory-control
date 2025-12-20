@@ -1,5 +1,9 @@
 # AFU-9 v0.2 Deployment Guide
 
+> **⚠️ DEPRECATION NOTICE:**  
+> This document is **legacy documentation**. For the current, canonical deployment guide, see:  
+> **[DEPLOYMENT_CONSOLIDATED.md](DEPLOYMENT_CONSOLIDATED.md)**
+
 This guide covers deploying AFU-9 Control Center on AWS ECS Fargate with multi-environment support.
 
 ## Table of Contents

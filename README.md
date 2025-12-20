@@ -109,17 +109,21 @@ npm install && npm run dev
 
 ### Deployment (AWS)
 
-**v0.2 ECS Deployment (Recommended):**
+**📚 Consolidated Deployment Guide (CANONICAL):**
 
-See [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) for the **complete staging deployment runbook** (Source of Truth).
+See [docs/DEPLOYMENT_CONSOLIDATED.md](docs/DEPLOYMENT_CONSOLIDATED.md) for the **complete deployment guide** covering:
+- Infrastructure deployment (CDK)
+- Application deployment (ECS)
+- OIDC setup and verification
+- Decision logic: When to use which workflow
+- Troubleshooting common issues
 
-**🚀 For VS Copilot Users:**
-- [docs/CANONICAL_DEPLOY_PROMPT.md](docs/CANONICAL_DEPLOY_PROMPT.md) - **Copy/paste-ready deployment prompt** (Build → Synth → Diff → Deploy → Verify)
-
-Also available:
-- [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) - Detailed ECS deployment guide
+**Additional Resources:**
+- [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) - Detailed staging deployment runbook
+- [docs/CANONICAL_DEPLOY_PROMPT.md](docs/CANONICAL_DEPLOY_PROMPT.md) - Copy/paste-ready deployment prompt for VS Copilot
+- [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) - ECS-specific deployment details
 - [docs/HTTPS-DNS-SETUP.md](docs/HTTPS-DNS-SETUP.md) - HTTPS/DNS configuration
-- [docs/CONTEXT_KEYS_REFERENCE.md](docs/CONTEXT_KEYS_REFERENCE.md) - **Canonical CDK context keys reference**
+- [docs/CONTEXT_KEYS_REFERENCE.md](docs/CONTEXT_KEYS_REFERENCE.md) - CDK context keys reference
 
 **Quick Staging Deploy:**
 
