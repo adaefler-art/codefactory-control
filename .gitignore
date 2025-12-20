@@ -2,6 +2,7 @@
 *.js
 !bin/*.js
 !jest.config.js
+!control-center/jest.setup.js
 !scripts/*.js
 !control-center/prebuild.js
 *.d.ts

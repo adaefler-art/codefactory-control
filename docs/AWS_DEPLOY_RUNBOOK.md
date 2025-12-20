@@ -53,7 +53,7 @@ Required AWS permissions:
 ┌─────────────────────────────────────┐
 │  Application Load Balancer (ALB)   │
 │  - Port 80 (HTTP)                   │
-│  - Health Check: /api/ready         │
+│  - Health Check: /api/health        │
 └──────────────┬──────────────────────┘
                │
                ▼

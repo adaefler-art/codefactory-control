@@ -1,0 +1,156 @@
+name: Health Check Contract Tests
+
+on:
+  pull_request:
+    paths:
+      - 'control-center/app/api/health/**'
+      - 'control-center/app/api/ready/**'
+      - 'control-center/__tests__/api/health-contract.test.ts'
+      - 'lib/afu9-network-stack.ts'
+      - 'lib/afu9-ecs-stack.ts'
+      - '.github/workflows/health-check-contract.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'control-center/app/api/health/**'
+      - 'control-center/app/api/ready/**'
+      - 'control-center/__tests__/api/health-contract.test.ts'
+      - 'lib/afu9-network-stack.ts'
+      - 'lib/afu9-ecs-stack.ts'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test-health-contract:
+    name: Verify Health Check Contract
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'control-center/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./control-center
+        run: npm ci
+
+      - name: Run health contract tests
+        working-directory: ./control-center
+        run: npm test -- __tests__/api/health-contract.test.ts --passWithNoTests=false
+
+      - name: Verify ALB health check configuration
+        run: |
+          echo "🔍 Verifying ALB health check path configuration..."
+          
+          # Check that ALB health check path is /api/health
+          if grep -q "path: '/api/health'" lib/afu9-network-stack.ts; then
+            echo "✅ ALB health check path is correctly set to /api/health"
+          else
+            echo "❌ ERROR: ALB health check path is NOT /api/health"
+            echo "Expected: path: '/api/health'"
+            echo "Current configuration:"
+            grep -A 5 "healthCheck:" lib/afu9-network-stack.ts || echo "No healthCheck config found"
+            exit 1
+          fi
+          
+          # Check that container health checks use /api/health
+          if grep -q "/api/health" lib/afu9-ecs-stack.ts; then
+            echo "✅ Container health checks reference /api/health"
+          else
+            echo "⚠️  WARNING: Container health checks may not reference /api/health"
+          fi
+
+      - name: Check for anti-patterns
+        run: |
+          echo "🔍 Checking for health check anti-patterns..."
+          
+          # Check if ALB health check mistakenly uses /api/ready
+          if grep -q "path: '/api/ready'" lib/afu9-network-stack.ts; then
+            echo "❌ ERROR: ALB health check uses /api/ready (should be /api/health)"
+            echo "This will cause false negatives during startup!"
+            exit 1
+          fi
+          
+          echo "✅ No anti-patterns detected"
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ Health Check Contract Validation Passed
+              
+              All health check contract tests passed successfully:
+              
+              - ✅ \`/api/health\` returns 200 OK (liveness probe)
+              - ✅ \`/api/ready\` implements correct readiness semantics
+              - ✅ ALB health check path is \`/api/health\`
+              - ✅ No anti-patterns detected
+              
+              **Contract Requirements:**
+              - ALB health checks MUST use \`/api/health\` (liveness)
+              - Container health checks MUST use \`/health\` or \`/api/health\`
+              - \`/api/ready\` is for manual checks only (readiness)
+              
+              See [Health Check Decision Summary](../blob/main/docs/HEALTH_CHECK_DECISION_SUMMARY.md) for details.`
+            })
+
+      - name: Comment on PR with failures
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ Health Check Contract Validation Failed
+              
+              Health check contract tests failed. Please review:
+              
+              **Common Issues:**
+              1. \`/api/health\` must ALWAYS return 200 OK
+              2. \`/api/ready\` can return 200 or 503 based on dependencies
+              3. ALB health check path MUST be \`/api/health\` (not \`/api/ready\`)
+              4. Container health checks MUST use liveness endpoints
+              
+              **Required Actions:**
+              - Review test failures in the workflow logs above
+              - Verify ALB health check configuration in \`lib/afu9-network-stack.ts\`
+              - Run tests locally: \`cd control-center && npm test __tests__/api/health-contract.test.ts\`
+              
+              See [Health Check Decision Summary](../blob/main/docs/HEALTH_CHECK_DECISION_SUMMARY.md) for complete requirements.`
+            })
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Health Check Contract Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ **All health check contract tests passed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Contract compliance verified:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`/api/health\` always returns 200 OK (liveness)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`/api/ready\` implements correct readiness semantics" >> $GITHUB_STEP_SUMMARY
+            echo "- ALB health check path is \`/api/health\`" >> $GITHUB_STEP_SUMMARY
+            echo "- No anti-patterns detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Health check contract validation failed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the test failures and fix before merging." >> $GITHUB_STEP_SUMMARY
+          fi

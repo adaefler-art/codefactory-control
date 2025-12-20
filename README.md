@@ -299,3 +299,23 @@ AFU-9 includes comprehensive infrastructure monitoring with CloudWatch alarms an
 - ALB health (5xx errors, Response time, Unhealthy targets)
 
 See [`docs/ALERTING.md`](docs/ALERTING.md) for complete setup guide.
+
+## Health Checks & Reliability
+
+AFU-9 implements standardized health and readiness endpoints for reliable deployments:
+
+**Health Check Endpoints**:
+- 🔍 **`/api/health`** (Liveness): Always returns 200 when process is running - used by ALB and ECS
+- ✅ **`/api/ready`** (Readiness): Returns 200/503 based on dependencies - used for manual verification
+
+**Contract Enforcement**:
+- CI/CD tests ensure `/api/health` always returns 200 OK
+- ALB health checks use `/api/health` to avoid false negatives during startup
+- Container health checks validate process liveness
+- Post-deployment verification tests all endpoints
+
+**Documentation**:
+- [Health Check Decision Summary](docs/HEALTH_CHECK_DECISION_SUMMARY.md) - Complete decision tree and related issues
+- [Health & Readiness Verification](docs/HEALTH_READINESS_VERIFICATION.md) - Endpoint specifications
+- [ECS Health Checks Runbook](docs/runbooks/ecs-healthchecks.md) - Troubleshooting guide
+
