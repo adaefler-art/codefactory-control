@@ -157,6 +157,10 @@ jobs:
           context: .
           file: ./control-center/Dockerfile
           push: true
+          build-args: |
+            BUILD_VERSION=0.4.0
+            BUILD_COMMIT_HASH=${{ steps.image-tags.outputs.short_sha }}
+            BUILD_ENV=${{ steps.vars.outputs.deploy_env }}
           tags: |
             ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
             ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.vars.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}

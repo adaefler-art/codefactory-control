@@ -1,7 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect } from "react";
+import Link from "next/link";
+
+interface BuildMetadata {
+  version: string;
+  timestamp: string;
+  commitHash: string;
+  environment: string;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -9,6 +17,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [buildMetadata, setBuildMetadata] = useState<BuildMetadata | null>(null);
+
+  // Fetch build metadata on component mount
+  useEffect(() => {
+    fetch('/api/build-metadata')
+      .then(res => res.json())
+      .then(data => setBuildMetadata(data))
+      .catch(err => console.error('Failed to load build metadata:', err));
+  }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -29,6 +46,15 @@ export default function LoginPage() {
       setError(err.message || "Login failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp);
+      return date.toISOString().replace('T', ' ').split('.')[0] + ' UTC';
+    } catch {
+      return timestamp;
     }
   };
 
@@ -83,6 +109,31 @@ export default function LoginPage() {
             {loading ? "Anmelden..." : "Anmelden"}
           </button>
         </form>
+
+        <div className="mt-4 text-center">
+          <Link
+            href="/forgot-password"
+            className="text-sm text-sky-400 hover:text-sky-300 transition-colors"
+          >
+            Passwort vergessen?
+          </Link>
+        </div>
+
+        {buildMetadata && (
+          <div className="mt-6 pt-4 border-t border-slate-700 text-center text-xs text-slate-400 space-y-1">
+            <div className="font-mono">
+              AFU-9 · v{buildMetadata.version} · {buildMetadata.commitHash}
+            </div>
+            <div>
+              deployed {formatTimestamp(buildMetadata.timestamp)}
+            </div>
+            {buildMetadata.environment !== 'development' && (
+              <div className="text-slate-500">
+                {buildMetadata.environment}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
