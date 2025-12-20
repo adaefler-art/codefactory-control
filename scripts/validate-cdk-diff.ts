@@ -142,16 +142,43 @@ const SAFE_PATTERNS = [
 ];
 
 /**
+ * Validate stack name to prevent command injection
+ */
+function validateStackName(stackName: string): boolean {
+  // Stack names should only contain alphanumeric characters, hyphens, and underscores
+  const validPattern = /^[a-zA-Z0-9_-]+$/;
+  return validPattern.test(stackName);
+}
+
+/**
  * Run CDK diff and capture output
  */
 function runCdkDiff(stackName: string): string {
+  // Validate stack name to prevent command injection
+  if (!validateStackName(stackName)) {
+    throw new Error(
+      `Invalid stack name: "${stackName}". Stack name must only contain alphanumeric characters, hyphens, and underscores.`
+    );
+  }
+
   try {
+    // Use only required environment variables to prevent injection
+    const safeEnv = {
+      PATH: process.env.PATH || '',
+      HOME: process.env.HOME || '',
+      AWS_REGION: process.env.AWS_REGION || 'eu-central-1',
+      AWS_PROFILE: process.env.AWS_PROFILE || '',
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+      AWS_SESSION_TOKEN: process.env.AWS_SESSION_TOKEN || '',
+    };
+
     const command = `npx cdk diff ${stackName}`;
     console.log(`Running: ${command}\n`);
     
     const output = execSync(command, {
       encoding: 'utf8',
-      env: process.env,
+      env: safeEnv,
       // CDK diff uses exit code 0 for no changes, 1 for changes
       // We want to capture output regardless
       stdio: ['pipe', 'pipe', 'pipe'],

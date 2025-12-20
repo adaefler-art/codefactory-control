@@ -26,6 +26,11 @@ on:
           - staging
           - production
         default: staging
+      enable_https:
+        description: 'Enable HTTPS (requires DNS stack)'
+        required: false
+        type: boolean
+        default: false
       skip_diff_gate:
         description: 'Skip diff gate (NOT recommended)'
         required: false
@@ -73,12 +78,13 @@ jobs:
           echo "========================================="
           echo "Stack: ${{ inputs.stack_name }}"
           echo "Environment: ${{ inputs.environment }}"
+          echo "HTTPS Enabled: ${{ inputs.enable_https }}"
           echo ""
           
           # Run diff gate validation
           npm run validate:diff -- ${{ inputs.stack_name }} \
             -c environment=${{ inputs.environment }} \
-            -c afu9-enable-https=false
+            -c afu9-enable-https=${{ inputs.enable_https }}
           
           DIFF_RESULT=$?
           
@@ -112,11 +118,12 @@ jobs:
           echo "========================================="
           echo "Stack: ${{ inputs.stack_name }}"
           echo "Environment: ${{ inputs.environment }}"
+          echo "HTTPS Enabled: ${{ inputs.enable_https }}"
           echo ""
           
           npx cdk deploy ${{ inputs.stack_name }} \
             --context environment=${{ inputs.environment }} \
-            --context afu9-enable-https=false \
+            --context afu9-enable-https=${{ inputs.enable_https }} \
             --require-approval never
 
       - name: Verify Deployment
