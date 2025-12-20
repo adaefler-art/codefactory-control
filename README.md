@@ -21,6 +21,10 @@ Control-plane for AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture).
   **Release Review**: [docs/v04/V04_RELEASE_REVIEW.md](docs/v04/V04_RELEASE_REVIEW.md) - **CANONICAL** reference for stable features, scope, and v0.5 foundation  
   **Documentation Hub**: [docs/v04/](docs/v04/) - Complete v0.4 planning, implementation summaries, quick references, and runbooks
 
+- **v0.5**: Enhanced workflow engine and UI/UX 🔄 **IN PLANNING**  
+  **Go/No-Go Decision**: [docs/v05/V05_GO_NOGO_DECISION.md](docs/v05/V05_GO_NOGO_DECISION.md) - **DECISION TEMPLATE** for v0.5 release readiness (DNS/HTTPS, features, stability)  
+  **Documentation Hub**: [docs/v05/](docs/v05/) - v0.5 planning, scope, timeline, and implementation tracking
+
 ## Repository Structure
 
 ```
