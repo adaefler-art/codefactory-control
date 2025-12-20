@@ -96,6 +96,7 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     type: 'string',
     description: 'Name of database connection secret',
     required: false,
+    default: 'afu9/database/master',
   },
 
   // Environment configuration
@@ -103,6 +104,7 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     type: 'string',
     description: 'Environment name (staging, production)',
     required: false,
+    default: 'staging',
     deprecated: ['stage'],
   },
 };
@@ -125,24 +127,7 @@ export const DEPRECATED_CONTEXT_KEYS: Record<string, string> = {
  */
 export function validateContextKeys(scope: Construct): void {
   const node = scope.node;
-  const allContextKeys = Object.keys(node.tryGetContext('') || {});
   
-  // Get all context keys from the node
-  const contextKeys = new Set<string>();
-  
-  // Try to get all context keys by iterating through known keys
-  for (const key of Object.keys(CANONICAL_CONTEXT_KEYS)) {
-    if (node.tryGetContext(key) !== undefined) {
-      contextKeys.add(key);
-    }
-  }
-  
-  for (const key of Object.keys(DEPRECATED_CONTEXT_KEYS)) {
-    if (node.tryGetContext(key) !== undefined) {
-      contextKeys.add(key);
-    }
-  }
-
   const errors: string[] = [];
   const warnings: string[] = [];
 
