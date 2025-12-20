@@ -309,6 +309,11 @@ DependencyHighLatency:
 - ✅ ECS Circuit Breaker wird nicht bei Dependency-Problemen aktiviert
 - ✅ Container bleibt am Leben und kann sich selbst heilen
 
+**Historischer Kontext (PR #228):** Zuvor wurde `/ready` für ECS Health Checks verwendet, was zu 
+Circuit Breaker Rollbacks führte, wenn Datenbank oder MCP-Dependencies während des Startups 
+vorübergehend nicht verfügbar waren. Die Umstellung auf `/health` garantiert deterministische 
+Liveness-Checks, die nur prüfen, ob der Prozess läuft.
+
 **⚠️ FALSCH:** Verwenden Sie NICHT `/ready` für ECS Health Checks!
 ```json
 // ❌ NICHT SO:
@@ -347,6 +352,11 @@ DependencyHighLatency:
 - ✅ Temporäre Dependency-Probleme entfernen keine gesunden Targets
 - ✅ Traffic kann weiterhin bedient werden während Dependencies sich erholen
 - ✅ Bessere Availability bei partiellen Ausfällen
+
+**Historischer Kontext (PR #228):** Die ursprüngliche Konfiguration mit `/ready` für ALB Health 
+Checks führte zu ungewollten Target-Entfernungen bei temporären Dependency-Ausfällen. Container 
+wurden als unhealthy markiert und aus dem Load Balancer entfernt, obwohl der Service selbst 
+funktionsfähig war. Die Umstellung auf `/health` verhindert diese false negatives.
 
 **⚠️ FALSCH:** Verwenden Sie NICHT `/ready` für ALB Health Checks!
 ```typescript
