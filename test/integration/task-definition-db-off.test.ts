@@ -1,12 +1,15 @@
 /**
  * Integration Tests for Task Definition DB-Off Mode (Issue I-02-01-DB-OFF-MODE)
  * 
- * Tests that TaskDefinition contains no DB-Secrets and no DB-related environment variables
+ * Tests that TaskDefinition contains no DB secrets and no DB-related environment variables
  * when `afu9-enable-database=false` is set.
+ * 
+ * NOTE: These are manual test procedures documented in README style.
+ * Follow the commands in each test description to validate the implementation.
  */
 
 /**
- * Test: TaskDefinition enthält keine DB-Secrets
+ * Test: TaskDefinition contains no DB secrets
  * 
  * MANUAL TEST COMMAND:
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false -o /tmp/cdk.out
@@ -109,7 +112,7 @@ describe('Task Definition DB-Off - No DB Secrets', () => {
 });
 
 /**
- * Test: Keine Environment-Variablen mit DB-Referenzen
+ * Test: No environment variables with DB references
  * 
  * MANUAL TEST COMMAND:
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false -o /tmp/cdk.out

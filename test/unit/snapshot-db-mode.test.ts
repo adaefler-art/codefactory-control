@@ -1,9 +1,12 @@
 /**
  * Snapshot Tests for DB-On vs DB-Off Mode (Issue I-02-01-DB-OFF-MODE)
  * 
- * Tests CDK Snapshots for both modes and documents the differences.
+ * Manual test procedures that document CDK snapshots for both modes and the differences.
  * These tests validate that the infrastructure-as-code produces consistent,
  * expected output for both database-enabled and database-disabled configurations.
+ * 
+ * NOTE: These are manual test procedures documented in README style.
+ * Follow the commands in each test description to validate the implementation.
  */
 
 /**
@@ -146,7 +149,7 @@ describe('Snapshot Tests - DB-On Mode', () => {
 });
 
 /**
- * Test: Diff-Vergleich DB-On vs DB-Off
+ * Test: Diff Comparison DB-On vs DB-Off
  * 
  * MANUAL TEST COMMAND:
  *   diff -u test/snapshots/db-on/Afu9EcsStack.template.json test/snapshots/db-off/Afu9EcsStack.template.json | head -200

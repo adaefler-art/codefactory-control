@@ -2,11 +2,14 @@
  * Unit Tests for DB-Off Mode (Issue I-02-01-DB-OFF-MODE)
  * 
  * Tests CDK Context-Handling for `afu9-enable-database=false`
- * Validates Stack-Synthese without DB-Ressourcen
+ * Validates Stack Synthesis without DB Resources
+ * 
+ * NOTE: These are manual test procedures documented in README style.
+ * Follow the commands in each test description to validate the implementation.
  */
 
 /**
- * Test: CDK Context-Handling für `afu9-enable-database=false`
+ * Test: CDK Context-Handling for `afu9-enable-database=false`
  * 
  * MANUAL TEST COMMAND:
  *   npx cdk synth Afu9EcsStack -c afu9-enable-database=false -c afu9-enable-https=false
@@ -74,7 +77,7 @@ describe('DB-Off Mode - CDK Context Handling', () => {
 });
 
 /**
- * Test: Stack-Synthese ohne DB-Ressourcen
+ * Test: Stack Synthesis without DB Resources
  * 
  * MANUAL TEST COMMAND:
  *   npx cdk synth -c afu9-enable-database=false -c afu9-enable-https=false

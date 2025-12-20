@@ -2,14 +2,14 @@
  * E2E Tests for Deployment DB-Off Mode (Issue I-02-01-DB-OFF-MODE)
  * 
  * Tests deployment with `afu9-enable-database=false` and validates
- * that ECS Service starts without DB-Dependencies.
+ * that ECS Service starts without DB dependencies.
  * 
  * NOTE: These are manual E2E tests that require an AWS environment.
  * They document the expected behavior and validation steps.
  */
 
 /**
- * Test: Deployment mit `afu9-enable-database=false`
+ * Test: Deployment with `afu9-enable-database=false`
  * 
  * MANUAL TEST COMMAND:
  *   export AFU9_ENABLE_DATABASE=false
@@ -63,7 +63,7 @@ describe('Deployment DB-Off - CDK Deploy', () => {
 });
 
 /**
- * Test: ECS Service startet ohne DB-Dependencies
+ * Test: ECS Service starts without DB dependencies
  * 
  * MANUAL TEST COMMAND:
  *   aws ecs describe-tasks --cluster afu9-cluster --tasks <task-arn> --query 'tasks[0].lastStatus'
@@ -128,7 +128,7 @@ describe('Deployment DB-Off - ECS Service Health', () => {
 });
 
 /**
- * Test: Negativtests - Keine DB-Connection-Attempts im Application-Log
+ * Test: Negative Tests - No DB connection attempts in application logs
  * 
  * MANUAL TEST COMMAND:
  *   aws logs tail /ecs/afu9/control-center --follow --since 5m | grep -i "database\|postgres\|connection"
@@ -181,7 +181,7 @@ describe('Deployment DB-Off - Negative Tests', () => {
 });
 
 /**
- * Test: Healthcheck ignoriert DB-Status
+ * Test: Health checks ignore DB status
  * 
  * MANUAL TEST COMMAND:
  *   curl http://<alb-dns>/api/health
@@ -259,7 +259,7 @@ describe('Deployment DB-Off - Health Endpoints', () => {
 });
 
 /**
- * Test: CloudWatch Alarms arbeiten ohne DB-Metriken
+ * Test: CloudWatch Alarms work without DB metrics
  * 
  * MANUAL TEST COMMAND:
  *   aws cloudwatch describe-alarms --alarm-name-prefix afu9-
@@ -332,7 +332,7 @@ describe('Deployment DB-Off - CloudWatch Alarms', () => {
 });
 
 /**
- * Test: Rollback und Recovery
+ * Test: Rollback and Recovery
  * 
  * MANUAL TEST COMMAND:
  *   # Deploy with DB enabled first, then switch to DB disabled
