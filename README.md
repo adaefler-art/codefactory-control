@@ -17,6 +17,9 @@ Control-plane for AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture).
 - **v0.2**: Production-ready architecture on ECS with MCP pattern  
   **Features**: Control Center UI, MCP-based tool architecture, RDS persistence, scalable infrastructure, comprehensive alerting and monitoring with Red/Yellow/Green health indicators
 
+- **v0.4**: Enhanced Factory capabilities and comprehensive documentation  
+  **Documentation Hub**: [docs/v04/](docs/v04/) - Complete v0.4 planning, implementation summaries, quick references, and runbooks
+
 ## Repository Structure
 
 ```
