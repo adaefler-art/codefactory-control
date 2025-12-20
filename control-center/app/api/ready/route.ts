@@ -4,6 +4,27 @@ import { NextResponse } from 'next/server';
 // In a production system, this could be read from process.env.APP_VERSION
 const VERSION = '0.2.5';
 
+// MCP Server configuration - single source of truth
+const MCP_SERVERS = [
+  { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://127.0.0.1:3001' },
+  { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://127.0.0.1:3002' },
+  { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
+] as const;
+
+/**
+ * Build the list of required dependencies based on current configuration
+ */
+function getRequiredDependencies(): string[] {
+  const requiredDeps = ['environment'];
+  const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
+  
+  if (databaseEnabled) {
+    requiredDeps.push('database');
+  }
+  
+  return requiredDeps;
+}
+
 /**
  * Readiness check endpoint for validating service readiness to accept traffic
  * 
@@ -102,17 +123,12 @@ export async function GET() {
     // Check MCP servers health in production/staging, but do NOT gate readiness
     const env = process.env.NODE_ENV;
     const shouldCheckMCPServers = env === 'production' || env === 'staging';
-    const mcpServers = [
-      { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://127.0.0.1:3001' },
-      { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://127.0.0.1:3002' },
-      { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
-    ];
-
+    
     // Extract MCP server names for consistent reference
-    const mcpServerNames = mcpServers.map(s => s.name);
+    const mcpServerNames = MCP_SERVERS.map(s => s.name);
 
     if (shouldCheckMCPServers) {
-      for (const server of mcpServers) {
+      for (const server of MCP_SERVERS) {
         try {
           const startTime = Date.now();
           const response = await fetch(`${server.url}/health`, {
@@ -161,12 +177,6 @@ export async function GET() {
 
     const ready = !hasFailures;
 
-    // Build required dependencies list based on actual configuration
-    const requiredDeps = ['environment'];
-    if (databaseEnabled) {
-      requiredDeps.push('database');
-    }
-
     const response = {
       ready,
       service: 'afu9-control-center',
@@ -174,7 +184,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       checks,
       dependencies: {
-        required: requiredDeps,
+        required: getRequiredDependencies(),
         optional: shouldCheckMCPServers 
           ? mcpServerNames
           : [],
@@ -189,13 +199,6 @@ export async function GET() {
   } catch (error) {
     console.error('Readiness check failed:', error);
     
-    // Build required dependencies list for error response
-    const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
-    const requiredDeps = ['environment'];
-    if (databaseEnabled) {
-      requiredDeps.push('database');
-    }
-    
     return NextResponse.json(
       {
         ready: false,
@@ -207,7 +210,7 @@ export async function GET() {
           service: { status: 'error', message: 'Readiness check exception' }
         },
         dependencies: {
-          required: requiredDeps,
+          required: getRequiredDependencies(),
           optional: [],
         },
       },
