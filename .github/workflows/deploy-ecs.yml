@@ -121,7 +121,7 @@ jobs:
           fi
           echo "Real aws: $REAL_AWS"
 
-          cat > /tmp/aws-wrap-bin/aws <<EOF
+          cat > /tmp/aws-wrap-bin/aws <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
 
