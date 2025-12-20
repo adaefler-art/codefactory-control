@@ -288,12 +288,32 @@ jobs:
           set -euo pipefail
           echo "Creating new task definition for ${{ steps.vars.outputs.env_label }} with env-tagged images..."
 
-          TASK_DEF_ARN=$(aws ecs describe-services \
+          SERVICE_JSON=$(aws ecs describe-services \
             --cluster "${{ env.ECS_CLUSTER }}" \
             --services "${{ steps.vars.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
-            --query 'services[0].taskDefinition' \
-            --output text)
+            --output json)
+
+          if echo "$SERVICE_JSON" | jq -e '.failures | length > 0' >/dev/null; then
+            echo "❌ ECS describe-services reported failures:" >&2
+            echo "$SERVICE_JSON" | jq '.failures' >&2
+            exit 1
+          fi
+
+          if [ "$(echo "$SERVICE_JSON" | jq -r '.services | length')" = "0" ]; then
+            echo "❌ ECS service ${{ steps.vars.outputs.ecs_service }} not found in cluster ${{ env.ECS_CLUSTER }}" >&2
+            echo "Listing services for debugging:" >&2
+            aws ecs list-services --cluster "${{ env.ECS_CLUSTER }}" --region "${{ env.AWS_REGION }}" --output json >&2
+            exit 1
+          fi
+
+          TASK_DEF_ARN=$(echo "$SERVICE_JSON" | jq -r '.services[0].taskDefinition // ""')
+
+          if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
+            echo "❌ Task definition is empty for service ${{ steps.vars.outputs.ecs_service }}" >&2
+            echo "$SERVICE_JSON" | jq '.services[0]' >&2
+            exit 1
+          fi
 
           echo "Current task definition: $TASK_DEF_ARN"
 
