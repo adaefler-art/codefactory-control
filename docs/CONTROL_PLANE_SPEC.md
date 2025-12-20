@@ -19,20 +19,38 @@ Diese Spezifikation definiert die standardisierten Health- und Readiness-Endpunk
 
 **Verwendung**:
 - Kubernetes/ECS Liveness Probes
+- ALB Target Group Health Checks
 - Schnelle Verfügbarkeitschecks
 - Monitoring-Systeme
 
 **Anforderungen**:
-- Muss innerhalb von 1 Sekunde antworten
+- Muss innerhalb von 1 Sekunde antworten (Ziel: < 100ms)
 - Keine externen Dependency-Checks
 - Nur grundlegende Prozessüberprüfung
+- **MUSS IMMER 200 OK zurückgeben** - Deployment-Blocking-Garantie
+
+**⚠️ KRITISCHE GARANTIE - Deployment Safety:**
+Dieser Endpunkt MUSS unter allen Umständen 200 OK zurückgeben:
+- ✅ Auch bei internen Fehlern
+- ✅ Auch bei fehlenden Dependencies
+- ✅ Auch bei degradierter Performance
+- ✅ Auch während Startup/Shutdown
+
+**Begründung:** ECS und ALB nutzen diesen Endpunkt für Health Checks. 
+Ein 503-Response würde:
+- Container-Neustarts triggern
+- Healthy Targets aus dem Load Balancer entfernen
+- ECS Circuit Breaker aktivieren
+- Deployments blockieren und Rollbacks auslösen
+
+Für Dependency-Validierung **MUSS** `/ready` verwendet werden.
 
 **Request**:
 ```
 GET /health
 ```
 
-**Response Format** (200 OK):
+**Response Format** (200 OK - Standard):
 ```json
 {
   "status": "ok",
@@ -42,20 +60,22 @@ GET /health
 }
 ```
 
-**Response Format** (503 Service Unavailable):
+**Response Format** (200 OK - Mit Warnung):
 ```json
 {
-  "status": "error",
+  "status": "ok",
   "service": "mcp-github",
   "version": "0.2.0",
-  "error": "Service not initialized",
-  "timestamp": "2025-12-16T17:00:00.000Z"
+  "timestamp": "2025-12-16T17:00:00.000Z",
+  "warning": "Health check executed with degraded performance"
 }
 ```
 
 **Status Codes**:
-- `200 OK`: Service ist betriebsbereit
-- `503 Service Unavailable`: Service ist nicht verfügbar
+- `200 OK`: Service ist betriebsbereit (EINZIGER erlaubter Status-Code)
+
+**⚠️ DEPRECATED:** 503 Service Unavailable ist für `/health` nicht mehr erlaubt.
+Verwenden Sie `/ready` für Status-Checks, die fehlschlagen können.
 
 ---
 
@@ -64,15 +84,25 @@ GET /health
 **Zweck**: Umfassende Readiness-Probe - bestätigt, dass der Service bereit ist, Traffic zu verarbeiten.
 
 **Verwendung**:
-- Kubernetes/ECS Readiness Probes
-- ALB Health Checks
-- Deployment-Validierung
-- Pre-traffic Checks
+- Kubernetes/ECS Readiness Probes (wenn separat von Health konfiguriert)
+- Pre-Deployment Validierung
+- Manuelle Status-Überprüfung
+- Debugging von Dependency-Problemen
+
+**⚠️ WICHTIG - Deployment Safety:**
+Dieser Endpunkt darf **NICHT** für ECS Container Health Checks oder ALB Target Group Health Checks verwendet werden, da er 503 zurückgeben kann und damit:
+- Container-Neustarts auslösen würde
+- Healthy Targets aus dem Load Balancer entfernen würde
+- Deployments blockieren würde
+
+**Verwenden Sie `/health` für ECS/ALB Health Checks!**
 
 **Anforderungen**:
 - Muss innerhalb von 5 Sekunden antworten
 - **Muss** alle kritischen Dependencies prüfen
 - Detaillierte Status-Informationen für jede Dependency
+- **Darf 503 zurückgeben** wenn Required Dependencies fehlen
+- Optional Dependencies dürfen Readiness nicht blockieren
 
 **Request**:
 ```
@@ -256,7 +286,7 @@ DependencyHighLatency:
 
 ### ECS Task Definition
 
-Beispiel Health Check Konfiguration:
+**KRITISCH:** Verwenden Sie ausschließlich `/health` für ECS Container Health Checks:
 
 ```json
 {
@@ -273,9 +303,26 @@ Beispiel Health Check Konfiguration:
 }
 ```
 
+**Warum `/health` und nicht `/ready`?**
+- ✅ Verhindert unnötige Container-Neustarts bei Dependency-Problemen
+- ✅ Deployments können auch bei temporären Dependency-Ausfällen erfolgen
+- ✅ ECS Circuit Breaker wird nicht bei Dependency-Problemen aktiviert
+- ✅ Container bleibt am Leben und kann sich selbst heilen
+
+**⚠️ FALSCH:** Verwenden Sie NICHT `/ready` für ECS Health Checks!
+```json
+// ❌ NICHT SO:
+{
+  "healthCheck": {
+    "command": ["CMD-SHELL", "curl -f http://localhost:3001/ready || exit 1"]
+  }
+}
+// Dies würde Container bei Dependency-Problemen töten!
+```
+
 ### ALB Target Group
 
-Empfohlene Health Check Konfiguration:
+**KRITISCH:** Verwenden Sie ausschließlich `/health` für ALB Target Group Health Checks:
 
 ```typescript
 {
@@ -295,26 +342,74 @@ Empfohlene Health Check Konfiguration:
 }
 ```
 
-**Wichtig:** ALB Health Checks müssen auf `/health` (bzw. `/api/health` für Control Center) zeigen.
-Dies ist ein **Liveness Probe** ohne Dependencies.
+**Warum `/health` und nicht `/ready`?**
+- ✅ Healthy Container bleiben im Load Balancer
+- ✅ Temporäre Dependency-Probleme entfernen keine gesunden Targets
+- ✅ Traffic kann weiterhin bedient werden während Dependencies sich erholen
+- ✅ Bessere Availability bei partiellen Ausfällen
 
-`/ready` ist für **Readiness Checks** gedacht und kann 503 zurückgeben wenn Dependencies fehlen.
-Verwende `/ready` nicht für ALB Health Checks.
+**⚠️ FALSCH:** Verwenden Sie NICHT `/ready` für ALB Health Checks!
+```typescript
+// ❌ NICHT SO:
+{
+  healthCheck: {
+    path: '/ready',  // Würde gesunde Targets bei Dependency-Problemen entfernen!
+  }
+}
+```
+
+**RICHTIG:** `/ready` nur für manuelle Validierung und Pre-Deployment Checks:
+```bash
+# ✅ SO: Manuelle Readiness-Validierung vor Deployment
+curl https://staging.example.com/api/ready
+
+# ✅ SO: Pre-Deployment Check in CI/CD
+if ! curl -f https://staging.example.com/api/ready; then
+  echo "Service not ready, check dependencies"
+  exit 1
+fi
+```
 
 ---
 
 ## Best Practices
 
-### 1. Fail Fast
-- Health Checks sollten sofort fehlschlagen, wenn der Service nicht betriebsbereit ist
-- Keine Retries innerhalb des Health Checks
+### 1. Endpunkt-Verwendung
 
-### 2. Timeout Management
-- Health Check: max 1s
+**Health (`/health`):**
+- ✅ ECS Container Health Checks
+- ✅ ALB Target Group Health Checks
+- ✅ Uptime Monitoring
+- ✅ Basic Availability Checks
+- ❌ NICHT für Dependency-Validierung
+- ❌ NICHT für Pre-Deployment Checks
+
+**Ready (`/ready`):**
+- ✅ Pre-Deployment Validierung
+- ✅ Manuelle Status-Überprüfung
+- ✅ Debugging von Dependency-Problemen
+- ✅ Capacity Planning (Dependency Load)
+- ❌ NICHT für ECS Health Checks
+- ❌ NICHT für ALB Health Checks
+
+### 2. Fail Fast vs Fail Safe
+
+**Health Endpoint - Fail Safe:**
+- Gibt IMMER 200 OK zurück
+- Auch bei internen Fehlern
+- Bevorzugt Verfügbarkeit über Korrektheit
+
+**Readiness Endpoint - Fail Fast:**
+- Gibt 503 bei fehlenden Required Dependencies
+- Gibt 200 bei fehlenden Optional Dependencies
+- Bevorzugt Korrektheit über Verfügbarkeit
+
+### 3. Timeout Management
+- Health Check: max 1s (Ziel: < 100ms)
 - Readiness Check: max 5s
 - Dependency Checks: individuelle Timeouts (1-3s)
 
-### 3. Logging
+### 4. Logging
 Alle Health/Readiness Checks sollen geloggt werden:
 
 ```json

@@ -5,18 +5,33 @@ import { NextResponse } from 'next/server';
 const VERSION = '0.2.5';
 
 /**
- * Readiness check endpoint for Kubernetes-style readiness probes
+ * Readiness check endpoint for validating service readiness to accept traffic
  * 
- * This endpoint performs deeper checks than /api/health:
- * - Database connectivity (if configured)
- * - MCP server availability (if in production mode)
+ * **READINESS PROBE** - This endpoint checks if the service is ready to handle requests.
+ * 
+ * Unlike /api/health (liveness probe), this endpoint:
+ * - Validates all critical dependencies (database, environment)
+ * - Checks optional dependencies (MCP servers) without blocking
+ * - Returns 503 if any REQUIRED dependency is unavailable
+ * - Can safely fail without triggering deployment rollbacks
+ * 
+ * Critical dependencies (MUST be available):
+ * - Database connectivity (if DATABASE_ENABLED=true)
+ * - Essential environment variables
+ * 
+ * Optional dependencies (monitored but non-blocking):
+ * - MCP servers (mcp-github, mcp-deploy, mcp-observability)
  * 
  * Returns:
  * - 200 OK if service is ready to accept traffic
- * - 503 Service Unavailable if service is not ready
+ * - 503 Service Unavailable if service is not ready (missing required dependencies)
  * 
- * ALB should use this endpoint for health checks to ensure traffic
- * is only routed to fully initialized instances.
+ * Response time target: < 5 seconds
+ * 
+ * NOTE: Do NOT use this endpoint for ECS/ALB health checks as it can return 503
+ * during startup or when dependencies are temporarily unavailable. Use /api/health instead.
+ * 
+ * @see /api/health for liveness checks (always returns 200)
  */
 export async function GET() {
   try {
