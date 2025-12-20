@@ -2,9 +2,10 @@
  * AFU-9 Verdict Engine Constants
  * 
  * Centralized constants for the Verdict Engine
+ * - Issue B2: Simplified Verdict → Action Mapping
  */
 
-import { VerdictType } from './types';
+import { VerdictType, SimpleVerdict, SimpleAction } from './types';
 import type { FactoryAction } from '@codefactory/deploy-memory';
 
 /**
@@ -69,3 +70,58 @@ export const CONFIDENCE_SCALE = {
   MIN: 0,
   MAX: 100,
 } as const;
+
+/**
+ * Issue B2: Simplified Verdict → Action Mapping
+ * 
+ * Each verdict has exactly one action.
+ * This provides a clear, deterministic mapping for operational decision-making.
+ */
+
+/**
+ * Canonical mapping: SimpleVerdict → SimpleAction (1:1)
+ * 
+ * Each verdict type maps to exactly one action, ensuring deterministic behavior.
+ */
+export const SIMPLE_VERDICT_TO_ACTION: Record<SimpleVerdict, SimpleAction> = {
+  [SimpleVerdict.GREEN]: SimpleAction.ADVANCE,
+  [SimpleVerdict.RED]: SimpleAction.ABORT,
+  [SimpleVerdict.HOLD]: SimpleAction.FREEZE,
+  [SimpleVerdict.RETRY]: SimpleAction.RETRY_OPERATION,
+} as const;
+
+/**
+ * Mapping: VerdictType → SimpleVerdict
+ * 
+ * Converts detailed VerdictType to simplified SimpleVerdict for operational use.
+ * Multiple VerdictTypes can map to the same SimpleVerdict.
+ */
+export const VERDICT_TYPE_TO_SIMPLE: Record<VerdictType, SimpleVerdict> = {
+  [VerdictType.APPROVED]: SimpleVerdict.GREEN,
+  [VerdictType.WARNING]: SimpleVerdict.GREEN,    // Proceed with caution
+  [VerdictType.REJECTED]: SimpleVerdict.RED,
+  [VerdictType.ESCALATED]: SimpleVerdict.HOLD,
+  [VerdictType.BLOCKED]: SimpleVerdict.HOLD,
+  [VerdictType.DEFERRED]: SimpleVerdict.RETRY,
+  [VerdictType.PENDING]: SimpleVerdict.RETRY,    // Retry if still in progress
+} as const;
+
+/**
+ * List of all simple verdict types
+ */
+export const SIMPLE_VERDICTS = [
+  SimpleVerdict.GREEN,
+  SimpleVerdict.RED,
+  SimpleVerdict.HOLD,
+  SimpleVerdict.RETRY,
+] as const;
+
+/**
+ * List of all simple action types
+ */
+export const SIMPLE_ACTIONS = [
+  SimpleAction.ADVANCE,
+  SimpleAction.ABORT,
+  SimpleAction.FREEZE,
+  SimpleAction.RETRY_OPERATION,
+] as const;

@@ -1,11 +1,13 @@
 # Verdict Engine v1.1 - Governance & Auditability
 
 **EPIC 2 Implementation** - Provides governance, auditability, and deterministic verdict evaluation for AFU-9.  
-**EPIC B Implementation** - Canonical verdict types for decision authority.
+**EPIC B Implementation** - Canonical verdict types for decision authority.  
+**Issue B2 Implementation** - Simplified Verdict → Action Mapping (GREEN/RED/HOLD/RETRY).
 
 **📖 Complete Documentation:** 
 - [Confidence Score Schema](../../docs/CONFIDENCE_SCORE_SCHEMA.md) - Confidence score normalization
 - [Verdict Types](../../docs/VERDICT_TYPES.md) - Canonical verdict types and decision logic
+- [Issue B2 Implementation](./ISSUE_B2_IMPLEMENTATION.md) - Simplified verdict system
 
 ## Overview
 
@@ -14,6 +16,7 @@ The Verdict Engine v1.1 enhances the AFU-9 system with:
 1. **Policy Snapshotting** (Issue 2.1): Immutable policy snapshots per run for full auditability
 2. **Confidence Score Normalization** (Issue 2.2): Deterministic 0-100 scale confidence scoring
 3. **Canonical Verdict Types** (EPIC B): Standardized decision outcomes (APPROVED, REJECTED, DEFERRED, etc.)
+4. **Simplified Verdict System** (Issue B2): 1:1 verdict-to-action mapping (GREEN→ADVANCE, RED→ABORT, etc.)
 
 ## Key Features
 
@@ -46,7 +49,64 @@ console.log(verdict.error_class);  // 'ACM_DNS_VALIDATION_PENDING'
 console.log(verdict.proposed_action); // 'WAIT_AND_RETRY'
 ```
 
-### 2. Normalized Confidence Scores
+### 2. Simplified Verdict System (Issue B2)
+
+**Each verdict has exactly one action** - a simplified system for operational decision-making:
+
+| Verdict | Action | Description |
+|---------|--------|-------------|
+| **GREEN** 🟢 | ADVANCE | Advance/Deploy/Next State |
+| **RED** 🔴 | ABORT | Abort/Rollback/Kill |
+| **HOLD** 🟡 | FREEZE | Freeze + Human Review |
+| **RETRY** 🔵 | RETRY_OPERATION | Deterministic retry attempt |
+
+**For complete documentation including mappings and usage examples, see:** [Issue B2 Implementation](./ISSUE_B2_IMPLEMENTATION.md)
+
+```typescript
+import { 
+  SimpleVerdict, 
+  SimpleAction,
+  toSimpleVerdict, 
+  getSimpleAction,
+  getActionForVerdictType
+} from '@codefactory/verdict-engine';
+
+// Convert detailed verdict to simplified verdict
+const simpleVerdict = toSimpleVerdict(verdict.verdict_type);
+// Returns: SimpleVerdict.RETRY (for DEFERRED)
+
+// Get exact action for simple verdict (1:1 mapping)
+const action = getSimpleAction(simpleVerdict);
+// Returns: SimpleAction.RETRY_OPERATION
+
+// Or get action directly from verdict type
+const directAction = getActionForVerdictType(verdict.verdict_type);
+// Returns: SimpleAction.RETRY_OPERATION
+
+// Use in workflow automation
+switch (action) {
+  case SimpleAction.ADVANCE:
+    await proceedToNextStage();
+    break;
+  case SimpleAction.ABORT:
+    await abortWorkflow();
+    break;
+  case SimpleAction.FREEZE:
+    await requestHumanReview();
+    break;
+  case SimpleAction.RETRY_OPERATION:
+    await scheduleRetry();
+    break;
+}
+```
+
+**Mapping: VerdictType → SimpleVerdict**
+- APPROVED, WARNING → GREEN
+- REJECTED → RED
+- ESCALATED, BLOCKED → HOLD
+- DEFERRED, PENDING → RETRY
+
+### 3. Normalized Confidence Scores
 
 All confidence scores are normalized to a 0-100 integer scale:
 
@@ -89,7 +149,7 @@ Policy snapshots are:
 - **Referenced**: Every verdict links to its policy snapshot
 - **Auditable**: Full history preserved for compliance
 
-### 3. Complete Auditability
+### 4. Complete Auditability
 
 Every verdict includes:
 - Execution ID (which workflow run)
