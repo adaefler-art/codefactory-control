@@ -295,16 +295,21 @@ healthCheck: {
 ALB Health Check:
 ```typescript
 healthCheck: {
-  path: '/api/ready',
+  path: '/api/health',  // Changed from /api/ready to avoid false negatives
   interval: cdk.Duration.seconds(30),
   timeout: cdk.Duration.seconds(5),
   healthyThresholdCount: 2,
   unhealthyThresholdCount: 3,
+  protocol: elbv2.Protocol.HTTP,
 }
 ```
-- Uses `/api/ready` (readiness probe)
+- Uses `/api/health` (liveness probe)
 - 2 consecutive successes = healthy
 - 3 consecutive failures = unhealthy
+
+**Historical Note:** Previously used `/api/ready`, but this caused ECS rollbacks when database
+or MCP dependencies were temporarily unavailable during startup. Changed to `/api/health` for
+deterministic liveness checks.
 
 ---
 

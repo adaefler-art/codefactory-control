@@ -317,13 +317,13 @@ Health checks are configured in ECS task definitions:
 
 ### ALB Target Group
 
-Application Load Balancer uses `/ready` for health checks:
+Application Load Balancer uses `/api/health` for health checks:
 
 ```typescript
 {
   healthCheck: {
     enabled: true,
-    path: '/ready',
+    path: '/api/health',  // Liveness probe - always 200 when process is alive
     protocol: 'HTTP',
     port: 'traffic-port',
     interval: cdk.Duration.seconds(30),
@@ -336,6 +336,9 @@ Application Load Balancer uses `/ready` for health checks:
   }
 }
 ```
+
+**Note:** ALB health checks use `/api/health` (liveness) to avoid false negatives during startup.
+`/api/ready` remains available for manual readiness checks and future Kubernetes deployments.
 
 ## KPIs
 

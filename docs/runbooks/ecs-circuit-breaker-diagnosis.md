@@ -234,7 +234,7 @@ done
 
 ## 4️⃣ Target Health prüfen (1 Minute)
 
-**Warum:** ALB Target Group Health zeigt, ob Tasks erreichbar sind und `/api/ready` responds.
+**Warum:** ALB Target Group Health zeigt, ob Tasks erreichbar sind und `/api/health` responds.
 
 ```bash
 # Service-Info holen um Target Group ARN zu finden

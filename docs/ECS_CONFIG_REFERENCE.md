@@ -309,7 +309,7 @@ healthCheck: {
 
 ```typescript
 healthCheck: {
-  path: '/api/ready',
+  path: '/api/health',
   interval: cdk.Duration.seconds(30),
   timeout: cdk.Duration.seconds(5),
   healthyThresholdCount: 2,
@@ -318,11 +318,14 @@ healthCheck: {
 }
 ```
 
-**Endpoint:** `/api/ready`  
-**Purpose:** Readiness probe (comprehensive check including DB)  
+**Endpoint:** `/api/health`  
+**Purpose:** Liveness probe (basic process check, no dependencies)  
 **Expected Response:**
-- `200 OK` if ready
-- `503 Service Unavailable` if not ready
+- Always `200 OK` when Node.js process is running
+- JSON: `{status: "ok", service: "afu9-control-center", version: "...", timestamp: "..."}`
+
+**Important:** ALB uses `/api/health` to avoid false negatives during startup.
+Use `/api/ready` for manual readiness checks only.
 
 ### Health Check Grace Period
 
