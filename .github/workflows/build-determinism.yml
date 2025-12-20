@@ -36,7 +36,7 @@ jobs:
         id: build-cc-1
         uses: docker/build-push-action@v5
         with:
-          context: ./control-center
+          context: .
           file: ./control-center/Dockerfile
           push: false
           load: true
@@ -47,7 +47,7 @@ jobs:
         id: build-cc-2
         uses: docker/build-push-action@v5
         with:
-          context: ./control-center
+          context: .
           file: ./control-center/Dockerfile
           push: false
           load: true

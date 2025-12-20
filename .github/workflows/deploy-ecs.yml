@@ -154,7 +154,7 @@ jobs:
       - name: Build and push Control Center
         uses: docker/build-push-action@v5
         with:
-          context: ./control-center
+          context: .
           file: ./control-center/Dockerfile
           push: true
           tags: |
