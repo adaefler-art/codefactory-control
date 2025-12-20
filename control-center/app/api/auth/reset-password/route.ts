@@ -73,48 +73,50 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Password reset successful',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Reset password error:', error);
 
     // Handle specific Cognito errors
-    if (error.name === 'CodeMismatchException') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid verification code',
-        },
-        { status: 400 }
-      );
-    }
+    if (error instanceof Error) {
+      if (error.name === 'CodeMismatchException') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid verification code',
+          },
+          { status: 400 }
+        );
+      }
 
-    if (error.name === 'ExpiredCodeException') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Verification code has expired',
-        },
-        { status: 400 }
-      );
-    }
+      if (error.name === 'ExpiredCodeException') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Verification code has expired',
+          },
+          { status: 400 }
+        );
+      }
 
-    if (error.name === 'InvalidPasswordException') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Password does not meet requirements',
-        },
-        { status: 400 }
-      );
-    }
+      if (error.name === 'InvalidPasswordException') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Password does not meet requirements',
+          },
+          { status: 400 }
+        );
+      }
 
-    if (error.name === 'LimitExceededException') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Too many attempts. Please try again later.',
-        },
-        { status: 429 }
-      );
+      if (error.name === 'LimitExceededException') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Too many attempts. Please try again later.',
+          },
+          { status: 429 }
+        );
+      }
     }
 
     // Generic error response

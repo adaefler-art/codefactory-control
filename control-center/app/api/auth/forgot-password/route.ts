@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'If the email address exists, a password reset code has been sent.',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Forgot password error:', error);
 
     // Don't reveal specific error details for security
