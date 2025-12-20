@@ -108,6 +108,37 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Enable AWS CLI AccessDenied logging
+        shell: bash
+        run: |
+          set -euo pipefail
+          REAL_AWS="$(command -v aws)"
+          mkdir -p /tmp/aws-wrap-bin
+          cat > /tmp/aws-wrap-bin/aws <<EOF
+          #!/usr/bin/env bash
+          set -o pipefail
+          REAL_AWS="${REAL_AWS}"
+          err_log="$(mktemp)"
+          out_log="$(mktemp)"
+
+          # Execute underlying aws CLI while tee-ing stderr/stdout for visibility
+          "${REAL_AWS}" "$@" 2> >(tee "${err_log}" >&2) | tee "${out_log}"
+          status=${PIPESTATUS[0]}
+
+          if [ ${status} -ne 0 ]; then
+            if grep -qi 'AccessDenied' "${err_log}"; then
+              echo "❌ AccessDenied detected while running: aws $*" >&2
+              grep -i 'AccessDenied' "${err_log}" >&2 || true
+              grep -i 'is not authorized' "${err_log}" >&2 || true
+            fi
+          fi
+
+          rm -f "${err_log}" "${out_log}"
+          exit ${status}
+          EOF
+          chmod +x /tmp/aws-wrap-bin/aws
+          echo "/tmp/aws-wrap-bin" >> "$GITHUB_PATH"
+
       - name: Verify AWS OIDC Authentication
         shell: bash
         run: |
