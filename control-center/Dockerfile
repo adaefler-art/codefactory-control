@@ -21,17 +21,23 @@ RUN npm ci && npm cache clean --force
 # Stage 2: Build
 FROM node:20.10.0-bookworm-slim AS builder
 ARG APP_DIR
+ARG BUILD_VERSION
+ARG BUILD_COMMIT_HASH
+ARG BUILD_ENV
 WORKDIR /app/${APP_DIR}
 
 # Set deterministic build timestamp
 ENV SOURCE_DATE_EPOCH=0
 ENV SKIP_PREBUILD=1
+ENV BUILD_VERSION=${BUILD_VERSION}
+ENV BUILD_COMMIT_HASH=${BUILD_COMMIT_HASH}
+ENV BUILD_ENV=${BUILD_ENV}
 
 COPY --from=deps /app/${APP_DIR}/node_modules ./node_modules
 COPY --from=deps /app/packages /app/packages
 COPY control-center/ ./
 
-RUN SKIP_PREBUILD=1 npm run build
+RUN npm run build
 
 # Stage 3: Production
 FROM node:20.10.0-bookworm-slim AS runner

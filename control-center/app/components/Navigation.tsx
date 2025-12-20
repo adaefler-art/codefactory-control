@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const navItems = [
     { href: "/workflows", label: "Workflows" },
@@ -17,6 +18,21 @@ export default function Navigation() {
 
   const isActive = (href: string) => {
     return pathname === href;
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      // Redirect to login page
+      router.push("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Redirect anyway
+      router.push("/login");
+    }
   };
 
   return (
@@ -48,6 +64,12 @@ export default function Navigation() {
                 {item.label}
               </Link>
             ))}
+            <button
+              onClick={handleLogout}
+              className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+            >
+              Abmelden
+            </button>
           </div>
         </div>
       </div>
