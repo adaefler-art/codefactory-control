@@ -150,6 +150,10 @@ export class Afu9IamStack extends cdk.Stack {
           `arn:aws:ecs:${this.region}:${this.account}:cluster/afu9-cluster`,
           `arn:aws:ecs:${this.region}:${this.account}:service/afu9-cluster/*`,
           `arn:aws:ecs:${this.region}:${this.account}:task/afu9-cluster/*`,
+          // Staging cluster resources
+          `arn:aws:ecs:${this.region}:${this.account}:cluster/afu9-cluster-staging`,
+          `arn:aws:ecs:${this.region}:${this.account}:service/afu9-cluster-staging/*`,
+          `arn:aws:ecs:${this.region}:${this.account}:task/afu9-cluster-staging/*`,
         ],
       })
     );
@@ -163,6 +167,34 @@ export class Afu9IamStack extends cdk.Stack {
           'ecs:RegisterTaskDefinition',
         ],
         // Task definition APIs require wildcard resources to cover revisions created at runtime
+        resources: ['*'],
+      })
+    );
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ECSListGlobal',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecs:ListTasks',
+          'ecs:ListServices',
+          'ecs:ListClusters',
+        ],
+        // List* calls require wildcard scope
+        resources: ['*'],
+      })
+    );
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ELBv2DescribeGlobal',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'elasticloadbalancing:DescribeLoadBalancers',
+          'elasticloadbalancing:DescribeTargetGroups',
+          'elasticloadbalancing:DescribeListeners',
+          'elasticloadbalancing:DescribeRules',
+        ],
         resources: ['*'],
       })
     );
