@@ -25,6 +25,7 @@ import {
   updateStep,
   incrementStepRetry,
   pauseExecution,
+  abortExecution,
 } from './workflow-persistence';
 import { checkDatabase, getPool } from './db';
 import { logger } from './logger';
@@ -306,6 +307,41 @@ export class WorkflowEngine {
           }
           
           // Break execution loop - no timeout continuation
+          break;
+        }
+
+        // Issue B5: Check if workflow should be aborted due to RED verdict
+        const abortCheck = this.shouldAbortForRed(context);
+        if (abortCheck.shouldAbort) {
+          console.log(`[Workflow Engine] RED verdict detected - aborting workflow at step ${i}`);
+          console.log(`[Workflow Engine] Abort reason: ${abortCheck.reason}`);
+          
+          if (dbAvailable) {
+            try {
+              await abortExecution(
+                executionId,
+                'system',
+                abortCheck.reason || 'RED verdict triggered',
+                i,
+                abortCheck.verdictInfo
+              );
+              status = 'failed';
+              error = abortCheck.reason;
+              
+              if (isDebugEnabled) {
+                logger.debug('Workflow aborted due to RED verdict', {
+                  executionId,
+                  stepIndex: i,
+                  reason: abortCheck.reason,
+                  verdictInfo: abortCheck.verdictInfo,
+                }, 'WorkflowEngine');
+              }
+            } catch (abortError) {
+              console.error('[Workflow Engine] Failed to abort execution:', abortError);
+            }
+          }
+          
+          // Break execution loop immediately - RED ist hart (no discussion)
           break;
         }
       }
@@ -639,6 +675,72 @@ export class WorkflowEngine {
       context.variables?.issue?.state === IssueState.HOLD ||
       context.variables?.issueState === IssueState.HOLD
     );
+  }
+
+  /**
+   * Check if workflow should be aborted due to RED verdict (Issue B5)
+   * 
+   * RED enforcement: If a RED verdict is detected, the workflow must abort immediately.
+   * RED ist hart (RED is strict) - no discussion, no continuation.
+   * 
+   * @param context - Workflow execution context
+   * @returns Abort information if workflow should abort, null otherwise
+   */
+  private shouldAbortForRed(context: WorkflowContext): {
+    shouldAbort: boolean;
+    reason?: string;
+    verdictInfo?: any;
+  } {
+    // Check for RED verdict in multiple locations in context
+    const variables = context.variables || {};
+    
+    // Check for SimpleVerdict.RED
+    if (variables.simpleVerdict === 'RED' || 
+        variables.verdict?.simpleVerdict === 'RED') {
+      return {
+        shouldAbort: true,
+        reason: 'RED verdict triggered - critical failure detected',
+        verdictInfo: {
+          simpleVerdict: 'RED',
+          verdictType: variables.verdict?.verdictType || variables.verdictType,
+          action: variables.verdict?.action || variables.action,
+          errorClass: variables.verdict?.errorClass || variables.errorClass,
+        },
+      };
+    }
+    
+    // Check for VerdictType.REJECTED (maps to RED)
+    if (variables.verdictType === 'REJECTED' ||
+        variables.verdict?.verdictType === 'REJECTED') {
+      return {
+        shouldAbort: true,
+        reason: 'REJECTED verdict triggered - deployment rejected',
+        verdictInfo: {
+          verdictType: 'REJECTED',
+          simpleVerdict: 'RED',
+          action: variables.verdict?.action || variables.action || 'ABORT',
+          errorClass: variables.verdict?.errorClass || variables.errorClass,
+        },
+      };
+    }
+    
+    // Check for SimpleAction.ABORT
+    if (variables.action === 'ABORT' ||
+        variables.verdict?.action === 'ABORT' ||
+        variables.simpleAction === 'ABORT') {
+      return {
+        shouldAbort: true,
+        reason: 'ABORT action triggered - workflow must terminate',
+        verdictInfo: {
+          action: 'ABORT',
+          simpleVerdict: variables.verdict?.simpleVerdict || variables.simpleVerdict || 'RED',
+          verdictType: variables.verdict?.verdictType || variables.verdictType,
+          errorClass: variables.verdict?.errorClass || variables.errorClass,
+        },
+      };
+    }
+    
+    return { shouldAbort: false };
   }
 
   /**

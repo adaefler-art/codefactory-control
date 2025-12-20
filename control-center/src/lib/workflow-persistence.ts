@@ -504,3 +504,120 @@ export async function getPausedExecutions(): Promise<WorkflowExecutionRow[]> {
     throw error;
   }
 }
+
+/**
+ * Abort a workflow execution due to RED verdict (Issue B5)
+ * 
+ * RED enforcement: Immediately aborts the workflow execution.
+ * No continuation is allowed. The workflow is marked as 'failed' with abort metadata.
+ * 
+ * @param executionId - The workflow execution ID
+ * @param abortedBy - User/system that triggered the abort (e.g., "system", "verdict-engine")
+ * @param reason - Reason for aborting (e.g., "RED verdict triggered - critical failure detected")
+ * @param abortedAtStepIndex - Optional step index where abort occurred
+ * @param verdictInfo - Optional verdict information for traceability
+ * @throws Error if execution does not exist
+ */
+export async function abortExecution(
+  executionId: string,
+  abortedBy: string,
+  reason: string,
+  abortedAtStepIndex?: number,
+  verdictInfo?: {
+    verdictType?: string;
+    simpleVerdict?: string;
+    action?: string;
+    errorClass?: string;
+  }
+): Promise<void> {
+  const pool = getPool();
+  
+  const abortMetadata = {
+    abortedAt: new Date().toISOString(),
+    abortedBy,
+    reason,
+    abortedAtStepIndex,
+    verdictInfo,
+  };
+  
+  // Update to 'failed' status with abort metadata
+  // Allow aborting from 'running' or 'paused' states
+  const query = `
+    UPDATE workflow_executions
+    SET status = 'failed',
+        error = $2,
+        completed_at = NOW(),
+        pause_metadata = jsonb_set(
+          COALESCE(pause_metadata, '{}'::jsonb),
+          '{abortMetadata}',
+          $3::jsonb
+        ),
+        updated_at = NOW()
+    WHERE id = $1 AND status IN ('running', 'paused')
+    RETURNING id
+  `;
+
+  const values = [
+    executionId,
+    reason,
+    JSON.stringify(abortMetadata),
+  ];
+
+  try {
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      throw new Error(
+        `Cannot abort execution ${executionId}: execution not found or already completed/failed`
+      );
+    }
+    
+    console.log('[Workflow Persistence] Aborted execution:', {
+      executionId,
+      abortedBy,
+      reason,
+      abortedAtStepIndex,
+      verdictInfo,
+    });
+  } catch (error) {
+    console.error('[Workflow Persistence] Failed to abort execution:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get all aborted workflow executions (Issue B5)
+ * 
+ * Returns all workflows that were aborted due to RED verdict or other critical failures.
+ */
+export async function getAbortedExecutions(): Promise<WorkflowExecutionRow[]> {
+  const pool = getPool();
+  const query = `
+    SELECT 
+      id,
+      workflow_id,
+      status,
+      started_at,
+      completed_at,
+      error,
+      pause_metadata,
+      context,
+      input,
+      triggered_by,
+      github_run_id,
+      created_at,
+      updated_at
+    FROM workflow_executions
+    WHERE status = 'failed'
+      AND pause_metadata ? 'abortMetadata'
+    ORDER BY completed_at DESC
+  `;
+
+  try {
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error('[Workflow Persistence] Failed to get aborted executions:', error);
+    throw error;
+  }
+}
