@@ -1,0 +1,197 @@
+name: Deploy CDK Stack with Diff Gate
+
+# Example workflow demonstrating CDK diff-gate validation
+# This workflow should be used when deploying CDK infrastructure stacks
+# (not just ECS task definition updates)
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'CDK Stack to deploy'
+        required: true
+        type: choice
+        options:
+          - Afu9NetworkStack
+          - Afu9DatabaseStack
+          - Afu9EcsStack
+          - Afu9AlarmsStack
+          - Afu9IamStack
+          - Afu9DeployMemoryStack
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      skip_diff_gate:
+        description: 'Skip diff gate (NOT recommended)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  validate-and-deploy:
+    name: Validate Diff and Deploy CDK Stack
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CDK project
+        run: npm run build
+
+      - name: CDK Diff Gate - Validate Changes
+        if: ${{ !inputs.skip_diff_gate }}
+        run: |
+          echo "========================================="
+          echo "CDK Diff Gate Validation"
+          echo "========================================="
+          echo "Stack: ${{ inputs.stack_name }}"
+          echo "Environment: ${{ inputs.environment }}"
+          echo ""
+          
+          # Run diff gate validation
+          npm run validate:diff -- ${{ inputs.stack_name }} \
+            -c environment=${{ inputs.environment }} \
+            -c afu9-enable-https=false
+          
+          DIFF_RESULT=$?
+          
+          if [ $DIFF_RESULT -eq 0 ]; then
+            echo ""
+            echo "✅ Diff gate PASSED - Safe to deploy"
+          elif [ $DIFF_RESULT -eq 1 ]; then
+            echo ""
+            echo "❌ Diff gate BLOCKED - Contains blocking changes"
+            echo "Review the blocking changes above and get approval before deploying"
+            exit 1
+          else
+            echo ""
+            echo "❌ Diff gate ERROR - Script failed"
+            exit 2
+          fi
+
+      - name: CDK Diff Gate - SKIPPED
+        if: ${{ inputs.skip_diff_gate }}
+        run: |
+          echo "⚠️ ⚠️ ⚠️ WARNING ⚠️ ⚠️ ⚠️"
+          echo "Diff gate validation has been SKIPPED"
+          echo "This is NOT recommended for production deployments"
+          echo "Proceed with extreme caution"
+          echo ""
+
+      - name: Deploy CDK Stack
+        run: |
+          echo "========================================="
+          echo "Deploying CDK Stack"
+          echo "========================================="
+          echo "Stack: ${{ inputs.stack_name }}"
+          echo "Environment: ${{ inputs.environment }}"
+          echo ""
+          
+          npx cdk deploy ${{ inputs.stack_name }} \
+            --context environment=${{ inputs.environment }} \
+            --context afu9-enable-https=false \
+            --require-approval never
+
+      - name: Verify Deployment
+        run: |
+          echo "========================================="
+          echo "Verifying Deployment"
+          echo "========================================="
+          
+          # Check stack status
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'Stacks[0].StackStatus' \
+            --output text)
+          
+          echo "Stack Status: $STACK_STATUS"
+          
+          if [[ "$STACK_STATUS" == *"COMPLETE"* ]]; then
+            echo "✅ Stack deployment successful"
+          elif [[ "$STACK_STATUS" == *"FAILED"* ]] || [[ "$STACK_STATUS" == *"ROLLBACK"* ]]; then
+            echo "❌ Stack deployment failed or rolled back"
+            
+            # Get failure reason
+            aws cloudformation describe-stack-events \
+              --stack-name ${{ inputs.stack_name }} \
+              --max-items 10 \
+              --query 'StackEvents[?ResourceStatus==`CREATE_FAILED` || ResourceStatus==`UPDATE_FAILED`]'
+            
+            exit 1
+          else
+            echo "⚠️ Stack in intermediate state: $STACK_STATUS"
+          fi
+
+      - name: Get Stack Outputs
+        run: |
+          echo "========================================="
+          echo "Stack Outputs"
+          echo "========================================="
+          
+          aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'Stacks[0].Outputs' \
+            --output table
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## CDK Stack Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || echo "UNKNOWN")
+          
+          if [[ "$STACK_STATUS" == *"COMPLETE"* ]]; then
+            echo "✅ **Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Deployment status: $STACK_STATUS**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
+          echo "- Stack: \`${{ inputs.stack_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Region: \`${{ env.AWS_REGION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Diff Gate: \`${{ inputs.skip_diff_gate && 'SKIPPED' || 'ENFORCED' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ inputs.skip_diff_gate }}" = "true" ]; then
+            echo "⚠️ **WARNING:** Diff gate was skipped for this deployment" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "- Verify stack outputs in AWS Console" >> $GITHUB_STEP_SUMMARY
+          echo "- Run smoke tests if applicable" >> $GITHUB_STEP_SUMMARY
+          echo "- Monitor CloudWatch alarms" >> $GITHUB_STEP_SUMMARY
+          echo "- See [AWS Deploy Runbook](../docs/AWS_DEPLOY_RUNBOOK.md)" >> $GITHUB_STEP_SUMMARY
