@@ -464,26 +464,33 @@ jobs:
         run: |
           set -euo pipefail
           echo "🚀 Updating ECS service with new task definition..."
-          echo "Cluster: ${{ steps.target.outputs.ecs_cluster }}"
-          echo "Service: ${{ steps.target.outputs.ecs_service }}"
-          echo "Task Definition: ${{ steps.task-def.outputs.new_task_def_arn }}"
+
+          # Store cluster and service names for cleaner code
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          TASK_DEF="${{ steps.task-def.outputs.new_task_def_arn }}"
+          REGION="${{ env.AWS_REGION }}"
+
+          echo "Cluster: $CLUSTER"
+          echo "Service: $SERVICE"
+          echo "Task Definition: $TASK_DEF"
 
           # Check for multiple task sets before update (common failure cause)
           echo "Checking for existing task sets..."
           SERVICE_INFO=$(aws ecs describe-services \
-            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
-            --services "${{ steps.target.outputs.ecs_service }}" \
-            --region "${{ env.AWS_REGION }}" \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --region "$REGION" \
             --output json)
 
           # Verify service exists
           SERVICE_COUNT=$(echo "$SERVICE_INFO" | jq -r '.services | length')
           if [ "$SERVICE_COUNT" -eq 0 ]; then
-            echo "❌ Service ${{ steps.target.outputs.ecs_service }} not found in cluster ${{ steps.target.outputs.ecs_cluster }}"
+            echo "❌ Service $SERVICE not found in cluster $CLUSTER"
             exit 1
           fi
 
-          # Check for multiple task sets
+          # Safe to access .services[0] since we verified SERVICE_COUNT > 0
           TASK_SET_COUNT=$(echo "$SERVICE_INFO" | jq -r '.services[0].taskSets // [] | length')
           echo "Task sets found: $TASK_SET_COUNT"
 
@@ -501,10 +508,10 @@ jobs:
           # Perform the update with detailed error capture
           echo "Executing service update..."
           if ! UPDATE_OUTPUT=$(aws ecs update-service \
-            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
-            --service "${{ steps.target.outputs.ecs_service }}" \
-            --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
-            --region "${{ env.AWS_REGION }}" \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$TASK_DEF" \
+            --region "$REGION" \
             --output json 2>&1); then
             echo "❌ ECS service update failed with error:"
             echo "$UPDATE_OUTPUT"
@@ -512,7 +519,8 @@ jobs:
           fi
 
           echo "✅ Service update initiated successfully"
-          echo "$UPDATE_OUTPUT" | jq -r '.service.deployments[] | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)"'
+          # Safe extraction of deployment info, with fallback for empty deployments
+          echo "$UPDATE_OUTPUT" | jq -r '.service.deployments[]? | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)"' || echo "No deployment information available"
 
       - name: Wait for ECS service stable
         shell: pwsh
