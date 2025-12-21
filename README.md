@@ -126,6 +126,15 @@ See [docs/DEPLOYMENT_CONSOLIDATED.md](docs/DEPLOYMENT_CONSOLIDATED.md) for the *
 - Decision logic: When to use which workflow
 - Troubleshooting common issues
 
+**🤖 Automated Debugging Agent:**
+
+The [Automated Debugging Agent](docs/AUTOMATED_DEBUGGING_AGENT.md) eliminates manual debugging workflows:
+- Automatically monitors deployment failures
+- Collects diagnostic data and error logs
+- Generates AI-ready debugging prompts
+- Creates GitHub issues with analysis
+- See [Quick Start Guide](docs/DEBUGGING_QUICK_START.md) for usage
+
 **Additional Resources:**
 - [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) - Detailed staging deployment runbook
 - [docs/CANONICAL_DEPLOY_PROMPT.md](docs/CANONICAL_DEPLOY_PROMPT.md) - Copy/paste-ready deployment prompt for VS Copilot
