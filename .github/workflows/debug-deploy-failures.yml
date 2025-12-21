@@ -415,8 +415,8 @@ jobs:
         run: |
           echo "Running CDK synth verification..."
           npx cdk synth Afu9EcsStack \
-            -c domainName=${{ env.DOMAIN_NAME }} \
-            -c enableDatabase=false
+            -c afu9-domain=${{ env.DOMAIN_NAME }} \
+            -c afu9-enable-database=false
 
       - name: Run CDK Diff Gate
         id: cdk-diff-gate
@@ -430,8 +430,8 @@ jobs:
           
           # Run CDK diff and capture output
           npx cdk diff Afu9EcsStack \
-            -c domainName=${{ env.DOMAIN_NAME }} \
-            -c enableDatabase=false > cdk-diff-output.txt 2>&1 || true
+            -c afu9-domain=${{ env.DOMAIN_NAME }} \
+            -c afu9-enable-database=false > cdk-diff-output.txt 2>&1 || true
           
           # Check for critical replacements
           CRITICAL_REPLACEMENTS=false

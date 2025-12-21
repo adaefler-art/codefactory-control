@@ -152,7 +152,7 @@ jobs:
           CDK_ARGS=(
             --app "npx ts-node --project tsconfig.json bin/codefactory-control.ts"
             -c afu9-multi-env=false
-            -c domainName="${DOMAIN_NAME}"
+            -c afu9-domain="${DOMAIN_NAME}"
             # deploy-ecs is APP-ONLY: do not involve DNS/ACM in the diff gate.
             -c afu9-enable-https=false
             -c afu9-manage-dns="${MANAGE_DNS}"
@@ -694,7 +694,7 @@ jobs:
 
 # ============================================================================
 # How to verify (read-only checks)
-# - npx cdk diff Afu9EcsStack -c domainName=afu-9.com -c afu9-multi-env=false -c afu9-enable-https=true -c afu9-manage-dns=false -c environment=prod
+# - npx cdk diff Afu9EcsStack -c afu9-domain=afu-9.com -c afu9-multi-env=false -c afu9-enable-https=true -c afu9-manage-dns=false -c environment=prod
 # - aws ecs list-services --cluster afu9-cluster --region eu-central-1
 # - curl -s -H "Host: afu-9.com" https://<alb-dns>/api/ready
 # ============================================================================
