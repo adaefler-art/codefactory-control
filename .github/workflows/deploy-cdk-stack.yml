@@ -50,7 +50,6 @@ env:
   AWS_REGION: eu-central-1
   DOMAIN_NAME: afu-9.com
   MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
-  AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
   CREATE_STAGING_SERVICE: 'true'
 
 jobs:
@@ -81,9 +80,21 @@ jobs:
       - name: Log resolved deploy context
         run: |
           echo "MANAGE_DNS=${{ env.MANAGE_DNS }}"
-          echo "AFU9_ENABLE_HTTPS=${{ env.AFU9_ENABLE_HTTPS }}"
+          echo "AFU9_ENABLE_HTTPS=${{ inputs.enable_https }}"
           echo "CREATE_STAGING_SERVICE=${{ env.CREATE_STAGING_SERVICE }}"
           echo "DOMAIN_NAME=${{ env.DOMAIN_NAME }}"
+
+      - name: Guard: prevent disabling HTTPS while routing stack exists
+        if: ${{ inputs.stack_name == 'Afu9NetworkStack' && !inputs.enable_https }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if aws cloudformation describe-stacks --stack-name Afu9RoutingSingleEnvStack --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "❌ Cannot deploy Afu9NetworkStack with enable_https=false while Afu9RoutingSingleEnvStack exists." >&2
+            echo "This would cause CloudFormation export deletions to fail (exports are still imported by the routing stack)." >&2
+            echo "Remediation: either (A) run this workflow with enable_https=true, or (B) destroy Afu9RoutingSingleEnvStack (and Afu9DnsStack if applicable) before disabling HTTPS." >&2
+            exit 1
+          fi
 
       - name: Verify AWS OIDC Authentication
         run: |
@@ -122,7 +133,7 @@ jobs:
             -c environment=${{ inputs.environment }} \
             -c domainName=${{ env.DOMAIN_NAME }} \
             -c afu9-multi-env=false \
-            -c afu9-enable-https=${{ env.AFU9_ENABLE_HTTPS }} \
+            -c afu9-enable-https=${{ inputs.enable_https }} \
             -c afu9-manage-dns=${{ env.MANAGE_DNS }} \
             -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}
 
@@ -167,7 +178,7 @@ jobs:
             --context environment=${{ inputs.environment }} \
             --context domainName=${{ env.DOMAIN_NAME }} \
             --context afu9-multi-env=false \
-            --context afu9-enable-https=${{ env.AFU9_ENABLE_HTTPS }} \
+            --context afu9-enable-https=${{ inputs.enable_https }} \
             --context afu9-manage-dns=${{ env.MANAGE_DNS }} \
             --context afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }} \
             --require-approval never
