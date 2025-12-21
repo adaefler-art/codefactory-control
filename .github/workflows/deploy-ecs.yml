@@ -1,15 +1,16 @@
 name: Deploy AFU-9 to ECS
 
 # ============================================================================
-# CANONICAL ECS APPLICATION DEPLOYMENT WORKFLOW
-# ============================================================================
-# Purpose: Build and deploy application Docker images to ECS
-# When to use: Code changes, dependency updates, application configuration
-# When NOT to use: Infrastructure changes (use deploy-cdk-stack.yml instead)
+# CANONICAL DEPLOY GUARDRAILS (Single Source of Truth)
+# - docs/deploy/AFU9_DEPLOY_SYSTEM_PROMPT.md
+# - docs/deploy/AFU9_DEPLOY_CHECKLIST.md
+# - docs/deploy/AFU9_DEPLOY_INTENT.md
 #
-# Environments:
-# - Staging: Auto-deploys on push to main branch
-# - Production: Manual workflow_dispatch only
+# Workflow separation:
+# - deploy-ecs.yml       => APP-ONLY (ECS task definition + service update)
+# - deploy-cdk-stack.yml => INFRA (CDK deploy; DNS only if MANAGE_DNS=true)
+#
+# Do not widen IAM permissions or bypass preflight/diff gates.
 # ============================================================================
 
 on:
@@ -543,3 +544,10 @@ jobs:
             echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`"
             echo "- Environment: ${{ steps.target.outputs.env_label }}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+# ============================================================================
+# How to verify (read-only checks)
+# - npx cdk diff Afu9EcsStack -c domainName=afu-9.com -c afu9-multi-env=false -c afu9-enable-https=true -c afu9-manage-dns=false -c environment=prod
+# - aws ecs list-services --cluster afu9-cluster --region eu-central-1
+# - curl -s -H "Host: afu-9.com" https://<alb-dns>/api/ready
+# ============================================================================
