@@ -506,12 +506,16 @@ jobs:
           echo "$SERVICE_INFO" | jq -r '.services[0] | {status,runningCount,desiredCount,deploymentController}'
 
           # Check if service is INACTIVE
-          SERVICE_STATUS=$(echo "$SERVICE_INFO" | jq -r '.services[0].status')
+          SERVICE_STATUS=$(echo "$SERVICE_INFO" | jq -r '.services[0].status // "UNKNOWN"')
           if [ "$SERVICE_STATUS" = "INACTIVE" ]; then
             echo "❌ Service $SERVICE is INACTIVE and cannot be updated"
             echo "The service must be in ACTIVE status to receive updates"
             echo "Check AWS Console or run: aws ecs describe-services --cluster $CLUSTER --services $SERVICE --region $REGION"
             exit 1
+          fi
+          if [ "$SERVICE_STATUS" = "UNKNOWN" ] || [ -z "$SERVICE_STATUS" ]; then
+            echo "⚠️  Warning: Could not determine service status (got: '$SERVICE_STATUS')"
+            echo "Proceeding with update, but this may fail if service is not ACTIVE"
           fi
 
           # Perform the update with detailed error capture
