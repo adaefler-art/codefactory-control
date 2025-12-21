@@ -65,7 +65,7 @@ const enableHttps = (() => {
 let dnsStack: Afu9DnsStack | undefined;
 
 if (enableHttps) {
-  const domainFromContext = getValidatedContext<string>(app, 'domainName') || getValidatedContext<string>(app, 'afu9-domain');
+  const domainFromContext = getValidatedContext<string>(app, 'afu9-domain');
   const domainFromEnv = process.env.DOMAIN_NAME;
   const resolvedDomain = domainFromContext || domainFromEnv;
 
