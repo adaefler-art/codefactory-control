@@ -1,0 +1,193 @@
+name: Deploy CDK Stack (Manual)
+
+# ============================================================================
+# CANONICAL DEPLOY GUARDRAILS (Single Source of Truth)
+# - docs/deploy/AFU9_DEPLOY_SYSTEM_PROMPT.md
+# - docs/deploy/AFU9_DEPLOY_CHECKLIST.md
+# - docs/deploy/AFU9_DEPLOY_INTENT.md
+#
+# Workflow separation:
+# - deploy-ecs.yml                => APP-ONLY (ECS task definition + service update)
+# - deploy-cdk-stack-dispatch.yml => INFRA (CDK deploy; DNS only if MANAGE_DNS=true)
+#
+# Do not widen IAM permissions or bypass preflight/diff gates.
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'CDK Stack to deploy'
+        required: true
+        type: choice
+        options:
+          - Afu9NetworkStack
+          - Afu9DatabaseStack
+          - Afu9EcsStack
+          - Afu9AlarmsStack
+          - Afu9IamStack
+          - Afu9DeployMemoryStack
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      enable_https:
+        description: 'Enable HTTPS (requires DNS stack)'
+        required: false
+        type: boolean
+        default: false
+      skip_diff_gate:
+        description: 'Skip diff gate (NOT recommended)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: eu-central-1
+  DOMAIN_NAME: afu-9.com
+  MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
+  CREATE_STAGING_SERVICE: 'true'
+
+jobs:
+  validate-and-deploy:
+    name: Validate Diff and Deploy CDK Stack
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Guard AWS_DEPLOY_ROLE_ARN
+        run: |
+          if [ -z "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ]; then
+            echo "❌ AWS_DEPLOY_ROLE_ARN is missing (secret is empty or undefined)" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log resolved deploy context
+        run: |
+          echo "MANAGE_DNS=${{ env.MANAGE_DNS }}"
+          echo "AFU9_ENABLE_HTTPS=${{ inputs.enable_https }}"
+          echo "CREATE_STAGING_SERVICE=${{ env.CREATE_STAGING_SERVICE }}"
+          echo "DOMAIN_NAME=${{ env.DOMAIN_NAME }}"
+
+      - name: Guard: prevent disabling HTTPS while routing stack exists
+        if: ${{ inputs.stack_name == 'Afu9NetworkStack' && !inputs.enable_https }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if aws cloudformation describe-stacks --stack-name Afu9RoutingSingleEnvStack --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "❌ Cannot deploy Afu9NetworkStack with enable_https=false while Afu9RoutingSingleEnvStack exists." >&2
+            echo "This would cause CloudFormation export deletions to fail (exports are still imported by the routing stack)." >&2
+            echo "Remediation: either (A) run this workflow with enable_https=true, or (B) destroy Afu9RoutingSingleEnvStack (and Afu9DnsStack if applicable) before disabling HTTPS." >&2
+            exit 1
+          fi
+
+      - name: Verify AWS OIDC Authentication
+        run: |
+          echo "========================================="
+          echo "Verifying AWS OIDC Authentication"
+          echo "========================================="
+          aws sts get-caller-identity
+          echo ""
+          echo "✅ AWS authentication successful"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CDK project
+        run: npm run build
+
+      - name: CDK Diff Gate - Validate Changes
+        if: ${{ !inputs.skip_diff_gate }}
+        run: |
+          echo "========================================="
+          echo "CDK Diff Gate Validation"
+          echo "========================================="
+          echo "Stack: ${{ inputs.stack_name }}"
+          echo "Environment: ${{ inputs.environment }}"
+          echo "HTTPS Enabled: ${{ inputs.enable_https }}"
+          echo ""
+
+          npm run validate:diff -- ${{ inputs.stack_name }} \
+            -c environment=${{ inputs.environment }} \
+            -c afu9-domain=${{ env.DOMAIN_NAME }} \
+            -c afu9-multi-env=false \
+            -c afu9-enable-https=${{ inputs.enable_https }} \
+            -c afu9-manage-dns=${{ env.MANAGE_DNS }} \
+            -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}
+
+      - name: CDK Diff Gate - SKIPPED
+        if: ${{ inputs.skip_diff_gate }}
+        run: |
+          echo "⚠️ ⚠️ ⚠️ WARNING ⚠️ ⚠️ ⚠️"
+          echo "Diff gate validation has been SKIPPED"
+          echo "This is NOT recommended for production deployments"
+          echo "Proceed with extreme caution"
+          echo ""
+
+      - name: Guard: Afu9DatabaseStack secret not pending deletion
+        if: ${{ inputs.stack_name == 'Afu9DatabaseStack' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SECRET_ID="afu9/database"
+          echo "Checking Secrets Manager state for: ${SECRET_ID}"
+
+          if ! aws secretsmanager describe-secret --secret-id "${SECRET_ID}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "✅ Secret does not exist yet; CDK can create it."
+            exit 0
+          fi
+
+          DELETED_DATE=$(aws secretsmanager describe-secret --secret-id "${SECRET_ID}" --region "${{ env.AWS_REGION }}" --query 'DeletedDate' --output text)
+          if [ "${DELETED_DATE}" != "None" ]; then
+            echo "❌ Secret ${SECRET_ID} is marked for deletion (${DELETED_DATE}). CloudFormation cannot create/recreate a secret with this name." >&2
+            echo "Remediation (pick ONE):" >&2
+            echo "  1) Fastest: force-delete the scheduled secret so CDK can recreate it:" >&2
+            echo "     aws secretsmanager delete-secret --secret-id ${SECRET_ID} --force-delete-without-recovery --region ${{ env.AWS_REGION }}" >&2
+            echo "  2) Or wait until deletion completes (not practical if recovery window is large)." >&2
+            echo "" >&2
+            echo "If the stack is stuck in UPDATE_ROLLBACK_FAILED, also run:" >&2
+            echo "  aws cloudformation continue-update-rollback --stack-name Afu9DatabaseStack --region ${{ env.AWS_REGION }}" >&2
+            exit 1
+          fi
+
+          echo "✅ Secret exists and is active (not pending deletion)."
+
+      - name: Deploy CDK Stack
+        run: |
+          echo "========================================="
+          echo "Deploying CDK Stack"
+          echo "========================================="
+          echo "Stack: ${{ inputs.stack_name }}"
+          echo "Environment: ${{ inputs.environment }}"
+          echo "HTTPS Enabled: ${{ inputs.enable_https }}"
+          echo ""
+
+          npx cdk deploy ${{ inputs.stack_name }} \
+            --context environment=${{ inputs.environment }} \
+            --context afu9-domain=${{ env.DOMAIN_NAME }} \
+            --context afu9-multi-env=false \
+            --context afu9-enable-https=${{ inputs.enable_https }} \
+            --context afu9-manage-dns=${{ env.MANAGE_DNS }} \
+            --context afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }} \
+            --require-approval never
