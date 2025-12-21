@@ -519,8 +519,8 @@ jobs:
           fi
 
           echo "✅ Service update initiated successfully"
-          # Safe extraction of deployment info, with fallback for empty deployments
-          echo "$UPDATE_OUTPUT" | jq -r '.service.deployments[]? | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)"' || echo "No deployment information available"
+          # Safe extraction of deployment info with try operator
+          echo "$UPDATE_OUTPUT" | jq -r 'try (.service.deployments[] | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)") // "No deployment information available"'
 
       - name: Wait for ECS service stable
         shell: pwsh
