@@ -194,6 +194,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     const appConnectionSecret = new secretsmanager.Secret(this, 'AppConnectionSecret', {
       secretName: 'afu9/database',
       description: 'Database connection details for AFU-9 application',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       secretObjectValue: {
         host: cdk.SecretValue.unsafePlainText(this.dbInstance.dbInstanceEndpointAddress),
         port: cdk.SecretValue.unsafePlainText(this.dbInstance.dbInstanceEndpointPort),

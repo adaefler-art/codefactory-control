@@ -131,13 +131,13 @@ jobs:
           # Run diff gate validation
           npm run validate:diff -- ${{ inputs.stack_name }} \
             -c environment=${{ inputs.environment }} \
-            -c domainName=${{ env.DOMAIN_NAME }} \
+            -c afu9-domain=${{ env.DOMAIN_NAME }} \
             -c afu9-multi-env=false \
             -c afu9-enable-https=${{ inputs.enable_https }} \
             -c afu9-manage-dns=${{ env.MANAGE_DNS }} \
             -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}
 
-          echo "cdk diff args: -c environment=${{ inputs.environment }} -c domainName=${{ env.DOMAIN_NAME }} -c afu9-multi-env=false -c afu9-enable-https=${{ env.AFU9_ENABLE_HTTPS }} -c afu9-manage-dns=${{ env.MANAGE_DNS }} -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}"
+          echo "cdk diff args: -c environment=${{ inputs.environment }} -c afu9-domain=${{ env.DOMAIN_NAME }} -c afu9-multi-env=false -c afu9-enable-https=${{ inputs.enable_https }} -c afu9-manage-dns=${{ env.MANAGE_DNS }} -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}"
           
           DIFF_RESULT=$?
           
@@ -164,6 +164,35 @@ jobs:
           echo "Proceed with extreme caution"
           echo ""
 
+      - name: Guard: Afu9DatabaseStack secret not pending deletion
+        if: ${{ inputs.stack_name == 'Afu9DatabaseStack' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SECRET_ID="afu9/database"
+          echo "Checking Secrets Manager state for: ${SECRET_ID}"
+
+          # If secret does not exist, that's fine.
+          if ! aws secretsmanager describe-secret --secret-id "${SECRET_ID}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "✅ Secret does not exist yet; CDK can create it."
+            exit 0
+          fi
+
+          DELETED_DATE=$(aws secretsmanager describe-secret --secret-id "${SECRET_ID}" --region "${{ env.AWS_REGION }}" --query 'DeletedDate' --output text)
+          if [ "${DELETED_DATE}" != "None" ]; then
+            echo "❌ Secret ${SECRET_ID} is marked for deletion (${DELETED_DATE}). CloudFormation cannot create/recreate a secret with this name." >&2
+            echo "Remediation (pick ONE):" >&2
+            echo "  1) Fastest: force-delete the scheduled secret so CDK can recreate it:" >&2
+            echo "     aws secretsmanager delete-secret --secret-id ${SECRET_ID} --force-delete-without-recovery --region ${{ env.AWS_REGION }}" >&2
+            echo "  2) Or wait until deletion completes (not practical if recovery window is large)." >&2
+            echo "" >&2
+            echo "If the stack is stuck in UPDATE_ROLLBACK_FAILED, also run:" >&2
+            echo "  aws cloudformation continue-update-rollback --stack-name Afu9DatabaseStack --region ${{ env.AWS_REGION }}" >&2
+            exit 1
+          fi
+
+          echo "✅ Secret exists and is active (not pending deletion)."
+
       - name: Deploy CDK Stack
         run: |
           echo "========================================="
@@ -176,7 +205,7 @@ jobs:
           
           npx cdk deploy ${{ inputs.stack_name }} \
             --context environment=${{ inputs.environment }} \
-            --context domainName=${{ env.DOMAIN_NAME }} \
+            --context afu9-domain=${{ env.DOMAIN_NAME }} \
             --context afu9-multi-env=false \
             --context afu9-enable-https=${{ inputs.enable_https }} \
             --context afu9-manage-dns=${{ env.MANAGE_DNS }} \
