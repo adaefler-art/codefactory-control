@@ -259,6 +259,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Guardrail: block legacy DB secret (/master)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/guard-legacy-db-secret.js
+
       - name: Create new task definition with environment tags
         id: task-def
         shell: bash
@@ -304,6 +310,11 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
 
+          # Sanitize any legacy /master secret references before further mutation
+          jq 'walk(if type=="string" then gsub("afu9/database/master"; "afu9/database") else . end)' \
+            task-def.json > task-def.sanitized.json
+          mv task-def.sanitized.json task-def.json
+
            jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
@@ -314,9 +325,16 @@ jobs:
                elif .name == "mcp-deploy" then .image = $dp_image
                elif .name == "mcp-observability" then .image = $ob_image
                else . end
+                 | if .secrets then .secrets |= map(if .valueFrom then .valueFrom |= gsub("afu9/database/master"; "afu9/database") else . end) else . end
              ) |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
              task-def.json > new-task-def.json
+
+            if jq -re '.. | select(type=="string" and test("/master"))' new-task-def.json >/dev/null; then
+              echo "❌ Detected legacy '/master' reference in task definition; aborting." >&2
+              jq -r '.. | select(type=="string" and test("/master"))' new-task-def.json >&2
+              exit 1
+            fi
 
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://new-task-def.json \
