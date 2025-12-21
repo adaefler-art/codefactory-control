@@ -277,8 +277,17 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
 
-          # Sanitize any legacy /master secret references before further mutation
-          jq 'walk(if type=="string" then gsub("afu9/database/master"; "afu9/database") else . end)' \
+          # Sanitize DB secret references before further mutation:
+          # - drop legacy /master
+          # - drop any fixed/rotated suffixes (e.g. afu9/database-ABC123)
+          # - drop full SecretsManager ARN prefixes so ECS resolves by secret name
+          jq 'walk(
+            if type=="string" then
+              gsub("afu9/database/master"; "afu9/database")
+              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; "afu9/database:")
+              | gsub("afu9/database-[^:]+:"; "afu9/database:")
+            else . end
+          )' \
             task-def.json > task-def.sanitized.json
           mv task-def.sanitized.json task-def.json
 
@@ -286,14 +295,22 @@ jobs:
              '.containerDefinitions |= map(
                if .name == "control-center" then .image = $cc_image
                else . end
-                 | if .secrets then .secrets |= map(if .valueFrom then .valueFrom |= gsub("afu9/database/master"; "afu9/database") else . end) else . end
+                 | if .secrets then .secrets |= map(
+                     if .valueFrom then
+                       .valueFrom |= (
+                         gsub("afu9/database/master"; "afu9/database")
+                         | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; "afu9/database:")
+                         | gsub("afu9/database-[^:]+:"; "afu9/database:")
+                       )
+                     else . end
+                   ) else . end
              ) |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
              task-def.json > new-task-def.json
 
-            if jq -re '.. | select(type=="string" and test("/master"))' new-task-def.json >/dev/null; then
-              echo "❌ Detected legacy '/master' reference in task definition; aborting." >&2
-              jq -r '.. | select(type=="string" and test("/master"))' new-task-def.json >&2
+            if jq -re '.. | select(type=="string" and test("/master|:secret:afu9/database-|afu9/database-[^:]+:"))' new-task-def.json >/dev/null; then
+              echo "❌ Detected legacy DB secret reference (master or suffixed name) in task definition; aborting." >&2
+              jq -r '.. | select(type=="string" and test("/master|:secret:afu9/database-|afu9/database-[^:]+:"))' new-task-def.json >&2
               exit 1
             fi
 
