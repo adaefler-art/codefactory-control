@@ -218,6 +218,61 @@ export class Afu9IamStack extends cdk.Stack {
     );
 
     // ========================================
+    // CloudFormation Permissions (CDK Deploy)
+    // ========================================
+    // CDK uses CloudFormation APIs to check stack status and execute change sets.
+    // Without these, `cdk diff/deploy` fails early (e.g., DescribeStacks AccessDenied).
+    const cfnStackArns = [
+      `arn:aws:cloudformation:${this.region}:${this.account}:stack/Afu9*/*`,
+      `arn:aws:cloudformation:${this.region}:${this.account}:stack/CodefactoryControlStack/*`,
+      `arn:aws:cloudformation:${this.region}:${this.account}:stack/CDKToolkit/*`,
+    ];
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudFormationDescribeForCdk',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cloudformation:DescribeStacks',
+          'cloudformation:DescribeStackEvents',
+          'cloudformation:DescribeStackResources',
+          'cloudformation:GetTemplate',
+          'cloudformation:GetTemplateSummary',
+          'cloudformation:ListStackResources',
+        ],
+        resources: cfnStackArns,
+      })
+    );
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudFormationChangeSetsForCdk',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cloudformation:CreateChangeSet',
+          'cloudformation:DescribeChangeSet',
+          'cloudformation:ExecuteChangeSet',
+          'cloudformation:DeleteChangeSet',
+        ],
+        resources: cfnStackArns,
+      })
+    );
+
+    // Some list/validate APIs do not support resource-level permissions.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudFormationListGlobalForCdk',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cloudformation:ListStacks',
+          'cloudformation:ListExports',
+          'cloudformation:ValidateTemplate',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    // ========================================
     // Secrets Manager Permissions
     // ========================================
     // Allow the workflow to resolve the canonical ARN for the DB secret.
