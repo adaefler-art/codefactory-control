@@ -2,10 +2,13 @@
 
 /**
  * Test script for workflow failure analyzer
- * Simulates analysis without making actual GitHub API calls
+ * Tests the analysis logic by importing functions from the main script
  */
 
 const fs = require('fs');
+
+// Import analysis functions from the main script
+const analyzer = require('./analyze-workflow-failure.js');
 
 // Mock workflow run data
 const mockWorkflowRun = {
@@ -44,136 +47,14 @@ const mockJobs = {
   ]
 };
 
-// Import the analysis functions (we'll need to refactor the script to export them)
-// For now, let's replicate the key logic here
-
-function analyzeFailures(run, jobs) {
-  const analysis = {
-    run_id: run.id,
-    run_number: run.run_number,
-    run_url: run.html_url,
-    conclusion: run.conclusion,
-    created_at: run.created_at,
-    updated_at: run.updated_at,
-    head_branch: run.head_branch,
-    head_sha: run.head_sha,
-    triggering_actor: run.triggering_actor?.login,
-    failed_jobs: [],
-    error_patterns: [],
-    recommendations: []
-  };
-
-  const failedJobs = jobs.jobs.filter(job => job.conclusion === 'failure');
-  
-  for (const job of failedJobs) {
-    const failedSteps = job.steps?.filter(step => step.conclusion === 'failure') || [];
-    
-    const jobAnalysis = {
-      name: job.name,
-      conclusion: job.conclusion,
-      started_at: job.started_at,
-      completed_at: job.completed_at,
-      html_url: job.html_url,
-      failed_steps: failedSteps.map(step => ({
-        name: step.name,
-        conclusion: step.conclusion,
-        number: step.number
-      }))
-    };
-    
-    analysis.failed_jobs.push(jobAnalysis);
-    
-    for (const step of failedSteps) {
-      detectErrorPatterns(step.name, analysis);
-    }
-  }
-
-  return analysis;
-}
-
-function detectErrorPatterns(stepName, analysis) {
-  const patterns = [
-    {
-      pattern: /AWS.*credentials|Configure AWS/i,
-      category: 'AWS Authentication',
-      recommendation: 'Check AWS_DEPLOY_ROLE_ARN secret and OIDC configuration'
-    },
-    {
-      pattern: /database.*migration|db:migrate/i,
-      category: 'Database Migration',
-      recommendation: 'Check database connectivity, migration scripts, and RDS security groups'
-    },
-    {
-      pattern: /ECS.*service|Update ECS/i,
-      category: 'ECS Deployment',
-      recommendation: 'Check ECS service exists, task definition is valid, and IAM roles are correct'
-    }
-  ];
-
-  for (const p of patterns) {
-    if (p.pattern.test(stepName)) {
-      if (!analysis.error_patterns.find(ep => ep.category === p.category)) {
-        analysis.error_patterns.push({
-          category: p.category,
-          detected_in: stepName
-        });
-        analysis.recommendations.push(p.recommendation);
-      }
-    }
-  }
-}
-
-function generateReport(analysis) {
-  let report = '# AFU-9 Deployment Failure Analysis\n\n';
-  
-  report += `**Workflow Run**: [#${analysis.run_number}](${analysis.run_url})\n`;
-  report += `**Branch**: \`${analysis.head_branch}\`\n`;
-  report += `**SHA**: \`${analysis.head_sha}\`\n`;
-  report += `**Triggered by**: @${analysis.triggering_actor}\n`;
-  report += `**Status**: ${analysis.conclusion}\n\n`;
-  
-  report += '## Failed Jobs\n\n';
-  for (const job of analysis.failed_jobs) {
-    report += `### ${job.name}\n\n`;
-    report += `- **Status**: ${job.conclusion}\n`;
-    report += `- [View Job Logs](${job.html_url})\n\n`;
-    
-    if (job.failed_steps.length > 0) {
-      report += '**Failed Steps**:\n';
-      for (const step of job.failed_steps) {
-        report += `- ${step.number}. \`${step.name}\`\n`;
-      }
-      report += '\n';
-    }
-  }
-  
-  if (analysis.error_patterns.length > 0) {
-    report += '## Detected Error Patterns\n\n';
-    for (const pattern of analysis.error_patterns) {
-      report += `- **${pattern.category}** (detected in: ${pattern.detected_in})\n`;
-    }
-    report += '\n';
-  }
-  
-  if (analysis.recommendations.length > 0) {
-    report += '## Recommendations\n\n';
-    for (let i = 0; i < analysis.recommendations.length; i++) {
-      report += `${i + 1}. ${analysis.recommendations[i]}\n`;
-    }
-    report += '\n';
-  }
-  
-  return report;
-}
-
 // Run the test
 console.log('🧪 Testing Workflow Failure Analyzer\n');
 
 console.log('1. Analyzing mock workflow run...');
-const analysis = analyzeFailures(mockWorkflowRun, mockJobs);
+const analysis = analyzer.analyzeFailures(mockWorkflowRun, mockJobs);
 
 console.log('2. Generating report...');
-const report = generateReport(analysis);
+const report = analyzer.generateReport(analysis);
 
 console.log('3. Saving test outputs...');
 fs.writeFileSync('test-analysis.json', JSON.stringify(analysis, null, 2));

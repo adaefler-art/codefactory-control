@@ -305,7 +305,7 @@ jobs:
             body += '### Debugging Guidance\n\n';
             body += 'This issue was automatically created by the deployment debugging agent.\n\n';
             body += '**Next Steps**:\n';
-            body += '1. Review the [workflow run logs](${debugInfo.run_url})\n';
+            body += `1. Review the [workflow run logs](${debugInfo.run_url})\n`;
             body += '2. Check ECS service events and task failures\n';
             body += '3. Review recent changes in the failed commit\n';
             body += '4. Consult deployment documentation:\n';
@@ -361,7 +361,6 @@ jobs:
             if [ "${{ steps.collect-logs.outputs.has_failures }}" = "true" ]; then
               echo "✅ **Debugging data collected successfully**"
               echo ""
-              echo "- **Workflow Run**: [#${{ steps.collect-logs.result.run_number }}](${{ steps.collect-logs.result.run_url }})"
               echo "- **Failed Jobs**: ${{ steps.collect-logs.outputs.failed_job_count }}"
               if [ -n "${{ steps.create-debugging-issue.outputs.issue_url }}" ]; then
                 echo "- **Created Issue**: [#${{ steps.create-debugging-issue.outputs.issue_number }}](${{ steps.create-debugging-issue.outputs.issue_url }})"

@@ -32,52 +32,55 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPOSITORY || 'adaefler-art/codefactory-control';
 const [OWNER, REPO] = GITHUB_REPO.split('/');
 
-// Parse command line arguments
-const args = process.argv.slice(2);
+// Parse command line arguments (only when run directly, not when imported)
 let runId = null;
 let useLatestFailure = false;
 let useAI = false;
 let createIssue = false;
 let verbose = false;
 
-for (let i = 0; i < args.length; i++) {
-  switch (args[i]) {
-    case '--run-id':
-      runId = args[++i];
-      break;
-    case '--latest-failure':
-      useLatestFailure = true;
-      break;
-    case '--ai':
-      useAI = true;
-      break;
-    case '--create-issue':
-      createIssue = true;
-      break;
-    case '--verbose':
-      verbose = true;
-      break;
-    case '--help':
-      console.log('Usage: node analyze-workflow-failure.js [options]');
-      console.log('Options:');
-      console.log('  --run-id <id>         Analyze specific workflow run ID');
-      console.log('  --latest-failure      Analyze latest failed deploy-ecs run');
-      console.log('  --ai                  Use AI for analysis');
-      console.log('  --create-issue        Create GitHub issue with analysis');
-      console.log('  --verbose             Enable verbose logging');
-      process.exit(0);
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--run-id':
+        runId = args[++i];
+        break;
+      case '--latest-failure':
+        useLatestFailure = true;
+        break;
+      case '--ai':
+        useAI = true;
+        break;
+      case '--create-issue':
+        createIssue = true;
+        break;
+      case '--verbose':
+        verbose = true;
+        break;
+      case '--help':
+        console.log('Usage: node analyze-workflow-failure.js [options]');
+        console.log('Options:');
+        console.log('  --run-id <id>         Analyze specific workflow run ID');
+        console.log('  --latest-failure      Analyze latest failed deploy-ecs run');
+        console.log('  --ai                  Use AI for analysis');
+        console.log('  --create-issue        Create GitHub issue with analysis');
+        console.log('  --verbose             Enable verbose logging');
+        process.exit(0);
+    }
   }
-}
 
-if (!GITHUB_TOKEN) {
-  console.error('ERROR: GITHUB_TOKEN environment variable is required');
-  process.exit(1);
-}
+  if (!GITHUB_TOKEN) {
+    console.error('ERROR: GITHUB_TOKEN environment variable is required');
+    process.exit(1);
+  }
 
-if (!runId && !useLatestFailure) {
-  console.error('ERROR: Either --run-id or --latest-failure must be specified');
-  console.error('Use --help for usage information');
-  process.exit(1);
+  if (!runId && !useLatestFailure) {
+    console.error('ERROR: Either --run-id or --latest-failure must be specified');
+    console.error('Use --help for usage information');
+    process.exit(1);
+  }
 }
 
 // GitHub API helper
