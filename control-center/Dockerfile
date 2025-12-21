@@ -53,9 +53,18 @@ ENV SOURCE_DATE_EPOCH=0
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
+# Migration tooling (for ECS one-off migration tasks)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy necessary files
 COPY --from=builder /app/${APP_DIR}/public ./public
 COPY --from=builder /app/${APP_DIR}/package.json ./package.json
+
+# Include SQL migrations + runner script in the runtime image
+COPY --chown=nextjs:nodejs database/migrations ./database/migrations
+COPY --chown=nextjs:nodejs scripts/db-migrate.sh ./scripts/db-migrate.sh
 
 # Copy standalone build output
 COPY --from=builder --chown=nextjs:nodejs /app/${APP_DIR}/.next/standalone ./

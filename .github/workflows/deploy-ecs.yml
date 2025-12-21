@@ -387,7 +387,7 @@ jobs:
           OVERRIDES_JSON=$(jq -nc '{
             containerOverrides: [{
               name: "control-center",
-              command: ["sh","-lc","npm run db:migrate"],
+              command: ["bash","-lc","./scripts/db-migrate.sh"],
               environment: []
             }]
           }')
