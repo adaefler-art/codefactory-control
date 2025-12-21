@@ -54,10 +54,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          STACK_NAME='${{ inputs.stack_name }}'
-          ENVIRONMENT='${{ inputs.environment }}'
-          ENABLE_HTTPS='${{ inputs.enable_https }}'
-          SKIP_DIFF_GATE='${{ inputs.skip_diff_gate }}'
+          STACK_NAME='${{ github.event.inputs.stack_name }}'
+          ENVIRONMENT='${{ github.event.inputs.environment }}'
+          ENABLE_HTTPS='${{ github.event.inputs.enable_https }}'
+          SKIP_DIFF_GATE='${{ github.event.inputs.skip_diff_gate }}'
 
           case "${STACK_NAME}" in
             Afu9NetworkStack|Afu9DatabaseStack|Afu9EcsStack|Afu9AlarmsStack|Afu9IamStack|Afu9DeployMemoryStack) ;;
@@ -95,12 +95,12 @@ jobs:
       - name: Log resolved deploy context
         run: |
           echo "MANAGE_DNS=${{ env.MANAGE_DNS }}"
-          echo "AFU9_ENABLE_HTTPS=${{ inputs.enable_https }}"
+          echo "AFU9_ENABLE_HTTPS=${{ github.event.inputs.enable_https }}"
           echo "CREATE_STAGING_SERVICE=${{ env.CREATE_STAGING_SERVICE }}"
           echo "DOMAIN_NAME=${{ env.DOMAIN_NAME }}"
 
       - name: Guard: prevent disabling HTTPS while routing stack exists
-        if: ${{ inputs.stack_name == 'Afu9NetworkStack' && inputs.enable_https != 'true' }}
+        if: ${{ github.event.inputs.stack_name == 'Afu9NetworkStack' && github.event.inputs.enable_https != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -133,26 +133,26 @@ jobs:
         run: npm run build
 
       - name: CDK Diff Gate - Validate Changes
-        if: ${{ inputs.skip_diff_gate != 'true' }}
+        if: ${{ github.event.inputs.skip_diff_gate != 'true' }}
         run: |
           echo "========================================="
           echo "CDK Diff Gate Validation"
           echo "========================================="
-          echo "Stack: ${{ inputs.stack_name }}"
-          echo "Environment: ${{ inputs.environment }}"
-          echo "HTTPS Enabled: ${{ inputs.enable_https }}"
+          echo "Stack: ${{ github.event.inputs.stack_name }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "HTTPS Enabled: ${{ github.event.inputs.enable_https }}"
           echo ""
 
-          npm run validate:diff -- ${{ inputs.stack_name }} \
-            -c environment=${{ inputs.environment }} \
+          npm run validate:diff -- ${{ github.event.inputs.stack_name }} \
+            -c environment=${{ github.event.inputs.environment }} \
             -c afu9-domain=${{ env.DOMAIN_NAME }} \
             -c afu9-multi-env=false \
-            -c afu9-enable-https=${{ inputs.enable_https }} \
+            -c afu9-enable-https=${{ github.event.inputs.enable_https }} \
             -c afu9-manage-dns=${{ env.MANAGE_DNS }} \
             -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}
 
       - name: CDK Diff Gate - SKIPPED
-        if: ${{ inputs.skip_diff_gate == 'true' }}
+        if: ${{ github.event.inputs.skip_diff_gate == 'true' }}
         run: |
           echo "⚠️ ⚠️ ⚠️ WARNING ⚠️ ⚠️ ⚠️"
           echo "Diff gate validation has been SKIPPED"
@@ -161,7 +161,7 @@ jobs:
           echo ""
 
       - name: Guard: Afu9DatabaseStack secret not pending deletion
-        if: ${{ inputs.stack_name == 'Afu9DatabaseStack' }}
+        if: ${{ github.event.inputs.stack_name == 'Afu9DatabaseStack' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -193,16 +193,16 @@ jobs:
           echo "========================================="
           echo "Deploying CDK Stack"
           echo "========================================="
-          echo "Stack: ${{ inputs.stack_name }}"
-          echo "Environment: ${{ inputs.environment }}"
-          echo "HTTPS Enabled: ${{ inputs.enable_https }}"
+          echo "Stack: ${{ github.event.inputs.stack_name }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "HTTPS Enabled: ${{ github.event.inputs.enable_https }}"
           echo ""
 
-          npx cdk deploy ${{ inputs.stack_name }} \
-            --context environment=${{ inputs.environment }} \
+          npx cdk deploy ${{ github.event.inputs.stack_name }} \
+            --context environment=${{ github.event.inputs.environment }} \
             --context afu9-domain=${{ env.DOMAIN_NAME }} \
             --context afu9-multi-env=false \
-            --context afu9-enable-https=${{ inputs.enable_https }} \
+            --context afu9-enable-https=${{ github.event.inputs.enable_https }} \
             --context afu9-manage-dns=${{ env.MANAGE_DNS }} \
             --context afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }} \
             --require-approval never

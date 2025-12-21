@@ -36,9 +36,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ENVIRONMENT='${{ inputs.environment }}'
-          ENABLE_HTTPS='${{ inputs.enable_https }}'
-          SKIP_DIFF_GATE='${{ inputs.skip_diff_gate }}'
+          ENVIRONMENT='${{ github.event.inputs.environment }}'
+          ENABLE_HTTPS='${{ github.event.inputs.enable_https }}'
+          SKIP_DIFF_GATE='${{ github.event.inputs.skip_diff_gate }}'
 
           case "${ENVIRONMENT}" in
             staging|production) ;;
@@ -102,14 +102,14 @@ jobs:
           fi
 
       - name: Diff gate
-        if: ${{ inputs.skip_diff_gate != 'true' }}
+        if: ${{ github.event.inputs.skip_diff_gate != 'true' }}
         shell: bash
         run: |
           npm run validate:diff -- Afu9DatabaseStack \
-            -c environment=${{ inputs.environment }} \
+            -c environment=${{ github.event.inputs.environment }} \
             -c afu9-domain=${{ env.DOMAIN_NAME }} \
             -c afu9-multi-env=false \
-            -c afu9-enable-https=${{ inputs.enable_https }} \
+            -c afu9-enable-https=${{ github.event.inputs.enable_https }} \
             -c afu9-manage-dns=false \
             -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}
 
@@ -117,10 +117,10 @@ jobs:
         shell: bash
         run: |
           npx cdk deploy Afu9DatabaseStack \
-            --context environment=${{ inputs.environment }} \
+            --context environment=${{ github.event.inputs.environment }} \
             --context afu9-domain=${{ env.DOMAIN_NAME }} \
             --context afu9-multi-env=false \
-            --context afu9-enable-https=${{ inputs.enable_https }} \
+            --context afu9-enable-https=${{ github.event.inputs.enable_https }} \
             --context afu9-manage-dns=false \
             --context afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }} \
             --require-approval never
