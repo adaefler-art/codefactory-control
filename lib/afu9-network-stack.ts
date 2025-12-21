@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import { Construct } from 'constructs';
 
 /**
@@ -36,6 +38,12 @@ export interface Afu9NetworkStackProps extends cdk.StackProps {
    * If not provided, only HTTP listener will be configured
    */
   certificateArn?: string;
+
+  /** Optional hosted zone for legacy alias records (kept to avoid deletions) */
+  hostedZone?: route53.IHostedZone;
+
+  /** Base domain name (e.g., afu-9.com) used for legacy alias records */
+  baseDomainName?: string;
 }
 
 export class Afu9NetworkStack extends cdk.Stack {
@@ -158,7 +166,7 @@ export class Afu9NetworkStack extends cdk.Stack {
       targetType: elbv2.TargetType.IP, // Required for Fargate
       targetGroupName: 'afu9-tg',
       healthCheck: {
-        path: '/api/health',
+        path: '/api/ready',
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         healthyThresholdCount: 2,
@@ -205,6 +213,33 @@ export class Afu9NetworkStack extends cdk.Stack {
         port: 80,
         protocol: elbv2.ApplicationProtocol.HTTP,
         defaultAction: elbv2.ListenerAction.forward([this.targetGroup]),
+      });
+    }
+
+    // ========================================
+    // Legacy DNS aliases (preserve existing records)
+    // ========================================
+
+    if (props?.hostedZone && props.baseDomainName) {
+      new route53.ARecord(this, 'AliasRecord', {
+        zone: props.hostedZone,
+        recordName: props.baseDomainName,
+        target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(this.loadBalancer)),
+        comment: 'A record for AFU-9 Control Center pointing to ALB',
+      });
+
+      new route53.ARecord(this, 'AliasRecordWww', {
+        zone: props.hostedZone,
+        recordName: `www.${props.baseDomainName}`,
+        target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(this.loadBalancer)),
+        comment: 'A record for www.<domain> pointing to AFU-9 ALB',
+      });
+
+      new route53.ARecord(this, 'AliasRecordStage', {
+        zone: props.hostedZone,
+        recordName: `stage.${props.baseDomainName}`,
+        target: route53.RecordTarget.fromAlias(new route53Targets.LoadBalancerTarget(this.loadBalancer)),
+        comment: 'A record for stage.<domain> pointing to AFU-9 ALB',
       });
     }
 

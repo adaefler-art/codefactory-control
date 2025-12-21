@@ -108,6 +108,9 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    */
   targetGroup: elbv2.ApplicationTargetGroup;
 
+  /** Optional staging target group for a secondary staging service on the same cluster */
+  stageTargetGroup?: elbv2.ApplicationTargetGroup;
+
   /**
    * Enable database integration
    * When false: no DB secrets, no IAM grants, app reports database:not_configured
@@ -152,6 +155,15 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
    * @default 2048 (2 GB)
    */
   memoryLimitMiB?: number;
+
+  /** Optional image tag for staging service when created in the same stack */
+  stageImageTag?: string;
+
+  /** Optional desired count for staging service */
+  stageDesiredCount?: number;
+
+  /** Whether to create the staging service (when a stage target group is provided) */
+  createStagingService?: boolean;
 }
 
 interface ResolvedEcsConfig {
@@ -160,6 +172,7 @@ interface ResolvedEcsConfig {
   enableDatabase: boolean;
   dbSecretArn?: string;
   dbSecretName: string;
+  createStagingService: boolean;
 }
 
 function toOptionalBoolean(value: unknown): boolean | undefined {
@@ -174,7 +187,7 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
 }
 
 // Default database secret name when not explicitly provided
-const DEFAULT_DB_SECRET_NAME = 'afu9/database/master';
+const DEFAULT_DB_SECRET_NAME = 'afu9/database';
 
 function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
   const ctxDomain = scope.node.tryGetContext('domainName');
@@ -186,6 +199,7 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
   
   const ctxDbSecretArn = scope.node.tryGetContext('dbSecretArn');
   const ctxDbSecretName = scope.node.tryGetContext('dbSecretName');
+  const ctxCreateStage = scope.node.tryGetContext('afu9-create-staging-service');
 
   const environment = props.environment ?? ctxEnvironment ?? 'stage';
   const domainName = props.domainName ?? ctxDomain;
@@ -217,6 +231,10 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
 
   const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
   const dbSecretName = ctxDbSecretName;
+  const createStagingService =
+    toOptionalBoolean(props.createStagingService) ??
+    toOptionalBoolean(ctxCreateStage) ??
+    true;
 
   // Fail-fast validation: If database is enabled, we need either ARN or name (before applying defaults)
   // This prevents deployments with invalid configuration before they reach ECS
@@ -238,12 +256,14 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
     enableDatabase,
     dbSecretArn,
     dbSecretName: resolvedDbSecretName,
+    createStagingService,
   };
 }
 
 export class Afu9EcsStack extends cdk.Stack {
   public readonly cluster: ecs.ICluster;
   public readonly service: ecs.FargateService;
+  public readonly stageService?: ecs.FargateService;
   public readonly controlCenterRepo: ecr.IRepository;
   public readonly mcpGithubRepo: ecr.IRepository;
   public readonly mcpDeployRepo: ecr.IRepository;
@@ -267,26 +287,30 @@ export class Afu9EcsStack extends cdk.Stack {
       memoryLimitMiB = 2048,
     } = props;
 
-    const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName } = resolveEcsConfig(this, props);
+    const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName, createStagingService } = resolveEcsConfig(this, props);
     this.domainName = domainName;
 
-    const isProd = environment === ENVIRONMENT.PROD;
+    // In single-env mode (stageTargetGroup present) we keep the existing prod cluster/service names
+    const isSharedClusterWithStage = !!props.stageTargetGroup;
+    const primaryEnvironment: Environment = isSharedClusterWithStage ? ENVIRONMENT.PROD : (environment as Environment);
+    const isProd = primaryEnvironment === ENVIRONMENT.PROD;
     const clusterName = isProd ? 'afu9-cluster' : 'afu9-cluster-staging';
     const serviceName = isProd ? 'afu9-control-center' : 'afu9-control-center-staging';
     const environmentTag = isProd ? 'production' : 'staging';
     const deployEnv = isProd ? 'production' : 'staging';
     const appNodeEnv = isProd ? 'production' : 'staging';
 
-    // Environment-specific defaults
-    const envDesiredCount = desiredCount ?? (environment === 'prod' ? 2 : 1);
+    // Environment-specific defaults (primary service only)
+    const envDesiredCount = desiredCount ?? (primaryEnvironment === ENVIRONMENT.PROD ? 2 : 1);
 
     // Log configuration for diagnostics
     console.log('AFU-9 ECS Stack Configuration:');
-    console.log(`  Environment: ${environment}`);
+    console.log(`  Environment: ${primaryEnvironment}`);
     console.log(`  Database Enabled: ${enableDatabase}`);
     console.log(`  Image Tag: ${imageTag}`);
     console.log(`  Desired Count: ${envDesiredCount}`);
     console.log(`  CPU: ${cpu}, Memory: ${memoryLimitMiB}`);
+    console.log(`  Create Staging Service: ${createStagingService && !!props.stageTargetGroup}`);
 
     // ========================================
     // ECR Repositories (import existing)
@@ -375,8 +399,8 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
     // ECS Cluster (Shared across environments)
     // ========================================
-    // Create cluster only in stage environment, import in others
-    if (environment === ENVIRONMENT.STAGE) {
+    // Keep managing the cluster resource with stable name to avoid replacement
+    if (primaryEnvironment === ENVIRONMENT.PROD || primaryEnvironment === ENVIRONMENT.STAGE) {
       this.cluster = new ecs.Cluster(this, 'Afu9Cluster', {
         clusterName,
         vpc,
@@ -387,7 +411,6 @@ export class Afu9EcsStack extends cdk.Stack {
       cdk.Tags.of(this.cluster).add('Project', 'AFU-9');
       cdk.Tags.of(this.cluster).add('Environment', environmentTag);
     } else {
-      // Import existing cluster for prod and legacy environments
       this.cluster = ecs.Cluster.fromClusterAttributes(this, 'Afu9Cluster', {
         clusterName,
         vpc,
@@ -399,9 +422,8 @@ export class Afu9EcsStack extends cdk.Stack {
     // IAM Roles
     // ========================================
 
-    const taskExecutionRoleName = environment === ENVIRONMENT.PROD
-      ? 'afu9-ecs-task-execution-role-prod'
-      : 'afu9-ecs-task-execution-role';
+    const roleSuffix = (!isSharedClusterWithStage && isProd) ? '-prod' : '';
+    const taskExecutionRoleName = `afu9-ecs-task-execution-role${roleSuffix}`;
 
     // Task execution role (used by ECS to pull images and write logs)
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
@@ -435,7 +457,7 @@ export class Afu9EcsStack extends cdk.Stack {
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
-    const taskRoleName = isProd ? 'afu9-ecs-task-role-prod' : 'afu9-ecs-task-role';
+    const taskRoleName = `afu9-ecs-task-role${roleSuffix}`;
 
     // Task role (used by application code for AWS API calls)
     const taskRole = new iam.Role(this, 'TaskRole', {
@@ -590,189 +612,188 @@ export class Afu9EcsStack extends cdk.Stack {
     // 
     // For rollback procedures, see docs/ROLLBACK.md
 
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
-      family: 'afu9-control-center',
-      cpu,
-      memoryLimitMiB,
-      executionRole: taskExecutionRole,
-      taskRole: taskRole,
-    });
+    const createTaskDefinition = (
+      id: string,
+      tag: string,
+      deployEnvValue: string,
+      environmentLabel: string,
+      appNodeEnvValue: string,
+    ): ecs.FargateTaskDefinition => {
+      const td = new ecs.FargateTaskDefinition(this, id, {
+        family: 'afu9-control-center',
+        cpu,
+        memoryLimitMiB,
+        executionRole: taskExecutionRole,
+        taskRole: taskRole,
+      });
 
-    // Control Center container
-    const controlCenterContainer = taskDefinition.addContainer('control-center', {
-      image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, imageTag),
-      containerName: 'control-center',
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: 'control-center',
-        logGroup: controlCenterLogGroup,
-      }),
-      environment: {
-        NODE_ENV: appNodeEnv,
-        DEPLOY_ENV: deployEnv,
-        PORT: '3000',
-        ENVIRONMENT: environment, // Add environment variable for app-level detection
-        DATABASE_ENABLED: enableDatabase ? 'true' : 'false', // Signal to app whether DB is configured
-        DATABASE_SSL: 'true',
-        MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
-        MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
-        MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
-        MCP_GITHUB_URL: 'http://127.0.0.1:3001',
-        MCP_DEPLOY_URL: 'http://127.0.0.1:3002',
-        MCP_OBSERVABILITY_URL: 'http://127.0.0.1:3003',
-      },
-      secrets: {
-        ...(dbSecret
-          ? {
-              DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
-              DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
-              // Application connection secret uses 'database' as the key (defined in Afu9DatabaseStack)
-              // Note: This differs from RDS-generated secrets which use 'dbname'
-              DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
-              DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
-              DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
-            }
-          : {}),
-        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
-        GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
-        GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
-        OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
-        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
-        DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
-      },
-      essential: true,
-      healthCheck: {
-        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
-        command: [
-          'CMD-SHELL',
-          "node -e \"require('http').get('http://127.0.0.1:3000/api/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
-        ],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
-    });
+      // Control Center container
+      const cc = td.addContainer('control-center', {
+        image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, tag),
+        containerName: 'control-center',
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: 'control-center',
+          logGroup: controlCenterLogGroup,
+        }),
+        environment: {
+          NODE_ENV: appNodeEnvValue,
+          DEPLOY_ENV: deployEnvValue,
+          PORT: '3000',
+          ENVIRONMENT: environmentLabel,
+          DATABASE_ENABLED: enableDatabase ? 'true' : 'false',
+          DATABASE_SSL: 'true',
+          MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
+          MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
+          MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
+          MCP_GITHUB_URL: 'http://127.0.0.1:3001',
+          MCP_DEPLOY_URL: 'http://127.0.0.1:3002',
+          MCP_OBSERVABILITY_URL: 'http://127.0.0.1:3003',
+        },
+        secrets: {
+          ...(dbSecret
+            ? {
+                DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
+                DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
+                DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+                DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
+                DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+              }
+            : {}),
+          GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
+          GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
+          GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
+          OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
+          ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
+          DEEPSEEK_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'deepseek_api_key'),
+        },
+        essential: true,
+        healthCheck: {
+          command: [
+            'CMD-SHELL',
+            "node -e \"require('http').get('http://127.0.0.1:3000/api/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+          ],
+          interval: cdk.Duration.seconds(30),
+          timeout: cdk.Duration.seconds(5),
+          retries: 3,
+          startPeriod: cdk.Duration.seconds(60),
+        },
+      });
 
-    controlCenterContainer.addPortMappings({
-      containerPort: 3000,
-      protocol: ecs.Protocol.TCP,
-      name: 'control-center-http',
-    });
+      cc.addPortMappings({
+        containerPort: 3000,
+        protocol: ecs.Protocol.TCP,
+        name: 'control-center-http',
+      });
 
-    // MCP GitHub Server container
-    const mcpGithubContainer = taskDefinition.addContainer('mcp-github', {
-      image: ecs.ContainerImage.fromEcrRepository(this.mcpGithubRepo, imageTag),
-      containerName: 'mcp-github',
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: 'mcp-github',
-        logGroup: mcpGithubLogGroup,
-      }),
-      environment: {
-        NODE_ENV: appNodeEnv,
-        DEPLOY_ENV: deployEnv,
-        PORT: '3001',
-      },
-      secrets: {
-        GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
-      },
-      essential: true,
-      healthCheck: {
-        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
-        command: [
-          'CMD-SHELL',
-          "node -e \"require('http').get('http://127.0.0.1:3001/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
-        ],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
-    });
+      const gh = td.addContainer('mcp-github', {
+        image: ecs.ContainerImage.fromEcrRepository(this.mcpGithubRepo, tag),
+        containerName: 'mcp-github',
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: 'mcp-github',
+          logGroup: mcpGithubLogGroup,
+        }),
+        environment: {
+          NODE_ENV: appNodeEnvValue,
+          DEPLOY_ENV: deployEnvValue,
+          PORT: '3001',
+        },
+        secrets: {
+          GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
+        },
+        essential: true,
+        healthCheck: {
+          command: [
+            'CMD-SHELL',
+            "node -e \"require('http').get('http://127.0.0.1:3001/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+          ],
+          interval: cdk.Duration.seconds(30),
+          timeout: cdk.Duration.seconds(5),
+          retries: 3,
+          startPeriod: cdk.Duration.seconds(60),
+        },
+      });
 
-    mcpGithubContainer.addPortMappings({
-      containerPort: 3001,
-      protocol: ecs.Protocol.TCP,
-      name: 'mcp-github-http',
-    });
+      gh.addPortMappings({
+        containerPort: 3001,
+        protocol: ecs.Protocol.TCP,
+        name: 'mcp-github-http',
+      });
 
-    // MCP Deploy Server container
-    const mcpDeployContainer = taskDefinition.addContainer('mcp-deploy', {
-      image: ecs.ContainerImage.fromEcrRepository(this.mcpDeployRepo, imageTag),
-      containerName: 'mcp-deploy',
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: 'mcp-deploy',
-        logGroup: mcpDeployLogGroup,
-      }),
-      environment: {
-        NODE_ENV: appNodeEnv,
-        DEPLOY_ENV: deployEnv,
-        PORT: '3002',
-        AWS_REGION: cdk.Stack.of(this).region,
-      },
-      essential: true,
-      healthCheck: {
-        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
-        command: [
-          'CMD-SHELL',
-          "node -e \"require('http').get('http://127.0.0.1:3002/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
-        ],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
-    });
+      const dp = td.addContainer('mcp-deploy', {
+        image: ecs.ContainerImage.fromEcrRepository(this.mcpDeployRepo, tag),
+        containerName: 'mcp-deploy',
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: 'mcp-deploy',
+          logGroup: mcpDeployLogGroup,
+        }),
+        environment: {
+          NODE_ENV: appNodeEnvValue,
+          DEPLOY_ENV: deployEnvValue,
+          PORT: '3002',
+          AWS_REGION: cdk.Stack.of(this).region,
+        },
+        essential: true,
+        healthCheck: {
+          command: [
+            'CMD-SHELL',
+            "node -e \"require('http').get('http://127.0.0.1:3002/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+          ],
+          interval: cdk.Duration.seconds(30),
+          timeout: cdk.Duration.seconds(5),
+          retries: 3,
+          startPeriod: cdk.Duration.seconds(60),
+        },
+      });
 
-    mcpDeployContainer.addPortMappings({
-      containerPort: 3002,
-      protocol: ecs.Protocol.TCP,
-      name: 'mcp-deploy-http',
-    });
+      dp.addPortMappings({
+        containerPort: 3002,
+        protocol: ecs.Protocol.TCP,
+        name: 'mcp-deploy-http',
+      });
 
-    // MCP Observability Server container
-    const mcpObservabilityContainer = taskDefinition.addContainer('mcp-observability', {
-      image: ecs.ContainerImage.fromEcrRepository(this.mcpObservabilityRepo, imageTag),
-      containerName: 'mcp-observability',
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: 'mcp-observability',
-        logGroup: mcpObservabilityLogGroup,
-      }),
-      environment: {
-        NODE_ENV: appNodeEnv,
-        DEPLOY_ENV: deployEnv,
-        PORT: '3003',
-        AWS_REGION: cdk.Stack.of(this).region,
-      },
-      essential: true,
-      healthCheck: {
-        // Avoid wget dependency in minimal images; use built-in Node HTTP probe
-        command: [
-          'CMD-SHELL',
-          "node -e \"require('http').get('http://127.0.0.1:3003/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
-        ],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
-    });
+      const ob = td.addContainer('mcp-observability', {
+        image: ecs.ContainerImage.fromEcrRepository(this.mcpObservabilityRepo, tag),
+        containerName: 'mcp-observability',
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: 'mcp-observability',
+          logGroup: mcpObservabilityLogGroup,
+        }),
+        environment: {
+          NODE_ENV: appNodeEnvValue,
+          DEPLOY_ENV: deployEnvValue,
+          PORT: '3003',
+          AWS_REGION: cdk.Stack.of(this).region,
+        },
+        essential: true,
+        healthCheck: {
+          command: [
+            'CMD-SHELL',
+            "node -e \"require('http').get('http://127.0.0.1:3003/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+          ],
+          interval: cdk.Duration.seconds(30),
+          timeout: cdk.Duration.seconds(5),
+          retries: 3,
+          startPeriod: cdk.Duration.seconds(60),
+        },
+      });
 
-    mcpObservabilityContainer.addPortMappings({
-      containerPort: 3003,
-      protocol: ecs.Protocol.TCP,
-      name: 'mcp-observability-http',
-    });
+      ob.addPortMappings({
+        containerPort: 3003,
+        protocol: ecs.Protocol.TCP,
+        name: 'mcp-observability-http',
+      });
 
-    // ========================================
-    // ECS Service
-    // ========================================
+      return td;
+    };
 
+    const taskDefinition = createTaskDefinition('TaskDefinition', imageTag, deployEnv, environment, appNodeEnv);
+
+    // Primary (prod or single-env) service
     this.service = new ecs.FargateService(this, 'Service', {
       cluster: this.cluster,
       taskDefinition,
       serviceName,
       desiredCount: envDesiredCount,
-      // Deployment preferences: keep at least 50% healthy during updates
       minHealthyPercent: 50,
       maxHealthyPercent: 200,
       securityGroups: [ecsSecurityGroup],
@@ -780,16 +801,12 @@ export class Afu9EcsStack extends cdk.Stack {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
       },
       assignPublicIp: false,
-      // Increased grace period for database initialization and health checks
-      // 240s = 4 minutes to account for DB connection pooling and MCP server startup
       healthCheckGracePeriod: cdk.Duration.seconds(240),
-      enableExecuteCommand: true, // Enable ECS Exec for debugging
+      enableExecuteCommand: true,
     });
 
-    // Attach service to ALB target group
     this.service.attachToApplicationTargetGroup(targetGroup);
 
-    // Enable circuit breaker for automatic rollback on deployment failures
     const cfnService = this.service.node.defaultChild as ecs.CfnService;
     cfnService.deploymentConfiguration = {
       ...cfnService.deploymentConfiguration,
@@ -802,6 +819,48 @@ export class Afu9EcsStack extends cdk.Stack {
     cdk.Tags.of(this.service).add('Name', `${serviceName}-service`);
     cdk.Tags.of(this.service).add('Environment', environmentTag);
     cdk.Tags.of(this.service).add('Project', 'AFU-9');
+
+    // Optional staging service on shared cluster/ALB
+    if (props.stageTargetGroup && createStagingService) {
+      const stageTaskDefinition = createTaskDefinition(
+        'StageTaskDefinition',
+        props.stageImageTag ?? 'stage-latest',
+        'staging',
+        'stage',
+        'staging',
+      );
+
+      this.stageService = new ecs.FargateService(this, 'StageService', {
+        cluster: this.cluster,
+        taskDefinition: stageTaskDefinition,
+        serviceName: 'afu9-control-center-staging',
+        desiredCount: props.stageDesiredCount ?? 1,
+        minHealthyPercent: 50,
+        maxHealthyPercent: 200,
+        securityGroups: [ecsSecurityGroup],
+        vpcSubnets: {
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        },
+        assignPublicIp: false,
+        healthCheckGracePeriod: cdk.Duration.seconds(240),
+        enableExecuteCommand: true,
+      });
+
+      this.stageService.attachToApplicationTargetGroup(props.stageTargetGroup);
+
+      const cfnStageService = this.stageService.node.defaultChild as ecs.CfnService;
+      cfnStageService.deploymentConfiguration = {
+        ...cfnStageService.deploymentConfiguration,
+        deploymentCircuitBreaker: {
+          enable: true,
+          rollback: true,
+        },
+      };
+
+      cdk.Tags.of(this.stageService).add('Name', 'afu9-control-center-staging-service');
+      cdk.Tags.of(this.stageService).add('Environment', 'staging');
+      cdk.Tags.of(this.stageService).add('Project', 'AFU-9');
+    }
 
     // ========================================
     // Stack Outputs
@@ -824,6 +883,20 @@ export class Afu9EcsStack extends cdk.Stack {
       description: 'ECS service name',
       exportName: 'Afu9ServiceName',
     });
+
+    if (this.stageService) {
+      new cdk.CfnOutput(this, 'StageServiceName', {
+        value: this.stageService.serviceName,
+        description: 'ECS staging service name',
+        exportName: 'Afu9StageServiceName',
+      });
+
+      new cdk.CfnOutput(this, 'StageServiceArn', {
+        value: this.stageService.serviceArn,
+        description: 'ECS staging service ARN',
+        exportName: 'Afu9StageServiceArn',
+      });
+    }
 
     new cdk.CfnOutput(this, 'ServiceArn', {
       value: this.service.serviceArn,

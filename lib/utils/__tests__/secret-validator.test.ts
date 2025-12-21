@@ -27,7 +27,7 @@ describe('Secret Validation Configuration', () => {
     expect(config.secretName).toBe('afu9/database');
     expect(config.requiredKeys).toContain('host');
     expect(config.requiredKeys).toContain('port');
-    expect(config.requiredKeys).toContain('database'); // Not 'dbname'!
+    expect(config.requiredKeys).toContain('database');
     expect(config.requiredKeys).toContain('username');
     expect(config.requiredKeys).toContain('password');
     expect(config.description).toBeDefined();
@@ -157,7 +157,7 @@ describe('Manual Test Cases', () => {
 
   test('README: Test Case 6 - Key name mismatch', () => {
     // Prerequisites:
-    // - Secret has 'dbname' instead of 'database' key
+    // - Secret missing 'database' key
     // 
     // Command:
     //   npm run validate-secrets
@@ -166,7 +166,7 @@ describe('Manual Test Cases', () => {
     //   Exit code: 1
     //   Output: ✗ Secret afu9/database is missing required keys: database
     // 
-    // Note: This validates the fix for the dbname/database mismatch issue
+    // Note: This validates the canonical database key requirement
   });
 });
 

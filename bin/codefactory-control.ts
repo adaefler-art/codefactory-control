@@ -52,6 +52,10 @@ const env = {
 // Check if multi-environment deployment is enabled
 // Use context: -c afu9-multi-env=true to enable stage/prod routing
 const multiEnvEnabled = isMultiEnvEnabled(app);
+const createStagingServiceFlag = (() => {
+  const v = getValidatedContext<boolean | string>(app, 'afu9-create-staging-service');
+  return v === undefined ? true : v === true || v === 'true';
+})();
 
 // DNS and Certificate stack (optional, for HTTPS)
 const enableHttps = (() => {
@@ -72,6 +76,8 @@ const networkStack = new Afu9NetworkStack(app, 'Afu9NetworkStack', {
   env,
   description: 'AFU-9 v0.2 Network Foundation: VPC, Subnets, Security Groups, and ALB',
   certificateArn: dnsStack?.certificate.certificateArn,
+  hostedZone: dnsStack?.hostedZone,
+  baseDomainName: dnsStack?.domainName,
 });
 
 // Check if database should be enabled globally
@@ -216,47 +222,51 @@ if (multiEnvEnabled) {
   const enableDatabase = isDatabaseEnabled(app);
 
   // ECS stack (depends on network, optionally on database)
+  const stageTargetGroup = new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroupSingle', {
+    vpc: networkStack.vpc,
+    port: 3000,
+    protocol: elbv2.ApplicationProtocol.HTTP,
+    targetType: elbv2.TargetType.IP,
+    targetGroupName: 'afu9-tg-stage',
+    healthCheck: {
+      path: '/api/ready',
+      interval: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(5),
+      healthyThresholdCount: 2,
+      unhealthyThresholdCount: 3,
+      protocol: elbv2.Protocol.HTTP,
+    },
+    deregistrationDelay: cdk.Duration.seconds(30),
+  });
+
   const ecsStack = new Afu9EcsStack(app, 'Afu9EcsStack', {
     env,
     description: 'AFU-9 v0.2 ECS: Fargate service with Control Center and MCP servers',
     vpc: networkStack.vpc,
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: networkStack.targetGroup,
+    stageTargetGroup,
     enableDatabase,
     dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
+    environment: 'prod',
+    desiredCount: 1,
+    createStagingService: createStagingServiceFlag,
   });
 
-  // If DNS stack exists, add Route53 A record to point to ALB
+  // If DNS stack exists, configure routing for prod + stage on shared ALB
   if (dnsStack) {
     networkStack.addDependency(dnsStack);
-    
-    // Add A record to point domain to ALB
-    new route53.ARecord(networkStack, 'AliasRecord', {
-      zone: dnsStack.hostedZone,
-      recordName: dnsStack.domainName,
-      target: route53.RecordTarget.fromAlias(
-        new route53Targets.LoadBalancerTarget(networkStack.loadBalancer)
-      ),
-      comment: 'A record for AFU-9 Control Center pointing to ALB',
-    });
 
-    // Convenience A records for www and stage hosts pointing to the same ALB
-    new route53.ARecord(networkStack, 'AliasRecordWww', {
-      zone: dnsStack.hostedZone,
-      recordName: `www.${dnsStack.domainName}`,
-      target: route53.RecordTarget.fromAlias(
-        new route53Targets.LoadBalancerTarget(networkStack.loadBalancer)
-      ),
-      comment: 'A record for www.<domain> pointing to AFU-9 ALB',
-    });
-
-    new route53.ARecord(networkStack, 'AliasRecordStage', {
-      zone: dnsStack.hostedZone,
-      recordName: `stage.${dnsStack.domainName}`,
-      target: route53.RecordTarget.fromAlias(
-        new route53Targets.LoadBalancerTarget(networkStack.loadBalancer)
-      ),
-      comment: 'A record for stage.<domain> pointing to AFU-9 ALB',
+    new Afu9RoutingStack(app, 'Afu9RoutingSingleEnvStack', {
+      env,
+      description: 'AFU-9 host-based routing for shared prod/stage services',
+      loadBalancer: networkStack.loadBalancer,
+      httpsListener: networkStack.httpsListener,
+      httpListener: networkStack.httpListener,
+      stageTargetGroup,
+      prodTargetGroup: networkStack.targetGroup,
+      hostedZone: dnsStack.hostedZone,
+      baseDomainName: dnsStack.domainName,
     });
   }
 

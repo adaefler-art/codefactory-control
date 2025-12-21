@@ -70,6 +70,10 @@ export class Afu9RoutingStack extends cdk.Stack {
       baseDomainName,
     } = props;
 
+    // Optional guard to skip DNS record creation when records already exist
+    const manageDnsFlag = this.node.tryGetContext('afu9-manage-dns');
+    const manageDns = manageDnsFlag === true || manageDnsFlag === 'true';
+
     // Validate baseDomainName if routing rules are being created
     if (!baseDomainName) {
       throw new Error(
@@ -206,7 +210,7 @@ export class Afu9RoutingStack extends cdk.Stack {
     // Route53 DNS Records
     // ========================================
 
-    if (hostedZone && baseDomainName) {
+    if (manageDns && hostedZone && baseDomainName) {
       // A record for stage.afu-9.com
       new route53.ARecord(this, 'StageARecord', {
         zone: hostedZone,
@@ -236,6 +240,8 @@ export class Afu9RoutingStack extends cdk.Stack {
         ),
         comment: 'A record for AFU-9 landing page (redirects to prod)',
       });
+    } else if (!manageDns) {
+      cdk.Annotations.of(this).addInfo('DNS record creation skipped (afu9-manage-dns=false).');
     }
 
     // ========================================

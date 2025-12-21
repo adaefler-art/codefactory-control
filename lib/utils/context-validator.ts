@@ -30,6 +30,16 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     default: true,
     deprecated: ['enableHttps'],
   },
+  'afu9-manage-dns': {
+    type: 'boolean',
+    description: 'Whether CDK manages Route53 records (default: false)',
+    default: false,
+  },
+  'afu9-create-staging-service': {
+    type: 'boolean',
+    description: 'Whether to create the staging ECS service (default: false for app deploys)',
+    default: false,
+  },
   'afu9-multi-env': {
     type: 'boolean',
     description: 'Enable multi-environment deployment (stage + prod)',
@@ -97,7 +107,7 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     type: 'string',
     description: 'Name of database connection secret',
     required: false,
-    default: 'afu9/database/master',
+    default: 'afu9/database',
   },
 
   // Environment configuration

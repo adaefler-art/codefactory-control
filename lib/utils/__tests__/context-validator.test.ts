@@ -22,7 +22,9 @@ describe('Context Validator', () => {
       
       expect(afu9Keys).toContain('afu9-enable-database');
       expect(afu9Keys).toContain('afu9-enable-https');
+      expect(afu9Keys).toContain('afu9-manage-dns');
       expect(afu9Keys).toContain('afu9-multi-env');
+      expect(afu9Keys).toContain('afu9-create-staging-service');
       expect(afu9Keys).toContain('afu9-domain');
       expect(afu9Keys).toContain('afu9-hosted-zone-id');
       expect(afu9Keys).toContain('afu9-hosted-zone-name');
@@ -95,6 +97,11 @@ describe('Context Validator', () => {
     it('should return default value when context not set', () => {
       const value = getValidatedContext<boolean>(stack, 'afu9-enable-database');
       expect(value).toBe(true); // default is true
+    });
+
+    it('should default new flags to false when not set', () => {
+      expect(getValidatedContext<boolean>(stack, 'afu9-manage-dns')).toBe(false);
+      expect(getValidatedContext<boolean>(stack, 'afu9-create-staging-service')).toBe(false);
     });
 
     it('should return deprecated value with warning when only deprecated key is set', () => {
@@ -247,6 +254,19 @@ describe('Context Validator', () => {
 
       const value = getValidatedContext<string>(stack, 'afu9-enable-database');
       expect(value).toBe('false');
+    });
+
+    it('should accept string booleans for new flags', () => {
+      const app = new cdk.App({
+        context: {
+          'afu9-manage-dns': 'true',
+          'afu9-create-staging-service': 'true',
+        },
+      });
+      const stack = new cdk.Stack(app, 'TestStack');
+
+      expect(getValidatedContext<string>(stack, 'afu9-manage-dns')).toBe('true');
+      expect(getValidatedContext<string>(stack, 'afu9-create-staging-service')).toBe('true');
     });
   });
 });

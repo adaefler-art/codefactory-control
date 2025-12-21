@@ -42,6 +42,9 @@ concurrency:
 env:
   AWS_REGION: eu-central-1
   DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  DOMAIN_NAME: afu-9.com
+  MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
+  AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
 
 jobs:
   build-and-deploy:
@@ -105,89 +108,6 @@ jobs:
           "ecs_cluster=$ecsCluster" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "ready_host=$readyHost" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Enable AWS CLI AccessDenied logging
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/aws-wrap-bin
-
-          REAL_AWS_PATH="$(command -v aws || true)"
-          if [ -z "$REAL_AWS_PATH" ] || [ ! -x "$REAL_AWS_PATH" ]; then
-            echo "aws wrapper: cannot find real aws binary on PATH" >&2
-            exit 127
-          fi
-          echo "Real aws: $REAL_AWS_PATH"
-
-          printf '%s\n' \
-            '#!/usr/bin/env bash' \
-            'set -euo pipefail' \
-            '' \
-            "REAL_AWS=\"$REAL_AWS_PATH\"" \
-            '' \
-            'out_log="$(mktemp)"' \
-            'err_log="$(mktemp)"' \
-            'trap '\''rm -f "$out_log" "$err_log"'\'' EXIT' \
-            '' \
-            '"$REAL_AWS" "$@" > >(tee "$out_log") 2> >(tee "$err_log" >&2)' \
-            'rc=$?' \
-            '' \
-            'if grep -q -E "AccessDenied|not authorized|is not authorized" "$err_log"; then' \
-            '  echo "=== AccessDenied (stderr) ===" >&2' \
-            '  grep -E "AccessDenied|not authorized|is not authorized" "$err_log" >&2 || true' \
-            '  echo "=============================" >&2' \
-            'fi' \
-            '' \
-            'exit $rc' \
-            > /tmp/aws-wrap-bin/aws
-
-          chmod +x /tmp/aws-wrap-bin/aws
-          echo "/tmp/aws-wrap-bin" >> "$GITHUB_PATH"
-
-      - name: Verify AWS OIDC Authentication
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "========================================="
-          echo "Verifying AWS OIDC Authentication"
-          echo "========================================="
-          aws sts get-caller-identity
-          echo "✅ AWS authentication successful"
-
-      - name: Diagnose deploy role permissions (optional)
-        shell: bash
-        env:
-          DEBUG_IAM_ROLE_ARN: ${{ secrets.DEBUG_IAM_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DEBUG_IAM_ROLE_ARN:-}" ]; then
-            echo "Skipping IAM diagnostics: DEBUG_IAM_ROLE_ARN not set."
-            exit 0
-          fi
-
-          echo "Inspecting role: ${DEBUG_IAM_ROLE_ARN}"
-          ROLE_NAME=$(basename "$DEBUG_IAM_ROLE_ARN")
-          aws iam get-role --role-name "$ROLE_NAME" --query '{RoleArn:Role.Arn,PermissionsBoundary:Role.PermissionsBoundary}' --output json || true
-
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          aws iam simulate-principal-policy \
-            --policy-source-arn "$DEBUG_IAM_ROLE_ARN" \
-            --action-names ecs:DescribeTaskDefinition ecs:RegisterTaskDefinition \
-            --resource-arns "arn:aws:ecs:${AWS_REGION}:${ACCOUNT_ID}:task-definition/*" \
-            --output json || true
-
-      - name: Install database client tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client jq
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -199,6 +119,70 @@ jobs:
         run: |
           set -euo pipefail
           npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Preflight gate
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          DOMAIN_NAME: ${{ env.DOMAIN_NAME }}
+          MANAGE_DNS: ${{ env.MANAGE_DNS }}
+          AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
+          ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
+          ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
+          STAGING_SERVICE: afu9-control-center-staging
+          REQUIRE_STAGING_SERVICE: ${{ steps.target.outputs.deploy_env == 'staging' && 'true' || 'false' }}
+          CREATE_STAGING_SERVICE: 'false'
+          PROTECTED_RESOURCES: ${{ env.MANAGE_DNS == 'true' && 'cluster,roles,listeners' || 'cluster,roles,listeners,route53' }}
+          CDK_STACKS: Afu9EcsStack Afu9RoutingSingleEnvStack
+        run: |
+          set -euo pipefail
+          echo "MANAGE_DNS=${MANAGE_DNS}"
+          echo "DEPLOY_ENV=${DEPLOY_ENV} CLUSTER=${ECS_CLUSTER} SERVICE=${ECS_SERVICE}"
+          echo "DOMAIN_NAME=${DOMAIN_NAME} AFU9_ENABLE_HTTPS=${AFU9_ENABLE_HTTPS} CREATE_STAGING_SERVICE=${CREATE_STAGING_SERVICE}"
+          chmod +x ./scripts/preflight.sh
+
+          # Build CDK diff arguments for the guarded stacks
+          CDK_ARGS=(
+            --app "npx ts-node --project tsconfig.json bin/codefactory-control.ts"
+            -c afu9-multi-env=false
+            -c domainName="${DOMAIN_NAME}"
+            -c afu9-enable-https="${AFU9_ENABLE_HTTPS}"
+            -c afu9-manage-dns="${MANAGE_DNS}"
+            -c afu9-create-staging-service="${CREATE_STAGING_SERVICE}"
+            -c environment="${DEPLOY_ENV}"
+          )
+
+          for stack in ${CDK_STACKS}; do
+            CDK_ARGS+=("${stack}")
+          done
+
+          echo "[info] protected resources: ${PROTECTED_RESOURCES}"
+          echo "[info] running preflight for cluster=${ECS_CLUSTER} service=${ECS_SERVICE} manageDns=${MANAGE_DNS}"
+          echo "[info] cdk args: ${CDK_ARGS[*]}"
+
+          ./scripts/preflight.sh \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --staging-service "${STAGING_SERVICE}" \
+            --require-staging "${REQUIRE_STAGING_SERVICE}" \
+            --manage-dns "${MANAGE_DNS}" \
+            --create-staging-service "${CREATE_STAGING_SERVICE}" \
+            --domain "${DOMAIN_NAME}" \
+            --cdk-args "${CDK_ARGS[*]}"
+
+      - name: Install database client tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
 
 
       - name: Login to Amazon ECR

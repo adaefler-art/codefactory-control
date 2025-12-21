@@ -49,6 +49,10 @@ on:
 
 env:
   AWS_REGION: eu-central-1
+  DOMAIN_NAME: afu-9.com
+  MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
+  AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
+  CREATE_STAGING_SERVICE: 'true'
 
 jobs:
   validate-and-deploy:
@@ -74,6 +78,13 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log resolved deploy context
+        run: |
+          echo "MANAGE_DNS=${{ env.MANAGE_DNS }}"
+          echo "AFU9_ENABLE_HTTPS=${{ env.AFU9_ENABLE_HTTPS }}"
+          echo "CREATE_STAGING_SERVICE=${{ env.CREATE_STAGING_SERVICE }}"
+          echo "DOMAIN_NAME=${{ env.DOMAIN_NAME }}"
 
       - name: Verify AWS OIDC Authentication
         run: |
@@ -110,7 +121,13 @@ jobs:
           # Run diff gate validation
           npm run validate:diff -- ${{ inputs.stack_name }} \
             -c environment=${{ inputs.environment }} \
-            -c afu9-enable-https=${{ inputs.enable_https }}
+            -c domainName=${{ env.DOMAIN_NAME }} \
+            -c afu9-multi-env=false \
+            -c afu9-enable-https=${{ env.AFU9_ENABLE_HTTPS }} \
+            -c afu9-manage-dns=${{ env.MANAGE_DNS }} \
+            -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}
+
+          echo "cdk diff args: -c environment=${{ inputs.environment }} -c domainName=${{ env.DOMAIN_NAME }} -c afu9-multi-env=false -c afu9-enable-https=${{ env.AFU9_ENABLE_HTTPS }} -c afu9-manage-dns=${{ env.MANAGE_DNS }} -c afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }}"
           
           DIFF_RESULT=$?
           
@@ -149,7 +166,11 @@ jobs:
           
           npx cdk deploy ${{ inputs.stack_name }} \
             --context environment=${{ inputs.environment }} \
-            --context afu9-enable-https=${{ inputs.enable_https }} \
+            --context domainName=${{ env.DOMAIN_NAME }} \
+            --context afu9-multi-env=false \
+            --context afu9-enable-https=${{ env.AFU9_ENABLE_HTTPS }} \
+            --context afu9-manage-dns=${{ env.MANAGE_DNS }} \
+            --context afu9-create-staging-service=${{ env.CREATE_STAGING_SERVICE }} \
             --require-approval never
 
       - name: Verify Deployment
