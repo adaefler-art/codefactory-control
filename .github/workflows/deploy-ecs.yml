@@ -463,12 +463,54 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Updating ECS service with new task definition..."
-          aws ecs update-service \
+          echo "🚀 Updating ECS service with new task definition..."
+          echo "Cluster: ${{ steps.target.outputs.ecs_cluster }}"
+          echo "Service: ${{ steps.target.outputs.ecs_service }}"
+          echo "Task Definition: ${{ steps.task-def.outputs.new_task_def_arn }}"
+          
+          # Check for multiple task sets before update (common failure cause)
+          echo "Checking for existing task sets..."
+          TASK_SETS=$(aws ecs describe-services \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'services[0].taskSets' \
+            --output json)
+          
+          TASK_SET_COUNT=$(echo "$TASK_SETS" | jq 'length // 0')
+          echo "Task sets found: $TASK_SET_COUNT"
+          
+          if [ "$TASK_SET_COUNT" -gt 1 ]; then
+            echo "❌ Multiple task sets detected. This can cause update failures."
+            echo "$TASK_SETS" | jq .
+            echo "To resolve: Wait for deployments to complete or manually clean up task sets."
+            exit 1
+          fi
+          
+          # Capture current service state for diagnostics
+          echo "Current service state:"
+          aws ecs describe-services \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deploymentController:deploymentController}' \
+            --output table
+          
+          # Perform the update with detailed error capture
+          echo "Executing service update..."
+          if ! UPDATE_OUTPUT=$(aws ecs update-service \
             --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --service "${{ steps.target.outputs.ecs_service }}" \
             --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
-            --region "${{ env.AWS_REGION }}"
+            --region "${{ env.AWS_REGION }}" \
+            --output json 2>&1); then
+            echo "❌ ECS service update failed with error:"
+            echo "$UPDATE_OUTPUT"
+            exit 1
+          fi
+          
+          echo "✅ Service update initiated successfully"
+          echo "$UPDATE_OUTPUT" | jq -r '.service.deployments[] | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)"'
 
       - name: Wait for ECS service stable
         shell: pwsh
