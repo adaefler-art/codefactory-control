@@ -65,9 +65,14 @@ const enableHttps = (() => {
 let dnsStack: Afu9DnsStack | undefined;
 
 if (enableHttps) {
+  const domainFromContext = getValidatedContext<string>(app, 'domainName') || getValidatedContext<string>(app, 'afu9-domain');
+  const domainFromEnv = process.env.DOMAIN_NAME;
+  const resolvedDomain = domainFromContext || domainFromEnv;
+
   dnsStack = new Afu9DnsStack(app, 'Afu9DnsStack', {
     env,
     description: 'AFU-9 v0.2 DNS and Certificate: Route53 and ACM certificate for HTTPS',
+    domainName: resolvedDomain,
   });
 }
 
