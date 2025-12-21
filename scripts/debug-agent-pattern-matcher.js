@@ -62,11 +62,19 @@ const FAILURE_PATTERNS = {
     severity: 'high'
   },
   
-  cdk_construct_error: {
-    pattern: /Error: Cannot find module|Cannot read property.*of undefined/i,
-    rootCause: 'CDK construct error - missing dependency or undefined property',
+  cdk_missing_module: {
+    pattern: /Error: Cannot find module/i,
+    rootCause: 'CDK construct error - missing dependency or module',
     affectedResources: ['CDK Stack', 'Dependencies'],
-    fixStrategy: 'Check imports, verify construct dependencies, run npm install',
+    fixStrategy: 'Check imports, run npm install, verify package.json',
+    severity: 'medium'
+  },
+  
+  cdk_undefined_property: {
+    pattern: /Cannot read property.*of undefined/i,
+    rootCause: 'CDK construct error - undefined property access',
+    affectedResources: ['CDK Stack'],
+    fixStrategy: 'Check construct property initialization, verify construct dependencies',
     severity: 'medium'
   },
   

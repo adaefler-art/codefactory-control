@@ -49,6 +49,7 @@ env:
   MAX_FIX_ATTEMPTS: 5
   MAX_LOC_CHANGES: 200
   MAX_FILES_CHANGED: 10
+  DOMAIN_NAME: afu-9.com
 
 jobs:
   debug-and-fix:
@@ -414,7 +415,7 @@ jobs:
         run: |
           echo "Running CDK synth verification..."
           npx cdk synth Afu9EcsStack \
-            -c domainName=afu-9.com \
+            -c domainName=${{ env.DOMAIN_NAME }} \
             -c enableDatabase=false
 
       - name: Run CDK Diff Gate
@@ -429,7 +430,7 @@ jobs:
           
           # Run CDK diff and capture output
           npx cdk diff Afu9EcsStack \
-            -c domainName=afu-9.com \
+            -c domainName=${{ env.DOMAIN_NAME }} \
             -c enableDatabase=false > cdk-diff-output.txt 2>&1 || true
           
           # Check for critical replacements
@@ -460,19 +461,15 @@ jobs:
             // Create branch name
             const branchName = `afu9-debug-agent/fix-${incidentId}-${timestamp}`;
             
-            // Create new branch
-            const mainBranch = await github.rest.repos.getBranch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              branch: context.ref.replace('refs/heads/', '')
-            });
+            // Create new branch from the failed workflow's commit
+            const headSha = evidencePack.head_sha;
             
             try {
               await github.rest.git.createRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 ref: `refs/heads/${branchName}`,
-                sha: mainBranch.data.commit.sha
+                sha: headSha
               });
             } catch (error) {
               console.log('Branch may already exist, continuing...');
@@ -522,6 +519,8 @@ jobs:
             prBody += `*Attempt ${attemptNumber}/5 for incident ${incidentId}*\n`;
             
             // Note: Actual PR creation would happen here if fixes were generated
+            // The current implementation is a placeholder showing the structure
+            // Auto-merge steps below are ready but won't execute until fix generation is implemented
             console.log('PR creation skipped - fix generation not implemented');
             console.log('Branch name would be:', branchName);
             console.log('PR body:', prBody);
@@ -532,6 +531,8 @@ jobs:
 
       - name: Auto-approve PR
         id: auto-approve
+        # NOTE: This step is ready but won't execute until PR creation is implemented
+        # Keeping it in place to show the complete auto-merge flow structure
         if: |
           steps.create-pr.outputs.pr_created == 'true' &&
           github.event.inputs.auto_merge != 'false'
@@ -563,6 +564,8 @@ jobs:
 
       - name: Enable auto-merge
         id: auto-merge
+        # NOTE: This step is ready but won't execute until PR creation is implemented
+        # Keeping it in place to show the complete auto-merge flow structure
         if: |
           steps.auto-approve.outputs.approved == 'true' &&
           github.event.inputs.auto_merge != 'false'
