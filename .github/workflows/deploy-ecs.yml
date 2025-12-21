@@ -384,12 +384,27 @@ jobs:
             --tasks "$TASK_ARN" \
             --region "${{ env.AWS_REGION }}"
 
-          EXIT_CODE=$(aws ecs describe-tasks \
+          aws ecs describe-tasks \
             --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --tasks "$TASK_ARN" \
             --region "${{ env.AWS_REGION }}" \
-            --query 'tasks[0].containers[?name==`control-center`].exitCode | [0]' \
-            --output text)
+            --output json > migration-task.json
+
+          echo "Stopped reason:"
+          jq -r '.tasks[0].stoppedReason // "(none)"' migration-task.json
+
+          echo "Container statuses (name / lastStatus / exitCode / reason):"
+          jq -r '.tasks[0].containers[] | "- \(.name): status=\(.lastStatus) exitCode=\(.exitCode // "null") reason=\(.reason // "(none)")"' migration-task.json
+
+          EXIT_CODE=$(jq -r '
+            .tasks[0].containers
+            | (map(select(.name=="control-center").exitCode)[0] // .[0].exitCode // empty)
+          ' migration-task.json)
+
+          if [ -z "${EXIT_CODE:-}" ] || [ "$EXIT_CODE" = "null" ]; then
+            echo "❌ Could not determine migration task exit code (task=$TASK_ARN)" >&2
+            exit 1
+          fi
 
           echo "Migration exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" != "0" ]; then
