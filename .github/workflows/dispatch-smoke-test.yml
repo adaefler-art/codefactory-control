@@ -1,16 +1,9 @@
 name: Dispatch Smoke Test
 
-on:
-  workflow_dispatch:
-    inputs:
-      note:
-        description: 'Free-form note'
-        required: false
-        type: string
-        default: 'smoke'
+on: workflow_dispatch
 
 jobs:
   echo:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "dispatch-ok: ${{ inputs.note }}"
+      - run: echo "dispatch-ok"
