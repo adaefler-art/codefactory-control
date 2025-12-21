@@ -226,39 +226,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push MCP GitHub Server
-        uses: docker/build-push-action@v5
-        with:
-          context: ./mcp-servers
-          file: ./mcp-servers/github/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push MCP Deploy Server
-        uses: docker/build-push-action@v5
-        with:
-          context: ./mcp-servers
-          file: ./mcp-servers/deploy/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push MCP Observability Server
-        uses: docker/build-push-action@v5
-        with:
-          context: ./mcp-servers
-          file: ./mcp-servers/observability/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: "Guardrail: block legacy DB secret (/master)"
         shell: bash
         run: |
@@ -316,14 +283,8 @@ jobs:
           mv task-def.sanitized.json task-def.json
 
            jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
-             --arg gh_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
-             --arg dp_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
-             --arg ob_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
              '.containerDefinitions |= map(
                if .name == "control-center" then .image = $cc_image
-               elif .name == "mcp-github" then .image = $gh_image
-               elif .name == "mcp-deploy" then .image = $dp_image
-               elif .name == "mcp-observability" then .image = $ob_image
                else . end
                  | if .secrets then .secrets |= map(if .valueFrom then .valueFrom |= gsub("afu9/database/master"; "afu9/database") else . end) else . end
              ) |
@@ -549,6 +510,39 @@ jobs:
             "${{ steps.target.outputs.ecs_service }}" \
               "${{ steps.alb-dns.outputs.alb_dns_name }}"
 
+      - name: Build and push MCP GitHub Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/github/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push MCP Deploy Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/deploy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push MCP Observability Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/observability/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Deployment summary
         shell: bash
         run: |
@@ -559,11 +553,11 @@ jobs:
             echo "✅ **Deployment completed successfully**"
             echo "Environment: ${{ steps.target.outputs.env_label }}"
             echo ""
-            echo "### Images deployed:"
+            echo "### Images:"
             echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- MCP GitHub: \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- MCP Deploy: \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
-            echo "- MCP Observability: \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP GitHub (built/pushed): \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Deploy (built/pushed): \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Observability (built/pushed): \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
             echo ""
             echo "### ECS Configuration:"
             echo "- Cluster: \`${{ steps.target.outputs.ecs_cluster }}\`"
