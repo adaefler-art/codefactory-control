@@ -13,7 +13,7 @@ name: Deploy CDK Stack with Diff Gate
 # Do not widen IAM permissions or bypass preflight/diff gates.
 # ============================================================================
 
-"on":
+on:
   workflow_dispatch:
     inputs:
       stack_name:
