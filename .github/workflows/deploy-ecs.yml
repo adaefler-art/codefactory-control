@@ -339,8 +339,24 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
+          # Migration tasks must not depend on sidecar images.
+          # ECS pulls all images in a task definition, even if we only override the command
+          # for one container. If the service task def includes mcp-* sidecars (stage-latest),
+          # migrations would fail before the app container runs.
+          jq '.containerDefinitions |= map(select(.name=="control-center"))
+              | .containerDefinitions[0] |= del(.dependsOn)
+              ' new-task-def.json > migration-task-def.json
+
+          MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://migration-task-def.json \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
           echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "migration_task_def_arn=$MIGRATION_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "New task definition: $NEW_TASK_DEF_ARN"
+          echo "Migration task definition: $MIGRATION_TASK_DEF_ARN"
 
       - name: Run database migrations (gate)
         id: migrate
@@ -379,7 +395,7 @@ jobs:
           TASK_ARN=$(aws ecs run-task \
             --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --launch-type FARGATE \
-            --task-definition "${{ steps.task-def.outputs.new_task_def_arn }}" \
+            --task-definition "${{ steps.task-def.outputs.migration_task_def_arn }}" \
             --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$ASSIGN_PUBLIC_IP}" \
             --overrides "$OVERRIDES_JSON" \
             --region "${{ env.AWS_REGION }}" \
