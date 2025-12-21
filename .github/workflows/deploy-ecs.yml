@@ -259,7 +259,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Guardrail: block legacy DB secret (/master)
+      - name: "Guardrail: block legacy DB secret (/master)"
         shell: bash
         run: |
           set -euo pipefail
