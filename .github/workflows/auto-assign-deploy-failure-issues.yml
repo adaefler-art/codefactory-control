@@ -2,7 +2,7 @@ name: Auto-assign Deploy Failure Issues
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 permissions:
   issues: write
@@ -11,10 +11,14 @@ jobs:
   auto-assign-copilot:
     runs-on: ubuntu-latest
     if: |
-      contains(github.event.issue.title, 'Deploy Failure') ||
-      contains(github.event.issue.title, 'Deployment Failed') ||
-      contains(github.event.issue.labels.*.name, 'deploy-failure') ||
-      contains(github.event.issue.body, 'Debug Deploy Failures')
+      (
+        contains(github.event.issue.title, 'Deploy Failure') ||
+        contains(github.event.issue.title, 'Deployment Failed') ||
+        contains(github.event.issue.labels.*.name, 'deploy-failure') ||
+        contains(github.event.issue.labels.*.name, 'deployment') ||
+        contains(github.event.issue.body, 'Debug Deploy Failures')
+      ) &&
+      !contains(github.event.issue.labels.*.name, 'copilot-assigned')
     
     steps:
       - name: Assign issue to Copilot review
