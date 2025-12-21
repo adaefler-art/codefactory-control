@@ -28,7 +28,7 @@
  *   2 - Script error or no stack specified
  */
 
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 
 interface DiffChange {
   changeType: 'add' | 'remove' | 'modify' | 'replace';
@@ -153,7 +153,7 @@ function validateStackName(stackName: string): boolean {
 /**
  * Run CDK diff and capture output
  */
-function runCdkDiff(stackName: string): string {
+function runCdkDiff(stackName: string, cdkArgs: string[]): string {
   // Validate stack name to prevent command injection
   if (!validateStackName(stackName)) {
     throw new Error(
@@ -167,24 +167,34 @@ function runCdkDiff(stackName: string): string {
       PATH: process.env.PATH || '',
       HOME: process.env.HOME || '',
       AWS_REGION: process.env.AWS_REGION || 'eu-central-1',
+      AWS_DEFAULT_REGION: process.env.AWS_DEFAULT_REGION || process.env.AWS_REGION || 'eu-central-1',
       AWS_PROFILE: process.env.AWS_PROFILE || '',
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
       AWS_SESSION_TOKEN: process.env.AWS_SESSION_TOKEN || '',
     };
 
-    const command = `npx cdk diff ${stackName}`;
-    console.log(`Running: ${command}\n`);
-    
-    const output = execSync(command, {
+    const args = ['cdk', 'diff', stackName, ...cdkArgs];
+    console.log(`Running: npx ${args.join(' ')}\n`);
+
+    const result = spawnSync('npx', args, {
       encoding: 'utf8',
       env: safeEnv,
-      // CDK diff uses exit code 0 for no changes, 1 for changes
-      // We want to capture output regardless
-      stdio: ['pipe', 'pipe', 'pipe'],
     });
-    
-    return output;
+
+    const output = `${result.stdout || ''}${result.stderr || ''}`;
+
+    // CDK diff uses exit code 0 for no changes, 1 for changes.
+    // Exit code 2 (or others) indicates an error.
+    if (result.status === 0 || result.status === 1) {
+      return output;
+    }
+
+    const exitCode = result.status ?? 'unknown';
+    const error = new Error(`CDK diff failed with exit code ${exitCode}`);
+    (error as any).stdout = result.stdout;
+    (error as any).stderr = result.stderr;
+    throw error;
   } catch (error: any) {
     // CDK diff returns exit code 1 when there are changes
     // This is expected, so we return the stdout
@@ -396,7 +406,8 @@ async function main() {
   try {
     // Run CDK diff
     console.log('Running CDK diff...\n');
-    const diffOutput = runCdkDiff(stackName);
+    const cdkArgs = args.slice(1);
+    const diffOutput = runCdkDiff(stackName, cdkArgs);
     
     // Print raw diff output
     console.log('--- CDK Diff Output ---');
@@ -423,6 +434,16 @@ async function main() {
     console.error('Diff Gate Error');
     console.error('=====================================\n');
     console.error('Failed to run diff validation:', error.message || String(error));
+
+    const stdout = (error && (error.stdout || error.output)) ? String(error.stdout || '') : '';
+    const stderr = error && error.stderr ? String(error.stderr) : '';
+    const combined = `${stdout}${stderr ? (stdout ? '\n' : '') + stderr : ''}`.trim();
+    if (combined) {
+      console.error('\n--- CDK Output (captured) ---');
+      console.error(combined);
+      console.error('--- End of CDK Output ---');
+    }
+
     console.error('\nPossible causes:');
     console.error('  - Stack does not exist');
     console.error('  - AWS credentials not configured');
