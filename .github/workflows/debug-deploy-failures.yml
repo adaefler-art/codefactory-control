@@ -11,9 +11,9 @@ on:
       - "Deploy CDK Stack with Diff Gate"
       - "Build Determinism Check"
       - "Sync Check"
-      - "Health Check Contract"
+      - "Health Check Contract Tests"
       - "Security Validation"
-      - "Auto-Assign Deploy Failure Issues"
+      - "Auto-assign Deploy Failure Issues"
     types:
       - completed
   workflow_dispatch:
@@ -296,6 +296,52 @@ jobs:
             echo "fix_strategy=$FIX_STRATEGY" >> $GITHUB_OUTPUT
           fi
 
+      - name: Configure AWS credentials (for ECS/CDK diagnostics)
+        id: aws-auth
+        if: |
+          steps.evidence.outputs.has_failures == 'true' &&
+          (contains(steps.root-cause.outputs.root_cause, 'ECS') || 
+           contains(steps.root-cause.outputs.root_cause, 'CDK'))
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Collect AWS Diagnostics
+        id: aws-diagnostics
+        if: steps.aws-auth.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e  # Don't fail if AWS commands fail
+          
+          echo "Collecting AWS diagnostics..."
+          
+          # Try to get ECS service info
+          aws ecs describe-services \
+            --cluster afu9-cluster \
+            --services afu9-control-center afu9-control-center-staging \
+            --region ${{ env.AWS_REGION }} \
+            --output json > ecs-services.json 2>&1 || echo "Could not fetch ECS services"
+          
+          # Get recent task failures
+          aws ecs list-tasks \
+            --cluster afu9-cluster \
+            --desired-status STOPPED \
+            --max-results 10 \
+            --region ${{ env.AWS_REGION }} \
+            --output json > ecs-stopped-tasks.json 2>&1 || echo "Could not fetch stopped tasks"
+          
+          # Get CloudFormation stack status if CDK-related
+          if [[ "${{ steps.root-cause.outputs.root_cause }}" == *"CDK"* ]]; then
+            aws cloudformation describe-stacks \
+              --region ${{ env.AWS_REGION }} \
+              --output json > cfn-stacks.json 2>&1 || echo "Could not fetch CloudFormation stacks"
+          fi
+          
+          echo "AWS diagnostics collection complete"
+
       - name: Generate Fix (Placeholder)
         id: generate-fix
         if: |
@@ -371,6 +417,31 @@ jobs:
             -c domainName=afu-9.com \
             -c enableDatabase=false
 
+      - name: Run CDK Diff Gate
+        id: cdk-diff-gate
+        if: |
+          steps.guardrails.outputs.guardrails_passed == 'true' &&
+          steps.cdk-synth-gate.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          echo "Running CDK diff verification..."
+          
+          # Run CDK diff and capture output
+          npx cdk diff Afu9EcsStack \
+            -c domainName=afu-9.com \
+            -c enableDatabase=false > cdk-diff-output.txt 2>&1 || true
+          
+          # Check for critical replacements
+          CRITICAL_REPLACEMENTS=false
+          if grep -iE "Replacement.*ECS.*Service|Replacement.*ALB|Replacement.*TargetGroup|Replacement.*RDS|Replacement.*Secret" cdk-diff-output.txt; then
+            CRITICAL_REPLACEMENTS=true
+            echo "⚠️ Critical resource replacements detected!"
+            cat cdk-diff-output.txt
+          fi
+          
+          echo "critical_replacements=$CRITICAL_REPLACEMENTS" >> $GITHUB_OUTPUT
+
       - name: Create Auto-Fix PR
         id: create-pr
         if: |
@@ -431,7 +502,12 @@ jobs:
             
             prBody += `### Verification Results\n`;
             prBody += `- ${{ steps.build-gate.outcome == 'success' && '✅' || '❌' }} Build: \`npm run build\` ${{ steps.build-gate.outcome }}\n`;
-            prBody += `- ${{ steps.cdk-synth-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Synth: ${{ steps.cdk-synth-gate.outcome || 'skipped' }}\n\n`;
+            prBody += `- ${{ steps.cdk-synth-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Synth: ${{ steps.cdk-synth-gate.outcome || 'skipped' }}\n`;
+            prBody += `- ${{ steps.cdk-diff-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Diff: ${{ steps.cdk-diff-gate.outcome || 'skipped' }}`;
+            if ('${{ steps.cdk-diff-gate.outputs.critical_replacements }}' === 'true') {
+              prBody += ` ⚠️ (Critical replacements detected)`;
+            }
+            prBody += `\n\n`;
             
             prBody += `### Guardrail Compliance\n`;
             prBody += `- ✅ No IAM wildcard expansion\n`;
@@ -453,6 +529,88 @@ jobs:
             core.setOutput('pr_created', 'false');
             core.setOutput('pr_number', '');
             core.setOutput('branch_name', branchName);
+
+      - name: Auto-approve PR
+        id: auto-approve
+        if: |
+          steps.create-pr.outputs.pr_created == 'true' &&
+          github.event.inputs.auto_merge != 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = '${{ steps.create-pr.outputs.pr_number }}';
+            
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                event: 'APPROVE',
+                body: '✅ Auto-approved by AFU-9 Debug Agent - All guardrails passed\n\n' +
+                      'Verification:\n' +
+                      '- Build: ${{ steps.build-gate.outcome }}\n' +
+                      '- CDK Synth: ${{ steps.cdk-synth-gate.outcome || "skipped" }}\n' +
+                      '- CDK Diff: ${{ steps.cdk-diff-gate.outcome || "skipped" }}\n' +
+                      '- Guardrails: All passed'
+              });
+              
+              console.log(`Auto-approved PR #${prNumber}`);
+              core.setOutput('approved', 'true');
+            } catch (error) {
+              console.error('Auto-approve failed:', error.message);
+              core.setOutput('approved', 'false');
+            }
+
+      - name: Enable auto-merge
+        id: auto-merge
+        if: |
+          steps.auto-approve.outputs.approved == 'true' &&
+          github.event.inputs.auto_merge != 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = '${{ steps.create-pr.outputs.pr_number }}';
+            
+            try {
+              // Enable auto-merge with squash method
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                merge_method: 'squash',
+                commit_title: '🤖 Auto-Fix: ${{ steps.target-run.outputs.workflow_name }} failure',
+                commit_message: 'Auto-merged by AFU-9 Debug Agent\n\n' +
+                               'Incident: ${{ steps.attempt-check.outputs.incident_id }}\n' +
+                               'Attempt: ${{ steps.attempt-check.outputs.attempt_number }}/5'
+              });
+              
+              console.log(`Auto-merged PR #${prNumber}`);
+              core.setOutput('merged', 'true');
+            } catch (error) {
+              console.error('Auto-merge failed:', error.message);
+              console.log('PR may need to wait for status checks or has conflicts');
+              core.setOutput('merged', 'false');
+            }
+
+      - name: Delete branch after merge
+        id: cleanup
+        if: steps.auto-merge.outputs.merged == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchName = '${{ steps.create-pr.outputs.branch_name }}';
+            
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branchName}`
+              });
+              
+              console.log(`Deleted branch: ${branchName}`);
+            } catch (error) {
+              console.error('Branch deletion failed:', error.message);
+            }
 
       - name: Create HOLD Issue
         id: hold-issue
@@ -542,6 +700,17 @@ jobs:
             elif [ "${{ steps.create-pr.outputs.pr_created }}" = "true" ]; then
               echo "### ✅ Auto-Fix PR Created"
               echo "PR: [#${{ steps.create-pr.outputs.pr_number }}](${{ steps.create-pr.outputs.pr_url }})"
+              
+              if [ "${{ steps.auto-approve.outputs.approved }}" = "true" ]; then
+                echo "- ✅ Auto-approved"
+              fi
+              
+              if [ "${{ steps.auto-merge.outputs.merged }}" = "true" ]; then
+                echo "- ✅ Auto-merged (squash)"
+                echo "- ✅ Branch deleted"
+              elif [ "${{ steps.auto-merge.outputs.merged }}" = "false" ]; then
+                echo "- ⏳ Waiting for status checks to pass before merge"
+              fi
             else
               echo "### ℹ️ Status"
               echo "Fix generation is currently a placeholder. Manual implementation required."
