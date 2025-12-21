@@ -550,8 +550,8 @@ jobs:
                 body: '✅ Auto-approved by AFU-9 Debug Agent - All guardrails passed\n\n' +
                       'Verification:\n' +
                       '- Build: ${{ steps.build-gate.outcome }}\n' +
-                      '- CDK Synth: ${{ steps.cdk-synth-gate.outcome || "skipped" }}\n' +
-                      '- CDK Diff: ${{ steps.cdk-diff-gate.outcome || "skipped" }}\n' +
+                      '- CDK Synth: ${{ steps.cdk-synth-gate.outcome || ''skipped'' }}\n' +
+                      '- CDK Diff: ${{ steps.cdk-diff-gate.outcome || ''skipped'' }}\n' +
                       '- Guardrails: All passed'
               });
               
