@@ -499,8 +499,8 @@ jobs:
             
             prBody += `### Verification Results\n`;
             prBody += `- ${{ steps.build-gate.outcome == 'success' && '✅' || '❌' }} Build: \`npm run build\` ${{ steps.build-gate.outcome }}\n`;
-            prBody += `- ${{ steps.cdk-synth-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Synth: ${{ steps.cdk-synth-gate.outcome || 'skipped' }}\n`;
-            prBody += `- ${{ steps.cdk-diff-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Diff: ${{ steps.cdk-diff-gate.outcome || 'skipped' }}`;
+            prBody += `- ${{ steps.cdk-synth-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Synth: ${{ steps.cdk-synth-gate.outcome || ''skipped'' }}\n`;
+            prBody += `- ${{ steps.cdk-diff-gate.outcome == 'success' && '✅' || '⚠️' }} CDK Diff: ${{ steps.cdk-diff-gate.outcome || ''skipped'' }}`;
             if ('${{ steps.cdk-diff-gate.outputs.critical_replacements }}' === 'true') {
               prBody += ` ⚠️ (Critical replacements detected)`;
             }
@@ -550,8 +550,8 @@ jobs:
                 body: '✅ Auto-approved by AFU-9 Debug Agent - All guardrails passed\n\n' +
                       'Verification:\n' +
                       '- Build: ${{ steps.build-gate.outcome }}\n' +
-                      '- CDK Synth: ${{ steps.cdk-synth-gate.outcome || "skipped" }}\n' +
-                      '- CDK Diff: ${{ steps.cdk-diff-gate.outcome || "skipped" }}\n' +
+                      '- CDK Synth: ${{ steps.cdk-synth-gate.outcome || ''skipped'' }}\n' +
+                      '- CDK Diff: ${{ steps.cdk-diff-gate.outcome || ''skipped'' }}\n' +
                       '- Guardrails: All passed'
               });
               
