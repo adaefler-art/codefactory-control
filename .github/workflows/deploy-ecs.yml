@@ -134,7 +134,6 @@ jobs:
           AWS_REGION: ${{ env.AWS_REGION }}
           DOMAIN_NAME: ${{ env.DOMAIN_NAME }}
           MANAGE_DNS: ${{ env.MANAGE_DNS }}
-          AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
           ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
           ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
           STAGING_SERVICE: afu9-control-center-staging
@@ -146,7 +145,7 @@ jobs:
           set -euo pipefail
           echo "MANAGE_DNS=${MANAGE_DNS}"
           echo "DEPLOY_ENV=${DEPLOY_ENV} CLUSTER=${ECS_CLUSTER} SERVICE=${ECS_SERVICE}"
-          echo "DOMAIN_NAME=${DOMAIN_NAME} AFU9_ENABLE_HTTPS=${AFU9_ENABLE_HTTPS} CREATE_STAGING_SERVICE=${CREATE_STAGING_SERVICE}"
+          echo "DOMAIN_NAME=${DOMAIN_NAME} CREATE_STAGING_SERVICE=${CREATE_STAGING_SERVICE}"
           chmod +x ./scripts/preflight.sh
 
           # Build CDK diff arguments for the guarded stacks
@@ -154,7 +153,8 @@ jobs:
             --app "npx ts-node --project tsconfig.json bin/codefactory-control.ts"
             -c afu9-multi-env=false
             -c domainName="${DOMAIN_NAME}"
-            -c afu9-enable-https="${AFU9_ENABLE_HTTPS}"
+            # deploy-ecs is APP-ONLY: do not involve DNS/ACM in the diff gate.
+            -c afu9-enable-https=false
             -c afu9-manage-dns="${MANAGE_DNS}"
             -c afu9-create-staging-service="${CREATE_STAGING_SERVICE}"
             -c environment="${DEPLOY_ENV}"
