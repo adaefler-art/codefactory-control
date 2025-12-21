@@ -277,15 +277,27 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
 
+          # Resolve canonical DB secret ARN (Secrets Manager accepts secret name as SecretId)
+          DB_SECRET_ARN=$(aws secretsmanager describe-secret \
+            --secret-id "afu9/database" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'ARN' \
+            --output text)
+
+          if [ -z "${DB_SECRET_ARN:-}" ] || [ "$DB_SECRET_ARN" = "None" ]; then
+            echo "❌ Could not resolve canonical DB secret ARN for afu9/database" >&2
+            exit 1
+          fi
+          echo "Using DB secret ARN: $DB_SECRET_ARN"
+
           # Sanitize DB secret references before further mutation:
-          # - drop legacy /master
-          # - drop any fixed/rotated suffixes (e.g. afu9/database-ABC123)
-          # - drop full SecretsManager ARN prefixes so ECS resolves by secret name
+          # - replace legacy /master secret refs
+          # - replace any fixed/rotated suffix refs with canonical ARN
           jq 'walk(
             if type=="string" then
-              gsub("afu9/database/master"; "afu9/database")
-              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; "afu9/database:")
-              | gsub("afu9/database-[^:]+:"; "afu9/database:")
+              gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
+              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
+              | gsub("afu9/database/master"; "afu9/database")
             else . end
           )' \
             task-def.json > task-def.sanitized.json
@@ -296,11 +308,11 @@ jobs:
                if .name == "control-center" then .image = $cc_image
                else . end
                  | if .secrets then .secrets |= map(
-                     if .valueFrom then
+                     if (.name | test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) and .valueFrom then
                        .valueFrom |= (
-                         gsub("afu9/database/master"; "afu9/database")
-                         | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; "afu9/database:")
-                         | gsub("afu9/database-[^:]+:"; "afu9/database:")
+                         gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
+                         | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
+                         | gsub("afu9/database/master"; "afu9/database")
                        )
                      else . end
                    ) else . end
@@ -308,9 +320,15 @@ jobs:
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
              task-def.json > new-task-def.json
 
-            if jq -re '.. | select(type=="string" and test("/master|:secret:afu9/database-|afu9/database-[^:]+:"))' new-task-def.json >/dev/null; then
-              echo "❌ Detected legacy DB secret reference (master or suffixed name) in task definition; aborting." >&2
-              jq -r '.. | select(type=="string" and test("/master|:secret:afu9/database-|afu9/database-[^:]+:"))' new-task-def.json >&2
+            if jq -re '.. | select(type=="string" and test("/master"))' new-task-def.json >/dev/null; then
+              echo "❌ Detected legacy '/master' reference in task definition; aborting." >&2
+              jq -r '.. | select(type=="string" and test("/master"))' new-task-def.json >&2
+              exit 1
+            fi
+
+            if jq -re '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | select((.valueFrom|startswith(env.DB_SECRET_ARN + ":"))|not)' new-task-def.json >/dev/null; then
+              echo "❌ DATABASE_* secrets are not using canonical DB secret ARN; aborting." >&2
+              jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | "\(.name)=\(.valueFrom)"' new-task-def.json >&2
               exit 1
             fi
 
