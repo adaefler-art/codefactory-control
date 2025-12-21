@@ -72,7 +72,7 @@ jobs:
         run: |
           $deployEnv = "${{ env.DEPLOY_ENV }}"
           $stagingCluster = "${{ vars.STAGING_ECS_CLUSTER }}"
-          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster-staging' }
+          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster' }
 
           if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
             Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
