@@ -96,7 +96,7 @@ npm run smoke:epic4 -- -BaseUrl http://<alb-dns> -ExpectDatabaseEnabled false
 cdk deploy Afu9DatabaseStack
 
 # Step 2: Get database secret ARN
-aws secretsmanager describe-secret --secret-id afu9/database/master --query 'ARN' --output text
+aws secretsmanager describe-secret --secret-id afu9/database --query 'ARN' --output text
 
 # Step 3: Deploy ECS with database enabled
 cdk deploy Afu9EcsStageStack \
@@ -243,7 +243,7 @@ aws ecs describe-task-definition --task-definition <task-def-arn> \
   --query 'taskDefinition.containerDefinitions[0].secrets'
 
 # 2. Verify secret exists and is readable
-aws secretsmanager get-secret-value --secret-id afu9/database/master
+aws secretsmanager get-secret-value --secret-id afu9/database
 
 # 3. Check task execution role permissions
 aws iam get-role-policy --role-name afu9-ecs-task-execution-role-stage \

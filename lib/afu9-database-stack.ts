@@ -55,7 +55,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
 
     // Create secret for database master credentials
     const dbCredentialsSecret = new secretsmanager.Secret(this, 'DbCredentialsSecret', {
-      secretName: 'afu9/database/master',
+      secretName: 'afu9/database',
       description: 'Master credentials for AFU-9 RDS Postgres database',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({

@@ -156,23 +156,23 @@
             "secrets": [
                 {
                     "name": "DATABASE_HOST",
-                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:host::"
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database-4E9YOK:host::"
                 },
                 {
                     "name": "DATABASE_PORT",
-                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:port::"
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database-4E9YOK:port::"
                 },
                 {
                     "name": "DATABASE_NAME",
-                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:dbname::"
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database-4E9YOK:dbname::"
                 },
                 {
                     "name": "DATABASE_USER",
-                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:username::"
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database-4E9YOK:username::"
                 },
                 {
                     "name": "DATABASE_PASSWORD",
-                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database/master-4E9YOK:password::"
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database-4E9YOK:password::"
                 },
                 {
                     "name": "GITHUB_TOKEN",

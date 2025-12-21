@@ -397,8 +397,8 @@ Notes:
 
 3. **Configure Secret Rotation**:
    ```bash
-   aws secretsmanager rotate-secret \
-     --secret-id afu9/database/master \
+  aws secretsmanager rotate-secret \
+    --secret-id afu9/database \
      --rotation-lambda-arn arn:aws:lambda:... \
      --rotation-rules AutomaticallyAfterDays=90 \
      --region eu-central-1
