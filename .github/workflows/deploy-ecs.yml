@@ -168,6 +168,9 @@ jobs:
           echo "[info] running preflight for cluster=${ECS_CLUSTER} service=${ECS_SERVICE} manageDns=${MANAGE_DNS}"
           echo "[info] cdk args: ${CDK_ARGS[*]}"
 
+          # Encode args as JSON to preserve quoting (notably --app "npx ts-node ...").
+          CDK_ARGS_JSON=$(printf '%s\n' "${CDK_ARGS[@]}" | jq -R . | jq -s .)
+
           ./scripts/preflight.sh \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
@@ -176,7 +179,7 @@ jobs:
             --manage-dns "${MANAGE_DNS}" \
             --create-staging-service "${CREATE_STAGING_SERVICE}" \
             --domain "${DOMAIN_NAME}" \
-            --cdk-args "${CDK_ARGS[*]}"
+            --cdk-args-json "${CDK_ARGS_JSON}"
 
       - name: Install database client tooling
         shell: bash

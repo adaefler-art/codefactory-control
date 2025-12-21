@@ -9,7 +9,8 @@ Required args:
   --cluster NAME                 ECS cluster name (default: afu9-cluster)
   --service NAME                 Primary ECS service name (default: afu9-control-center)
   --domain NAME                  Base domain (e.g., afu-9.com)
-  --cdk-args "ARGS"              Arguments for cdk diff (e.g., "-c afu9-multi-env=false ... Afu9EcsStack Afu9RoutingSingleEnvStack")
+  --cdk-args "ARGS"              Arguments for cdk diff (legacy string form; may break on quoted args)
+  --cdk-args-json "JSON"         Arguments for cdk diff as JSON array of strings (recommended)
 
 Optional args:
   --staging-service NAME         Staging service name (default: afu9-control-center-staging)
@@ -36,6 +37,7 @@ manage_dns="false"
 create_staging="true"
 domain=""
 cdk_args=""
+cdk_args_json=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,13 +49,14 @@ while [[ $# -gt 0 ]]; do
     --create-staging-service) create_staging="$2"; shift 2;;
     --domain) domain="$2"; shift 2;;
     --cdk-args) cdk_args="$2"; shift 2;;
+    --cdk-args-json) cdk_args_json="$2"; shift 2;;
     --help) usage; exit 0;;
     *) echo "Unknown arg: $1" >&2; usage; exit 2;;
   esac
 done
 
-if [[ -z "$domain" ]] || [[ -z "$cdk_args" ]]; then
-  echo "Missing required --domain or --cdk-args" >&2
+if [[ -z "$domain" ]] || ([[ -z "$cdk_args" ]] && [[ -z "$cdk_args_json" ]]); then
+  echo "Missing required --domain and one of --cdk-args or --cdk-args-json" >&2
   usage
   exit 2
 fi
@@ -135,7 +138,15 @@ fi
 
 # Diff gate
 info "Running cdk diff gate"
-read -r -a cdk_args_arr <<< "$cdk_args"
+cdk_args_arr=()
+if [[ -n "$cdk_args_json" ]]; then
+  while IFS= read -r arg; do
+    cdk_args_arr+=("$arg")
+  done < <(echo "$cdk_args_json" | jq -r '.[]')
+else
+  # Legacy mode: simple split. This can break on quoted args; prefer --cdk-args-json.
+  read -r -a cdk_args_arr <<< "$cdk_args"
+fi
 diff_output=$(npx cdk diff "${cdk_args_arr[@]}" 2>&1 || true)
 echo "$diff_output" > /tmp/preflight-cdk-diff.log
 
