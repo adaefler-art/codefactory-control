@@ -172,6 +172,23 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // Allow running one-off tasks (used by the deploy workflow for DB migrations)
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ECSTaskRun',
+        effect: iam.Effect.ALLOW,
+        actions: ['ecs:RunTask'],
+        resources: [
+          // Clusters
+          `arn:aws:ecs:${this.region}:${this.account}:cluster/afu9-cluster`,
+          `arn:aws:ecs:${this.region}:${this.account}:cluster/afu9-cluster-staging`,
+          // Task definition families (all revisions)
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/afu9-control-center:*`,
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/afu9-control-center-staging:*`,
+        ],
+      })
+    );
+
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'ECSListGlobal',
