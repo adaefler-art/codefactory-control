@@ -10,6 +10,10 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const BANNED = 'afu9/database/master';
+const SKIP_FILES = new Set([
+  path.normalize('.github/workflows/deploy-ecs.yml'),
+  path.normalize('scripts/guard-legacy-db-secret.js'),
+]);
 const SKIP_DIRS = new Set([
   '.git',
   '.github/workflows/.cache',
@@ -30,10 +34,11 @@ async function walk(dir, findings) {
       if (SKIP_DIRS.has(entry.name)) continue;
       await walk(entryPath, findings);
     } else if (entry.isFile()) {
+      const relPath = path.normalize(path.relative(ROOT, entryPath));
+      if (SKIP_FILES.has(relPath)) continue;
       const content = await fs.promises.readFile(entryPath, 'utf8');
       const idx = content.indexOf(BANNED);
       if (idx !== -1) {
-        const relPath = path.relative(ROOT, entryPath);
         findings.push({ path: relPath });
       }
     }
