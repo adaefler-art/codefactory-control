@@ -93,7 +93,15 @@ check_service() {
       return
     fi
   fi
-  info "Service present: $svc"
+
+  svc_status=$(echo "$svc_json" | jq -r '.services[0].status // ""')
+  info "Service present: $svc (status=$svc_status)"
+  if [[ -z "$svc_status" || "$svc_status" == "null" ]]; then
+    fail "Could not determine service status for $svc" 4
+  fi
+  if [[ "$svc_status" != "ACTIVE" ]]; then
+    fail "Service is not ACTIVE ($svc_status): $svc. Recreate it via CDK/infra deploy before running deploy-ecs." 4
+  fi
 }
 
 check_service "$service" true
