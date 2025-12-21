@@ -66,6 +66,8 @@ COPY --from=builder /app/${APP_DIR}/package.json ./package.json
 COPY --chown=nextjs:nodejs database/migrations ./database/migrations
 COPY --chown=nextjs:nodejs scripts/db-migrate.sh ./scripts/db-migrate.sh
 
+RUN chmod +x ./scripts/db-migrate.sh
+
 # Copy standalone build output
 COPY --from=builder --chown=nextjs:nodejs /app/${APP_DIR}/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/${APP_DIR}/.next/static ./.next/static
