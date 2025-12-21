@@ -73,3 +73,8 @@ ecs-services.json
 ecs-stopped-tasks.json
 test-analysis.json
 test-report.md
+
+# Downloaded tools (for validation)
+actionlint
+/LICENSE.txt
+/man/
