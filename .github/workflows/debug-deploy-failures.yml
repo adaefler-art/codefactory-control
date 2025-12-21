@@ -1,0 +1,383 @@
+name: Debug Deploy Failures
+
+# Automatically debug ECS deployment failures using AI-powered analysis
+# Triggers when deploy-ecs.yml workflow fails or can be run manually
+
+on:
+  workflow_run:
+    workflows: ["Deploy AFU-9 to ECS"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Workflow run ID to debug (leave empty to debug latest failed run)"
+        required: false
+        type: string
+      create_issue:
+        description: "Create a GitHub issue with debugging analysis"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  id-token: write
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  debug-workflow:
+    name: Debug Failed Deployment
+    runs-on: ubuntu-latest
+    # Only run for failed workflows or manual dispatch
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      (github.event.workflow_run.conclusion == 'failure')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Determine workflow run to debug
+        id: target-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let runId;
+            
+            if (context.eventName === 'workflow_dispatch') {
+              runId = context.payload.inputs.run_id;
+              if (!runId) {
+                // Find latest failed deploy-ecs workflow run
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: 'deploy-ecs.yml',
+                  status: 'failure',
+                  per_page: 1
+                });
+                if (runs.data.workflow_runs.length > 0) {
+                  runId = runs.data.workflow_runs[0].id;
+                } else {
+                  core.setFailed('No failed deploy-ecs workflow runs found');
+                  return;
+                }
+              }
+            } else {
+              runId = context.payload.workflow_run.id;
+            }
+            
+            core.setOutput('run_id', runId);
+            console.log(`Debugging workflow run ID: ${runId}`);
+
+      - name: Collect workflow run details
+        id: collect-logs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = '${{ steps.target-run.outputs.run_id }}';
+            
+            // Get workflow run details
+            const run = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId
+            });
+            
+            // Get jobs for this run
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId
+            });
+            
+            // Find failed jobs and steps
+            const failedJobs = jobs.data.jobs.filter(job => job.conclusion === 'failure');
+            
+            let debugInfo = {
+              run_url: run.data.html_url,
+              run_number: run.data.run_number,
+              conclusion: run.data.conclusion,
+              created_at: run.data.created_at,
+              updated_at: run.data.updated_at,
+              triggering_actor: run.data.triggering_actor?.login,
+              head_branch: run.data.head_branch,
+              head_sha: run.data.head_sha,
+              failed_jobs: []
+            };
+            
+            for (const job of failedJobs) {
+              const failedSteps = job.steps?.filter(step => step.conclusion === 'failure') || [];
+              
+              debugInfo.failed_jobs.push({
+                name: job.name,
+                conclusion: job.conclusion,
+                started_at: job.started_at,
+                completed_at: job.completed_at,
+                html_url: job.html_url,
+                failed_steps: failedSteps.map(step => ({
+                  name: step.name,
+                  conclusion: step.conclusion,
+                  number: step.number,
+                  started_at: step.started_at,
+                  completed_at: step.completed_at
+                }))
+              });
+            }
+            
+            // Save to file for next step
+            const fs = require('fs');
+            fs.writeFileSync('debug-info.json', JSON.stringify(debugInfo, null, 2));
+            
+            core.setOutput('has_failures', failedJobs.length > 0 ? 'true' : 'false');
+            core.setOutput('failed_job_count', failedJobs.length);
+            
+            return debugInfo;
+
+      - name: Download workflow logs
+        if: steps.collect-logs.outputs.has_failures == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = '${{ steps.target-run.outputs.run_id }}';
+            const fs = require('fs');
+            
+            try {
+              // Download logs for the workflow run
+              const logsResponse = await github.rest.actions.downloadWorkflowRunLogs({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId
+              });
+              
+              // The response is a redirect URL, we need to fetch it
+              const https = require('https');
+              const url = logsResponse.url;
+              
+              console.log('Downloading logs from:', url);
+              core.setOutput('logs_available', 'true');
+            } catch (error) {
+              console.error('Error downloading logs:', error);
+              core.setOutput('logs_available', 'false');
+            }
+
+      - name: Configure AWS credentials (if needed for ECS debugging)
+        if: steps.collect-logs.outputs.has_failures == 'true'
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Collect ECS diagnostics
+        if: steps.collect-logs.outputs.has_failures == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e  # Don't fail if AWS commands fail
+          
+          echo "Collecting ECS service diagnostics..."
+          
+          # Try to get ECS service info
+          aws ecs describe-services \
+            --cluster afu9-cluster \
+            --services afu9-control-center afu9-control-center-staging \
+            --region ${{ env.AWS_REGION }} \
+            --output json > ecs-services.json 2>&1 || echo "Could not fetch ECS services"
+          
+          # Get recent task failures
+          aws ecs list-tasks \
+            --cluster afu9-cluster \
+            --desired-status STOPPED \
+            --max-results 10 \
+            --region ${{ env.AWS_REGION }} \
+            --output json > ecs-stopped-tasks.json 2>&1 || echo "Could not fetch stopped tasks"
+          
+          echo "ECS diagnostics collection complete (check for errors above)"
+
+      - name: Generate AI debugging prompt
+        if: steps.collect-logs.outputs.has_failures == 'true'
+        id: ai-prompt
+        shell: bash
+        run: |
+          cat > ai-debug-prompt.txt << 'EOFPROMPT'
+          # AFU-9 Deploy Workflow Debugging Request
+
+          You are an expert in AWS ECS deployments, GitHub Actions workflows, and the AFU-9 deployment system.
+          A deployment workflow has failed and requires analysis.
+
+          ## System Context
+          
+          This is the AFU-9 (Autonomous Fabrication Unit) control plane deployment workflow.
+          The deployment follows strict guardrails defined in:
+          - docs/deploy/AFU9_DEPLOY_SYSTEM_PROMPT.md
+          - docs/deploy/AFU9_DEPLOY_CHECKLIST.md
+          - docs/deploy/AFU9_DEPLOY_INTENT.md
+
+          Key constraints:
+          - Must preserve system stability
+          - Must not bypass preflight or diff gates
+          - Must not widen IAM permissions without explicit justification
+          - Must respect DEPLOY_ENV semantics (production vs staging)
+
+          ## Workflow Failure Details
+
+          EOFPROMPT
+          
+          cat debug-info.json >> ai-debug-prompt.txt
+          
+          cat >> ai-debug-prompt.txt << 'EOFPROMPT'
+
+          ## Analysis Request
+
+          Please analyze this deployment failure and provide:
+
+          1. **Root Cause**: What specifically caused the failure?
+          2. **Impact**: What components/services are affected?
+          3. **Immediate Action**: What needs to be done to resolve this now?
+          4. **Prevention**: How can we prevent this failure in the future?
+          5. **Related Issues**: Are there any related configuration, permission, or infrastructure issues?
+
+          Focus on:
+          - ECS task definition issues
+          - IAM permission problems
+          - Database migration failures
+          - Service deployment and health check failures
+          - Network or ALB configuration issues
+          - Secret management issues
+
+          Please be specific and reference exact step names, error messages, and AWS resources.
+          EOFPROMPT
+          
+          echo "AI debugging prompt generated"
+          
+          # Set output for later use
+          {
+            echo 'prompt<<PROMPTEOF'
+            cat ai-debug-prompt.txt
+            echo 'PROMPTEOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create debugging issue
+        if: |
+          steps.collect-logs.outputs.has_failures == 'true' && 
+          (github.event.inputs.create_issue != 'false' || github.event_name == 'workflow_run')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const debugInfo = JSON.parse(fs.readFileSync('debug-info.json', 'utf8'));
+            
+            // Format the issue body
+            let body = '## 🔴 Automated Deployment Failure Analysis\n\n';
+            body += `**Workflow Run**: [#${debugInfo.run_number}](${debugInfo.run_url})\n`;
+            body += `**Branch**: \`${debugInfo.head_branch}\`\n`;
+            body += `**SHA**: \`${debugInfo.head_sha}\`\n`;
+            body += `**Triggered by**: @${debugInfo.triggering_actor}\n`;
+            body += `**Time**: ${debugInfo.created_at}\n\n`;
+            
+            body += '### Failed Jobs\n\n';
+            for (const job of debugInfo.failed_jobs) {
+              body += `#### ${job.name}\n`;
+              body += `- **Status**: ${job.conclusion}\n`;
+              body += `- **Duration**: ${job.started_at} → ${job.completed_at}\n`;
+              body += `- [View Job](${job.html_url})\n\n`;
+              
+              if (job.failed_steps.length > 0) {
+                body += '**Failed Steps**:\n';
+                for (const step of job.failed_steps) {
+                  body += `- \`${step.name}\` (step ${step.number})\n`;
+                }
+                body += '\n';
+              }
+            }
+            
+            body += '### Debugging Guidance\n\n';
+            body += 'This issue was automatically created by the deployment debugging agent.\n\n';
+            body += '**Next Steps**:\n';
+            body += '1. Review the [workflow run logs](${debugInfo.run_url})\n';
+            body += '2. Check ECS service events and task failures\n';
+            body += '3. Review recent changes in the failed commit\n';
+            body += '4. Consult deployment documentation:\n';
+            body += '   - [Deployment Consolidated Guide](../blob/main/docs/DEPLOYMENT_CONSOLIDATED.md)\n';
+            body += '   - [Deploy System Prompt](../blob/main/docs/deploy/AFU9_DEPLOY_SYSTEM_PROMPT.md)\n\n';
+            
+            body += '### AI Analysis Prompt\n\n';
+            body += '<details>\n<summary>Click to expand AI debugging prompt</summary>\n\n';
+            body += '```\n';
+            body += fs.readFileSync('ai-debug-prompt.txt', 'utf8');
+            body += '\n```\n\n';
+            body += '</details>\n\n';
+            
+            body += '---\n';
+            body += '*This issue was automatically generated by the [Debug Deploy Failures](.github/workflows/debug-deploy-failures.yml) workflow.*';
+            
+            // Create the issue
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔴 Deploy Failure: ${debugInfo.head_branch} (Run #${debugInfo.run_number})`,
+              body: body,
+              labels: ['deployment', 'automated-debugging', 'needs-triage']
+            });
+            
+            console.log(`Created issue #${issue.data.number}: ${issue.data.html_url}`);
+            core.setOutput('issue_number', issue.data.number);
+            core.setOutput('issue_url', issue.data.html_url);
+
+      - name: Add comment to workflow run
+        if: steps.collect-logs.outputs.has_failures == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const debugInfo = JSON.parse(fs.readFileSync('debug-info.json', 'utf8'));
+            const runId = '${{ steps.target-run.outputs.run_id }}';
+            
+            console.log(`Debugging information collected for run ${runId}`);
+            console.log(`Failed jobs: ${debugInfo.failed_jobs.length}`);
+            
+            if ('${{ steps.create-debugging-issue.outputs.issue_url }}') {
+              console.log(`Created debugging issue: ${{ steps.create-debugging-issue.outputs.issue_url }}`);
+            }
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Deployment Debugging Summary"
+            echo ""
+            if [ "${{ steps.collect-logs.outputs.has_failures }}" = "true" ]; then
+              echo "✅ **Debugging data collected successfully**"
+              echo ""
+              echo "- **Workflow Run**: [#${{ steps.collect-logs.result.run_number }}](${{ steps.collect-logs.result.run_url }})"
+              echo "- **Failed Jobs**: ${{ steps.collect-logs.outputs.failed_job_count }}"
+              if [ -n "${{ steps.create-debugging-issue.outputs.issue_url }}" ]; then
+                echo "- **Created Issue**: [#${{ steps.create-debugging-issue.outputs.issue_number }}](${{ steps.create-debugging-issue.outputs.issue_url }})"
+              fi
+              echo ""
+              echo "### Files Generated"
+              echo "- \`debug-info.json\` - Workflow run details and failed jobs"
+              echo "- \`ai-debug-prompt.txt\` - AI-ready debugging prompt"
+              if [ -f "ecs-services.json" ]; then
+                echo "- \`ecs-services.json\` - ECS service diagnostics"
+              fi
+              if [ -f "ecs-stopped-tasks.json" ]; then
+                echo "- \`ecs-stopped-tasks.json\` - Recent stopped tasks"
+              fi
+            else
+              echo "ℹ️ **No failures detected**"
+              echo ""
+              echo "The target workflow run completed successfully or no failed jobs were found."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
