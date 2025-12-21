@@ -247,6 +247,23 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // ========================================
+    // CDK Bootstrap Permissions
+    // ========================================
+    // CDK verifies the bootstrap stack version via SSM parameter:
+    //   /cdk-bootstrap/hnb659fds/version
+    // Without this, `cdk diff/deploy` fails with AccessDenied.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CdkBootstrapVersionRead',
+        effect: iam.Effect.ALLOW,
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/cdk-bootstrap/hnb659fds/version`,
+        ],
+      })
+    );
+
     // Allow preflight checks to read Route53 hosted zones/records (no write access)
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
