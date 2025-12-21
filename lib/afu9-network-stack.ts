@@ -166,7 +166,7 @@ export class Afu9NetworkStack extends cdk.Stack {
       targetType: elbv2.TargetType.IP, // Required for Fargate
       targetGroupName: 'afu9-tg',
       healthCheck: {
-        path: '/api/ready',
+        path: '/api/health',
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         healthyThresholdCount: 2,
