@@ -355,4 +355,21 @@ async function main() {
   }
 }
 
-main();
+// Export functions for testing
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    analyzeFailures,
+    detectErrorPatterns,
+    generateReport,
+    githubAPI,
+    findLatestFailedRun,
+    getWorkflowRunDetails,
+    getWorkflowJobs
+  };
+}
+
+// Only run main if executed directly
+if (require.main === module) {
+  main();
+}
+
