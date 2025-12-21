@@ -209,7 +209,6 @@ jobs:
           set -euo pipefail
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Control Center
         uses: docker/build-push-action@v5
@@ -223,8 +222,6 @@ jobs:
             BUILD_ENV=${{ steps.target.outputs.deploy_env }}
           tags: |
               ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -236,8 +233,6 @@ jobs:
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -249,8 +244,6 @@ jobs:
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -262,8 +255,6 @@ jobs:
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.timestamp }}
-            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

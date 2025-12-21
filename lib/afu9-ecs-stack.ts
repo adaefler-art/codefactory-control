@@ -281,7 +281,7 @@ export class Afu9EcsStack extends cdk.Stack {
       vpc,
       ecsSecurityGroup,
       targetGroup,
-      imageTag = 'staging-latest',
+      imageTag = 'stage-undefined',
       desiredCount,
       cpu = 1024,
       memoryLimitMiB = 2048,
@@ -605,10 +605,11 @@ export class Afu9EcsStack extends cdk.Stack {
     // Image Tagging Strategy:
     // - Primary tag: Git commit SHA (7 chars, e.g., 'a1b2c3d') - immutable, production deployments
     // - Secondary tag: Timestamp (e.g., '20251212-143000') - immutable, audit trail
-    // - Convenience tag: 'staging-latest' - mutable, for development/staging
+    // - No mutable *-latest tags to avoid stale image pulls.
     // 
     // GitHub Actions deployments create new task definitions with SHA tags.
-    // CDK deployments use 'staging-latest' by default (can be overridden via imageTag prop).
+    // CDK deployments default to 'stage-undefined' unless overridden via imageTag prop; supply
+    // an immutable tag (e.g., stage-<sha>) when deploying via CDK.
     // 
     // For rollback procedures, see docs/ROLLBACK.md
 
@@ -824,7 +825,7 @@ export class Afu9EcsStack extends cdk.Stack {
     if (props.stageTargetGroup && createStagingService) {
       const stageTaskDefinition = createTaskDefinition(
         'StageTaskDefinition',
-        props.stageImageTag ?? 'stage-latest',
+        props.stageImageTag ?? 'stage-undefined',
         'staging',
         'stage',
         'staging',
