@@ -289,6 +289,7 @@ jobs:
             exit 1
           fi
           echo "Using DB secret ARN: $DB_SECRET_ARN"
+          export DB_SECRET_ARN
 
           # Sanitize DB secret references before further mutation:
           # - replace legacy /master secret refs
