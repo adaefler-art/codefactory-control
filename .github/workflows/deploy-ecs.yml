@@ -491,25 +491,6 @@ jobs:
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
             --output table
 
-      - name: Post-deploy readiness (/api/ready)
-        shell: pwsh
-        env:
-          ALB_DNS_NAME: ${{ steps.alb-dns.outputs.alb_dns_name }}
-          READY_HOST: ${{ steps.target.outputs.ready_host }}
-        run: |
-          $target = if ($env:ALB_DNS_NAME) { $env:ALB_DNS_NAME } else { $env:READY_HOST }
-          $uri = "https://$target/api/ready"
-          $host = $env:READY_HOST
-          Write-Host "Probing readiness at $uri (Host: $host)"
-          for ($i = 1; $i -le 30; $i++) {
-            try {
-              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $host } -UseBasicParsing -TimeoutSec 10
-              if ($resp.StatusCode -eq 200) { Write-Host "Ready (attempt $i)"; break }
-            } catch {}
-            if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
-            Start-Sleep -Seconds 5
-          }
-
       - name: Resolve ALB DNS
         id: alb-dns
         shell: pwsh
@@ -549,6 +530,25 @@ jobs:
           }
 
           Write-Host "Resolved ALB DNS: $albDns"
+
+      - name: Post-deploy readiness (/api/ready)
+        shell: pwsh
+        env:
+          ALB_DNS_NAME: ${{ steps.alb-dns.outputs.alb_dns_name }}
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+        run: |
+          $target = if ($env:ALB_DNS_NAME) { $env:ALB_DNS_NAME } else { $env:READY_HOST }
+          $uri = "https://$target/api/ready"
+          $host = $env:READY_HOST
+          Write-Host "Probing readiness at $uri (Host: $host)"
+          for ($i = 1; $i -le 30; $i++) {
+            try {
+              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $host } -UseBasicParsing -TimeoutSec 10
+              if ($resp.StatusCode -eq 200) { Write-Host "Ready (attempt $i)"; break }
+            } catch {}
+            if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
+            Start-Sleep -Seconds 5
+          }
 
       - name: Run post-deployment verification
         shell: bash
