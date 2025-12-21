@@ -53,9 +53,11 @@ export class Afu9DatabaseStack extends cdk.Stack {
     // Database Credentials Secret
     // ========================================
 
-    // Create secret for database master credentials
+    // Create secret for database master credentials.
+    // IMPORTANT: Do not set secretName here.
+    // We reserve the canonical name `afu9/database` for the application connection secret below.
+    // Using the same secretName for multiple Secret resources causes CloudFormation failures.
     const dbCredentialsSecret = new secretsmanager.Secret(this, 'DbCredentialsSecret', {
-      secretName: 'afu9/database',
       description: 'Master credentials for AFU-9 RDS Postgres database',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({
@@ -182,8 +184,6 @@ export class Afu9DatabaseStack extends cdk.Stack {
       publiclyAccessible: false,
     });
 
-    this.dbSecret = dbCredentialsSecret;
-
     // ========================================
     // Application Connection Secret
     // ========================================
@@ -202,6 +202,9 @@ export class Afu9DatabaseStack extends cdk.Stack {
         password: dbCredentialsSecret.secretValueFromJson('password'),
       },
     });
+
+    // Export the canonical application connection secret.
+    this.dbSecret = appConnectionSecret;
 
     // ========================================
     // Secret Key Validation (Guardrail I-ECS-DB-02)
@@ -253,7 +256,7 @@ export class Afu9DatabaseStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'DbSecretArn', {
-      value: appConnectionSecret.secretArn,
+      value: this.dbSecret.secretArn,
       description: 'ARN of the database connection secret',
       exportName: 'Afu9DbSecretArn',
     });
