@@ -1,347 +1,153 @@
-# codefactory-control
-
-Control-plane for AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture).
-
-`codefactory-control` orchestrates autonomous code fabrication across GitHub repositories using:
-- AWS ECS Fargate (Control Center + MCP Servers)
-- AWS Lambda & Step Functions (v0.1 pipeline)
-- RDS Postgres (workflow state)
-- GitHub Actions
-- External LLMs (optional)
-
-## Versions
-
-- **v0.1**: Walking skeleton with Lambda-based pipeline  
-  **Flow**: Issue → AFU-9 Pipeline → Patch → Branch → Pull Request → CI Feedback
-  
-- **v0.2**: Production-ready architecture on ECS with MCP pattern  
-  **Features**: Control Center UI, MCP-based tool architecture, RDS persistence, scalable infrastructure, comprehensive alerting and monitoring with Red/Yellow/Green health indicators
-
-- **v0.4**: Operational excellence and deployment stability ✅ **RELEASED**  
-  **Release Review**: [docs/v04/V04_RELEASE_REVIEW.md](docs/v04/V04_RELEASE_REVIEW.md) - **CANONICAL** reference for stable features, scope, and v0.5 foundation  
-  **Documentation Hub**: [docs/v04/](docs/v04/) - Complete v0.4 planning, implementation summaries, quick references, and runbooks
-
-- **v0.5**: Enhanced workflow engine and UI/UX 🔄 **IN PLANNING**  
-  **Go/No-Go Decision**: [docs/v05/V05_GO_NOGO_DECISION.md](docs/v05/V05_GO_NOGO_DECISION.md) - **DECISION TEMPLATE** for v0.5 release readiness (DNS/HTTPS, features, stability)  
-  **Documentation Hub**: [docs/v05/](docs/v05/) - v0.5 planning, scope, timeline, and implementation tracking
-
-## Repository Structure
-
-```
-codefactory-control/
-├── bin/                      # CDK entry point
-├── lib/                      # CDK stack definitions
-│   ├── codefactory-control-stack.ts       # v0.1 Lambda stack
-│   └── afu9-infrastructure-stack.ts       # v0.2 ECS stack (WIP)
-├── infra/lambdas/            # Lambda function implementations (v0.1)
-├── control-center/           # Next.js Control Center app
-├── mcp-servers/              # MCP server implementations (v0.2)
-│   ├── base/                 # Base MCP server
-│   ├── github/               # GitHub operations
-│   ├── deploy/               # AWS ECS deployments
-│   └── observability/        # CloudWatch monitoring
-├── database/migrations/      # Database schema migrations
-├── docs/                     # Architecture documentation
-│   ├── architecture/         # Detailed architecture docs
-│   └── DEPLOYMENT.md         # Deployment guide
-└── scripts/                  # Utility scripts
-```
-
-### Infrastructure & CDK
-The root directory contains AWS CDK infrastructure:
-- `bin/` - CDK entry point
-- `lib/` - CDK stack definitions (Lambda v0.1 + ECS v0.2)
-- `infra/` - Lambda function implementations
-- `package.json` - Infrastructure dependencies
-
-### Control Center (Next.js)
-The `control-center/` directory contains the web application:
-- Next.js 16 App Router
-- TypeScript
-- Tailwind CSS
-- See [`control-center/README.md`](control-center/README.md) for details
-
-### MCP Servers
-The `mcp-servers/` directory contains specialized microservices:
-- GitHub operations (issues, PRs, branches)
-- AWS ECS deployments
-- CloudWatch observability
-- See [`mcp-servers/README.md`](mcp-servers/README.md) for details
-
-## Quick Start
-
-### Development (Local)
-
-1. **Install dependencies**:
-```bash
-npm install
-cd control-center && npm install && cd ..
-```
-
-2. **Run Control Center locally**:
-```bash
-cd control-center
-cp .env.local.template .env.local
-# Edit .env.local with your credentials
-npm run dev
-```
-
-3. **Enable Debug Mode** (optional):
-Debug mode provides verbose logging for troubleshooting workflows, agents, and MCP communication.
-```bash
-# In .env.local or .env
-AFU9_DEBUG_MODE=true
-```
-
-When debug mode is enabled:
-- Detailed workflow step execution logs
-- LLM request/response tracking
-- MCP JSON-RPC request/response details
-- Variable substitution and context updates
-- Tool call parameter inspection
-
-4. **Run MCP servers locally** (optional):
-```bash
-# Terminal 1: GitHub server
-cd mcp-servers/github
-npm install && npm run dev
-
-# Terminal 2: Deploy server  
-cd mcp-servers/deploy
-npm install && npm run dev
-
-# Terminal 3: Observability server
-cd mcp-servers/observability
-npm install && npm run dev
-```
-
-### Deployment (AWS)
-
-**📚 Consolidated Deployment Guide (CANONICAL):**
-
-See [docs/DEPLOYMENT_CONSOLIDATED.md](docs/DEPLOYMENT_CONSOLIDATED.md) for the **complete deployment guide** covering:
-- Infrastructure deployment (CDK)
-- Application deployment (ECS)
-- OIDC setup and verification
-- Decision logic: When to use which workflow
-- Troubleshooting common issues
-
-**🤖 Automated Debugging Agent:**
-
-The [Automated Debugging Agent](docs/AUTOMATED_DEBUGGING_AGENT.md) eliminates manual debugging workflows:
-- Automatically monitors deployment failures
-- Collects diagnostic data and error logs
-- Generates AI-ready debugging prompts
-- Creates GitHub issues with analysis
-- See [Quick Start Guide](docs/DEBUGGING_QUICK_START.md) for usage
-
-**Additional Resources:**
-- [docs/AWS_DEPLOY_RUNBOOK.md](docs/AWS_DEPLOY_RUNBOOK.md) - Detailed staging deployment runbook
-- [docs/CANONICAL_DEPLOY_PROMPT.md](docs/CANONICAL_DEPLOY_PROMPT.md) - Copy/paste-ready deployment prompt for VS Copilot
-- [docs/ECS-DEPLOYMENT.md](docs/ECS-DEPLOYMENT.md) - ECS-specific deployment details
-- [docs/HTTPS-DNS-SETUP.md](docs/HTTPS-DNS-SETUP.md) - HTTPS/DNS configuration
-- [docs/CONTEXT_KEYS_REFERENCE.md](docs/CONTEXT_KEYS_REFERENCE.md) - CDK context keys reference
-
-**Quick Staging Deploy:**
-
-```bash
-# 1. Bootstrap CDK (first time only)
-npx cdk bootstrap
-
-# 2. Deploy infrastructure stacks (staging config)
-npx cdk deploy Afu9NetworkStack --context environment=staging --context afu9-enable-https=false
-npx cdk deploy Afu9DatabaseStack --context environment=staging
-npx cdk deploy Afu9EcsStack --context environment=staging
-
-# 3. Configure secrets in AWS Secrets Manager
-# (See AWS_DEPLOY_RUNBOOK.md for details)
-
-# 4. Build and push Docker images
-# (Use GitHub Actions or manual build - see runbook)
-
-# 5. Run post-deployment verification (automated in GitHub Actions)
-./scripts/post-deploy-verification.sh stage afu9-cluster afu9-control-center-stage <ALB_DNS>
-
-# 6. Run smoke tests
-./scripts/smoke-test-staging.sh <ALB_DNS>
-```
-
-**Automated Verification:**
-
-All deployments via GitHub Actions automatically run post-deployment verification checks:
-- ECS service events (no Circuit Breaker issues)
-- ALB target health (all targets green)
-- Service stability (desired task count reached)
-- Health and readiness endpoints
-
-See [docs/POST_DEPLOY_VERIFICATION.md](docs/POST_DEPLOY_VERIFICATION.md) for details.
-
-**v0.1 Lambda Deployment (Legacy):**
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Lambda-based deployment.
-
-## Architecture
-
-### v0.2 Architecture (Current)
-
-AFU-9 v0.2 uses a modern, scalable architecture:
-
-- **ECS Fargate**: Control Center + 3 MCP server sidecars
-- **RDS Postgres**: Workflow state and execution history
-- **ALB**: HTTPS termination and load balancing
-- **S3**: Artifacts, logs, and backup storage
-- **CloudWatch**: Centralized logging and monitoring
-- **Secrets Manager**: Secure credential storage
-
-**MCP Pattern**: AFU-9 acts as an MCP-Client, consuming specialized MCP-Servers for different domains (GitHub, Deploy, Observability).
-
-**📚 Documentation:**
-- [Architecture Overview](docs/architecture/README.md) - Technical architecture details
-- [Complete Architecture Guide (German)](docs/architecture/afu9-v0.2-overview.md) - Comprehensive guide with AWS components, MCP pattern, and development workflow integration
-- [Control Plane Specification](docs/CONTROL_PLANE_SPEC.md) - Standardized health/readiness endpoints for all services
-- [Factory Status API](docs/FACTORY_STATUS_API.md) - Central Factory Status API for aggregated runs, errors, and KPIs
-
-**📊 KPI System (EPIC 3):**
-- [KPI Definitions](docs/KPI_DEFINITIONS.md) - **CANONICAL**: Single source of truth for all Factory KPIs
-- [KPI Governance](docs/KPI_GOVERNANCE.md) - **NEW**: Change management and governance framework
-- [KPI Changelog](docs/KPI_CHANGELOG.md) - **NEW**: Complete version history and change tracking
-- [KPI API](docs/KPI_API.md) - REST API documentation and usage examples
-
-**💰 Cost & Efficiency Engine (EPIC 9):**
-- [Cost Attribution Guide](docs/COST_ATTRIBUTION.md) - **CANONICAL**: Transparent cost tracking and economic steering
-- Cost per Outcome KPI in [KPI Definitions](docs/KPI_DEFINITIONS.md#12-cost-per-outcome)
-- API: `/api/v1/costs/{runs,products,factory,export}` - Cost data and export endpoints
-
-**🎯 Prompt Library (EPIC 6):**
-- [Prompt Library Canon](docs/PROMPT_LIBRARY_CANON.md) - **CANONICAL**: Single source of truth for all Factory prompts
-- [Prompt Governance](docs/PROMPT_GOVERNANCE.md) - **NEW**: Versioning rules and change management
-- [Prompt Library Integration](docs/PROMPT_LIBRARY_INTEGRATION.md) - **NEW**: Integration guide for workflows and agents
-- [Prompt Library Changelog](docs/PROMPT_LIBRARY_CHANGELOG.md) - **NEW**: Complete change history and audit trail
-- [Prompt Library](docs/PROMPT_LIBRARY.md) - Technical implementation and API reference
-
-**🔒 Governance & Standards:**
-- [Confidence Score Schema](docs/CONFIDENCE_SCORE_SCHEMA.md) - Confidence score normalization (0-100 scale, deterministic)
-- [Sync & Deployment Process](docs/SYNC_DEPLOYMENT_PROCESS.md) - Safe synchronization and deployment procedures
-
-**🔒 Security (EPIC 07):**
-- [Security Validation Guide](docs/SECURITY_VALIDATION_GUIDE.md) - **QUICK REFERENCE**: IAM policy validation and security checks
-- [Security Implementation](EPIC07_SECURITY_IMPLEMENTATION.md) - Complete security hardening implementation
-- [IAM Roles Justification](docs/IAM-ROLES-JUSTIFICATION.md) - Detailed IAM permissions and justifications
-- [Security & IAM Guide](docs/SECURITY-IAM.md) - Security architecture and best practices
-- [Secret Management](SECURITY.md) - Secrets Manager integration and credential management
-
-**🔧 Workflow System:**
-- [Workflow Schema](docs/WORKFLOW-SCHEMA.md) - Complete workflow model and JSON format specification
-- [Workflow Engine](docs/WORKFLOW-ENGINE.md) - Workflow execution and agent runner documentation
-- [Database Schema](docs/architecture/database-schema.md) - Database structure and workflow persistence
-- [Logging Concept](docs/LOGGING.md) - Structured logging, CloudWatch integration, and log searching
-- [Observability](docs/OBSERVABILITY.md) - Monitoring, alarms, KPI system, and observability features
-- [Secret Validation](docs/SECRET_VALIDATION.md) - Pre-deployment secret key validation guardrail
-
-### v0.1 Architecture (Legacy)
-
-Lambda-based pipeline with Step Functions orchestration. Still functional for simple workflows.
-
-## Components
-
-### Infrastructure (CDK)
-
-AWS CDK infrastructure for deploying the complete stack.
-
-```bash
-npm install
-
-# Security checks (EPIC 07)
-npm run security:check
-
-# Build with automatic secret validation (Issue I-01-02)
-npm run build
-
-# Generate CloudFormation with automatic secret validation
-npm run synth
-
-# Deploy to AWS (includes automatic secret validation)
-npm run deploy
-
-# Or validate secrets separately
-npm run validate-secrets
-```
-
-Stacks:
-- `CodefactoryControlStack` - v0.1 Lambda-based pipeline
-- `Afu9InfrastructureStack` - v0.2 ECS-based infrastructure
-
-**Pre-deployment Checks:**
-- **Security validation** ensures IAM policies follow least privilege principles (EPIC 07)
-- **Secret preflight check** (Issue I-01-02): Build/synth/deploy **fail** if required secret keys are missing
-  - Validates secrets in AWS Secrets Manager before any build/synth operation
-  - Explicitly names secret and missing keys in error messages
-  - Works locally and in CI
-- See [Secret Validation Guide](docs/SECRET_VALIDATION.md) for details
-- See [Security Validation Guide](docs/SECURITY_VALIDATION_GUIDE.md) for security details
-
-### Control Center (Next.js)
-
-Web UI for workflow management and feature intake.
+actionlint
+==========
+[![CI Badge][]][CI]
+[![API Document][api-badge]][apidoc]
+
+[actionlint][repo] is a static checker for GitHub Actions workflow files. [Try it online!][playground]
 
 Features:
-- Feature briefing input form
-- LLM-powered specification generation
-- Automatic GitHub issue creation
-- Workflow execution dashboard
-- MCP server status monitoring
-- **System Health Dashboard**: Red/Yellow/Green health status indicators
-- **Real-time Alerting**: CloudWatch alarms visualization and monitoring
 
-See [`control-center/README.md`](control-center/README.md) for details.
+- **Syntax check for workflow files** to check unexpected or missing keys following [workflow syntax][syntax-doc]
+- **Strong type check for `${{ }}` expressions** to catch several semantic errors like access to not existing property,
+  type mismatches, ...
+- **Actions usage check** to check that inputs at `with:` and outputs in `steps.{id}.outputs` are correct
+- **Reusable workflow check** to check inputs/outputs/secrets of reusable workflows and workflow calls
+- **[shellcheck][] and [pyflakes][] integrations** for scripts at `run:`
+- **Security checks**; [script injection][script-injection-doc] by untrusted inputs, hard-coded credentials
+- **Other several useful checks**; [glob syntax][filter-pattern-doc] validation, dependencies check for `needs:`,
+  runner label validation, cron syntax validation, ...
 
-### MCP Servers
+See [the full list](docs/checks.md) of checks done by actionlint.
 
-Specialized microservices providing domain-specific tools:
+<img src="https://github.com/rhysd/ss/blob/master/actionlint/main.gif?raw=true" alt="actionlint reports 7 errors" width="806" height="492"/>
 
-- **GitHub** (port 3001): Issue/PR/branch operations
-- **Deploy** (port 3002): ECS service deployments
-- **Observability** (port 3003): CloudWatch logs/metrics
+**Example of broken workflow:**
 
-See [`mcp-servers/README.md`](mcp-servers/README.md) for details.
+```yaml
+on:
+  push:
+    branch: main
+    tags:
+      - 'v\d+'
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [macos-latest, linux-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: echo "Checking commit '${{ github.event.head_commit.message }}'"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node_version: 18.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ matrix.platform }}-node-${{ hashFiles('**/package-lock.json') }}
+        if: ${{ github.repository.permissions.admin == true }}
+      - run: npm install && npm test
+```
 
-## Alerting & Monitoring
+**actionlint reports 7 errors:**
 
-AFU-9 includes comprehensive infrastructure monitoring with CloudWatch alarms and visual health indicators:
+```
+test.yaml:3:5: unexpected key "branch" for "push" section. expected one of "branches", "branches-ignore", "paths", "paths-ignore", "tags", "tags-ignore", "types", "workflows" [syntax-check]
+  |
+3 |     branch: main
+  |     ^~~~~~~
+test.yaml:5:11: character '\' is invalid for branch and tag names. only special characters [, ?, +, *, \, ! can be escaped with \. see `man git-check-ref-format` for more details. note that regular expression is unavailable. note: filter pattern syntax is explained at https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet [glob]
+  |
+5 |       - 'v\d+'
+  |           ^~~~
+test.yaml:10:28: label "linux-latest" is unknown. available labels are "windows-latest", "windows-2022", "windows-2019", "windows-2016", "ubuntu-latest", "ubuntu-22.04", "ubuntu-20.04", "ubuntu-18.04", "macos-latest", "macos-12", "macos-12.0", "macos-11", "macos-11.0", "macos-10.15", "self-hosted", "x64", "arm", "arm64", "linux", "macos", "windows". if it is a custom label for self-hosted runner, set list of labels in actionlint.yaml config file [runner-label]
+   |
+10 |         os: [macos-latest, linux-latest]
+   |                            ^~~~~~~~~~~~~
+test.yaml:13:41: "github.event.head_commit.message" is potentially untrusted. avoid using it directly in inline scripts. instead, pass it through an environment variable. see https://docs.github.com/en/actions/learn-github-actions/security-hardening-for-github-actions for more details [expression]
+   |
+13 |       - run: echo "Checking commit '${{ github.event.head_commit.message }}'"
+   |                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+test.yaml:17:11: input "node_version" is not defined in action "actions/setup-node@v4". available inputs are "always-auth", "architecture", "cache", "cache-dependency-path", "check-latest", "node-version", "node-version-file", "registry-url", "scope", "token" [action]
+   |
+17 |           node_version: 18.x
+   |           ^~~~~~~~~~~~~
+test.yaml:21:20: property "platform" is not defined in object type {os: string} [expression]
+   |
+21 |           key: ${{ matrix.platform }}-node-${{ hashFiles('**/package-lock.json') }}
+   |                    ^~~~~~~~~~~~~~~
+test.yaml:22:17: receiver of object dereference "permissions" must be type of object but got "string" [expression]
+   |
+22 |         if: ${{ github.repository.permissions.admin == true }}
+   |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
 
-**Dashboard Features**:
-- 🟢 **Green (Healthy)**: All systems operational
-- 🟡 **Yellow (Warning)**: Degraded performance or insufficient data
-- 🔴 **Red (Critical)**: Active alarms requiring attention
+## Why?
 
-**Notification Channels**:
-- Email notifications via Amazon SNS
-- Slack/Teams/webhook notifications via Lambda function
+- **Running a workflow is time consuming.** You need to push the changes and wait until the workflow runs on GitHub even if
+  it contains some trivial mistakes. [act][] is useful to debug the workflow locally. But it is not suitable for CI and still
+  time consuming when your workflow gets larger.
+- **Checks of workflow files by GitHub are very loose.** It reports no error even if unexpected keys are in mappings
+  (meant that some typos in keys). And also it reports no error when accessing to property which is actually not existing.
+  For example `matrix.foo` when no `foo` is defined in `matrix:` section, it is evaluated to `null` and causes no error.
+- **Some mistakes silently break a workflow.** Most common case I saw is specifying missing property to cache key. In the
+  case cache silently does not work properly but a workflow itself runs without error. So you might not notice the mistake
+  forever.
 
-**Monitored Metrics**:
-- ECS service health (CPU, Memory, Task count)
-- RDS database performance (CPU, Storage, Connections)
-- ALB health (5xx errors, Response time, Unhealthy targets)
+## Quick start
 
-See [`docs/ALERTING.md`](docs/ALERTING.md) for complete setup guide.
+Install `actionlint` command by downloading [the released binary][releases] or by Homebrew or by `go install`. See
+[the installation document](docs/install.md) for more details like how to manage the command with several package managers
+or run via Docker container.
 
-## Health Checks & Reliability
+```sh
+go install github.com/rhysd/actionlint/cmd/actionlint@latest
+```
 
-AFU-9 implements standardized health and readiness endpoints for reliable deployments:
+Basically all you need to do is run the `actionlint` command in your repository. actionlint automatically detects workflows and
+checks errors. actionlint focuses on finding out mistakes. It tries to catch errors as much as possible and make false positives
+as minimal as possible.
 
-**Health Check Endpoints**:
-- 🔍 **`/api/health`** (Liveness): Always returns 200 when process is running - used by ALB and ECS
-- ✅ **`/api/ready`** (Readiness): Returns 200/503 based on dependencies - used for manual verification
+```sh
+actionlint
+```
 
-**Contract Enforcement**:
-- CI/CD tests ensure `/api/health` always returns 200 OK
-- ALB health checks use `/api/health` to avoid false negatives during startup
-- Container health checks validate process liveness
-- Post-deployment verification tests all endpoints
+Another option to try actionlint is [the online playground][playground]. Your browser can run actionlint through WebAssembly.
 
-**Documentation**:
-- [ECS + ALB Status Signals](docs/ECS_ALB_STATUS_SIGNALS.md) - **CANONICAL**: Go/No-Go decision criteria for deployments
-- [Health Check Decision Summary](docs/HEALTH_CHECK_DECISION_SUMMARY.md) - Complete decision tree and related issues
-- [Health & Readiness Verification](docs/HEALTH_READINESS_VERIFICATION.md) - Endpoint specifications
-- [ECS Health Checks Runbook](docs/runbooks/ecs-healthchecks.md) - Troubleshooting guide
+See [the usage document](docs/usage.md) for more details.
 
+## Documents
+
+- [Checks](docs/checks.md): Full list of all checks done by actionlint with example inputs, outputs, and playground links.
+- [Installation](docs/install.md): Installation instructions. Prebuilt binaries, Homebrew package, a Docker image, building from
+  source, a download script (for CI) are available.
+- [Usage](docs/usage.md): How to use `actionlint` command locally or on GitHub Actions, the online playground, an official Docker
+  image, and integrations with reviewdog, Problem Matchers, super-linter, pre-commit, VS Code.
+- [Configuration](docs/config.md): How to configure actionlint behavior. Currently only labels of self-hosted runners can be
+  configured.
+- [Go API](docs/api.md): How to use actionlint as Go library.
+- [References](docs/reference.md): Links to resources.
+
+## Bug reporting
+
+When you see some bugs or false positives, it is helpful to [file a new issue][issue-form] with a minimal example
+of input. Giving me some feedbacks like feature requests or ideas of additional checks is also welcome.
+
+## License
+
+actionlint is distributed under [the MIT license](./LICENSE.txt).
+
+[CI Badge]: https://github.com/rhysd/actionlint/workflows/CI/badge.svg?branch=main&event=push
+[CI]: https://github.com/rhysd/actionlint/actions?query=workflow%3ACI+branch%3Amain
+[api-badge]: https://pkg.go.dev/badge/github.com/rhysd/actionlint.svg
+[apidoc]: https://pkg.go.dev/github.com/rhysd/actionlint
+[repo]: https://github.com/rhysd/actionlint
+[playground]: https://rhysd.github.io/actionlint/
+[shellcheck]: https://github.com/koalaman/shellcheck
+[pyflakes]: https://github.com/PyCQA/pyflakes
+[act]: https://github.com/nektos/act
+[syntax-doc]: https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
+[filter-pattern-doc]: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+[script-injection-doc]: https://docs.github.com/en/actions/learn-github-actions/security-hardening-for-github-actions#understanding-the-risk-of-script-injections
+[issue-form]: https://github.com/rhysd/actionlint/issues/new
+[releases]: https://github.com/rhysd/actionlint/releases

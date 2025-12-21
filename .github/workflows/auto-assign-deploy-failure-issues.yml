@@ -1,0 +1,62 @@
+name: Auto-assign Deploy Failure Issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  auto-assign-copilot:
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.issue.title, 'Deploy Failure') ||
+      contains(github.event.issue.title, 'Deployment Failed') ||
+      contains(github.event.issue.labels.*.name, 'deploy-failure') ||
+      contains(github.event.issue.body, 'Debug Deploy Failures')
+    
+    steps:
+      - name: Assign issue to Copilot review
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = context.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            try {
+              // Assign issue to adaefler-art
+              await github.rest.issues.addAssignees({
+                owner: owner,
+                repo: repo,
+                issue_number: issueNumber,
+                assignees: ['adaefler-art']
+              });
+              console.log(`✅ Assigned issue #${issueNumber} to adaefler-art`);
+              
+              // Add labels: copilot-assigned and auto-triage
+              await github.rest.issues.addLabels({
+                owner: owner,
+                repo: repo,
+                issue_number: issueNumber,
+                labels: ['copilot-assigned', 'auto-triage']
+              });
+              console.log(`✅ Added labels: copilot-assigned, auto-triage`);
+              
+              // Add comment
+              const commentBody = '🤖 **AFU-9 Auto-Triage**: Dieses Deploy-Failure-Issue wurde automatisch Copilot zur Analyse zugewiesen.\n\n_Workflow: Auto-assign Deploy Failure Issues_';
+              
+              await github.rest.issues.createComment({
+                owner: owner,
+                repo: repo,
+                issue_number: issueNumber,
+                body: commentBody
+              });
+              console.log(`✅ Added auto-triage comment to issue #${issueNumber}`);
+              
+            } catch (error) {
+              core.setFailed(`Failed to process issue: ${error.message}`);
+              throw error;
+            }
