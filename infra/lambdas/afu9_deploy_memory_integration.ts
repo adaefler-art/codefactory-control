@@ -12,7 +12,7 @@ import {
   determineFactoryAction,
   DeployMemoryRecommendation,
   DeployMemoryStore,
-} from '../../packages/deploy-memory/dist/index';
+} from '../../packages/deploy-memory/src/index';
 
 export interface VerdictPayload {
   repo: string;

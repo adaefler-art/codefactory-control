@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Import types first
-type DeployMemoryModule = typeof import('../packages/deploy-memory/dist/index');
+type DeployMemoryModule = typeof import('../packages/deploy-memory/src/index');
 
 // Import from local package
 let deployMemory: DeployMemoryModule;
