@@ -14,7 +14,7 @@ name: Deploy CDK Stack with Diff Gate
 # ============================================================================
 
 on:
-  workflow_dispatch:
+  workflow_run:
     inputs:
       stack_name:
         description: 'CDK Stack to deploy'
