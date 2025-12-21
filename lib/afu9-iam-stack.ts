@@ -140,6 +140,7 @@ export class Afu9IamStack extends cdk.Stack {
         sid: 'ECSServiceUpdate',
         effect: iam.Effect.ALLOW,
         actions: [
+          'ecs:DescribeClusters',
           'ecs:DescribeServices',
           'ecs:DescribeTasks',
           'ecs:ListTasks',
@@ -196,6 +197,21 @@ export class Afu9IamStack extends cdk.Stack {
           'elasticloadbalancing:DescribeRules',
         ],
         resources: ['*'],
+      })
+    );
+
+    // ========================================
+    // Secrets Manager Permissions
+    // ========================================
+    // Allow the workflow to resolve the canonical ARN for the DB secret.
+    // Justification: deploy pipeline sanitizes ECS task definitions to reference the current
+    // active secret ARN (rotation-safe) before registering and running migration tasks.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'SecretsManagerDescribeAfu9Database',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:DescribeSecret'],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/database*`],
       })
     );
 
