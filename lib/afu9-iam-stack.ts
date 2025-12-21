@@ -264,6 +264,73 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // ========================================
+    // CDK Asset Publishing Permissions
+    // ========================================
+    // CDK bootstrapping creates dedicated roles and buckets/repos for publishing assets.
+    // Grant the deploy role permission to assume those bootstrap roles (preferred) and
+    // a scoped fallback to publish directly to the bootstrap bucket/repo.
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CdkBootstrapAssumeRoles',
+        effect: iam.Effect.ALLOW,
+        actions: ['sts:AssumeRole'],
+        resources: [
+          `arn:aws:iam::${this.account}:role/cdk-hnb659fds-file-publishing-role-${this.account}-${this.region}`,
+          `arn:aws:iam::${this.account}:role/cdk-hnb659fds-image-publishing-role-${this.account}-${this.region}`,
+          `arn:aws:iam::${this.account}:role/cdk-hnb659fds-deploy-role-${this.account}-${this.region}`,
+          `arn:aws:iam::${this.account}:role/cdk-hnb659fds-cfn-exec-role-${this.account}-${this.region}`,
+          `arn:aws:iam::${this.account}:role/cdk-hnb659fds-lookup-role-${this.account}-${this.region}`,
+        ],
+      })
+    );
+
+    // Fallback: file assets published to the bootstrap S3 bucket
+    const cdkAssetsBucketName = `cdk-hnb659fds-assets-${this.account}-${this.region}`;
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CdkBootstrapAssetsBucketWrite',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          's3:GetBucketLocation',
+          's3:ListBucket',
+          's3:ListBucketMultipartUploads',
+          's3:GetObject',
+          's3:PutObject',
+          's3:AbortMultipartUpload',
+          's3:ListMultipartUploadParts',
+        ],
+        resources: [
+          `arn:aws:s3:::${cdkAssetsBucketName}`,
+          `arn:aws:s3:::${cdkAssetsBucketName}/*`,
+        ],
+      })
+    );
+
+    // Fallback: container assets published to the bootstrap ECR repository
+    const cdkAssetsRepoName = `cdk-hnb659fds-container-assets-${this.account}-${this.region}`;
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CdkBootstrapContainerAssetsRepoWrite',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecr:DescribeRepositories',
+          'ecr:CreateRepository',
+          'ecr:DescribeImages',
+          'ecr:ListImages',
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:GetDownloadUrlForLayer',
+          'ecr:BatchGetImage',
+          'ecr:InitiateLayerUpload',
+          'ecr:UploadLayerPart',
+          'ecr:CompleteLayerUpload',
+          'ecr:PutImage',
+        ],
+        resources: [`arn:aws:ecr:${this.region}:${this.account}:repository/${cdkAssetsRepoName}`],
+      })
+    );
+
     // Allow preflight checks to read Route53 hosted zones/records (no write access)
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
