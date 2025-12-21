@@ -84,7 +84,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Guard: afu9/database secret not pending deletion
+      - name: "Guard: afu9/database secret not pending deletion"
         shell: bash
         run: |
           set -euo pipefail

@@ -99,7 +99,7 @@ jobs:
           echo "CREATE_STAGING_SERVICE=${{ env.CREATE_STAGING_SERVICE }}"
           echo "DOMAIN_NAME=${{ env.DOMAIN_NAME }}"
 
-      - name: Guard: prevent disabling HTTPS while routing stack exists
+      - name: "Guard: prevent disabling HTTPS while routing stack exists"
         if: ${{ github.event.inputs.stack_name == 'Afu9NetworkStack' && github.event.inputs.enable_https != 'true' }}
         shell: bash
         run: |
@@ -132,7 +132,7 @@ jobs:
       - name: Build CDK project
         run: npm run build
 
-      - name: CDK Diff Gate - Validate Changes
+      - name: "CDK Diff Gate - Validate Changes"
           if: ${{ github.event.inputs.skip_diff_gate != 'true' }}
         run: |
           echo "========================================="
@@ -170,7 +170,7 @@ jobs:
             exit 2
           fi
 
-      - name: CDK Diff Gate - SKIPPED
+      - name: "CDK Diff Gate - SKIPPED"
         if: ${{ github.event.inputs.skip_diff_gate == 'true' }}
         run: |
           echo "⚠️ ⚠️ ⚠️ WARNING ⚠️ ⚠️ ⚠️"
@@ -179,7 +179,7 @@ jobs:
           echo "Proceed with extreme caution"
           echo ""
 
-      - name: Guard: Afu9DatabaseStack secret not pending deletion
+      - name: "Guard: Afu9DatabaseStack secret not pending deletion"
         if: ${{ github.event.inputs.stack_name == 'Afu9DatabaseStack' }}
         shell: bash
         run: |
