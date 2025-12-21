@@ -14,37 +14,23 @@ name: Deploy CDK Stack with Diff Gate
 # ============================================================================
 
 on:
-  workflow_run:
+  workflow_dispatch:
     inputs:
       stack_name:
         description: 'CDK Stack to deploy'
         required: true
-        type: choice
-        options:
-          - Afu9NetworkStack
-          - Afu9DatabaseStack
-          - Afu9EcsStack
-          - Afu9AlarmsStack
-          - Afu9IamStack
-          - Afu9DeployMemoryStack
       environment:
         description: 'Deployment environment'
         required: true
-        type: choice
-        options:
-          - staging
-          - production
         default: staging
       enable_https:
         description: 'Enable HTTPS (requires DNS stack)'
         required: false
-        type: boolean
-        default: false
+        default: 'false'
       skip_diff_gate:
         description: 'Skip diff gate (NOT recommended)'
         required: false
-        type: boolean
-        default: false
+        default: 'false'
 
 env:
   AWS_REGION: eu-central-1
@@ -63,6 +49,35 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          STACK_NAME='${{ inputs.stack_name }}'
+          ENVIRONMENT='${{ inputs.environment }}'
+          ENABLE_HTTPS='${{ inputs.enable_https }}'
+          SKIP_DIFF_GATE='${{ inputs.skip_diff_gate }}'
+
+          case "${STACK_NAME}" in
+            Afu9NetworkStack|Afu9DatabaseStack|Afu9EcsStack|Afu9AlarmsStack|Afu9IamStack|Afu9DeployMemoryStack) ;;
+            *) echo "❌ Invalid stack_name: ${STACK_NAME}" >&2; exit 1;;
+          esac
+
+          case "${ENVIRONMENT}" in
+            staging|production) ;;
+            *) echo "❌ Invalid environment: ${ENVIRONMENT}" >&2; exit 1;;
+          esac
+
+          case "${ENABLE_HTTPS}" in
+            true|false) ;;
+            *) echo "❌ Invalid enable_https (must be 'true' or 'false'): ${ENABLE_HTTPS}" >&2; exit 1;;
+          esac
+
+          case "${SKIP_DIFF_GATE}" in
+            true|false) ;;
+            *) echo "❌ Invalid skip_diff_gate (must be 'true' or 'false'): ${SKIP_DIFF_GATE}" >&2; exit 1;;
+          esac
 
       - name: Guard AWS_DEPLOY_ROLE_ARN
         run: |
@@ -85,7 +100,7 @@ jobs:
           echo "DOMAIN_NAME=${{ env.DOMAIN_NAME }}"
 
       - name: Guard: prevent disabling HTTPS while routing stack exists
-        if: ${{ inputs.stack_name == 'Afu9NetworkStack' && !inputs.enable_https }}
+        if: ${{ inputs.stack_name == 'Afu9NetworkStack' && inputs.enable_https != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -118,7 +133,7 @@ jobs:
         run: npm run build
 
       - name: CDK Diff Gate - Validate Changes
-        if: ${{ !inputs.skip_diff_gate }}
+        if: ${{ inputs.skip_diff_gate != 'true' }}
         run: |
           echo "========================================="
           echo "CDK Diff Gate Validation"
@@ -156,7 +171,7 @@ jobs:
           fi
 
       - name: CDK Diff Gate - SKIPPED
-        if: ${{ inputs.skip_diff_gate }}
+        if: ${{ inputs.skip_diff_gate == 'true' }}
         run: |
           echo "⚠️ ⚠️ ⚠️ WARNING ⚠️ ⚠️ ⚠️"
           echo "Diff gate validation has been SKIPPED"
