@@ -63,3 +63,13 @@ dist/
 
 # Test snapshots (generated files)
 test/snapshots/
+
+# Workflow debugging outputs
+workflow-failure-analysis.json
+workflow-failure-report.md
+ai-debug-prompt.txt
+debug-info.json
+ecs-services.json
+ecs-stopped-tasks.json
+test-analysis.json
+test-report.md
