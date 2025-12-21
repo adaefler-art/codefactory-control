@@ -26,6 +26,7 @@ This guide covers deploying AFU-9 Control Center on AWS ECS Fargate with multi-e
 - Docker installed
 - GitHub account and Personal Access Token
 - Domain name configured in Route53 (e.g., afu-9.com)
+  - Deploy preflight requires Route53 read access (ListHostedZonesByName, ListHostedZones, ListResourceRecordSets)
 
 ## Architecture Overview
 

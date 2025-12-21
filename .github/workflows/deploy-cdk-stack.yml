@@ -1,18 +1,17 @@
 name: Deploy CDK Stack with Diff Gate
 
 # ============================================================================
-# CANONICAL CDK INFRASTRUCTURE DEPLOYMENT WORKFLOW
+# CANONICAL DEPLOY GUARDRAILS (Single Source of Truth)
+# - docs/deploy/AFU9_DEPLOY_SYSTEM_PROMPT.md
+# - docs/deploy/AFU9_DEPLOY_CHECKLIST.md
+# - docs/deploy/AFU9_DEPLOY_INTENT.md
+#
+# Workflow separation:
+# - deploy-ecs.yml       => APP-ONLY (ECS task definition + service update)
+# - deploy-cdk-stack.yml => INFRA (CDK deploy; DNS only if MANAGE_DNS=true)
+#
+# Do not widen IAM permissions or bypass preflight/diff gates.
 # ============================================================================
-# Purpose: Deploy AWS infrastructure changes via AWS CDK
-# When to use: Infrastructure changes (VPC, IAM, RDS, ALB, ECS cluster config)
-# When NOT to use: Application code changes (use deploy-ecs.yml instead)
-# 
-# See docs/DEPLOYMENT_CONSOLIDATED.md for complete deployment guide
-# ============================================================================
-
-# Example workflow demonstrating CDK diff-gate validation
-# This workflow should be used when deploying CDK infrastructure stacks
-# (not just ECS task definition updates)
 
 on:
   workflow_dispatch:
@@ -249,3 +248,10 @@ jobs:
           echo "- Run smoke tests if applicable" >> $GITHUB_STEP_SUMMARY
           echo "- Monitor CloudWatch alarms" >> $GITHUB_STEP_SUMMARY
           echo "- See [AWS Deploy Runbook](../docs/AWS_DEPLOY_RUNBOOK.md)" >> $GITHUB_STEP_SUMMARY
+
+# ============================================================================
+# How to verify (read-only checks)
+# - npx cdk diff Afu9EcsStack -c domainName=afu-9.com -c afu9-multi-env=false -c afu9-enable-https=true -c afu9-manage-dns=false -c environment=prod
+# - aws ecs list-services --cluster afu9-cluster --region eu-central-1
+# - curl -s -H "Host: afu-9.com" https://<alb-dns>/api/ready
+# ============================================================================

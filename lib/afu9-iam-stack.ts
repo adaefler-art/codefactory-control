@@ -199,6 +199,20 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // Allow preflight checks to read Route53 hosted zones/records (no write access)
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'Route53ReadOnlyForPreflight',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'route53:ListHostedZonesByName',
+          'route53:ListHostedZones',
+          'route53:ListResourceRecordSets',
+        ],
+        resources: ['*'],
+      })
+    );
+
     // ========================================
     // IAM Pass Role Permission
     // ========================================

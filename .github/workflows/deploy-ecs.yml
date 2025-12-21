@@ -315,7 +315,7 @@ jobs:
                elif .name == "mcp-observability" then .image = $ob_image
                else . end
              ) |
-             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
              task-def.json > new-task-def.json
 
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
