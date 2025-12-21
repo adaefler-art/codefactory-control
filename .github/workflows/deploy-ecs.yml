@@ -470,31 +470,33 @@ jobs:
 
           # Check for multiple task sets before update (common failure cause)
           echo "Checking for existing task sets..."
-          TASK_SETS=$(aws ecs describe-services \
+          SERVICE_INFO=$(aws ecs describe-services \
             --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --services "${{ steps.target.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
-            --query 'services[0].taskSets' \
             --output json)
 
-          TASK_SET_COUNT=$(echo "$TASK_SETS" | jq 'length // 0')
+          # Verify service exists
+          SERVICE_COUNT=$(echo "$SERVICE_INFO" | jq -r '.services | length')
+          if [ "$SERVICE_COUNT" -eq 0 ]; then
+            echo "❌ Service ${{ steps.target.outputs.ecs_service }} not found in cluster ${{ steps.target.outputs.ecs_cluster }}"
+            exit 1
+          fi
+
+          # Check for multiple task sets
+          TASK_SET_COUNT=$(echo "$SERVICE_INFO" | jq -r '.services[0].taskSets // [] | length')
           echo "Task sets found: $TASK_SET_COUNT"
 
           if [ "$TASK_SET_COUNT" -gt 1 ]; then
             echo "❌ Multiple task sets detected. This can cause update failures."
-            echo "$TASK_SETS" | jq .
+            echo "$SERVICE_INFO" | jq -r '.services[0].taskSets'
             echo "To resolve: Wait for deployments to complete or manually clean up task sets."
             exit 1
           fi
 
           # Capture current service state for diagnostics
           echo "Current service state:"
-          aws ecs describe-services \
-            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
-            --services "${{ steps.target.outputs.ecs_service }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deploymentController:deploymentController}' \
-            --output table
+          echo "$SERVICE_INFO" | jq -r '.services[0] | {status,runningCount,desiredCount,deploymentController}'
 
           # Perform the update with detailed error capture
           echo "Executing service update..."
