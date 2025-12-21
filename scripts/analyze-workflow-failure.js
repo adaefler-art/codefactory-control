@@ -13,7 +13,7 @@
  * Options:
  *   --run-id <id>        Analyze specific workflow run ID
  *   --latest-failure     Analyze the latest failed deploy-ecs workflow run
- *   --ai                 Use AI/LLM for analysis (requires GITHUB_TOKEN and optionally OPENAI_API_KEY)
+ *   --ai                 Reserved for future AI/LLM integration (not yet implemented)
  *   --create-issue       Create a GitHub issue with the analysis
  *   --verbose            Enable verbose logging
  * 
@@ -375,4 +375,3 @@ if (typeof module !== 'undefined' && module.exports) {
 if (require.main === module) {
   main();
 }
-

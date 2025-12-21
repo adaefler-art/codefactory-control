@@ -145,30 +145,20 @@ jobs:
 
       - name: Download workflow logs
         if: steps.collect-logs.outputs.has_failures == 'true'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
             const runId = '${{ steps.target-run.outputs.run_id }}';
-            const fs = require('fs');
             
-            try {
-              // Download logs for the workflow run
-              const logsResponse = await github.rest.actions.downloadWorkflowRunLogs({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: runId
-              });
-              
-              // The response is a redirect URL, we need to fetch it
-              const https = require('https');
-              const url = logsResponse.url;
-              
-              console.log('Downloading logs from:', url);
-              core.setOutput('logs_available', 'true');
-            } catch (error) {
-              console.error('Error downloading logs:', error);
-              core.setOutput('logs_available', 'false');
-            }
+            console.log('Workflow logs are accessible via GitHub Actions UI');
+            console.log(`Run URL: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`);
+            
+            // Note: Actual log download requires additional processing and is available
+            // through the GitHub Actions UI or via GitHub CLI. The debug-info.json
+            // contains references to failed steps which can be inspected manually.
+            
+            core.setOutput('logs_url', `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`);
 
       - name: Configure AWS credentials (if needed for ECS debugging)
         if: steps.collect-logs.outputs.has_failures == 'true'
