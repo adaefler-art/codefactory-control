@@ -511,7 +511,7 @@ jobs:
           }
 
       - name: Resolve ALB DNS
-        id: resolve_alb
+        id: alb-dns
         shell: pwsh
         run: |
           # $env:GITHUB_OUTPUT exists in GitHub Actions; locally it can be null. Write to it only when present.
@@ -543,9 +543,9 @@ jobs:
           }
 
           if ($writeOutput) {
-            "alb_dns=$albDns" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "alb_dns_name=$albDns" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           } else {
-            Write-Host "alb_dns=$albDns"
+            Write-Host "alb_dns_name=$albDns"
           }
 
           Write-Host "Resolved ALB DNS: $albDns"
