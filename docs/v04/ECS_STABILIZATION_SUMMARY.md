@@ -25,7 +25,7 @@
 npx cdk deploy Afu9EcsStack -c afu9-enable-https=false
 
 # Deploy DNS separately when needed
-npx cdk deploy Afu9DnsStack -c domainName=afu-9.com
+npx cdk deploy Afu9DnsStack -c afu9-domain=afu-9.com
 ```
 
 ---

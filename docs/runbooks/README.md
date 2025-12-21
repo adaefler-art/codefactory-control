@@ -104,7 +104,7 @@ aws cloudformation describe-stacks --stack-name ${STACK_NAME} \
 # Quick fix: Delete and redeploy
 aws cloudformation delete-stack --stack-name ${STACK_NAME}
 aws cloudformation wait stack-delete-complete --stack-name ${STACK_NAME}
-npx cdk deploy ${STACK_NAME} -c domainName=afu-9.com
+npx cdk deploy ${STACK_NAME} -c afu9-domain=afu-9.com
 ```
 
 ### 2. ECS Deployment Failure?

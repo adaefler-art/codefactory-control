@@ -16,13 +16,13 @@ import { Construct } from 'constructs';
  * - A domainName MUST be provided explicitly via props or CDK context.
  *
  * Supported CDK context keys:
- * - domainName
  * - afu9-domain
+ * - domainName (deprecated alias)
  *
  * Example:
  *   npx cdk deploy Afu9DnsStack \
  *     -c enableDns=true \
- *     -c domainName=afu-9.com
+ *     -c afu9-domain=afu-9.com
  */
 export interface Afu9DnsStackProps extends cdk.StackProps {
   /**
@@ -56,13 +56,13 @@ export class Afu9DnsStack extends cdk.Stack {
     // ------------------------------------------------------------
     this.domainName =
       props?.domainName ??
-      this.node.tryGetContext('domainName') ??
-      this.node.tryGetContext('afu9-domain');
+      this.node.tryGetContext('afu9-domain') ??
+      this.node.tryGetContext('domainName');
 
     if (!this.domainName) {
       throw new Error(
         'Afu9DnsStack: DNS is enabled but no domainName provided. ' +
-          'Provide it via props or CDK context: -c domainName=your-domain.com'
+          'Provide it via props or CDK context: -c afu9-domain=your-domain.com (or deprecated: -c domainName=...)'
       );
     }
 

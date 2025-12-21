@@ -224,8 +224,8 @@ aws cloudformation wait stack-delete-complete \
 
 # Neu deployen
 npx cdk deploy ${STACK_NAME} \
-  -c domainName=afu-9.com \
-  -c enableDatabase=true \
+  -c afu9-domain=afu-9.com \
+  -c afu9-enable-database=true \
   --require-approval never
 ```
 
@@ -257,13 +257,13 @@ aws iam list-attached-role-policies \
 
 # Fix: Deploy IAM Stack neu
 npx cdk deploy Afu9IamStack \
-  -c domainName=afu-9.com \
+  -c afu9-domain=afu-9.com \
   --require-approval never
 
 # Dann fehlgeschlagenen Stack löschen und neu deployen
 aws cloudformation delete-stack --stack-name ${STACK_NAME}
 aws cloudformation wait stack-delete-complete --stack-name ${STACK_NAME}
-npx cdk deploy ${STACK_NAME} -c domainName=afu-9.com
+npx cdk deploy ${STACK_NAME} -c afu9-domain=afu-9.com
 ```
 
 ---
@@ -348,15 +348,15 @@ aws cloudformation list-exports \
 
 # Fehlenden Stack deployen (in korrekter Reihenfolge)
 # Typische Reihenfolge:
-npx cdk deploy Afu9IamStack -c domainName=afu-9.com
-npx cdk deploy Afu9NetworkStack -c domainName=afu-9.com
-npx cdk deploy Afu9DatabaseStack -c domainName=afu-9.com -c enableDatabase=true
-npx cdk deploy Afu9EcsStack -c domainName=afu-9.com -c enableDatabase=true
+npx cdk deploy Afu9IamStack -c afu9-domain=afu-9.com
+npx cdk deploy Afu9NetworkStack -c afu9-domain=afu-9.com
+npx cdk deploy Afu9DatabaseStack -c afu9-domain=afu-9.com -c afu9-enable-database=true
+npx cdk deploy Afu9EcsStack -c afu9-domain=afu-9.com -c afu9-enable-database=true
 
 # Dann fehlgeschlagenen Stack löschen und neu deployen
 aws cloudformation delete-stack --stack-name ${STACK_NAME}
 aws cloudformation wait stack-delete-complete --stack-name ${STACK_NAME}
-npx cdk deploy ${STACK_NAME} -c domainName=afu-9.com
+npx cdk deploy ${STACK_NAME} -c afu9-domain=afu-9.com
 ```
 
 ---
@@ -373,8 +373,8 @@ ResourceStatusReason: "Parameters: [domainName] must have values"
 ```bash
 # Alle erforderlichen Context-Werte mitgeben
 npx cdk deploy ${STACK_NAME} \
-  -c domainName=afu-9.com \
-  -c enableDatabase=true \
+  -c afu9-domain=afu-9.com \
+  -c afu9-enable-database=true \
   -c afu9-enable-https=false \
   --require-approval never
 
@@ -384,8 +384,8 @@ aws cloudformation wait stack-delete-complete --stack-name ${STACK_NAME}
 
 # Mit vollständigen Parametern neu deployen
 npx cdk deploy ${STACK_NAME} \
-  -c domainName=afu-9.com \
-  -c enableDatabase=true
+  -c afu9-domain=afu-9.com \
+  -c afu9-enable-database=true
 ```
 
 ---
@@ -420,13 +420,13 @@ echo "Stack gelöscht!"
 
 # 4. CDK Diff prüfen (empfohlen)
 npx cdk diff ${STACK_NAME} \
-  -c domainName=afu-9.com \
-  -c enableDatabase=true
+  -c afu9-domain=afu-9.com \
+  -c afu9-enable-database=true
 
 # 5. Stack neu deployen
 npx cdk deploy ${STACK_NAME} \
-  -c domainName=afu-9.com \
-  -c enableDatabase=true \
+  -c afu9-domain=afu-9.com \
+  -c afu9-enable-database=true \
   --require-approval never
 
 echo "Deployment gestartet. Warte auf Abschluss..."

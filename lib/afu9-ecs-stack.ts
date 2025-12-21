@@ -190,7 +190,7 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
 const DEFAULT_DB_SECRET_NAME = 'afu9/database';
 
 function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedEcsConfig {
-  const ctxDomain = scope.node.tryGetContext('domainName');
+  const ctxDomain = scope.node.tryGetContext('afu9-domain') ?? scope.node.tryGetContext('domainName');
   const ctxEnvironment = scope.node.tryGetContext('environment') ?? scope.node.tryGetContext('stage');
   
   // Prioritize correct key 'afu9-enable-database', fall back to legacy 'enableDatabase'
