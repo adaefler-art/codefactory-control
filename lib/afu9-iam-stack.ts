@@ -232,6 +232,21 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // Allow CI/CD to validate required keys in AFU-9 secrets.
+    // Justification: repo build/deploy scripts run secret validation (reads secret JSON).
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'SecretsManagerGetAfu9SecretsForValidation',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/database*`,
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/github*`,
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/llm*`,
+        ],
+      })
+    );
+
     // Allow preflight checks to read Route53 hosted zones/records (no write access)
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
