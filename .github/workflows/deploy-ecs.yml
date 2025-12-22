@@ -59,6 +59,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Guard production deploys must be from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ env.DEPLOY_ENV }}" = "production" ] && [ "${{ github.ref_name }}" != "main" ]; then
+            echo "❌ Production deploys must run from main (ref=${{ github.ref_name }})" >&2
+            exit 1
+          fi
+
       - name: Guard AWS_DEPLOY_ROLE_ARN
         run: |
           if [ -z "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ]; then
@@ -139,6 +148,7 @@ jobs:
           STAGING_SERVICE: afu9-control-center-staging
           REQUIRE_STAGING_SERVICE: ${{ steps.target.outputs.deploy_env == 'staging' && 'true' || 'false' }}
           CREATE_STAGING_SERVICE: 'false'
+          AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
           PROTECTED_RESOURCES: ${{ env.MANAGE_DNS == 'true' && 'cluster,roles,listeners' || 'cluster,roles,listeners,route53' }}
           CDK_STACKS: Afu9EcsStack Afu9RoutingSingleEnvStack
         run: |
@@ -148,14 +158,41 @@ jobs:
           echo "DOMAIN_NAME=${DOMAIN_NAME} CREATE_STAGING_SERVICE=${CREATE_STAGING_SERVICE}"
           chmod +x ./scripts/preflight.sh
 
+          # Preflight diff must reflect the *currently deployed* infra toggles.
+          # If we force HTTPS/DNS off in the diff args, CDK will propose deleting listeners/record sets
+          # and the diff gate will (correctly) block the deploy.
+          EFFECTIVE_ENABLE_HTTPS="${AFU9_ENABLE_HTTPS}"
+          EFFECTIVE_MANAGE_DNS="${MANAGE_DNS}"
+
+          if aws cloudformation describe-stacks --stack-name Afu9NetworkStack --region "${AWS_REGION}" >/dev/null 2>&1; then
+            STACK_HTTPS=$(aws cloudformation describe-stacks \
+              --stack-name Afu9NetworkStack \
+              --region "${AWS_REGION}" \
+              --query "Stacks[0].Outputs[?OutputKey=='HttpsEnabled'].OutputValue | [0]" \
+              --output text 2>/dev/null || true)
+            if [ "${STACK_HTTPS}" = "true" ] || [ "${STACK_HTTPS}" = "false" ]; then
+              EFFECTIVE_ENABLE_HTTPS="${STACK_HTTPS}"
+            fi
+
+            DNS_RS_COUNT=$(aws cloudformation list-stack-resources \
+              --stack-name Afu9NetworkStack \
+              --region "${AWS_REGION}" \
+              --query "StackResourceSummaries[?ResourceType=='AWS::Route53::RecordSet'] | length(@)" \
+              --output text 2>/dev/null || true)
+            if [ -n "${DNS_RS_COUNT:-}" ] && [ "${DNS_RS_COUNT}" != "None" ] && [ "${DNS_RS_COUNT}" -gt 0 ] 2>/dev/null; then
+              EFFECTIVE_MANAGE_DNS="true"
+            fi
+          fi
+
+          echo "[info] effective cdk diff toggles: afu9-enable-https=${EFFECTIVE_ENABLE_HTTPS} afu9-manage-dns=${EFFECTIVE_MANAGE_DNS}"
+
           # Build CDK diff arguments for the guarded stacks
           CDK_ARGS=(
             --app "npx ts-node --project tsconfig.json bin/codefactory-control.ts"
             -c afu9-multi-env=false
             -c afu9-domain="${DOMAIN_NAME}"
-            # deploy-ecs is APP-ONLY: do not involve DNS/ACM in the diff gate.
-            -c afu9-enable-https=false
-            -c afu9-manage-dns="${MANAGE_DNS}"
+            -c afu9-enable-https="${EFFECTIVE_ENABLE_HTTPS}"
+            -c afu9-manage-dns="${EFFECTIVE_MANAGE_DNS}"
             -c afu9-create-staging-service="${CREATE_STAGING_SERVICE}"
             -c environment="${DEPLOY_ENV}"
           )
@@ -213,6 +250,17 @@ jobs:
           set -euo pipefail
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "full_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate build metadata
+        id: build-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./control-center/package.json').version")
+          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$TS" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Control Center
         uses: docker/build-push-action@v5
@@ -221,13 +269,68 @@ jobs:
           file: ./control-center/Dockerfile
           push: true
           build-args: |
-            BUILD_VERSION=0.4.0
-            BUILD_COMMIT_HASH=${{ steps.image-tags.outputs.short_sha }}
+            BUILD_VERSION=${{ steps.build-meta.outputs.version }}
+            BUILD_COMMIT_HASH=${{ github.sha }}
             BUILD_ENV=${{ steps.target.outputs.deploy_env }}
+            BUILD_TIMESTAMP=${{ steps.build-meta.outputs.timestamp }}
           tags: |
               ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Deploy Provenance (hard gate)
+        id: provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${{ steps.image-tags.outputs.short_sha }}"
+          FULL_SHA="${{ steps.image-tags.outputs.full_sha }}"
+          DEPLOY_ENV="${{ steps.target.outputs.deploy_env }}"
+          TAG_PREFIX="${{ steps.target.outputs.tag_prefix }}"
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          REPO_URI="${{ steps.ecr-uris.outputs.control_center }}"
+          IMAGE_TAG="${TAG_PREFIX}-${FULL_SHA}"
+
+          echo "Branch: ${BRANCH}"
+          echo "SHA: ${SHA}"
+          echo "Deploy env: ${DEPLOY_ENV}"
+          echo "Target: cluster=${CLUSTER} service=${SERVICE}"
+          echo "Image: ${REPO_URI}:${IMAGE_TAG}"
+
+          if [ "${DEPLOY_ENV}" != "staging" ] && [ "${BRANCH}" != "main" ]; then
+            echo "❌ Non-staging deploys must be from main (branch=${BRANCH})" >&2
+            exit 1
+          fi
+
+          DIGEST=$(aws ecr describe-images \
+            --repository-name afu9/control-center \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          if [ -z "${DIGEST:-}" ] || [ "${DIGEST}" = "None" ]; then
+            echo "❌ Could not resolve ECR digest for ${IMAGE_TAG}" >&2
+            exit 1
+          fi
+
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Deploy Provenance"
+            echo "- Branch: \\`${BRANCH}\\`"
+            echo "- SHA: \\`${SHA}\\`"
+            echo "- Environment: \\`${DEPLOY_ENV}\\`"
+            echo "- Control Center Image: \\`${REPO_URI}:${IMAGE_TAG}\\`"
+            echo "- Control Center Digest: \\`${DIGEST}\\`"
+            echo "- ECS Cluster: \\`${CLUSTER}\\`"
+            echo "- ECS Service: \\`${SERVICE}\\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: "Guardrail: block legacy DB secret (/master)"
         shell: bash
@@ -307,7 +410,7 @@ jobs:
             task-def.json > task-def.sanitized.json
           mv task-def.sanitized.json task-def.json
 
-           jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}" \
+           jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
              '.containerDefinitions |= map(
                if .name == "control-center" then .image = $cc_image
                else . end
@@ -638,6 +741,8 @@ jobs:
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -649,6 +754,8 @@ jobs:
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -660,6 +767,8 @@ jobs:
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
