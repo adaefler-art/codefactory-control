@@ -1,61 +1,61 @@
-name: Deploy to Amazon ECS
+name: Deploy AFU-9 to ECS
+
+# ============================================================================
+# CANONICAL DEPLOY GUARDRAILS (Single Source of Truth)
+# - docs/deploy/AFU9_DEPLOY_SYSTEM_PROMPT.md
+# - docs/deploy/AFU9_DEPLOY_CHECKLIST.md
+# - docs/deploy/AFU9_DEPLOY_INTENT.md
+#
+# Workflow separation:
+# - deploy-ecs.yml       => APP-ONLY (ECS task definition + service update)
+# - deploy-cdk-stack.yml => INFRA (CDK deploy; DNS only if MANAGE_DNS=true)
+#
+# Do not widen IAM permissions or bypass preflight/diff gates.
+# ============================================================================
 
 on:
-  push:
-    branches:
-      - main
-      - staging
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy to'
+        description: "Environment to deploy to"
         required: true
         type: choice
         options:
-          - staging
           - production
+          - staging
+        default: production
+  push:
+    branches:
+      - main
+    paths:
+      - "control-center/**"
+      - "mcp-servers/**"
+      - ".github/workflows/deploy-ecs.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-ecs-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: codefactory-control
-  ECS_SERVICE_STAGING: codefactory-control-staging
-  ECS_SERVICE_PRODUCTION: codefactory-control-production
-  ECS_CLUSTER_STAGING: codefactory-staging
-  ECS_CLUSTER_PRODUCTION: codefactory-production
-  CONTAINER_NAME: codefactory-control
+  AWS_REGION: eu-central-1
+  DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  DOMAIN_NAME: afu-9.com
+  MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
+  AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
 
 jobs:
-  deploy:
-    name: Deploy
+  build-and-deploy:
+    name: Build and Deploy to ECS
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
     permissions:
-      contents: read
       id-token: write
+      contents: read
 
     steps:
-      - name: Determine deployment environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "DEPLOY_ENV=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
-          else
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set environment variables
-        run: |
-          if [ "${{ steps.env.outputs.DEPLOY_ENV }}" = "production" ]; then
-            echo "ECS_SERVICE=${{ env.ECS_SERVICE_PRODUCTION }}" >> $GITHUB_ENV
-            echo "ECS_CLUSTER=${{ env.ECS_CLUSTER_PRODUCTION }}" >> $GITHUB_ENV
-          else
-            echo "ECS_SERVICE=${{ env.ECS_SERVICE_STAGING }}" >> $GITHUB_ENV
-            echo "ECS_CLUSTER=${{ env.ECS_CLUSTER_STAGING }}" >> $GITHUB_ENV
-          fi
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -65,60 +65,750 @@ jobs:
         run: echo "Triggered by ${{ github.event_name }} on branch ${{ github.ref_name }} @ ${{ github.sha }}"
 
       - name: Guard production deploys must be from main
-        if: steps.env.outputs.DEPLOY_ENV == 'production'
+        shell: bash
         run: |
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "❌ Production deployments must be from the main branch"
+          set -euo pipefail
+          if [ "${{ env.DEPLOY_ENV }}" = "production" ] && [ "${{ github.ref_name }}" != "main" ]; then
+            echo "❌ Production deploys must run from main (ref=${{ github.ref_name }})" >&2
             exit 1
           fi
+
+      - name: Guard AWS_DEPLOY_ROLE_ARN
+        run: |
+          if [ -z "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ]; then
+            echo "❌ AWS_DEPLOY_ROLE_ARN is missing (secret is empty or undefined)" >&2
+            exit 1
+          fi
+
+      - name: Resolve deploy target (guarded)
+        id: target
+        shell: pwsh
+        run: |
+          $deployEnv = "${{ env.DEPLOY_ENV }}"
+          $stagingCluster = "${{ vars.STAGING_ECS_CLUSTER }}"
+          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster' }
+
+          if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
+            Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
+          }
+
+          if ($deployEnv -eq 'production') {
+            $tagPrefix = 'prod'
+            $ecsService = 'afu9-control-center'
+            $ecsCluster = 'afu9-cluster'
+            $envLabel = 'Production'
+            $readyHost = 'afu-9.com'
+          } else {
+            $tagPrefix = 'stage'
+            $ecsService = 'afu9-control-center-staging'
+            $ecsCluster = $stagingCluster
+            $envLabel = 'Staging'
+            $readyHost = 'stage.afu-9.com'
+          }
+
+          if ($deployEnv -eq 'staging' -and $ecsService -eq 'afu9-control-center') {
+            Write-Error "Staging deployment would target production service (afu9-control-center)."; exit 1
+          }
+          if ($deployEnv -eq 'staging' -and ($ecsService -notmatch 'staging')) {
+            Write-Error "Staging deployment must use a staging service name. Got: $ecsService"; exit 1
+          }
+          if ($deployEnv -eq 'production' -and ($ecsService -match 'staging')) {
+            Write-Error "Production deployment must not target a staging service name. Got: $ecsService"; exit 1
+          }
+
+          "deploy_env=$deployEnv" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag_prefix=$tagPrefix" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ecs_service=$ecsService" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "env_label=$envLabel" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ecs_cluster=$ecsCluster" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ready_host=$readyHost" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install root dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Preflight gate
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          DOMAIN_NAME: ${{ env.DOMAIN_NAME }}
+          MANAGE_DNS: ${{ env.MANAGE_DNS }}
+          ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
+          ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
+          STAGING_SERVICE: afu9-control-center-staging
+          REQUIRE_STAGING_SERVICE: ${{ steps.target.outputs.deploy_env == 'staging' && 'true' || 'false' }}
+          CREATE_STAGING_SERVICE: 'false'
+          AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
+          PROTECTED_RESOURCES: ${{ env.MANAGE_DNS == 'true' && 'cluster,roles,listeners' || 'cluster,roles,listeners,route53' }}
+          CDK_STACKS: Afu9EcsStack Afu9RoutingSingleEnvStack
+        run: |
+          set -euo pipefail
+          echo "MANAGE_DNS=${MANAGE_DNS}"
+          echo "DEPLOY_ENV=${DEPLOY_ENV} CLUSTER=${ECS_CLUSTER} SERVICE=${ECS_SERVICE}"
+          echo "DOMAIN_NAME=${DOMAIN_NAME} CREATE_STAGING_SERVICE=${CREATE_STAGING_SERVICE}"
+          chmod +x ./scripts/preflight.sh
+
+          # Preflight diff must reflect the *currently deployed* infra toggles.
+          # If we force HTTPS/DNS off in the diff args, CDK will propose deleting listeners/record sets
+          # and the diff gate will (correctly) block the deploy.
+          EFFECTIVE_ENABLE_HTTPS="${AFU9_ENABLE_HTTPS}"
+          EFFECTIVE_MANAGE_DNS="${MANAGE_DNS}"
+
+          if aws cloudformation describe-stacks --stack-name Afu9NetworkStack --region "${AWS_REGION}" >/dev/null 2>&1; then
+            STACK_HTTPS=$(aws cloudformation describe-stacks \
+              --stack-name Afu9NetworkStack \
+              --region "${AWS_REGION}" \
+              --query "Stacks[0].Outputs[?OutputKey=='HttpsEnabled'].OutputValue | [0]" \
+              --output text 2>/dev/null || true)
+            if [ "${STACK_HTTPS}" = "true" ] || [ "${STACK_HTTPS}" = "false" ]; then
+              EFFECTIVE_ENABLE_HTTPS="${STACK_HTTPS}"
+            fi
+
+            DNS_RS_COUNT=$(aws cloudformation list-stack-resources \
+              --stack-name Afu9NetworkStack \
+              --region "${AWS_REGION}" \
+              --query "StackResourceSummaries[?ResourceType=='AWS::Route53::RecordSet'] | length(@)" \
+              --output text 2>/dev/null || true)
+            if [ -n "${DNS_RS_COUNT:-}" ] && [ "${DNS_RS_COUNT}" != "None" ] && [ "${DNS_RS_COUNT}" -gt 0 ] 2>/dev/null; then
+              EFFECTIVE_MANAGE_DNS="true"
+            fi
+          fi
+
+          echo "[info] effective cdk diff toggles: afu9-enable-https=${EFFECTIVE_ENABLE_HTTPS} afu9-manage-dns=${EFFECTIVE_MANAGE_DNS}"
+
+          # Build CDK diff arguments for the guarded stacks
+          CDK_ARGS=(
+            --app "npx ts-node --project tsconfig.json bin/codefactory-control.ts"
+            -c afu9-multi-env=false
+            -c afu9-domain="${DOMAIN_NAME}"
+            -c afu9-enable-https="${EFFECTIVE_ENABLE_HTTPS}"
+            -c afu9-manage-dns="${EFFECTIVE_MANAGE_DNS}"
+            -c afu9-create-staging-service="${CREATE_STAGING_SERVICE}"
+            -c environment="${DEPLOY_ENV}"
+          )
+
+          for stack in ${CDK_STACKS}; do
+            CDK_ARGS+=("${stack}")
+          done
+
+          echo "[info] protected resources: ${PROTECTED_RESOURCES}"
+          echo "[info] running preflight for cluster=${ECS_CLUSTER} service=${ECS_SERVICE} manageDns=${MANAGE_DNS}"
+          echo "[info] cdk args: ${CDK_ARGS[*]}"
+
+          # Encode args as JSON to preserve quoting (notably --app "npx ts-node ...").
+          CDK_ARGS_JSON=$(printf '%s\n' "${CDK_ARGS[@]}" | jq -R . | jq -s .)
+
+          ./scripts/preflight.sh \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --staging-service "${STAGING_SERVICE}" \
+            --require-staging "${REQUIRE_STAGING_SERVICE}" \
+            --manage-dns "${MANAGE_DNS}" \
+            --create-staging-service "${CREATE_STAGING_SERVICE}" \
+            --domain "${DOMAIN_NAME}" \
+            --cdk-args-json "${CDK_ARGS_JSON}"
+
+      - name: Install database client tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Download task definition
+      - name: Get ECR repository URIs
+        id: ecr-uris
+        shell: bash
         run: |
-          aws ecs describe-task-definition \
-            --task-definition ${{ env.ECS_SERVICE }} \
-            --query taskDefinition > task-definition.json
+          set -euo pipefail
+          echo "control_center=$(aws ecr describe-repositories --repository-names afu9/control-center --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_github=$(aws ecr describe-repositories --repository-names afu9/mcp-github --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_deploy=$(aws ecr describe-repositories --repository-names afu9/mcp-deploy --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_observability=$(aws ecr describe-repositories --repository-names afu9/mcp-observability --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
+      - name: Generate image tags
+        id: image-tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "full_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate build metadata
+        id: build-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./control-center/package.json').version")
+          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$TS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Control Center
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./control-center/Dockerfile
+          push: true
+          build-args: |
+            BUILD_VERSION=${{ steps.build-meta.outputs.version }}
+            BUILD_COMMIT_HASH=${{ github.sha }}
+            BUILD_ENV=${{ steps.target.outputs.deploy_env }}
+            BUILD_TIMESTAMP=${{ steps.build-meta.outputs.timestamp }}
+          tags: |
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy Provenance (hard gate)
+        id: provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${{ steps.image-tags.outputs.short_sha }}"
+          FULL_SHA="${{ steps.image-tags.outputs.full_sha }}"
+          DEPLOY_ENV="${{ steps.target.outputs.deploy_env }}"
+          TAG_PREFIX="${{ steps.target.outputs.tag_prefix }}"
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          REPO_URI="${{ steps.ecr-uris.outputs.control_center }}"
+          IMAGE_TAG="${TAG_PREFIX}-${FULL_SHA}"
+
+          echo "Branch: ${BRANCH}"
+          echo "SHA: ${SHA}"
+          echo "Deploy env: ${DEPLOY_ENV}"
+          echo "Target: cluster=${CLUSTER} service=${SERVICE}"
+          echo "Image: ${REPO_URI}:${IMAGE_TAG}"
+
+          if [ "${DEPLOY_ENV}" != "staging" ] && [ "${BRANCH}" != "main" ]; then
+            echo "❌ Non-staging deploys must be from main (branch=${BRANCH})" >&2
+            exit 1
+          fi
+
+          DIGEST=$(aws ecr describe-images \
+            --repository-name afu9/control-center \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          if [ -z "${DIGEST:-}" ] || [ "${DIGEST}" = "None" ]; then
+            echo "❌ Could not resolve ECR digest for ${IMAGE_TAG}" >&2
+            exit 1
+          fi
+
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Deploy Provenance"
+            echo "- Branch: \\`${BRANCH}\\`"
+            echo "- SHA: \\`${SHA}\\`"
+            echo "- Environment: \\`${DEPLOY_ENV}\\`"
+            echo "- Control Center Image: \\`${REPO_URI}:${IMAGE_TAG}\\`"
+            echo "- Control Center Digest: \\`${DIGEST}\\`"
+            echo "- ECS Cluster: \\`${CLUSTER}\\`"
+            echo "- ECS Service: \\`${SERVICE}\\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "Guardrail: block legacy DB secret (/master)"
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/guard-legacy-db-secret.js
+
+      - name: Create new task definition with environment tags
         id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
 
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+          echo "Listing clusters for debugging..."
+          aws ecs list-clusters --region "${{ env.AWS_REGION }}" --output text || true
+          echo "Using cluster=${{ steps.target.outputs.ecs_cluster }} service=${{ steps.target.outputs.ecs_service }}"
+
+          SERVICE_JSON=$(aws ecs describe-services \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output json)
+
+          if echo "$SERVICE_JSON" | jq -e '.failures | length > 0' >/dev/null; then
+            echo "❌ ECS describe-services reported failures:" >&2
+            echo "$SERVICE_JSON" | jq '.failures' >&2
+            exit 1
+          fi
+
+          if [ "$(echo "$SERVICE_JSON" | jq -r '.services | length')" = "0" ]; then
+            echo "❌ ECS service ${{ steps.target.outputs.ecs_service }} not found in cluster ${{ steps.target.outputs.ecs_cluster }}" >&2
+            echo "Listing services for debugging:" >&2
+            aws ecs list-services --cluster "${{ steps.target.outputs.ecs_cluster }}" --region "${{ env.AWS_REGION }}" --output json >&2
+            exit 1
+          fi
+
+          TASK_DEF_ARN=$(echo "$SERVICE_JSON" | jq -r '.services[0].taskDefinition // ""')
+
+          if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
+            echo "❌ Task definition is empty for service ${{ steps.target.outputs.ecs_service }}" >&2
+            echo "$SERVICE_JSON" | jq '.services[0]' >&2
+            exit 1
+          fi
+
+          echo "Current task definition: $TASK_DEF_ARN"
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'taskDefinition' > task-def.json
+
+          # Resolve canonical DB secret ARN (Secrets Manager accepts secret name as SecretId)
+          DB_SECRET_ARN=$(aws secretsmanager describe-secret \
+            --secret-id "afu9/database" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'ARN' \
+            --output text)
+
+          if [ -z "${DB_SECRET_ARN:-}" ] || [ "$DB_SECRET_ARN" = "None" ]; then
+            echo "❌ Could not resolve canonical DB secret ARN for afu9/database" >&2
+            exit 1
+          fi
+          echo "Using DB secret ARN: $DB_SECRET_ARN"
+          export DB_SECRET_ARN
+
+          # Sanitize DB secret references before further mutation:
+          # - replace legacy /master secret refs
+          # - replace any fixed/rotated suffix refs with canonical ARN
+          jq 'walk(
+            if type=="string" then
+              gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
+              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
+              | gsub("afu9/database/master"; "afu9/database")
+            else . end
+          )' \
+            task-def.json > task-def.sanitized.json
+          mv task-def.sanitized.json task-def.json
+
+           jq --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
+             '.containerDefinitions |= map(
+               if .name == "control-center" then .image = $cc_image
+               else . end
+                 | if .secrets then .secrets |= map(
+                     if (.name | test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) and .valueFrom then
+                       .valueFrom |= (
+                         gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
+                         | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
+                         | gsub("afu9/database/master"; "afu9/database")
+                       )
+                     else . end
+                   ) else . end
+             ) |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+             task-def.json > new-task-def.json
+
+            if jq -re '.. | select(type=="string" and test("/master"))' new-task-def.json >/dev/null; then
+              echo "❌ Detected legacy '/master' reference in task definition; aborting." >&2
+              jq -r '.. | select(type=="string" and test("/master"))' new-task-def.json >&2
+              exit 1
+            fi
+
+            if jq -re '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | select((.valueFrom|startswith(env.DB_SECRET_ARN + ":"))|not)' new-task-def.json >/dev/null; then
+              echo "❌ DATABASE_* secrets are not using canonical DB secret ARN; aborting." >&2
+              jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | "\(.name)=\(.valueFrom)"' new-task-def.json >&2
+              exit 1
+            fi
+
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Migration tasks must not depend on sidecar images.
+          # ECS pulls all images in a task definition, even if we only override the command
+          # for one container. If the service task def includes mcp-* sidecars (stage-latest),
+          # migrations would fail before the app container runs.
+          jq '.containerDefinitions |= map(select(.name=="control-center"))
+              | .containerDefinitions[0] |= del(.dependsOn)
+              ' new-task-def.json > migration-task-def.json
+
+          MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://migration-task-def.json \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "migration_task_def_arn=$MIGRATION_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "New task definition: $NEW_TASK_DEF_ARN"
+          echo "Migration task definition: $MIGRATION_TASK_DEF_ARN"
+
+      - name: Run database migrations (gate)
+        id: migrate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "🏗️ Running database migrations for ${{ steps.target.outputs.env_label }}..."
+
+          # Reuse the service's awsvpc network configuration
+          aws ecs describe-services \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+            --output json > awsvpc.json
+
+          SUBNETS=$(jq -r '.subnets | join(",")' awsvpc.json)
+          SGS=$(jq -r '.securityGroups | join(",")' awsvpc.json)
+          ASSIGN_PUBLIC_IP=$(jq -r '.assignPublicIp // "DISABLED"' awsvpc.json)
+
+          if [ -z "${SUBNETS:-}" ] || [ -z "${SGS:-}" ]; then
+            echo "❌ Could not determine VPC networking from ECS service" >&2
+            cat awsvpc.json >&2 || true
+            exit 1
+          fi
+
+          # Run a one-off Fargate task using the NEW task definition and override the command
+          OVERRIDES_JSON=$(jq -nc '{
+            containerOverrides: [{
+              name: "control-center",
+              command: ["bash","-lc","bash ./scripts/db-migrate.sh"],
+              environment: []
+            }]
+          }')
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --launch-type FARGATE \
+            --task-definition "${{ steps.task-def.outputs.migration_task_def_arn }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$ASSIGN_PUBLIC_IP}" \
+            --overrides "$OVERRIDES_JSON" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          if [ -z "${TASK_ARN:-}" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "❌ Failed to start migration task" >&2
+            exit 1
+          fi
+
+          echo "Migration task: $TASK_ARN"
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+
+          aws ecs wait tasks-stopped \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --tasks "$TASK_ARN" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws ecs describe-tasks \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --tasks "$TASK_ARN" \
+            --region "${{ env.AWS_REGION }}" \
+            --output json > migration-task.json
+
+          echo "Stopped reason:"
+          jq -r '.tasks[0].stoppedReason // "(none)"' migration-task.json
+
+          echo "Container statuses (name / lastStatus / exitCode / reason):"
+          jq -r '.tasks[0].containers[] | "- \(.name): status=\(.lastStatus) exitCode=\(.exitCode // "null") reason=\(.reason // "(none)")"' migration-task.json
+
+          EXIT_CODE=$(jq -r '
+            .tasks[0].containers
+            | (map(select(.name=="control-center").exitCode)[0] // .[0].exitCode // empty)
+          ' migration-task.json)
+
+          if [ -z "${EXIT_CODE:-}" ] || [ "$EXIT_CODE" = "null" ]; then
+            echo "❌ Could not determine migration task exit code (task=$TASK_ARN)" >&2
+            exit 1
+          fi
+
+          echo "Migration exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "❌ Database migrations failed" >&2
+            exit 1
+          fi
+
+          echo "✅ Database migrations applied"
+
+      - name: Check deployment verdict gate
+        env:
+          DEPLOYMENT_VERDICT: ${{ vars.DEPLOYMENT_VERDICT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "🔍 Checking deployment verdict gate..."
+          echo "Issue B3: No deployment without GREEN verdict"
+          echo ""
+          VERDICT="${DEPLOYMENT_VERDICT:-GREEN}"
+          node scripts/check-deployment-gate.js "$VERDICT"
+          echo ""
+          echo "✅ Verdict gate check passed - proceeding with deployment"
+
+      - name: Update ECS service
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "🚀 Updating ECS service with new task definition..."
+
+          # Store cluster and service names for cleaner code
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          TASK_DEF="${{ steps.task-def.outputs.new_task_def_arn }}"
+          REGION="${{ env.AWS_REGION }}"
+
+          echo "Cluster: $CLUSTER"
+          echo "Service: $SERVICE"
+          echo "Task Definition: $TASK_DEF"
+
+          # Check for multiple task sets before update (common failure cause)
+          echo "Checking for existing task sets..."
+          SERVICE_INFO=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --region "$REGION" \
+            --output json)
+
+          # Verify service exists
+          SERVICE_COUNT=$(echo "$SERVICE_INFO" | jq -r '.services | length')
+          if [ "$SERVICE_COUNT" -eq 0 ]; then
+            echo "❌ Service $SERVICE not found in cluster $CLUSTER"
+            exit 1
+          fi
+
+          # Safe to access .services[0] since we verified SERVICE_COUNT > 0
+          TASK_SET_COUNT=$(echo "$SERVICE_INFO" | jq -r '.services[0].taskSets // [] | length')
+          echo "Task sets found: $TASK_SET_COUNT"
+
+          if [ "$TASK_SET_COUNT" -gt 1 ]; then
+            echo "❌ Multiple task sets detected. This can cause update failures."
+            echo "$SERVICE_INFO" | jq -r '.services[0].taskSets'
+            echo "To resolve: Wait for deployments to complete or manually clean up task sets."
+            exit 1
+          fi
+
+          # Capture current service state for diagnostics
+          echo "Current service state:"
+          echo "$SERVICE_INFO" | jq -r '.services[0] | {status,runningCount,desiredCount,deploymentController}'
+
+          # Check if service is INACTIVE
+          SERVICE_STATUS=$(echo "$SERVICE_INFO" | jq -r '.services[0].status // "UNKNOWN"')
+          if [ "$SERVICE_STATUS" = "INACTIVE" ]; then
+            echo "❌ Service $SERVICE is INACTIVE and cannot be updated"
+            echo "The service must be in ACTIVE status to receive updates"
+            echo "Check AWS Console or run: aws ecs describe-services --cluster $CLUSTER --services $SERVICE --region $REGION"
+            exit 1
+          fi
+          if [ "$SERVICE_STATUS" = "UNKNOWN" ] || [ -z "$SERVICE_STATUS" ]; then
+            echo "⚠️  Warning: Could not determine service status (got: '$SERVICE_STATUS')"
+            echo "Proceeding with update, but this may fail if service is not ACTIVE"
+          fi
+
+          # Perform the update with detailed error capture
+          echo "Executing service update..."
+          if ! UPDATE_OUTPUT=$(aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$TASK_DEF" \
+            --region "$REGION" \
+            --output json 2>&1); then
+            echo "❌ ECS service update failed with error:"
+            echo "$UPDATE_OUTPUT"
+            exit 1
+          fi
+
+          echo "✅ Service update initiated successfully"
+          # Safe extraction of deployment info with try operator
+          echo "$UPDATE_OUTPUT" | jq -r 'try (.service.deployments[] | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)") // "No deployment information available"'
+
+      - name: Wait for ECS service stable
+        shell: pwsh
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Get service status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Service deployment status:"
+          aws ecs describe-services \
+            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
+            --services "${{ steps.target.outputs.ecs_service }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
+            --output table
+
+      - name: Resolve ALB DNS
+        id: alb-dns
+        shell: pwsh
+        run: |
+          # $env:GITHUB_OUTPUT exists in GitHub Actions; locally it can be null. Write to it only when present.
+          $writeOutput = $false
+          if ($env:GITHUB_OUTPUT) { $writeOutput = $true }
+
+          $cluster = "${{ steps.target.outputs.ecs_cluster }}"
+          $service = "${{ steps.target.outputs.ecs_service }}"
+
+          # 1) Describe service to get target group ARN
+          $svcJson = aws ecs describe-services --cluster $cluster --services $service --region "${{ env.AWS_REGION }}" --output json
+          $tgArn = ($svcJson | ConvertFrom-Json).services[0].loadBalancers[0].targetGroupArn
+          if (-not $tgArn) {
+            Write-Error "No loadBalancers attached to service $service in cluster $cluster"; exit 1
+          }
+
+          # 2) Describe target group to get ALB ARN
+          $tgJson = aws elbv2 describe-target-groups --target-group-arns $tgArn --region "${{ env.AWS_REGION }}" --output json
+          $albArn = ($tgJson | ConvertFrom-Json).TargetGroups[0].LoadBalancerArns[0]
+          if (-not $albArn) {
+            Write-Error "No LoadBalancerArn found for target group $tgArn"; exit 1
+          }
+
+          # 3) Describe load balancer to get DNS name
+          $albJson = aws elbv2 describe-load-balancers --load-balancer-arns $albArn --region "${{ env.AWS_REGION }}" --output json
+          $albDns = ($albJson | ConvertFrom-Json).LoadBalancers[0].DNSName
+          if (-not $albDns) {
+            Write-Error "No DNSName found for ALB $albArn"; exit 1
+          }
+
+          if ($writeOutput) {
+            "alb_dns_name=$albDns" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            Write-Host "alb_dns_name=$albDns"
+          }
+
+          Write-Host "Resolved ALB DNS: $albDns"
+
+      - name: Post-deploy readiness (/api/ready)
+        shell: pwsh
+        env:
+          ALB_DNS_NAME: ${{ steps.alb-dns.outputs.alb_dns_name }}
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+        run: |
+          $target = if ($env:ALB_DNS_NAME) { $env:ALB_DNS_NAME } else { $env:READY_HOST }
+          $uri = "https://$target/api/ready"
+          $host = $env:READY_HOST
+          Write-Host "Probing readiness at $uri (Host: $host)"
+          for ($i = 1; $i -le 30; $i++) {
+            try {
+              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $host } -UseBasicParsing -TimeoutSec 10
+              if ($resp.StatusCode -eq 200) { Write-Host "Ready (attempt $i)"; break }
+            } catch {}
+            if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
+            Start-Sleep -Seconds 5
+          }
+
+      - name: Run post-deployment verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Running automated post-deployment verification..."
+          chmod +x ./scripts/post-deploy-verification.sh
+          ./scripts/post-deploy-verification.sh \
+            "${{ steps.target.outputs.tag_prefix }}" \
+            "${{ steps.target.outputs.ecs_cluster }}" \
+            "${{ steps.target.outputs.ecs_service }}" \
+              "${{ steps.alb-dns.outputs.alb_dns_name }}"
+
+      - name: Build and push MCP GitHub Server
+        uses: docker/build-push-action@v5
         with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          context: ./mcp-servers
+          file: ./mcp-servers/github/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push MCP Deploy Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/deploy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push MCP Observability Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/observability/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deployment summary
+        shell: bash
         run: |
-          echo "### Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ steps.env.outputs.DEPLOY_ENV }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cluster**: ${{ env.ECS_CLUSTER }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Service**: ${{ env.ECS_SERVICE }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image**: ${{ steps.build-image.outputs.image }}" >> $GITHUB_STEP_SUMMARY
+          set -euo pipefail
+          {
+            echo "## Deployment Summary"
+            echo ""
+            echo "✅ **Deployment completed successfully**"
+            echo "Environment: ${{ steps.target.outputs.env_label }}"
+            echo ""
+            echo "### Images:"
+            echo "- Control Center: \`${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP GitHub (built/pushed): \`${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Deploy (built/pushed): \`${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- MCP Observability (built/pushed): \`${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}\`"
+            echo ""
+            echo "### ECS Configuration:"
+            echo "- Cluster: \`${{ steps.target.outputs.ecs_cluster }}\`"
+            echo "- Service: \`${{ steps.target.outputs.ecs_service }}\`"
+            echo "- Region: \`${{ env.AWS_REGION }}\`"
+            echo "- Task Definition: \`${{ steps.task-def.outputs.new_task_def_arn }}\`"
+            echo "- ALB DNS: ${{ steps.alb-dns.outputs.alb_dns_name }}"
+            echo ""
+            echo "### Rollback Information:"
+            echo "- Git SHA: \`${{ github.sha }}\`"
+            echo "- Short SHA: \`${{ steps.image-tags.outputs.short_sha }}\`"
+            echo "- Environment: ${{ steps.target.outputs.env_label }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# ============================================================================
+# How to verify (read-only checks)
+# - npx cdk diff Afu9EcsStack -c afu9-domain=afu-9.com -c afu9-multi-env=false -c afu9-enable-https=true -c afu9-manage-dns=false -c environment=prod
+# - aws ecs list-services --cluster afu9-cluster --region eu-central-1
+# - curl -s -H "Host: afu-9.com" https://<alb-dns>/api/ready
+# ============================================================================
