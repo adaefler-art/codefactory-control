@@ -56,7 +56,7 @@ export interface Afu9EcsConfig {
   
   /**
    * Image tag to use for deployments
-   * @default 'staging-latest'
+    * @default 'stage-latest' for stage, 'prod-latest' for prod
    */
   imageTag: string;
   
@@ -144,7 +144,7 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
 
   /**
    * Image tag to use for deployments
-   * @default 'staging-latest'
+    * @default 'stage-latest' for stage, 'prod-latest' for prod
    */
   imageTag?: string;
 
@@ -313,7 +313,7 @@ export class Afu9EcsStack extends cdk.Stack {
       vpc,
       ecsSecurityGroup,
       targetGroup,
-      imageTag = 'stage-undefined',
+      imageTag,
       desiredCount,
       cpu = 2048,
       memoryLimitMiB = 4096,
@@ -334,12 +334,13 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Environment-specific defaults (primary service only)
     const envDesiredCount = desiredCount ?? (primaryEnvironment === ENVIRONMENT.PROD ? 2 : 1);
+    const resolvedImageTag = imageTag ?? (isProd ? 'prod-latest' : 'stage-latest');
 
     // Log configuration for diagnostics
     console.log('AFU-9 ECS Stack Configuration:');
     console.log(`  Environment: ${primaryEnvironment}`);
     console.log(`  Database Enabled: ${enableDatabase}`);
-    console.log(`  Image Tag: ${imageTag}`);
+    console.log(`  Image Tag: ${resolvedImageTag}`);
     console.log(`  Desired Count: ${envDesiredCount}`);
     console.log(`  CPU: ${cpu}, Memory: ${memoryLimitMiB}`);
     console.log(`  Create Staging Service: ${createStagingService && !!props.stageTargetGroup}`);
@@ -825,7 +826,7 @@ export class Afu9EcsStack extends cdk.Stack {
       return td;
     };
 
-    const taskDefinition = createTaskDefinition('TaskDefinition', imageTag, deployEnv, environment, appNodeEnv);
+    const taskDefinition = createTaskDefinition('TaskDefinition', resolvedImageTag, deployEnv, environment, appNodeEnv);
 
     // Primary (prod or single-env) service
     this.service = new ecs.FargateService(this, 'Service', {
@@ -863,7 +864,7 @@ export class Afu9EcsStack extends cdk.Stack {
     if (props.stageTargetGroup && createStagingService) {
       const stageTaskDefinition = createTaskDefinition(
         'StageTaskDefinition',
-        props.stageImageTag ?? 'stage-undefined',
+        props.stageImageTag ?? 'stage-latest',
         'staging',
         'stage',
         'staging',

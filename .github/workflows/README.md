@@ -16,6 +16,20 @@ Automated CI/CD pipeline for building and deploying AFU-9 Docker images to AWS E
   - Defaults to the **staging** environment on push
 - **Manual**: Workflow dispatch from GitHub Actions UI with an explicit `staging` or `production` choice
 
+**Canonical rule (source of truth):**
+- **Production deploys must run from `main`**. The workflow hard-fails if `environment=production` and the ref is not `main`.
+- `pull_request` workflows are build/test only and must not deploy.
+
+**How to manually deploy main (production):**
+1. GitHub → Actions → `Deploy AFU-9 to ECS` → **Run workflow**
+2. Select branch: `main`
+3. Select `environment: production`
+4. Run and verify the **Deploy Provenance** step shows the expected:
+   - branch (`main`)
+   - full git SHA
+   - ECR digest for the pushed tag
+   - target ECS cluster + service
+
 **What it does:**
 1. Builds Docker images for all 4 containers
 2. Pushes images to ECR with environment-scoped tags:
@@ -25,6 +39,20 @@ Automated CI/CD pipeline for building and deploying AFU-9 Docker images to AWS E
 3. Updates the ECS task definition and service for the selected environment (staging or production)
 4. Runs post-deployment verification via `scripts/post-deploy-verification.sh`
 5. Waits for service to stabilize and records deployment metadata in the run summary
+
+**Verification (PowerShell-friendly):**
+```powershell
+$region = 'eu-central-1'
+$profile = 'codefactory'
+
+$svc = aws ecs describe-services --cluster 'afu9-cluster' --services 'afu9-control-center' --region $region --profile $profile --output json | ConvertFrom-Json
+$tdArn = $svc.services[0].taskDefinition
+Write-Host "TaskDefinition: $tdArn"
+
+$td = aws ecs describe-task-definition --task-definition $tdArn --region $region --profile $profile --output json | ConvertFrom-Json
+$img = ($td.taskDefinition.containerDefinitions | Where-Object name -eq 'control-center').image
+Write-Host "Running image: $img"
+```
 
 **Setup Requirements:**
 

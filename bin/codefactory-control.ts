@@ -255,8 +255,8 @@ if (multiEnvEnabled) {
     stageTargetGroup,
     // Single-env mode runs both prod + stage on a shared cluster/ALB.
     // Use an explicit rolling tag so new tasks can pull images during infra updates.
-    imageTag: 'staging-latest',
-    stageImageTag: 'staging-latest',
+    imageTag: 'prod-latest',
+    stageImageTag: 'stage-latest',
     stageDesiredCount: 1,
     enableDatabase,
     environment: deployEnvironment,
