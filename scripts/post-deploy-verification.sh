@@ -143,85 +143,169 @@ fi
 # ========================================
 print_section "Check 2: ALB Target Health"
 
+# Configuration for retries
+MAX_ATTEMPTS=30
+RETRY_INTERVAL=10
+
 echo "Fetching target groups for ALB..."
 # Get ALB ARN first
-ALB_ARN=$(aws elbv2 describe-load-balancers \
+ALB_ARN_OUTPUT=$(aws elbv2 describe-load-balancers \
   --region "$AWS_REGION" \
   --query "LoadBalancers[?DNSName=='$ALB_DNS'].LoadBalancerArn" \
-  --output text 2>/dev/null || echo "")
+  --output text 2>&1)
+ALB_ARN_EXIT_CODE=$?
+
+if [ $ALB_ARN_EXIT_CODE -ne 0 ]; then
+  print_result "FAIL" "AWS CLI failed to describe load balancers"
+  echo "Command: aws elbv2 describe-load-balancers --region $AWS_REGION --query \"LoadBalancers[?DNSName=='$ALB_DNS'].LoadBalancerArn\" --output text"
+  echo "Exit code: $ALB_ARN_EXIT_CODE"
+  echo "Error output: $ALB_ARN_OUTPUT"
+  exit 1
+fi
+
+ALB_ARN=$(echo "$ALB_ARN_OUTPUT" | tr -d '\n')
 
 if [ -z "$ALB_ARN" ]; then
   # Try alternative: get by name pattern
   echo "Could not find ALB by DNS name, trying by name pattern..."
-  ALB_ARN=$(aws elbv2 describe-load-balancers \
+  ALB_ARN_OUTPUT=$(aws elbv2 describe-load-balancers \
     --region "$AWS_REGION" \
     --query "LoadBalancers[?contains(LoadBalancerName, 'afu9')].LoadBalancerArn" \
-    --output text 2>/dev/null | head -1 || echo "")
+    --output text 2>&1)
+  ALB_ARN_EXIT_CODE=$?
+  
+  if [ $ALB_ARN_EXIT_CODE -ne 0 ]; then
+    print_result "FAIL" "AWS CLI failed to describe load balancers by name pattern"
+    echo "Command: aws elbv2 describe-load-balancers --region $AWS_REGION --query \"LoadBalancers[?contains(LoadBalancerName, 'afu9')].LoadBalancerArn\" --output text"
+    echo "Exit code: $ALB_ARN_EXIT_CODE"
+    echo "Error output: $ALB_ARN_OUTPUT"
+    exit 1
+  fi
+  
+  ALB_ARN=$(echo "$ALB_ARN_OUTPUT" | head -1 | tr -d '\n')
 fi
 
 if [ -z "$ALB_ARN" ]; then
   print_result "FAIL" "Could not find ALB"
-  TARGET_GROUPS=""
-else
-  echo "Found ALB: $ALB_ARN"
-  TARGET_GROUPS=$(aws elbv2 describe-target-groups \
-    --region "$AWS_REGION" \
-    --load-balancer-arn "$ALB_ARN" \
-    --query "TargetGroups[].TargetGroupArn" \
-    --output text 2>&1)
-  
-  if [ $? -ne 0 ]; then
-    print_result "FAIL" "Failed to fetch target groups for ALB"
-    TARGET_GROUPS=""
-  fi
+  exit 1
 fi
 
-if [ -z "$TARGET_GROUPS" ]; then
-  print_result "FAIL" "Could not find target groups for ALB"
+echo "Found ALB: $ALB_ARN"
+
+# Fetch target groups as JSON
+TG_JSON_OUTPUT=$(aws elbv2 describe-target-groups \
+  --region "$AWS_REGION" \
+  --load-balancer-arn "$ALB_ARN" \
+  --output json 2>&1)
+TG_EXIT_CODE=$?
+
+if [ $TG_EXIT_CODE -ne 0 ]; then
+  print_result "FAIL" "Failed to fetch target groups for ALB"
+  echo "Command: aws elbv2 describe-target-groups --region $AWS_REGION --load-balancer-arn $ALB_ARN --output json"
+  echo "Exit code: $TG_EXIT_CODE"
+  echo "Error output: $TG_JSON_OUTPUT"
+  exit 1
+fi
+
+# Filter target groups based on environment
+echo "Filtering for ${ENVIRONMENT^^} target groups..."
+if [ "$ENVIRONMENT" = "stage" ] || [ "$ENVIRONMENT" = "staging" ]; then
+  echo "Looking for target groups with 'stage' in the name..."
+  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select(.TargetGroupName | contains("stage")) | .TargetGroupArn' 2>/dev/null || echo "")
+  ENV_LABEL="stage"
+elif [ "$ENVIRONMENT" = "prod" ] || [ "$ENVIRONMENT" = "production" ]; then
+  echo "Looking for target groups named 'afu9-tg' or containing 'prod'..."
+  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select((.TargetGroupName == "afu9-tg") or (.TargetGroupName | contains("prod"))) | .TargetGroupArn' 2>/dev/null || echo "")
+  ENV_LABEL="prod"
 else
-  echo "Found target groups: $TARGET_GROUPS"
+  echo "Warning: Unknown environment '$ENVIRONMENT', checking all target groups..."
+  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[].TargetGroupArn' 2>/dev/null || echo "")
+  ENV_LABEL="$ENVIRONMENT"
+fi
+
+if [ -z "$FILTERED_TG_ARNS" ]; then
+  print_result "FAIL" "No target groups found for environment '$ENV_LABEL'"
+  echo "Available target groups:"
+  echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | "  - \(.TargetGroupName) (\(.TargetGroupArn))"' 2>/dev/null || echo "  Could not parse target groups"
+  exit 1
+fi
+
+TG_COUNT=$(echo "$FILTERED_TG_ARNS" | wc -l | tr -d ' ')
+echo "Matched $TG_COUNT target group(s) for environment '$ENV_LABEL'"
+echo "Target groups to check: $FILTERED_TG_ARNS"
+
+ALL_HEALTHY=true
+for TG_ARN in $FILTERED_TG_ARNS; do
+  echo ""
+  echo "Checking target group: $TG_ARN"
   
-  ALL_HEALTHY=true
-  for TG_ARN in $TARGET_GROUPS; do
-    echo ""
-    echo "Checking target group: $TG_ARN"
-    
-    TARGET_HEALTH=$(aws elbv2 describe-target-health \
+  # Retry loop for checking target health
+  ATTEMPT=1
+  TARGETS_HEALTHY=false
+  
+  while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+    TARGET_HEALTH_OUTPUT=$(aws elbv2 describe-target-health \
       --target-group-arn "$TG_ARN" \
       --region "$AWS_REGION" \
       --output json 2>&1)
+    TARGET_HEALTH_EXIT_CODE=$?
     
-    if [ $? -ne 0 ]; then
+    if [ $TARGET_HEALTH_EXIT_CODE -ne 0 ]; then
       print_result "FAIL" "Failed to fetch target health for $TG_ARN"
+      echo "Command: aws elbv2 describe-target-health --target-group-arn $TG_ARN --region $AWS_REGION --output json"
+      echo "Exit code: $TARGET_HEALTH_EXIT_CODE"
+      echo "Error output: $TARGET_HEALTH_OUTPUT"
       ALL_HEALTHY=false
-      continue
+      break
     fi
     
     # Count healthy vs unhealthy targets
-    TOTAL_TARGETS=$(echo "$TARGET_HEALTH" | jq -r '.TargetHealthDescriptions | length' 2>/dev/null || echo "0")
-    HEALTHY_TARGETS=$(echo "$TARGET_HEALTH" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length' 2>/dev/null || echo "0")
-    UNHEALTHY_TARGETS=$(echo "$TARGET_HEALTH" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' 2>/dev/null || echo "0")
+    TOTAL_TARGETS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions | length' 2>/dev/null || echo "0")
+    HEALTHY_TARGETS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length' 2>/dev/null || echo "0")
+    UNHEALTHY_TARGETS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' 2>/dev/null || echo "0")
     
-    echo "Targets: $HEALTHY_TARGETS healthy, $UNHEALTHY_TARGETS unhealthy (total: $TOTAL_TARGETS)"
+    echo "[Attempt $ATTEMPT/$MAX_ATTEMPTS] Targets: $HEALTHY_TARGETS healthy, $UNHEALTHY_TARGETS unhealthy (total: $TOTAL_TARGETS)"
     
-    if [ "$UNHEALTHY_TARGETS" -gt 0 ]; then
-      print_result "FAIL" "Found $UNHEALTHY_TARGETS unhealthy target(s)"
-      ALL_HEALTHY=false
-      
-      # Show details of unhealthy targets
-      echo "Unhealthy target details:"
-      echo "$TARGET_HEALTH" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy") | "  Target: \(.Target.Id):\(.Target.Port) - State: \(.TargetHealth.State) - Reason: \(.TargetHealth.Reason // "N/A") - Description: \(.TargetHealth.Description // "N/A")"' 2>/dev/null || echo "  Could not parse target details"
-    elif [ "$HEALTHY_TARGETS" -gt 0 ]; then
+    # Check if we have healthy targets
+    if [ "$TOTAL_TARGETS" -gt 0 ] && [ "$UNHEALTHY_TARGETS" -eq 0 ]; then
+      # All targets are healthy
       print_result "PASS" "All $HEALTHY_TARGETS target(s) are healthy"
+      TARGETS_HEALTHY=true
+      break
+    elif [ "$TOTAL_TARGETS" -eq 0 ]; then
+      # No targets registered yet - retry
+      if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+        print_result "FAIL" "No targets registered in target group after $MAX_ATTEMPTS attempts"
+        ALL_HEALTHY=false
+        break
+      fi
+      echo "  No targets registered yet, retrying in $RETRY_INTERVAL seconds..."
+      sleep $RETRY_INTERVAL
+      ATTEMPT=$((ATTEMPT + 1))
     else
-      print_result "WARN" "No targets registered in target group"
-      ALL_HEALTHY=false
+      # Some targets are unhealthy - retry
+      if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+        print_result "FAIL" "Found $UNHEALTHY_TARGETS unhealthy target(s) after $MAX_ATTEMPTS attempts"
+        ALL_HEALTHY=false
+        
+        # Show details of unhealthy targets
+        echo "Unhealthy target details:"
+        echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy") | "  Target: \(.Target.Id):\(.Target.Port) - State: \(.TargetHealth.State) - Reason: \(.TargetHealth.Reason // "N/A") - Description: \(.TargetHealth.Description // "N/A")"' 2>/dev/null || echo "  Could not parse target details"
+        break
+      fi
+      echo "  Unhealthy targets detected, retrying in $RETRY_INTERVAL seconds..."
+      sleep $RETRY_INTERVAL
+      ATTEMPT=$((ATTEMPT + 1))
     fi
   done
   
-  if [ "$ALL_HEALTHY" = true ]; then
-    print_result "PASS" "All ALB targets are healthy (green)"
+  if [ "$TARGETS_HEALTHY" = false ]; then
+    ALL_HEALTHY=false
   fi
+done
+
+if [ "$ALL_HEALTHY" = true ]; then
+  print_result "PASS" "All ALB targets are healthy for environment '$ENV_LABEL'"
 fi
 
 # ========================================
