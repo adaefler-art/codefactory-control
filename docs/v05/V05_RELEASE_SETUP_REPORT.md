@@ -14,7 +14,7 @@ All preparation work for AFU-9 v0.4 release and v0.5 project setup has been comp
 
 ✅ **Tag Created:** Annotated tag `v0.4.0` created locally on commit `22cdb6a`  
 ✅ **Release Notes:** Comprehensive release notes prepared with proper structure  
-✅ **Automation Scripts:** PowerShell and Bash scripts created for execution  
+✅ **Automation Scripts:** PowerShell scripts created for execution  
 ✅ **Issue Templates:** All 9 v0.5 issues fully documented and ready to create  
 ✅ **Project Structure:** Complete project plan with fields and configuration  
 ✅ **Documentation:** Full execution guide and tracking documents created
@@ -98,20 +98,20 @@ The prepared release notes include:
 
 ### A.3 Manual Execution Steps
 
-```bash
+```powershell
 # 1. Push the tag
 git push origin v0.4.0
 
-# 2. Create the release (option A: script)
-/tmp/afu9-release/create-release-and-project.sh
+# 2. Create the release (option A: PowerShell script)
+pwsh ./scripts/release/v0.5/create-v0.4-release.ps1 -Execute
 
 # OR option B: GitHub CLI
-gh release create v0.4.0 \
-    --repo adaefler-art/codefactory-control \
-    --title "AFU-9 v0.4.0" \
-    --notes-file <release_notes.md> \
-    --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae \
-    --verify-tag
+gh release create v0.4.0 `
+   --repo adaefler-art/codefactory-control `
+   --title "AFU-9 v0.4.0" `
+   --notes-file "./scripts/release/v0.5/release-notes-v0.4.0.md" `
+   --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae `
+   --verify-tag
 
 # OR option C: GitHub Web UI
 # Navigate to: https://github.com/adaefler-art/codefactory-control/releases/new
@@ -154,7 +154,7 @@ gh release create v0.4.0 \
 6. Create and configure fields
 
 **Option 2: GitHub CLI**
-```bash
+```powershell
 gh project create \
     --owner adaefler-art \
     --title "AFU-9 Codefactory v0.5" \
@@ -180,10 +180,10 @@ gh project create \
 | 3 | Task | Self-Propelling: Add preflight runtime check + clear error | P1 | v0.5, self-propelling, hardening |
 | 4 | Task | Self-Propelling: Wire feature behind flag and document activation | P1 | v0.5, self-propelling, docs |
 | 5 | Finding | Enforce ECS healthcheck on task ENI IP (Finding 1) | P1 | v0.5, hardening, ops, ecs |
-| 6 | Finding | Enforce ALB healthcheck on /api/health (Finding 2) | P1 | v0.5, hardening, ops, ecs |
+| 6 | Finding | Verify ALB healthcheck uses /api/health (Finding 2; already implemented on 22cdb6a4) | P2 | v0.5, hardening, ops, ecs |
 | 7 | Finding | Add CDK context validation for staging (Finding 3) | P1 | v0.5, hardening, ops, cdk |
 | 8 | Finding | Strengthen DB secret validation (Finding 4) | P1 | v0.5, hardening, ops, security |
-| 9 | Finding | Verify diff gate exclusively flag (Finding 5) | P2 | v0.5, hardening, ops, cdk |
+| 9 | Finding | Verify diff gate exclusively flag (Finding 5; already implemented on 22cdb6a4) | P2 | v0.5, hardening, ops, cdk |
 
 ### C.2 Self-Propelling Epic
 
@@ -270,7 +270,7 @@ Feature flag with default disabled, full documentation.
 
 ---
 
-**Issue 6: Enforce ALB healthcheck on /api/health (Finding 2)**
+**Issue 6: Verify ALB healthcheck uses /api/health (Finding 2; already implemented on 22cdb6a4)**
 
 **Problem:** ALB on `/api/ready` causes startup rollbacks.
 
@@ -279,7 +279,7 @@ Feature flag with default disabled, full documentation.
 **Current State:**
 - ✅ Runbook documents issue
 - ✅ ALB configured for `/api/health`
-- ⚠️ Need enforcement and validation
+- ⚠️ Needs verification and regression coverage
 
 **Tasks:**
 - Verify all ALB target groups use `/api/health`
@@ -346,10 +346,10 @@ Feature flag with default disabled, full documentation.
 
 ### C.5 Manual Execution Steps
 
-Complete issue templates are in `/tmp/afu9-release/create-v0.5-project.ps1`
+Complete issue templates are in `scripts/release/v0.5/create-v0.5-project.ps1`
 
 **Via GitHub CLI:**
-```bash
+```powershell
 # Example for epic
 gh issue create \
     --repo adaefler-art/codefactory-control \
@@ -379,7 +379,7 @@ gh issue create \
 - **9 Issues Created:** With correct titles, bodies, labels
 - **Epic Relationships:** Issues 2-4 linked to Issue 1
 - **All Added to Project:** With Status=Backlog
-- **Priorities Set:** 8 × P1, 1 × P2
+- **Priorities Set:** 7 × P1, 2 × P2
 
 ---
 
@@ -390,10 +390,11 @@ gh issue create \
 **In Repository (`docs/v05/`):**
 - `V05_RELEASE_PREP.md` - Tracking document (committed)
 
-**In `/tmp/afu9-release/`:**
+**In `scripts/release/v0.5/`:**
 - `create-v0.4-release.ps1` - PowerShell release script
 - `create-v0.5-project.ps1` - PowerShell project/issues script
-- `create-release-and-project.sh` - Combined Bash script (executable)
+- `create-release-and-project.ps1` - Combined PowerShell entrypoint
+- `release-notes-v0.4.0.md` - Release notes for `gh release create`
 - `EXECUTION_GUIDE.md` - Comprehensive manual guide
 
 ### Script Capabilities
@@ -403,7 +404,7 @@ All scripts contain:
 - All 9 issue bodies with full content
 - Proper error handling
 - GitHub CLI command examples
-- PowerShell and Bash versions
+- PowerShell-first execution path
 
 ---
 
@@ -449,7 +450,7 @@ No other information is required from humans - all content is complete and ready
 ### After Project Configuration
 - [ ] All 9 issues added to project
 - [ ] All have Status=Backlog
-- [ ] Priorities set correctly (8 × P1, 1 × P2)
+- [ ] Priorities set correctly (7 × P1, 2 × P2)
 - [ ] Epic field set for issues 2-4
 - [ ] Child tasks linked to epic (issue 1)
 
@@ -488,9 +489,9 @@ No other information is required from humans - all content is complete and ready
 - **v0.5 Release Prep:** `docs/v05/V05_RELEASE_PREP.md`
 
 ### Scripts
-- **Execution Guide:** `/tmp/afu9-release/EXECUTION_GUIDE.md`
-- **Bash Script:** `/tmp/afu9-release/create-release-and-project.sh`
-- **PowerShell Scripts:** `/tmp/afu9-release/*.ps1`
+- **Execution Guide:** `scripts/release/v0.5/EXECUTION_GUIDE.md`
+- **PowerShell Entrypoint:** `scripts/release/v0.5/create-release-and-project.ps1`
+- **PowerShell Scripts:** `scripts/release/v0.5/*.ps1`
 
 ### GitHub Links
 - **Repository:** https://github.com/adaefler-art/codefactory-control

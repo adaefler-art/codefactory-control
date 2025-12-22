@@ -15,7 +15,7 @@ Everything needed for v0.4 release and v0.5 project setup has been prepared. Man
 2. **Comprehensive release notes** prepared
 3. **9 issue templates** fully documented
 4. **Project structure** defined
-5. **Automation scripts** created (PowerShell + Bash)
+5. **Automation scripts** created (PowerShell)
 6. **Execution guide** written
 
 ### ⏳ Awaiting Manual Execution
@@ -32,9 +32,12 @@ Everything needed for v0.4 release and v0.5 project setup has been prepared. Man
 
 ### Option 1: Use Automation Script (Recommended)
 
-```bash
-# Execute the all-in-one script
-/tmp/afu9-release/create-release-and-project.sh
+```powershell
+# Execute the all-in-one script (dry run)
+pwsh ./scripts/release/v0.5/create-release-and-project.ps1
+
+# Execute (runs git + gh commands)
+pwsh ./scripts/release/v0.5/create-release-and-project.ps1 -Execute
 ```
 
 This script will:
@@ -46,8 +49,7 @@ This script will:
 
 #### 1. Push Tag
 
-```bash
-cd /home/runner/work/codefactory-control/codefactory-control
+```powershell
 git push origin v0.4.0
 ```
 
@@ -56,12 +58,12 @@ git push origin v0.4.0
 Visit: https://github.com/adaefler-art/codefactory-control/releases/new
 
 Or use GitHub CLI:
-```bash
-gh release create v0.4.0 \
-    --repo adaefler-art/codefactory-control \
-    --title "AFU-9 v0.4.0" \
-    --notes-file /tmp/afu9-release/release-notes.txt \
-    --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae \
+```powershell
+gh release create v0.4.0 `
+    --repo adaefler-art/codefactory-control `
+    --title "AFU-9 v0.4.0" `
+    --notes-file "./scripts/release/v0.5/release-notes-v0.4.0.md" `
+    --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae `
     --verify-tag
 ```
 
@@ -70,7 +72,7 @@ gh release create v0.4.0 \
 Visit: https://github.com/orgs/adaefler-art/projects (or user projects)
 
 Or use GitHub CLI:
-```bash
+```powershell
 gh project create \
     --owner adaefler-art \
     --title "AFU-9 Codefactory v0.5"
@@ -80,7 +82,7 @@ Configure fields: Status, Priority, Epic, KPI/Outcome
 
 #### 4. Create Issues
 
-Use the issue templates in `/tmp/afu9-release/create-v0.5-project.ps1`
+Use the issue templates in `scripts/release/v0.5/create-v0.5-project.ps1`
 
 9 issues to create:
 1. [v0.5 Epic] Self-Propelling (P1)
@@ -131,13 +133,13 @@ Use the issue templates in `/tmp/afu9-release/create-v0.5-project.ps1`
 ## Documentation
 
 **Comprehensive Report:** `docs/v05/V05_RELEASE_SETUP_REPORT.md`  
-**Execution Guide:** `/tmp/afu9-release/EXECUTION_GUIDE.md`  
+**Execution Guide:** `scripts/release/v0.5/EXECUTION_GUIDE.md`  
 **Tracking Doc:** `docs/v05/V05_RELEASE_PREP.md`
 
 **Scripts:**
-- `/tmp/afu9-release/create-release-and-project.sh` (Bash, executable)
-- `/tmp/afu9-release/create-v0.4-release.ps1` (PowerShell)
-- `/tmp/afu9-release/create-v0.5-project.ps1` (PowerShell)
+- `scripts/release/v0.5/create-release-and-project.ps1` (PowerShell entrypoint)
+- `scripts/release/v0.5/create-v0.4-release.ps1` (PowerShell)
+- `scripts/release/v0.5/create-v0.5-project.ps1` (PowerShell)
 
 ---
 
@@ -168,11 +170,11 @@ After execution, verify:
 ## Need Help?
 
 **Full Details:** See `docs/v05/V05_RELEASE_SETUP_REPORT.md`  
-**Step-by-Step:** See `/tmp/afu9-release/EXECUTION_GUIDE.md`  
-**Issue Templates:** See `/tmp/afu9-release/create-v0.5-project.ps1`
+**Step-by-Step:** See `scripts/release/v0.5/EXECUTION_GUIDE.md`  
+**Issue Templates:** See `scripts/release/v0.5/create-v0.5-project.ps1`
 
 ---
 
 **Status:** Ready to execute  
 **Estimated Time:** 15-20 minutes for complete setup  
-**Next Action:** Run `/tmp/afu9-release/create-release-and-project.sh` or follow manual steps above
+**Next Action:** Run `pwsh ./scripts/release/v0.5/create-release-and-project.ps1 -Execute` or follow manual steps above
