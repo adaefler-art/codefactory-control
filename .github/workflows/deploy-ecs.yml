@@ -420,12 +420,16 @@ jobs:
                if .name == "control-center" then .image = $cc_image
                else . end
                  | if .secrets then .secrets |= map(
-                     if (.name | test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) and .valueFrom then
-                       .valueFrom |= (
-                         gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
-                         | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
-                         | gsub("afu9/database/master"; "afu9/database")
-                       )
+                     if .name == "DATABASE_HOST" then
+                       .valueFrom = (env.DB_SECRET_ARN + ":host::")
+                     elif .name == "DATABASE_PORT" then
+                       .valueFrom = (env.DB_SECRET_ARN + ":port::")
+                     elif .name == "DATABASE_NAME" then
+                       .valueFrom = (env.DB_SECRET_ARN + ":database::")
+                     elif .name == "DATABASE_USER" then
+                       .valueFrom = (env.DB_SECRET_ARN + ":username::")
+                     elif .name == "DATABASE_PASSWORD" then
+                       .valueFrom = (env.DB_SECRET_ARN + ":password::")
                      else . end
                    ) else . end
              ) |
