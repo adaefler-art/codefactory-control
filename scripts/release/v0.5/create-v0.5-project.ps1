@@ -160,6 +160,21 @@ if (-not $Execute) {
   exit 0
 }
 
+Write-Step "Preflight: verify labels exist"
+$requiredLabels = @()
+foreach ($i in $issues) {
+  $requiredLabels += @($commonLabels + @($i.type, $i.priority) + $i.labels)
+}
+$requiredLabels = $requiredLabels | Select-Object -Unique
+
+$existingLabelsJson = & gh label list --repo $Repo --limit 500 --json name
+$existingLabelNames = ($existingLabelsJson | ConvertFrom-Json).name
+$missing = $requiredLabels | Where-Object { $_ -notin $existingLabelNames }
+if ($missing.Count -gt 0) {
+  $missingList = ($missing | Sort-Object) -join ', '
+  throw "Missing required labels in $Repo: $missingList. Create these labels first (GitHub UI or 'gh label create ...'), then re-run."
+}
+
 Write-Step "Create/reuse issues and add to project"
 foreach ($i in $issues) {
   $labels = @($commonLabels + @($i.type, $i.priority) + $i.labels) | Select-Object -Unique
