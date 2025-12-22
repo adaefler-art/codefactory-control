@@ -3,7 +3,7 @@ set -euo pipefail
 
 # AFU-9 Post-Deployment Verification Script
 # 
-# Automated verification checks after ECS deployment:
+# Automated verification checks after ECS deployment: 
 # - ECS service events (no Circuit Breaker issues)
 # - ALB target health (all targets healthy)
 # - Health endpoints (/api/health)
@@ -13,7 +13,7 @@ set -euo pipefail
 #
 # Usage:
 #   ./scripts/post-deploy-verification.sh <environment> <cluster-name> <service-name> <alb-dns>
-#   ./scripts/post-deploy-verification.sh stage afu9-cluster afu9-control-center-stage afu9-alb-123.eu-central-1.elb.amazonaws.com
+#   ./scripts/post-deploy-verification.sh stage afu9-cluster afu9-control-center-stage afu9-alb-123. eu-central-1.elb.amazonaws. com
 #
 # Or with environment variables:
 #   ENVIRONMENT=stage \
@@ -46,7 +46,7 @@ if [ -z "$ENVIRONMENT" ] || [ -z "$ECS_CLUSTER" ] || [ -z "$ECS_SERVICE" ] || [ 
   echo "  $0 stage afu9-cluster afu9-control-center-stage afu9-alb-123.eu-central-1.elb.amazonaws.com"
   echo ""
   echo "Or use environment variables:"
-  echo "  ENVIRONMENT=stage ECS_CLUSTER=afu9-cluster ECS_SERVICE=afu9-control-center-stage ALB_DNS=... $0"
+  echo "  ENVIRONMENT=stage ECS_CLUSTER=afu9-cluster ECS_SERVICE=afu9-control-center-stage ALB_DNS=...  $0"
   exit 1
 fi
 
@@ -55,7 +55,7 @@ BASE_URL="http://${ALB_DNS}"
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}AFU-9 Post-Deployment Verification${NC}"
 echo -e "${BLUE}========================================${NC}"
-echo -e "Environment:   ${YELLOW}${ENVIRONMENT}${NC}"
+echo -e "Environment:    ${YELLOW}${ENVIRONMENT}${NC}"
 echo -e "ECS Cluster:   ${YELLOW}${ECS_CLUSTER}${NC}"
 echo -e "ECS Service:   ${YELLOW}${ECS_SERVICE}${NC}"
 echo -e "ALB DNS:       ${YELLOW}${ALB_DNS}${NC}"
@@ -82,7 +82,7 @@ print_result() {
   local message=$2
   
   if [ "$status" == "PASS" ]; then
-    echo -e "${GREEN}✅ PASS:${NC} $message"
+    echo -e "${GREEN}✅ PASS: ${NC} $message"
     PASSED=$((PASSED + 1))
   elif [ "$status" == "FAIL" ]; then
     echo -e "${RED}❌ FAIL:${NC} $message"
@@ -103,7 +103,7 @@ SERVICE_EVENTS=$(aws ecs describe-services \
   --cluster "$ECS_CLUSTER" \
   --services "$ECS_SERVICE" \
   --region "$AWS_REGION" \
-  --query 'services[0].events[0:10]' \
+  --query 'services[0].events[0: 10]' \
   --output json 2>&1)
 
 if [ $? -ne 0 ]; then
@@ -123,7 +123,7 @@ else
   
   # Check for other error keywords
   ERROR_KEYWORDS="(ERROR|FAILED|UNHEALTHY|STOPPED)"
-  ERROR_EVENTS=$(echo "$SERVICE_EVENTS" | jq -r ".[] | select(.message | test(\"$ERROR_KEYWORDS\"; \"i\")) | .message" 2>/dev/null || echo "")
+  ERROR_EVENTS=$(echo "$SERVICE_EVENTS" | jq -r ". [] | select(.message | test(\"$ERROR_KEYWORDS\"; \"i\")) | .message" 2>/dev/null || echo "")
   
   if [ -n "$ERROR_EVENTS" ]; then
     print_result "WARN" "Error keywords found in recent service events"
@@ -149,36 +149,30 @@ RETRY_INTERVAL=10
 
 echo "Fetching target groups for ALB..."
 # Get ALB ARN first
-ALB_ARN_OUTPUT=$(aws elbv2 describe-load-balancers \
+if !  ALB_ARN_OUTPUT=$(aws elbv2 describe-load-balancers \
   --region "$AWS_REGION" \
-  --query "LoadBalancers[?DNSName=='$ALB_DNS'].LoadBalancerArn" \
-  --output text 2>&1)
-ALB_ARN_EXIT_CODE=$?
-
-if [ $ALB_ARN_EXIT_CODE -ne 0 ]; then
+  --query "LoadBalancers[? DNSName=='$ALB_DNS'].LoadBalancerArn" \
+  --output text 2>&1); then
+  echo "::error::AWS CLI failed to describe load balancers"
+  echo ":: error::Command: aws elbv2 describe-load-balancers --region $AWS_REGION --query \"LoadBalancers[?DNSName=='$ALB_DNS']. LoadBalancerArn\" --output text"
+  echo "::error::Output: $ALB_ARN_OUTPUT"
   print_result "FAIL" "AWS CLI failed to describe load balancers"
-  echo "Command: aws elbv2 describe-load-balancers --region $AWS_REGION --query \"LoadBalancers[?DNSName=='$ALB_DNS'].LoadBalancerArn\" --output text"
-  echo "Exit code: $ALB_ARN_EXIT_CODE"
-  echo "Error output: $ALB_ARN_OUTPUT"
   exit 1
 fi
 
 ALB_ARN=$(echo "$ALB_ARN_OUTPUT" | tr -d '\n')
 
 if [ -z "$ALB_ARN" ]; then
-  # Try alternative: get by name pattern
+  # Try alternative:  get by name pattern
   echo "Could not find ALB by DNS name, trying by name pattern..."
-  ALB_ARN_OUTPUT=$(aws elbv2 describe-load-balancers \
+  if ! ALB_ARN_OUTPUT=$(aws elbv2 describe-load-balancers \
     --region "$AWS_REGION" \
-    --query "LoadBalancers[?contains(LoadBalancerName, 'afu9')].LoadBalancerArn" \
-    --output text 2>&1)
-  ALB_ARN_EXIT_CODE=$?
-  
-  if [ $ALB_ARN_EXIT_CODE -ne 0 ]; then
+    --query "LoadBalancers[? contains(LoadBalancerName, 'afu9')].LoadBalancerArn" \
+    --output text 2>&1); then
+    echo "::error::AWS CLI failed to describe load balancers by name pattern"
+    echo ":: error::Command: aws elbv2 describe-load-balancers --region $AWS_REGION --query \"LoadBalancers[?contains(LoadBalancerName, 'afu9')].LoadBalancerArn\" --output text"
+    echo ":: error::Output: $ALB_ARN_OUTPUT"
     print_result "FAIL" "AWS CLI failed to describe load balancers by name pattern"
-    echo "Command: aws elbv2 describe-load-balancers --region $AWS_REGION --query \"LoadBalancers[?contains(LoadBalancerName, 'afu9')].LoadBalancerArn\" --output text"
-    echo "Exit code: $ALB_ARN_EXIT_CODE"
-    echo "Error output: $ALB_ARN_OUTPUT"
     exit 1
   fi
   
@@ -190,20 +184,17 @@ if [ -z "$ALB_ARN" ]; then
   exit 1
 fi
 
-echo "Found ALB: $ALB_ARN"
+echo "Found ALB:  $ALB_ARN"
 
 # Fetch target groups as JSON
-TG_JSON_OUTPUT=$(aws elbv2 describe-target-groups \
+if ! TG_JSON_OUTPUT=$(aws elbv2 describe-target-groups \
   --region "$AWS_REGION" \
   --load-balancer-arn "$ALB_ARN" \
-  --output json 2>&1)
-TG_EXIT_CODE=$?
-
-if [ $TG_EXIT_CODE -ne 0 ]; then
+  --output json 2>&1); then
+  echo "::error::Failed to fetch target groups for ALB"
+  echo ":: error::Command: aws elbv2 describe-target-groups --region $AWS_REGION --load-balancer-arn $ALB_ARN --output json"
+  echo "::error::Output: $TG_JSON_OUTPUT"
   print_result "FAIL" "Failed to fetch target groups for ALB"
-  echo "Command: aws elbv2 describe-target-groups --region $AWS_REGION --load-balancer-arn $ALB_ARN --output json"
-  echo "Exit code: $TG_EXIT_CODE"
-  echo "Error output: $TG_JSON_OUTPUT"
   exit 1
 fi
 
@@ -211,39 +202,30 @@ fi
 echo "Filtering for ${ENVIRONMENT^^} target groups..."
 if [ "$ENVIRONMENT" = "stage" ] || [ "$ENVIRONMENT" = "staging" ]; then
   echo "Looking for target groups with 'stage' in the name..."
-  FILTERED_TG_ARNS_OUTPUT=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select(.TargetGroupName | contains("stage")) | .TargetGroupArn' 2>&1)
-  JQ_EXIT_CODE=$?
-  if [ $JQ_EXIT_CODE -ne 0 ]; then
+  if !  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '. TargetGroups[] | select(. TargetGroupName | contains("stage")) | .TargetGroupArn' 2>&1); then
+    echo "::error::Failed to parse target groups JSON with jq"
+    echo "::error::jq output: $FILTERED_TG_ARNS"
     print_result "FAIL" "Failed to parse target groups JSON with jq"
-    echo "jq exit code: $JQ_EXIT_CODE"
-    echo "jq error: $FILTERED_TG_ARNS_OUTPUT"
     exit 1
   fi
-  FILTERED_TG_ARNS="$FILTERED_TG_ARNS_OUTPUT"
   ENV_LABEL="stage"
 elif [ "$ENVIRONMENT" = "prod" ] || [ "$ENVIRONMENT" = "production" ]; then
   echo "Looking for target groups named 'afu9-tg' or containing 'prod'..."
-  FILTERED_TG_ARNS_OUTPUT=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select((.TargetGroupName == "afu9-tg") or (.TargetGroupName | contains("prod"))) | .TargetGroupArn' 2>&1)
-  JQ_EXIT_CODE=$?
-  if [ $JQ_EXIT_CODE -ne 0 ]; then
+  if ! FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select((.TargetGroupName == "afu9-tg") or (.TargetGroupName | contains("prod"))) | .TargetGroupArn' 2>&1); then
+    echo "::error::Failed to parse target groups JSON with jq"
+    echo "::error:: jq output: $FILTERED_TG_ARNS"
     print_result "FAIL" "Failed to parse target groups JSON with jq"
-    echo "jq exit code: $JQ_EXIT_CODE"
-    echo "jq error: $FILTERED_TG_ARNS_OUTPUT"
     exit 1
   fi
-  FILTERED_TG_ARNS="$FILTERED_TG_ARNS_OUTPUT"
   ENV_LABEL="prod"
 else
   echo "Warning: Unknown environment '$ENVIRONMENT', checking all target groups..."
-  FILTERED_TG_ARNS_OUTPUT=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[].TargetGroupArn' 2>&1)
-  JQ_EXIT_CODE=$?
-  if [ $JQ_EXIT_CODE -ne 0 ]; then
+  if !  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '. TargetGroups[].TargetGroupArn' 2>&1); then
+    echo "::error::Failed to parse target groups JSON with jq"
+    echo "::error::jq output: $FILTERED_TG_ARNS"
     print_result "FAIL" "Failed to parse target groups JSON with jq"
-    echo "jq exit code: $JQ_EXIT_CODE"
-    echo "jq error: $FILTERED_TG_ARNS_OUTPUT"
     exit 1
   fi
-  FILTERED_TG_ARNS="$FILTERED_TG_ARNS_OUTPUT"
   ENV_LABEL="$ENVIRONMENT"
 fi
 
@@ -274,63 +256,54 @@ for TG_ARN in $FILTERED_TG_ARNS; do
   echo ""
   echo "Checking target group: $TG_ARN"
   
-  # Retry loop for checking target health
+  # Retry loop for checking target health - REWRITTEN TO AVOID jq AND SHOW ERRORS
   ATTEMPT=1
   TARGETS_HEALTHY=false
   
   while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-    TARGET_HEALTH_OUTPUT=$(aws elbv2 describe-target-health \
+    # Use AWS CLI --query to avoid jq parsing and get plain text output
+    # Capture both stdout and stderr, but allow command to fail
+    if ! TARGET_STATES=$(aws elbv2 describe-target-health \
       --target-group-arn "$TG_ARN" \
       --region "$AWS_REGION" \
-      --output json 2>&1)
-    TARGET_HEALTH_EXIT_CODE=$?
-    
-    if [ $TARGET_HEALTH_EXIT_CODE -ne 0 ]; then
-      print_result "FAIL" "Failed to fetch target health for $TG_ARN"
-      echo "Command: aws elbv2 describe-target-health --target-group-arn $TG_ARN --region $AWS_REGION --output json"
-      echo "Exit code: $TARGET_HEALTH_EXIT_CODE"
-      echo "Error output: $TARGET_HEALTH_OUTPUT"
-      ALL_HEALTHY=false
-      break
+      --query "TargetHealthDescriptions[]. TargetHealth.State" \
+      --output text 2>&1); then
+      echo "::error::Failed to fetch target health for $TG_ARN (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+      echo "::error::Command: aws elbv2 describe-target-health --target-group-arn $TG_ARN --region $AWS_REGION --query 'TargetHealthDescriptions[].TargetHealth.State' --output text"
+      echo "::error::Output: $TARGET_STATES"
+      
+      if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+        print_result "FAIL" "Failed to fetch target health after $MAX_ATTEMPTS attempts"
+        ALL_HEALTHY=false
+        break
+      fi
+      
+      echo "  Retrying in $RETRY_INTERVAL seconds..."
+      sleep $RETRY_INTERVAL
+      ATTEMPT=$((ATTEMPT + 1))
+      continue
     fi
     
-    # Count healthy vs unhealthy targets
-    TOTAL_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions | length' 2>&1)
-    TOTAL_TARGETS_EXIT=$?
-    if [ $TOTAL_TARGETS_EXIT -ne 0 ]; then
-      print_result "FAIL" "Failed to parse target health JSON"
-      echo "jq error: $TOTAL_TARGETS_OUTPUT"
-      ALL_HEALTHY=false
-      break
+    # Parse states (space-separated plain text)
+    if [ -z "$TARGET_STATES" ] || [ "$TARGET_STATES" = "None" ]; then
+      # No targets registered
+      TOTAL_TARGETS=0
+      HEALTHY_COUNT=0
+      UNHEALTHY_COUNT=0
+    else
+      # Count total, healthy, and unhealthy
+      TOTAL_TARGETS=$(echo "$TARGET_STATES" | wc -w)
+      HEALTHY_COUNT=$(echo "$TARGET_STATES" | tr ' ' '\n' | grep -c '^healthy$' || true)
+      UNHEALTHY_COUNT=$((TOTAL_TARGETS - HEALTHY_COUNT))
     fi
-    TOTAL_TARGETS="$TOTAL_TARGETS_OUTPUT"
     
-    HEALTHY_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length' 2>&1)
-    HEALTHY_TARGETS_EXIT=$?
-    if [ $HEALTHY_TARGETS_EXIT -ne 0 ]; then
-      print_result "FAIL" "Failed to parse healthy targets from JSON"
-      echo "jq error: $HEALTHY_TARGETS_OUTPUT"
-      ALL_HEALTHY=false
-      break
-    fi
-    HEALTHY_TARGETS="$HEALTHY_TARGETS_OUTPUT"
-    
-    UNHEALTHY_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' 2>&1)
-    UNHEALTHY_TARGETS_EXIT=$?
-    if [ $UNHEALTHY_TARGETS_EXIT -ne 0 ]; then
-      print_result "FAIL" "Failed to parse unhealthy targets from JSON"
-      echo "jq error: $UNHEALTHY_TARGETS_OUTPUT"
-      ALL_HEALTHY=false
-      break
-    fi
-    UNHEALTHY_TARGETS="$UNHEALTHY_TARGETS_OUTPUT"
-    
-    echo "[Attempt $ATTEMPT/$MAX_ATTEMPTS] Targets: $HEALTHY_TARGETS healthy, $UNHEALTHY_TARGETS unhealthy (total: $TOTAL_TARGETS)"
+    echo "[Attempt $ATTEMPT/$MAX_ATTEMPTS] Target states: $TARGET_STATES"
+    echo "  Targets:  $HEALTHY_COUNT healthy, $UNHEALTHY_COUNT unhealthy (total: $TOTAL_TARGETS)"
     
     # Check if we have healthy targets
-    if [ "$TOTAL_TARGETS" -gt 0 ] && [ "$UNHEALTHY_TARGETS" -eq 0 ]; then
+    if [ "$TOTAL_TARGETS" -gt 0 ] && [ "$UNHEALTHY_COUNT" -eq 0 ]; then
       # All targets are healthy
-      print_result "PASS" "All $HEALTHY_TARGETS target(s) are healthy"
+      print_result "PASS" "All $HEALTHY_COUNT target(s) are healthy"
       TARGETS_HEALTHY=true
       break
     elif [ "$TOTAL_TARGETS" -eq 0 ]; then
@@ -346,19 +319,15 @@ for TG_ARN in $FILTERED_TG_ARNS; do
     else
       # Some targets are unhealthy - retry
       if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-        print_result "FAIL" "Found $UNHEALTHY_TARGETS unhealthy target(s) after $MAX_ATTEMPTS attempts"
+        print_result "FAIL" "Found $UNHEALTHY_COUNT unhealthy target(s) after $MAX_ATTEMPTS attempts"
         ALL_HEALTHY=false
         
-        # Show details of unhealthy targets
+        # Show details of unhealthy targets (use --output table for human-readable format)
         echo "Unhealthy target details:"
-        UNHEALTHY_DETAILS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy") | "  Target: \(.Target.Id):\(.Target.Port) - State: \(.TargetHealth.State) - Reason: \(.TargetHealth.Reason // "N/A") - Description: \(.TargetHealth.Description // "N/A")"' 2>&1)
-        UNHEALTHY_JQ_EXIT=$?
-        if [ $UNHEALTHY_JQ_EXIT -ne 0 ]; then
-          echo "  Error parsing unhealthy target details with jq (exit code: $UNHEALTHY_JQ_EXIT)"
-          echo "  jq error: $UNHEALTHY_DETAILS"
-        else
-          echo "$UNHEALTHY_DETAILS"
-        fi
+        aws elbv2 describe-target-health \
+          --target-group-arn "$TG_ARN" \
+          --region "$AWS_REGION" \
+          --output table 2>&1 || echo "  Could not fetch target details"
         break
       fi
       echo "  Unhealthy targets detected, retrying in $RETRY_INTERVAL seconds..."
@@ -418,7 +387,7 @@ fi
 # ========================================
 print_section "Check 4: Health Endpoint (/api/health)"
 
-echo "Testing health endpoint: ${BASE_URL}/api/health"
+echo "Testing health endpoint:  ${BASE_URL}/api/health"
 HEALTH_RESPONSE=$(curl -s -w "\n%{http_code}" "${BASE_URL}/api/health" 2>/dev/null || echo -e "\n000")
 HEALTH_CODE=$(echo "$HEALTH_RESPONSE" | tail -n1)
 HEALTH_BODY=$(echo "$HEALTH_RESPONSE" | head -n-1)
@@ -470,13 +439,13 @@ if [ "$READY_CODE" == "200" ]; then
     fi
   else
     print_result "FAIL" "Readiness endpoint returned 200 but service not ready or invalid format"
-    echo "Response: $READY_BODY"
+    echo "Response:  $READY_BODY"
   fi
 elif [ "$READY_CODE" == "503" ]; then
   print_result "FAIL" "Readiness endpoint returned 503 - service not ready"
   
   # Show error details
-  ERRORS=$(echo "$READY_BODY" | jq -r '.errors[]?' 2>/dev/null || echo "")
+  ERRORS=$(echo "$READY_BODY" | jq -r '. errors[]?' 2>/dev/null || echo "")
   if [ -n "$ERRORS" ]; then
     echo "Errors:"
     echo "$ERRORS" | while IFS= read -r line; do
@@ -504,7 +473,7 @@ echo ""
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}Verification Summary${NC}"
 echo -e "${BLUE}========================================${NC}"
-echo -e "${GREEN}Passed:   $PASSED${NC}"
+echo -e "${GREEN}Passed:    $PASSED${NC}"
 echo -e "${YELLOW}Warnings: $WARNINGS${NC}"
 echo -e "${RED}Failed:   $FAILED${NC}"
 echo -e "Total:    $((PASSED + WARNINGS + FAILED))"
@@ -513,9 +482,9 @@ echo ""
 if [ $FAILED -eq 0 ]; then
   echo -e "${GREEN}✅ POST-DEPLOYMENT VERIFICATION PASSED${NC}"
   echo ""
-  echo "All critical checks passed. Deployment is successful."
+  echo "All critical checks passed.  Deployment is successful."
   if [ $WARNINGS -gt 0 ]; then
-    echo -e "${YELLOW}Note: Some warnings were found. Review them above.${NC}"
+    echo -e "${YELLOW}Note:  Some warnings were found.  Review them above.${NC}"
   fi
   exit 0
 else
