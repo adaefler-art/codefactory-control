@@ -119,6 +119,8 @@ Use the issue templates in `scripts/release/v0.5/create-v0.5-project.ps1`
 **Name:** AFU-9 Codefactory v0.5  
 **Description:** v0.5 planning and delivery. Foundation: v0.4 reference state + staging findings.
 
+**GitHub Project (canonical):** AFU-9 Codefactory v0.5 (Owner: adaefler-art, Project: 13) — https://github.com/users/adaefler-art/projects/13
+
 **Issues (9 total):**
 - 1 Epic: Self-Propelling
 - 3 Tasks: Runtime artifacts, preflight checks, feature flag
