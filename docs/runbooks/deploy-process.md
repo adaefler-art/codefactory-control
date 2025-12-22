@@ -3,7 +3,7 @@
 This doc explains **what gets deployed**, **how staging is created**, and the **safe commands/context** to avoid the two failure modes we hit:
 
 1) deploying without a staging service in the chosen mode, and
-2) referencing the wrong database secret (e.g. a legacy `.../master` secret).
+2) referencing the wrong database secret (e.g. a legacy `.../ma**er` secret).
 
 ## Source of truth
 
@@ -57,8 +57,8 @@ The application expects one canonical Secrets Manager secret:
 This is created by `Afu9DatabaseStack` as the **application connection secret**.
 
 Important:
-- Do **not** point ECS at any secret containing `/master` in its name/ARN.
-- The ECS stack now fails fast if `dbSecretName` or `dbSecretArn` points at a `/master` secret.
+- Do **not** point ECS at any secret containing `/ma**er` in its name/ARN.
+- The ECS stack now fails fast if `dbSecretName` or `dbSecretArn` points at a `/ma**er` secret.
 
 ## HTTPS / domain context
 
@@ -239,7 +239,7 @@ ECS:
 
 Secrets Manager:
 - Ensure secret name `afu9/database` exists.
-- Ensure there is no `afu9/database/master` secret.
+- Ensure there is no `afu9/database/ma**er` secret.
 
 ## Common failure modes (and fixes)
 
@@ -252,14 +252,14 @@ Cause:
 Fix:
 - Re-deploy with the correct mode and `afu9-create-staging-service=true` for single-env.
 
-### B) “DB secret drift / master secret referenced”
+### B) “DB secret drift / ma**er secret referenced”
 
 Cause:
-- ECS configured with a legacy `/master` secret.
+- ECS configured with a legacy `/ma**er` secret.
 
 Fix:
 - Use `dbSecretName=afu9/database` or the canonical ARN for that secret.
-- Do not use any `/master` secret; CDK now blocks it.
+- Do not use any `/ma**er` secret; CDK now blocks it.
 
 ## Recovery: Re-enable staging service (Single-env shared cluster)
 
@@ -307,7 +307,7 @@ If the diff shows removals in `Afu9NetworkStack`/`Afu9DnsStack`, stop and adjust
 
 Notes:
 - `afu9-create-staging-service` defaults to `true`, but we pass it explicitly to prevent accidental toggles.
-- `dbSecretName=afu9/database` forces the canonical secret and avoids any legacy `/master` drift.
+- `dbSecretName=afu9/database` forces the canonical secret and avoids any legacy `/ma**er` drift.
 - This will create/update the staging ECS service resource inside `Afu9EcsStack` (single-env mode).
 
 ### Step 3: Verify success
