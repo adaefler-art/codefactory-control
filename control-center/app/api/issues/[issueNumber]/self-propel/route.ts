@@ -13,11 +13,23 @@ import { WorkflowDefinition, WorkflowContext } from '../../../../../src/lib/type
 import * as fs from 'fs';
 import * as path from 'path';
 
+const SELF_PROPELLING_WORKFLOW_PATH = path.join(
+  process.cwd(),
+  'runtime',
+  'workflows',
+  'self_propelling_issue.json'
+);
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { issueNumber: string } }
 ) {
   try {
+    const selfPropellingEnabled = process.env.AFU9_ENABLE_SELF_PROPELLING === 'true';
+    if (!selfPropellingEnabled) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
     const { issueNumber } = params;
     const body = await request.json();
     const { owner, repo, baseBranch = 'main' } = body;
@@ -44,24 +56,18 @@ export async function POST(
       baseBranch,
     });
 
-    // Load workflow definition from database/examples
-    // Note: Using relative path from control-center to database directory
-    const workflowPath = path.join(
-      process.cwd(),
-      '..',
-      'database',
-      'examples',
-      'self_propelling_issue.json'
-    );
-    
-    if (!fs.existsSync(workflowPath)) {
+    // Load workflow definition from explicit runtime artifact path
+    if (!fs.existsSync(SELF_PROPELLING_WORKFLOW_PATH)) {
       return NextResponse.json(
-        { error: 'Workflow definition not found' },
+        {
+          error: 'Self-propelling workflow artifact missing at runtime',
+          path: SELF_PROPELLING_WORKFLOW_PATH,
+        },
         { status: 500 }
       );
     }
 
-    const workflowContent = fs.readFileSync(workflowPath, 'utf-8');
+    const workflowContent = fs.readFileSync(SELF_PROPELLING_WORKFLOW_PATH, 'utf-8');
     const selfPropellingWorkflow = JSON.parse(workflowContent) as WorkflowDefinition;
 
     // Create workflow context

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Version should match control-center package.json
 // In a production system, this could be read from process.env.APP_VERSION
@@ -10,6 +12,13 @@ const MCP_SERVERS = [
   { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://127.0.0.1:3002' },
   { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
 ] as const;
+
+const SELF_PROPELLING_WORKFLOW_PATH = path.join(
+  process.cwd(),
+  'runtime',
+  'workflows',
+  'self_propelling_issue.json'
+);
 
 /**
  * Build the list of required dependencies based on current configuration
@@ -59,6 +68,19 @@ export async function GET() {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
       service: { status: 'ok' },
     };
+
+    // Preflight: if self-propelling is enabled, verify the runtime workflow artifact exists
+    const selfPropellingEnabled = process.env.AFU9_ENABLE_SELF_PROPELLING === 'true';
+    if (selfPropellingEnabled) {
+      if (!fs.existsSync(SELF_PROPELLING_WORKFLOW_PATH)) {
+        checks.self_propelling = {
+          status: 'error',
+          message: `AFU9_ENABLE_SELF_PROPELLING=true but workflow artifact missing: ${SELF_PROPELLING_WORKFLOW_PATH}`,
+        };
+      } else {
+        checks.self_propelling = { status: 'ok' };
+      }
+    }
 
     // Check database connectivity based on DATABASE_ENABLED flag
     const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
