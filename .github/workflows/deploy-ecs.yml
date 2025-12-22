@@ -720,11 +720,11 @@ jobs:
         run: |
           $target = if ($env:ALB_DNS_NAME) { $env:ALB_DNS_NAME } else { $env:READY_HOST }
           $uri = "https://$target/api/ready"
-          $host = $env:READY_HOST
-          Write-Host "Probing readiness at $uri (Host: $host)"
+          $readyHost = $env:READY_HOST
+          Write-Host "Probing readiness at $uri (Host: $readyHost)"
           for ($i = 1; $i -le 30; $i++) {
             try {
-              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $host } -UseBasicParsing -TimeoutSec 10
+              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $readyHost } -UseBasicParsing -TimeoutSec 10
               if ($resp.StatusCode -eq 200) { Write-Host "Ready (attempt $i)"; break }
             } catch {}
             if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
