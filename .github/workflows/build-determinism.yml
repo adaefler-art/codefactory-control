@@ -89,7 +89,11 @@ jobs:
         run: |
           LAYERS1=$(docker inspect test-control-center:1 --format='{{json .RootFS.Layers}}')
           LAYERS2=$(docker inspect test-control-center:2 --format='{{json .RootFS.Layers}}')
+          ID1=$(docker inspect test-control-center:1 --format='{{.Id}}')
+          ID2=$(docker inspect test-control-center:2 --format='{{.Id}}')
 
+          echo "Control Center Image 1 Id: $ID1"
+          echo "Control Center Image 2 Id: $ID2"
           echo "Control Center Layers 1: $LAYERS1"
           echo "Control Center Layers 2: $LAYERS2"
 
@@ -123,18 +127,22 @@ jobs:
 
       - name: Verify MCP GitHub Determinism
         run: |
-          DIGEST1=$(docker inspect test-mcp-github:1 --format='{{.Id}}')
-          DIGEST2=$(docker inspect test-mcp-github:2 --format='{{.Id}}')
-          
-          echo "MCP GitHub Build 1: $DIGEST1"
-          echo "MCP GitHub Build 2: $DIGEST2"
-          
-          if [ "$DIGEST1" != "$DIGEST2" ]; then
-            echo "❌ MCP GitHub build is non-deterministic!"
+          LAYERS1=$(docker inspect test-mcp-github:1 --format='{{json .RootFS.Layers}}')
+          LAYERS2=$(docker inspect test-mcp-github:2 --format='{{json .RootFS.Layers}}')
+          ID1=$(docker inspect test-mcp-github:1 --format='{{.Id}}')
+          ID2=$(docker inspect test-mcp-github:2 --format='{{.Id}}')
+
+          echo "MCP GitHub Image 1 Id: $ID1"
+          echo "MCP GitHub Image 2 Id: $ID2"
+          echo "MCP GitHub Layers 1: $LAYERS1"
+          echo "MCP GitHub Layers 2: $LAYERS2"
+
+          if [ "$LAYERS1" != "$LAYERS2" ]; then
+            echo "❌ MCP GitHub root filesystem layers differ (non-deterministic content)!"
             exit 1
           fi
-          
-          echo "✅ MCP GitHub build is deterministic"
+
+          echo "✅ MCP GitHub root filesystem layers are deterministic"
 
       - name: Build MCP Deploy (Build 1)
         uses: docker/build-push-action@v5
@@ -158,18 +166,22 @@ jobs:
 
       - name: Verify MCP Deploy Determinism
         run: |
-          DIGEST1=$(docker inspect test-mcp-deploy:1 --format='{{.Id}}')
-          DIGEST2=$(docker inspect test-mcp-deploy:2 --format='{{.Id}}')
-          
-          echo "MCP Deploy Build 1: $DIGEST1"
-          echo "MCP Deploy Build 2: $DIGEST2"
-          
-          if [ "$DIGEST1" != "$DIGEST2" ]; then
-            echo "❌ MCP Deploy build is non-deterministic!"
+          LAYERS1=$(docker inspect test-mcp-deploy:1 --format='{{json .RootFS.Layers}}')
+          LAYERS2=$(docker inspect test-mcp-deploy:2 --format='{{json .RootFS.Layers}}')
+          ID1=$(docker inspect test-mcp-deploy:1 --format='{{.Id}}')
+          ID2=$(docker inspect test-mcp-deploy:2 --format='{{.Id}}')
+
+          echo "MCP Deploy Image 1 Id: $ID1"
+          echo "MCP Deploy Image 2 Id: $ID2"
+          echo "MCP Deploy Layers 1: $LAYERS1"
+          echo "MCP Deploy Layers 2: $LAYERS2"
+
+          if [ "$LAYERS1" != "$LAYERS2" ]; then
+            echo "❌ MCP Deploy root filesystem layers differ (non-deterministic content)!"
             exit 1
           fi
-          
-          echo "✅ MCP Deploy build is deterministic"
+
+          echo "✅ MCP Deploy root filesystem layers are deterministic"
 
       - name: Build MCP Observability (Build 1)
         uses: docker/build-push-action@v5
@@ -193,18 +205,22 @@ jobs:
 
       - name: Verify MCP Observability Determinism
         run: |
-          DIGEST1=$(docker inspect test-mcp-observability:1 --format='{{.Id}}')
-          DIGEST2=$(docker inspect test-mcp-observability:2 --format='{{.Id}}')
-          
-          echo "MCP Observability Build 1: $DIGEST1"
-          echo "MCP Observability Build 2: $DIGEST2"
-          
-          if [ "$DIGEST1" != "$DIGEST2" ]; then
-            echo "❌ MCP Observability build is non-deterministic!"
+          LAYERS1=$(docker inspect test-mcp-observability:1 --format='{{json .RootFS.Layers}}')
+          LAYERS2=$(docker inspect test-mcp-observability:2 --format='{{json .RootFS.Layers}}')
+          ID1=$(docker inspect test-mcp-observability:1 --format='{{.Id}}')
+          ID2=$(docker inspect test-mcp-observability:2 --format='{{.Id}}')
+
+          echo "MCP Observability Image 1 Id: $ID1"
+          echo "MCP Observability Image 2 Id: $ID2"
+          echo "MCP Observability Layers 1: $LAYERS1"
+          echo "MCP Observability Layers 2: $LAYERS2"
+
+          if [ "$LAYERS1" != "$LAYERS2" ]; then
+            echo "❌ MCP Observability root filesystem layers differ (non-deterministic content)!"
             exit 1
           fi
-          
-          echo "✅ MCP Observability build is deterministic"
+
+          echo "✅ MCP Observability root filesystem layers are deterministic"
 
       - name: Summary
         if: success()
