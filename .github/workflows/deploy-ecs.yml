@@ -788,9 +788,9 @@ jobs:
             }
 
             if ($states.Count -eq 0) {
-              Write-Host "Attempt $attempt/$maxAttempts: states=(no targets yet)"
+              Write-Host "Attempt $attempt/${maxAttempts}: states=(no targets yet)"
             } else {
-              Write-Host "Attempt $attempt/$maxAttempts: states=$statesText"
+              Write-Host "Attempt $attempt/${maxAttempts}: states=$statesText"
             }
 
             if ($states.Count -gt 0 -and ($states | Where-Object { $_ -ne 'healthy' }).Count -eq 0) {
