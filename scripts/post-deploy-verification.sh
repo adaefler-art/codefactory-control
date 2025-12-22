@@ -254,9 +254,18 @@ if [ -z "$FILTERED_TG_ARNS" ]; then
   exit 1
 fi
 
-TG_COUNT=$([ -n "$FILTERED_TG_ARNS" ] && echo "$FILTERED_TG_ARNS" | wc -l | tr -d ' ' || echo "0")
+# Count target groups properly (handles single line without newline)
+if [ -n "$FILTERED_TG_ARNS" ]; then
+  TG_COUNT=$(echo "$FILTERED_TG_ARNS" | grep -c '^' || echo "1")
+else
+  TG_COUNT=0
+fi
+
 echo "Matched $TG_COUNT target group(s) for environment '$ENV_LABEL'"
-echo "Target groups to check: $FILTERED_TG_ARNS"
+echo "Target groups to check:"
+echo "$FILTERED_TG_ARNS" | while IFS= read -r tg; do
+  echo "  - $tg"
+done
 
 ALL_HEALTHY=true
 for TG_ARN in $FILTERED_TG_ARNS; do
@@ -340,7 +349,14 @@ for TG_ARN in $FILTERED_TG_ARNS; do
         
         # Show details of unhealthy targets
         echo "Unhealthy target details:"
-        echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy") | "  Target: \(.Target.Id):\(.Target.Port) - State: \(.TargetHealth.State) - Reason: \(.TargetHealth.Reason // "N/A") - Description: \(.TargetHealth.Description // "N/A")"' 2>/dev/null || echo "  Could not parse target details"
+        UNHEALTHY_DETAILS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy") | "  Target: \(.Target.Id):\(.Target.Port) - State: \(.TargetHealth.State) - Reason: \(.TargetHealth.Reason // "N/A") - Description: \(.TargetHealth.Description // "N/A")"' 2>&1)
+        UNHEALTHY_JQ_EXIT=$?
+        if [ $UNHEALTHY_JQ_EXIT -ne 0 ]; then
+          echo "  Error parsing unhealthy target details with jq (exit code: $UNHEALTHY_JQ_EXIT)"
+          echo "  jq error: $UNHEALTHY_DETAILS"
+        else
+          echo "$UNHEALTHY_DETAILS"
+        fi
         break
       fi
       echo "  Unhealthy targets detected, retrying in $RETRY_INTERVAL seconds..."
