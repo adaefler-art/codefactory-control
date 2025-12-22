@@ -647,8 +647,9 @@ jobs:
           echo "$UPDATE_OUTPUT" | jq -r 'try (.service.deployments[] | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)") // "No deployment information available"'
 
       - name: Wait for ECS service stable
-        shell: pwsh
+        shell: bash
         run: |
+          set -euo pipefail
           aws ecs wait services-stable \
             --cluster "${{ steps.target.outputs.ecs_cluster }}" \
             --services "${{ steps.target.outputs.ecs_service }}" \
