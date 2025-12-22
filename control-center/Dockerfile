@@ -30,24 +30,31 @@ ARG NEXT_PREVIEW_MODE_SIGNING_KEY
 ARG NEXT_PREVIEW_MODE_ENCRYPTION_KEY
 WORKDIR /app/${APP_DIR}
 
-# Set deterministic build timestamp
+# Determinism knobs
 ENV SOURCE_DATE_EPOCH=0
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV SKIP_PREBUILD=1
+
+# Build-time metadata (available to the app build)
 ENV BUILD_VERSION=${BUILD_VERSION}
 ENV BUILD_COMMIT_HASH=${BUILD_COMMIT_HASH}
 ENV BUILD_ENV=${BUILD_ENV}
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV NEXT_BUILD_ID=${BUILD_COMMIT_HASH}
+
+# Keep prebuild disabled in container builds (CI injects deterministic metadata)
+ENV SKIP_PREBUILD=1
 
 COPY --from=deps /app/${APP_DIR}/node_modules ./node_modules
 COPY --from=deps /app/packages /app/packages
 COPY control-center/ ./
 
-RUN BUILD_TIMESTAMP=${BUILD_TIMESTAMP} \
-    __NEXT_PREVIEW_MODE_ID=${NEXT_PREVIEW_MODE_ID} \
-    __NEXT_PREVIEW_MODE_SIGNING_KEY=${NEXT_PREVIEW_MODE_SIGNING_KEY} \
-    __NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${NEXT_PREVIEW_MODE_ENCRYPTION_KEY} \
-    npm run build
+# Ensure the Next.js preview-mode keys are stable during deterministic builds
+# (Workflow passes these as build-args; we expose them via env for the build step.)
+ENV __NEXT_PREVIEW_MODE_ID=${NEXT_PREVIEW_MODE_ID}
+ENV __NEXT_PREVIEW_MODE_SIGNING_KEY=${NEXT_PREVIEW_MODE_SIGNING_KEY}
+ENV __NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${NEXT_PREVIEW_MODE_ENCRYPTION_KEY}
+
+RUN npm run build
 
 # Stage 3: Production
 FROM node:20.10.0-bookworm-slim AS runner
