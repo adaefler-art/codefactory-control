@@ -133,7 +133,7 @@ jobs:
         run: npm run build
 
       - name: "CDK Diff Gate - Validate Changes"
-          if: ${{ github.event.inputs.skip_diff_gate != 'true' }}
+        if: ${{ github.event.inputs.skip_diff_gate != 'true' }}
         run: |
           echo "========================================="
           echo "CDK Diff Gate Validation"
