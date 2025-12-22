@@ -712,6 +712,100 @@ jobs:
 
           Write-Host "Resolved ALB DNS: $albDns"
 
+      - name: ALB target health (no jq)
+        shell: pwsh
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ALB_DNS_NAME: ${{ steps.alb-dns.outputs.alb_dns_name }}
+        run: |
+          $deployEnv = $env:DEPLOY_ENV
+          if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
+            Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
+          }
+
+          $albDns = $env:ALB_DNS_NAME
+          if (-not $albDns) {
+            Write-Error "ALB_DNS_NAME is empty"; exit 1
+          }
+
+          $region = $env:AWS_REGION
+          if (-not $region) { $region = 'eu-central-1' }
+
+          $envLabel = if ($deployEnv -eq 'staging') { 'stage' } else { 'prod' }
+
+          # 1) Resolve ALB ARN from DNS name
+          $albArn = (aws elbv2 describe-load-balancers `
+            --region $region `
+            --query "LoadBalancers[?DNSName=='$albDns'].LoadBalancerArn | [0]" `
+            --output text) 2>&1
+
+          if (-not $albArn -or $albArn -eq 'None') {
+            Write-Error "Could not resolve ALB ARN for DNS '$albDns' (got: '$albArn')"; exit 1
+          }
+
+          Write-Host "ALB ARN: $albArn"
+          Write-Host "Environment: $envLabel"
+
+          # 2) Select target group ARNs (no JSON parsing)
+          if ($deployEnv -eq 'staging') {
+            $query = "TargetGroups[?contains(TargetGroupName, 'stage')].TargetGroupArn"
+          } else {
+            $query = "TargetGroups[?(!contains(TargetGroupName, 'stage'))].TargetGroupArn"
+          }
+
+          $tgArnsText = (aws elbv2 describe-target-groups `
+            --load-balancer-arn $albArn `
+            --region $region `
+            --query $query `
+            --output text) 2>&1
+
+          if (-not $tgArnsText -or $tgArnsText -eq 'None') {
+            Write-Error "No target groups matched for env='$envLabel' (query=$query). Output: $tgArnsText"; exit 1
+          }
+
+          # Output text is space-separated; keep the first TG ARN as the selected group
+          $tgArn = ($tgArnsText -split "\s+" | Where-Object { $_ -and $_ -ne 'None' } | Select-Object -First 1)
+          if (-not $tgArn) {
+            Write-Error "Failed to select a target group ARN from output: $tgArnsText"; exit 1
+          }
+
+          Write-Host "Target group ARN: $tgArn"
+
+          # 3) Poll target health states until all are healthy (or timeout)
+          $maxAttempts = 30
+          $sleepSeconds = 10
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $statesText = (aws elbv2 describe-target-health `
+              --target-group-arn $tgArn `
+              --region $region `
+              --query "TargetHealthDescriptions[].TargetHealth.State" `
+              --output text) 2>&1
+
+            $states = @()
+            if ($statesText -and $statesText -ne 'None') {
+              $states = ($statesText -split "\s+" | Where-Object { $_ })
+            }
+
+            if ($states.Count -eq 0) {
+              Write-Host "Attempt $attempt/$maxAttempts: states=(no targets yet)"
+            } else {
+              Write-Host "Attempt $attempt/$maxAttempts: states=$statesText"
+            }
+
+            if ($states.Count -gt 0 -and ($states | Where-Object { $_ -ne 'healthy' }).Count -eq 0) {
+              Write-Host "✅ All targets are healthy";
+              exit 0
+            }
+
+            if ($attempt -eq $maxAttempts) {
+              Write-Error "❌ ALB target health did not become healthy in time. Final states: $statesText";
+              exit 1
+            }
+
+            Start-Sleep -Seconds $sleepSeconds
+          }
+
       - name: Post-deploy readiness (/api/ready)
         shell: pwsh
         env:
@@ -730,18 +824,6 @@ jobs:
             if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
             Start-Sleep -Seconds 5
           }
-
-      - name: Run post-deployment verification
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Running automated post-deployment verification..."
-          chmod +x ./scripts/post-deploy-verification.sh
-          ./scripts/post-deploy-verification.sh \
-            "${{ steps.target.outputs.tag_prefix }}" \
-            "${{ steps.target.outputs.ecs_cluster }}" \
-            "${{ steps.target.outputs.ecs_service }}" \
-              "${{ steps.alb-dns.outputs.alb_dns_name }}"
 
       - name: Build and push MCP GitHub Server
         uses: docker/build-push-action@v5
