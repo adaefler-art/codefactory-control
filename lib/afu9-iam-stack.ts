@@ -210,6 +210,7 @@ export class Afu9IamStack extends cdk.Stack {
         actions: [
           'elasticloadbalancing:DescribeLoadBalancers',
           'elasticloadbalancing:DescribeTargetGroups',
+          'elasticloadbalancing:DescribeTargetHealth',
           'elasticloadbalancing:DescribeListeners',
           'elasticloadbalancing:DescribeRules',
         ],

@@ -782,6 +782,11 @@ jobs:
               --query "TargetHealthDescriptions[].TargetHealth.State" `
               --output text) 2>&1
 
+            if ($statesText -match 'AccessDenied' -or $statesText -match 'is not authorized') {
+              Write-Error "AccessDenied calling DescribeTargetHealth. The deploy role needs 'elasticloadbalancing:DescribeTargetHealth'. Details: $statesText";
+              exit 1
+            }
+
             $states = @()
             if ($statesText -and $statesText -ne 'None') {
               $states = ($statesText -split "\s+" | Where-Object { $_ })
