@@ -36,7 +36,7 @@ export default function Navigation() {
   };
 
   return (
-    <nav className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800">
+    <nav className="bg-gray-900 border-b border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo/Branding */}
@@ -57,8 +57,8 @@ export default function Navigation() {
                 href={item.href}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive(item.href)
-                    ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
-                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900/30 hover:text-gray-900 dark:hover:text-white"
+                    ? "bg-purple-900/30 text-purple-200"
+                    : "text-gray-200 hover:bg-gray-800 hover:text-white"
                 }`}
               >
                 {item.label}
@@ -66,7 +66,7 @@ export default function Navigation() {
             ))}
             <button
               onClick={handleLogout}
-              className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+              className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-red-900/30 hover:text-red-200 transition-colors"
             >
               Abmelden
             </button>
