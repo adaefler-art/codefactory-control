@@ -13,7 +13,7 @@ const { execSync } = require('child_process');
 function generateBuildMetadata() {
   const metadata = {
     version: process.env.BUILD_VERSION || process.env.npm_package_version || '0.1.0',
-    timestamp: new Date().toISOString(),
+    timestamp: process.env.BUILD_TIMESTAMP || new Date().toISOString(),
     commitHash: '',
     environment: process.env.BUILD_ENV || process.env.DEPLOY_ENV || 'development',
   };

@@ -26,6 +26,16 @@ async function main() {
   console.log('AFU-9 Preflight Secret Validation');
   console.log('=====================================\n');
 
+  const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+  const shouldValidateInGitHubActions = process.env.AFU9_VALIDATE_SECRETS === 'true';
+
+  if (isGitHubActions && !shouldValidateInGitHubActions) {
+    console.log('Skipping secrets validation in GitHub Actions.');
+    console.log('Reason: AWS credentials are typically unavailable in PR checks.');
+    console.log('To enable validation in CI, set AFU9_VALIDATE_SECRETS=true.\n');
+    process.exit(0);
+  }
+
   const region = process.env.AWS_REGION || 'eu-central-1';
   const profile = process.env.AWS_PROFILE;
 

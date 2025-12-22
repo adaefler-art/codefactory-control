@@ -32,6 +32,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Generate deterministic build inputs
+        id: det
+        shell: bash
+        run: |
+          # Keep the two back-to-back builds byte-for-byte identical by
+          # reusing the same preview-mode keys + build timestamp.
+          echo "build_timestamp=2000-01-01T00:00:00.000Z" >> "$GITHUB_OUTPUT"
+          echo "preview_id=$(openssl rand -hex 16)" >> "$GITHUB_OUTPUT"
+          echo "preview_signing_key=$(openssl rand -hex 32)" >> "$GITHUB_OUTPUT"
+          echo "preview_encryption_key=$(openssl rand -hex 32)" >> "$GITHUB_OUTPUT"
+
       - name: Build Control Center (Build 1)
         id: build-cc-1
         uses: docker/build-push-action@v5
@@ -42,6 +53,16 @@ jobs:
           load: true
           tags: test-control-center:1
           no-cache: true
+          provenance: false
+          sbom: false
+          build-args: |
+            BUILD_VERSION=0.0.0-determinism
+            BUILD_COMMIT_HASH=${{ github.sha }}
+            BUILD_ENV=determinism
+            BUILD_TIMESTAMP=${{ steps.det.outputs.build_timestamp }}
+            NEXT_PREVIEW_MODE_ID=${{ steps.det.outputs.preview_id }}
+            NEXT_PREVIEW_MODE_SIGNING_KEY=${{ steps.det.outputs.preview_signing_key }}
+            NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${{ steps.det.outputs.preview_encryption_key }}
 
       - name: Build Control Center (Build 2)
         id: build-cc-2
@@ -53,6 +74,16 @@ jobs:
           load: true
           tags: test-control-center:2
           no-cache: true
+          provenance: false
+          sbom: false
+          build-args: |
+            BUILD_VERSION=0.0.0-determinism
+            BUILD_COMMIT_HASH=${{ github.sha }}
+            BUILD_ENV=determinism
+            BUILD_TIMESTAMP=${{ steps.det.outputs.build_timestamp }}
+            NEXT_PREVIEW_MODE_ID=${{ steps.det.outputs.preview_id }}
+            NEXT_PREVIEW_MODE_SIGNING_KEY=${{ steps.det.outputs.preview_signing_key }}
+            NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${{ steps.det.outputs.preview_encryption_key }}
 
       - name: Verify Control Center Determinism
         run: |

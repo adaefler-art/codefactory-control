@@ -5,4 +5,9 @@
 **/.turbo
 **/.cache
 npm-debug.log*
+**/*.log
+**/tmp
+**/tmp/**
+**/tmp-*
+tmp-log*.json
 .git
