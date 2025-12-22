@@ -211,15 +211,39 @@ fi
 echo "Filtering for ${ENVIRONMENT^^} target groups..."
 if [ "$ENVIRONMENT" = "stage" ] || [ "$ENVIRONMENT" = "staging" ]; then
   echo "Looking for target groups with 'stage' in the name..."
-  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select(.TargetGroupName | contains("stage")) | .TargetGroupArn' 2>/dev/null || echo "")
+  FILTERED_TG_ARNS_OUTPUT=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select(.TargetGroupName | contains("stage")) | .TargetGroupArn' 2>&1)
+  JQ_EXIT_CODE=$?
+  if [ $JQ_EXIT_CODE -ne 0 ]; then
+    print_result "FAIL" "Failed to parse target groups JSON with jq"
+    echo "jq exit code: $JQ_EXIT_CODE"
+    echo "jq error: $FILTERED_TG_ARNS_OUTPUT"
+    exit 1
+  fi
+  FILTERED_TG_ARNS="$FILTERED_TG_ARNS_OUTPUT"
   ENV_LABEL="stage"
 elif [ "$ENVIRONMENT" = "prod" ] || [ "$ENVIRONMENT" = "production" ]; then
   echo "Looking for target groups named 'afu9-tg' or containing 'prod'..."
-  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select((.TargetGroupName == "afu9-tg") or (.TargetGroupName | contains("prod"))) | .TargetGroupArn' 2>/dev/null || echo "")
+  FILTERED_TG_ARNS_OUTPUT=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[] | select((.TargetGroupName == "afu9-tg") or (.TargetGroupName | contains("prod"))) | .TargetGroupArn' 2>&1)
+  JQ_EXIT_CODE=$?
+  if [ $JQ_EXIT_CODE -ne 0 ]; then
+    print_result "FAIL" "Failed to parse target groups JSON with jq"
+    echo "jq exit code: $JQ_EXIT_CODE"
+    echo "jq error: $FILTERED_TG_ARNS_OUTPUT"
+    exit 1
+  fi
+  FILTERED_TG_ARNS="$FILTERED_TG_ARNS_OUTPUT"
   ENV_LABEL="prod"
 else
   echo "Warning: Unknown environment '$ENVIRONMENT', checking all target groups..."
-  FILTERED_TG_ARNS=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[].TargetGroupArn' 2>/dev/null || echo "")
+  FILTERED_TG_ARNS_OUTPUT=$(echo "$TG_JSON_OUTPUT" | jq -r '.TargetGroups[].TargetGroupArn' 2>&1)
+  JQ_EXIT_CODE=$?
+  if [ $JQ_EXIT_CODE -ne 0 ]; then
+    print_result "FAIL" "Failed to parse target groups JSON with jq"
+    echo "jq exit code: $JQ_EXIT_CODE"
+    echo "jq error: $FILTERED_TG_ARNS_OUTPUT"
+    exit 1
+  fi
+  FILTERED_TG_ARNS="$FILTERED_TG_ARNS_OUTPUT"
   ENV_LABEL="$ENVIRONMENT"
 fi
 
@@ -230,7 +254,7 @@ if [ -z "$FILTERED_TG_ARNS" ]; then
   exit 1
 fi
 
-TG_COUNT=$(echo "$FILTERED_TG_ARNS" | wc -l | tr -d ' ')
+TG_COUNT=$([ -n "$FILTERED_TG_ARNS" ] && echo "$FILTERED_TG_ARNS" | wc -l | tr -d ' ' || echo "0")
 echo "Matched $TG_COUNT target group(s) for environment '$ENV_LABEL'"
 echo "Target groups to check: $FILTERED_TG_ARNS"
 
@@ -260,9 +284,35 @@ for TG_ARN in $FILTERED_TG_ARNS; do
     fi
     
     # Count healthy vs unhealthy targets
-    TOTAL_TARGETS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions | length' 2>/dev/null || echo "0")
-    HEALTHY_TARGETS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length' 2>/dev/null || echo "0")
-    UNHEALTHY_TARGETS=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' 2>/dev/null || echo "0")
+    TOTAL_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '.TargetHealthDescriptions | length' 2>&1)
+    TOTAL_TARGETS_EXIT=$?
+    if [ $TOTAL_TARGETS_EXIT -ne 0 ]; then
+      print_result "FAIL" "Failed to parse target health JSON"
+      echo "jq error: $TOTAL_TARGETS_OUTPUT"
+      ALL_HEALTHY=false
+      break
+    fi
+    TOTAL_TARGETS="${TOTAL_TARGETS_OUTPUT:-0}"
+    
+    HEALTHY_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length' 2>&1)
+    HEALTHY_TARGETS_EXIT=$?
+    if [ $HEALTHY_TARGETS_EXIT -ne 0 ]; then
+      print_result "FAIL" "Failed to parse healthy targets from JSON"
+      echo "jq error: $HEALTHY_TARGETS_OUTPUT"
+      ALL_HEALTHY=false
+      break
+    fi
+    HEALTHY_TARGETS="${HEALTHY_TARGETS_OUTPUT:-0}"
+    
+    UNHEALTHY_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' 2>&1)
+    UNHEALTHY_TARGETS_EXIT=$?
+    if [ $UNHEALTHY_TARGETS_EXIT -ne 0 ]; then
+      print_result "FAIL" "Failed to parse unhealthy targets from JSON"
+      echo "jq error: $UNHEALTHY_TARGETS_OUTPUT"
+      ALL_HEALTHY=false
+      break
+    fi
+    UNHEALTHY_TARGETS="${UNHEALTHY_TARGETS_OUTPUT:-0}"
     
     echo "[Attempt $ATTEMPT/$MAX_ATTEMPTS] Targets: $HEALTHY_TARGETS healthy, $UNHEALTHY_TARGETS unhealthy (total: $TOTAL_TARGETS)"
     
