@@ -325,9 +325,11 @@ npx cdk deploy Afu9EcsStack --context environment=staging
 
 **Production Deployment**:
 ```bash
-# Tag erstellen
-git tag -a v0.2.6 -m "Release v0.2.6"
-git push origin v0.2.6
+# Tag erstellen (MANUAL STEP)
+# NOTE: Do not assume the v0.4.0 tag already exists.
+# Create and push annotated tag v0.4.0 on commit 22cdb6a41c42366ad165a0fb4c96282304f6f7ae as a manual step (git tag -a ...; git push origin v0.4.0).
+git tag -a v0.4.0 22cdb6a41c42366ad165a0fb4c96282304f6f7ae -m "Release v0.4.0"
+git push origin v0.4.0
 
 # Deploy
 npx cdk deploy Afu9EcsStack --context environment=production

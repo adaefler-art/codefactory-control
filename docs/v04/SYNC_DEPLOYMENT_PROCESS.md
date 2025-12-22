@@ -179,18 +179,20 @@ npx cdk deploy Afu9EcsStack \
 **⚠️ Nur nach erfolgreichem Staging-Test!**
 
 ```bash
-# 1. Tag erstellen für Versionierung
-git tag -a v0.2.5 -m "Release v0.2.5"
-git push origin v0.2.5
+# 1. Tag erstellen für Versionierung (MANUAL STEP)
+# NOTE: Do not assume the v0.4.0 tag already exists.
+# Create and push annotated tag v0.4.0 on commit 22cdb6a41c42366ad165a0fb4c96282304f6f7ae as a manual step (git tag -a ...; git push origin v0.4.0).
+git tag -a v0.4.0 22cdb6a41c42366ad165a0fb4c96282304f6f7ae -m "Release v0.4.0"
+git push origin v0.4.0
 
 # 2. Docker Images mit Versions-Tag bauen
-docker build -t afu9/control-center:v0.2.5 -f control-center/Dockerfile .
-docker build -t afu9/mcp-github:v0.2.5 -f mcp-servers/github/Dockerfile .
-docker build -t afu9/mcp-deploy:v0.2.5 -f mcp-servers/deploy/Dockerfile .
-docker build -t afu9/mcp-observability:v0.2.5 -f mcp-servers/observability/Dockerfile .
+docker build -t afu9/control-center:v0.4.0 -f control-center/Dockerfile .
+docker build -t afu9/mcp-github:v0.4.0 -f mcp-servers/github/Dockerfile .
+docker build -t afu9/mcp-deploy:v0.4.0 -f mcp-servers/deploy/Dockerfile .
+docker build -t afu9/mcp-observability:v0.4.0 -f mcp-servers/observability/Dockerfile .
 
 # 3. Images zu ECR pushen
-./scripts/push-to-ecr.sh production v0.2.5
+./scripts/push-to-ecr.sh production v0.4.0
 
 # 4. Pre-Production Backup
 ./scripts/backup-rds.sh production
@@ -457,7 +459,7 @@ aws cloudwatch describe-alarms \
 - [ ] CloudWatch Logs durchgesehen
 - [ ] Keine Alarms aktiv
 - [ ] Dokumentation aktualisiert
-- [ ] Git Tag erstellt (Production only)
+- [ ] Git Tag v0.4.0 erstellt & gepusht (Production only)
 - [ ] CHANGELOG.md aktualisiert
 - [ ] Stakeholder informiert (Production only)
 
