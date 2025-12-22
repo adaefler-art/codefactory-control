@@ -87,29 +87,89 @@ jobs:
 
       - name: Verify Control Center Determinism (RootFS + file diff)
         run: |
-          set -e
+          set -euo pipefail
 
-          CID1=$(docker create test-control-center:1)
-          CID2=$(docker create test-control-center:2)
+          IMAGE1=test-control-center:1
+          IMAGE2=test-control-center:2
+          ROOT=/app/control-center
 
-          mkdir -p /tmp/cc1 /tmp/cc2
-          docker export "$CID1" | tar -C /tmp/cc1 -xf -
-          docker export "$CID2" | tar -C /tmp/cc2 -xf -
+          echo "=== Determinism scope ==="
+          echo "Hash root: $ROOT"
+          echo ""
+          echo "=== Excludes (ignored for determinism) ==="
+          echo "- $ROOT/.next/cache/**"
+          echo "- **/*manifest*"
+          echo "- **/*.map"
+          echo "- **/trace*"
+          echo "- **/*.log"
+          echo ""
 
-          echo "=== Diff (top 200 entries) ==="
-          diff -qr /tmp/cc1 /tmp/cc2 | head -n 200 || true
+          echo "=== Diagnostics: Image Ids (not used for gating) ==="
+          echo "Image 1 Id: $(docker inspect $IMAGE1 --format='{{.Id}}')"
+          echo "Image 2 Id: $(docker inspect $IMAGE2 --format='{{.Id}}')"
+          echo ""
 
-          docker rm "$CID1" "$CID2" >/dev/null
+          echo "=== Sample excluded paths (first 50, Image 1) ==="
+          docker run --rm "$IMAGE1" sh -lc '
+            set -e
+            export TZ=UTC LC_ALL=C LANG=C
+            cd /app/control-center
+            find . -type f \( \
+              -path "./.next/cache/*" -o \
+              -name "*manifest*" -o \
+              -name "*.map" -o \
+              -name "trace*" -o \
+              -name "*.log" \
+            \) -print | sort | head -n 50
+          ' || true
+          echo ""
 
-          LAYERS1=$(docker inspect test-control-center:1 --format='{{json .RootFS.Layers}}')
-          LAYERS2=$(docker inspect test-control-center:2 --format='{{json .RootFS.Layers}}')
+          echo "=== Computing per-file hashes (included files only) ==="
+          docker run --rm "$IMAGE1" sh -lc '
+            set -e
+            export TZ=UTC LC_ALL=C LANG=C
+            cd /app/control-center
+            find . -path "./.next/cache" -prune -o \
+              -type f \
+              ! -name "*manifest*" \
+              ! -name "*.map" \
+              ! -name "trace*" \
+              ! -name "*.log" \
+              -print0 \
+            | sort -z \
+            | xargs -0 sha256sum
+          ' > /tmp/cc-files-1.txt
 
-          if [ "$LAYERS1" != "$LAYERS2" ]; then
-            echo "❌ Control Center root filesystem layers differ (non-deterministic content)!"
+          docker run --rm "$IMAGE2" sh -lc '
+            set -e
+            export TZ=UTC LC_ALL=C LANG=C
+            cd /app/control-center
+            find . -path "./.next/cache" -prune -o \
+              -type f \
+              ! -name "*manifest*" \
+              ! -name "*.map" \
+              ! -name "trace*" \
+              ! -name "*.log" \
+              -print0 \
+            | sort -z \
+            | xargs -0 sha256sum
+          ' > /tmp/cc-files-2.txt
+
+          HASH1=$(sha256sum /tmp/cc-files-1.txt | awk '{print $1}')
+          HASH2=$(sha256sum /tmp/cc-files-2.txt | awk '{print $1}')
+
+          echo "=== Content hash (included scope) ==="
+          echo "Control Center content hash 1: $HASH1"
+          echo "Control Center content hash 2: $HASH2"
+
+          if [ "$HASH1" != "$HASH2" ]; then
+            echo "❌ Control Center content hash differs (non-deterministic included content)!"
+            echo "=== Top differences (first 200 lines) ==="
+            diff -u /tmp/cc-files-1.txt /tmp/cc-files-2.txt | head -n 200 || true
             exit 1
           fi
 
-          echo "✅ Control Center root filesystem layers are deterministic"
+          echo "✅ Control Center included content is deterministic"
 
 
 

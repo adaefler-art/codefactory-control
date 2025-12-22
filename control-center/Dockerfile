@@ -33,6 +33,9 @@ WORKDIR /app/${APP_DIR}
 # Determinism knobs
 ENV SOURCE_DATE_EPOCH=0
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV TZ=UTC
+ENV LC_ALL=C
+ENV LANG=C
 
 # Build-time metadata (available to the app build)
 ENV BUILD_VERSION=${BUILD_VERSION}
