@@ -85,17 +85,24 @@ jobs:
             NEXT_PREVIEW_MODE_SIGNING_KEY=${{ steps.det.outputs.preview_signing_key }}
             NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${{ steps.det.outputs.preview_encryption_key }}
 
-      - name: Verify Control Center Determinism (RootFS)
+      - name: Verify Control Center Determinism (RootFS + file diff)
         run: |
+          set -e
+
+          CID1=$(docker create test-control-center:1)
+          CID2=$(docker create test-control-center:2)
+
+          mkdir -p /tmp/cc1 /tmp/cc2
+          docker export "$CID1" | tar -C /tmp/cc1 -xf -
+          docker export "$CID2" | tar -C /tmp/cc2 -xf -
+
+          echo "=== Diff (top 200 entries) ==="
+          diff -qr /tmp/cc1 /tmp/cc2 | head -n 200 || true
+
+          docker rm "$CID1" "$CID2" >/dev/null
+
           LAYERS1=$(docker inspect test-control-center:1 --format='{{json .RootFS.Layers}}')
           LAYERS2=$(docker inspect test-control-center:2 --format='{{json .RootFS.Layers}}')
-          ID1=$(docker inspect test-control-center:1 --format='{{.Id}}')
-          ID2=$(docker inspect test-control-center:2 --format='{{.Id}}')
-
-          echo "Control Center Image 1 Id: $ID1"
-          echo "Control Center Image 2 Id: $ID2"
-          echo "Control Center Layers 1: $LAYERS1"
-          echo "Control Center Layers 2: $LAYERS2"
 
           if [ "$LAYERS1" != "$LAYERS2" ]; then
             echo "❌ Control Center root filesystem layers differ (non-deterministic content)!"
@@ -103,6 +110,7 @@ jobs:
           fi
 
           echo "✅ Control Center root filesystem layers are deterministic"
+
 
 
       - name: Build MCP GitHub (Build 1)
