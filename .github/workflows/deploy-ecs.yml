@@ -4,27 +4,58 @@ on:
   push:
     branches:
       - main
+      - staging
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
 
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: codefactory-control
-  ECS_SERVICE: codefactory-control-service
-  ECS_CLUSTER: codefactory-cluster
-  ECS_TASK_DEFINITION: .aws/task-definition.json
+  ECS_SERVICE_STAGING: codefactory-control-staging
+  ECS_SERVICE_PRODUCTION: codefactory-control-production
+  ECS_CLUSTER_STAGING: codefactory-staging
+  ECS_CLUSTER_PRODUCTION: codefactory-production
   CONTAINER_NAME: codefactory-control
-
-permissions:
-  contents: read
-  id-token: write
 
 jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
+      - name: Determine deployment environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "DEPLOY_ENV=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ steps.env.outputs.DEPLOY_ENV }}" = "production" ]; then
+            echo "ECS_SERVICE=${{ env.ECS_SERVICE_PRODUCTION }}" >> $GITHUB_ENV
+            echo "ECS_CLUSTER=${{ env.ECS_CLUSTER_PRODUCTION }}" >> $GITHUB_ENV
+          else
+            echo "ECS_SERVICE=${{ env.ECS_SERVICE_STAGING }}" >> $GITHUB_ENV
+            echo "ECS_CLUSTER=${{ env.ECS_CLUSTER_STAGING }}" >> $GITHUB_ENV
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -33,10 +64,18 @@ jobs:
       - name: Display trigger context
         run: echo "Triggered by ${{ github.event_name }} on branch ${{ github.ref_name }} @ ${{ github.sha }}"
 
+      - name: Guard production deploys must be from main
+        if: steps.env.outputs.DEPLOY_ENV == 'production'
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "❌ Production deployments must be from the main branch"
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -53,11 +92,17 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition > task-definition.json
+
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          task-definition: task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
@@ -68,3 +113,12 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+      - name: Deployment summary
+        run: |
+          echo "### Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ steps.env.outputs.DEPLOY_ENV }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: ${{ env.ECS_CLUSTER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ env.ECS_SERVICE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ steps.build-image.outputs.image }}" >> $GITHUB_STEP_SUMMARY
