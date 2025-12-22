@@ -4,6 +4,7 @@
 **Version:** 0.4  
 **Status:** ✅ Released  
 **Date:** 2024-12-20  
+**Reference State Verified (Staging):** 2025-12-22  
 **Foundation For:** v0.5 Planning
 
 ---
@@ -20,6 +21,8 @@ AFU-9 v0.4 represents a **production-ready, operationally stable** evolution of 
 - ✅ **Comprehensive Documentation**: 150+ production-ready runbooks, guides, and references
 - ✅ **Health & Observability**: Red/Yellow/Green health indicators with comprehensive monitoring
 - ✅ **Cost Attribution**: Transparent cost tracking and economic steering (EPIC 09)
+
+**Staging test findings:** [docs/reviews/v0.4_staging_test_findings.md](../reviews/v0.4_staging_test_findings.md) (Self-Propelling ist v0.5-deferred, non-blocking).
 
 ---
 
@@ -544,6 +547,9 @@ Environment-Specific Resources:
 **Workflow:** `deploy-cdk-stack.yml` via GitHub Actions
 
 **Process:**
+
+**Note:** Command snippets use shell-style examples; the canonical, copy/paste-ready PowerShell deploy prompt is in [docs/v04/DEPLOY_PROMPT_QUICK_REFERENCE.md](DEPLOY_PROMPT_QUICK_REFERENCE.md) (full: [docs/v04/CANONICAL_DEPLOY_PROMPT.md](CANONICAL_DEPLOY_PROMPT.md)).
+
 ```bash
 # 1. Build and validate secrets
 npm run build
@@ -778,6 +784,8 @@ POST /api/v1/kpis/{kpi_id}/record      - Record KPI measurement
 
 ## Known Limitations
 
+Evidence-backed Findings aus Staging-Tests sind hier dokumentiert: [docs/reviews/v0.4_staging_test_findings.md](../reviews/v0.4_staging_test_findings.md). Self-Propelling ist v0.5-deferred (non-blocking).
+
 ### Current Constraints
 
 1. **Multi-Region Support:** Single region deployment only (us-east-1)
@@ -804,6 +812,11 @@ POST /api/v1/kpis/{kpi_id}/record      - Record KPI measurement
    - **Impact:** Limited support for complex multi-agent workflows
    - **Workaround:** Sequential agent execution
    - **v0.5 Candidate:** Agent collaboration framework
+
+6. **Self-Propelling:** Deferred to v0.5 (non-blocking)
+   - **Impact:** No supported end-to-end “CREATED → DONE” autonomous run in v0.4 release scope
+   - **Workaround:** Use v0.4 stable workflow building blocks (guardrails, deploy gates, runbooks) without relying on self-propelling
+   - **v0.5 Candidate:** Re-introduce as a flagged feature with explicit runtime artifacts + preflight checks
 
 ### Resource Limits
 
@@ -989,4 +1002,4 @@ AFU-9 v0.4 represents a **production-ready, operationally stable** autonomous co
 **Document Version:** 1.0  
 **Status:** ✅ Released  
 **Maintained By:** AFU-9 Core Team  
-**Last Updated:** 2024-12-20
+**Last Updated:** 2025-12-22

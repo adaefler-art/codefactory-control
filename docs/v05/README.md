@@ -86,6 +86,27 @@ Based on the [v0.5 Go/No-Go Decision](V05_GO_NOGO_DECISION.md), the following fe
    - Visual workflow design
    - **Status:** Under evaluation
 
+---
+
+## v0.5 Backlog
+
+### Self-Propelling
+
+**Status:** Planned (explicitly deferred from v0.4; non-blocking for v0.4)
+
+Background evidence (current implementation style):
+- API route loads a workflow definition via filesystem path: [control-center/app/api/issues/[issueNumber]/self-propel/route.ts](../../control-center/app/api/issues/%5BissueNumber%5D/self-propel/route.ts)
+
+Concrete tasks:
+1. **Make runtime artifact access explicit**
+   - Remove hidden filesystem dependency OR ensure the workflow definition is packaged and accessible in the runtime image.
+2. **Add preflight runtime check + clear error**
+   - Validate required artifacts/config at startup or at endpoint entry.
+   - Return a clear, actionable error if missing (do not fail silently).
+3. **Wire feature behind a flag and document activation**
+   - Add a feature flag (env/context) to enable self-propelling explicitly.
+   - Document the activation path and default (disabled by default until v0.5 completion).
+
 ### DNS/HTTPS Status
 
 **Infrastructure:** ✅ Ready (fully implemented in v0.4)  

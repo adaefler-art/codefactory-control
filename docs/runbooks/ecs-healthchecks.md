@@ -21,7 +21,8 @@
 - No false negatives during startup
 
 ✅ **Container health checks use `/api/health`**
-- Control Center container: HTTP probe on `http://127.0.0.1:3000/api/health`
+- Control Center container: HTTP probe on the task ENI IPv4 (prefers `10.*`) at `http://<task-ip>:3000/api/health`
+  - In this Fargate setup, the Next.js server is reachable on the task IP (e.g. `10.x.x.x`) but can refuse `127.0.0.1`.
 - MCP containers: HTTP probe on `http://127.0.0.1:300X/health`
 - startPeriod: 120s to allow for cold start
 
