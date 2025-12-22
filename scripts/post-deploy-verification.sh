@@ -256,16 +256,18 @@ fi
 
 # Count target groups properly (handles single line without newline)
 if [ -n "$FILTERED_TG_ARNS" ]; then
-  TG_COUNT=$(echo "$FILTERED_TG_ARNS" | grep -c '^' || echo "1")
+  TG_COUNT=$(echo "$FILTERED_TG_ARNS" | grep -c '^')
 else
   TG_COUNT=0
 fi
 
 echo "Matched $TG_COUNT target group(s) for environment '$ENV_LABEL'"
-echo "Target groups to check:"
-echo "$FILTERED_TG_ARNS" | while IFS= read -r tg; do
-  echo "  - $tg"
-done
+if [ $TG_COUNT -gt 0 ]; then
+  echo "Target groups to check:"
+  echo "$FILTERED_TG_ARNS" | while IFS= read -r tg; do
+    echo "  - $tg"
+  done
+fi
 
 ALL_HEALTHY=true
 for TG_ARN in $FILTERED_TG_ARNS; do
@@ -301,7 +303,7 @@ for TG_ARN in $FILTERED_TG_ARNS; do
       ALL_HEALTHY=false
       break
     fi
-    TOTAL_TARGETS="${TOTAL_TARGETS_OUTPUT:-0}"
+    TOTAL_TARGETS="$TOTAL_TARGETS_OUTPUT"
     
     HEALTHY_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length' 2>&1)
     HEALTHY_TARGETS_EXIT=$?
@@ -311,7 +313,7 @@ for TG_ARN in $FILTERED_TG_ARNS; do
       ALL_HEALTHY=false
       break
     fi
-    HEALTHY_TARGETS="${HEALTHY_TARGETS_OUTPUT:-0}"
+    HEALTHY_TARGETS="$HEALTHY_TARGETS_OUTPUT"
     
     UNHEALTHY_TARGETS_OUTPUT=$(echo "$TARGET_HEALTH_OUTPUT" | jq -r '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' 2>&1)
     UNHEALTHY_TARGETS_EXIT=$?
@@ -321,7 +323,7 @@ for TG_ARN in $FILTERED_TG_ARNS; do
       ALL_HEALTHY=false
       break
     fi
-    UNHEALTHY_TARGETS="${UNHEALTHY_TARGETS_OUTPUT:-0}"
+    UNHEALTHY_TARGETS="$UNHEALTHY_TARGETS_OUTPUT"
     
     echo "[Attempt $ATTEMPT/$MAX_ATTEMPTS] Targets: $HEALTHY_TARGETS healthy, $UNHEALTHY_TARGETS unhealthy (total: $TOTAL_TARGETS)"
     
