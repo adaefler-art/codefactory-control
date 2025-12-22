@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { type Express, Request, Response } from 'express';
 import { MCPLogger } from './logger';
 
 /**
@@ -56,7 +56,7 @@ export interface JSONRPCResponse {
 }
 
 export abstract class MCPServer {
-  protected app = express();
+  protected app: Express = express();
   protected tools: Map<string, Tool> = new Map();
   protected serverName: string;
   protected version: string;

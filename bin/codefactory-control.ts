@@ -113,7 +113,7 @@ if (multiEnvEnabled) {
     targetType: elbv2.TargetType.IP,
     targetGroupName: 'afu9-tg-stage',
     healthCheck: {
-      path: '/api/ready',
+      path: '/api/health',
       interval: cdk.Duration.seconds(30),
       timeout: cdk.Duration.seconds(5),
       healthyThresholdCount: 2,
@@ -130,7 +130,7 @@ if (multiEnvEnabled) {
     targetType: elbv2.TargetType.IP,
     targetGroupName: 'afu9-tg-prod',
     healthCheck: {
-      path: '/api/ready',
+      path: '/api/health',
       interval: cdk.Duration.seconds(30),
       timeout: cdk.Duration.seconds(5),
       healthyThresholdCount: 2,
@@ -152,8 +152,8 @@ if (multiEnvEnabled) {
     environment: 'stage',
     imageTag: 'stage-latest',
     desiredCount: 1,
-    cpu: 1024,
-    memoryLimitMiB: 2048,
+    cpu: 2048,
+    memoryLimitMiB: 4096,
   });
 
   // ECS Stack for Prod Environment
@@ -168,8 +168,8 @@ if (multiEnvEnabled) {
     environment: 'prod',
     imageTag: 'prod-latest',
     desiredCount: 2,
-    cpu: 1024,
-    memoryLimitMiB: 2048,
+    cpu: 2048,
+    memoryLimitMiB: 4096,
   });
 
   // Routing Stack (depends on DNS and both ECS stacks)
@@ -226,6 +226,8 @@ if (multiEnvEnabled) {
   // Check if database should be enabled
   const enableDatabase = isDatabaseEnabled(app);
 
+  const deployEnvironment = getValidatedContext<string>(app, 'environment') ?? 'production';
+
   // ECS stack (depends on network, optionally on database)
   const stageTargetGroup = new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroupSingle', {
     vpc: networkStack.vpc,
@@ -234,7 +236,7 @@ if (multiEnvEnabled) {
     targetType: elbv2.TargetType.IP,
     targetGroupName: 'afu9-tg-stage',
     healthCheck: {
-      path: '/api/ready',
+      path: '/api/health',
       interval: cdk.Duration.seconds(30),
       timeout: cdk.Duration.seconds(5),
       healthyThresholdCount: 2,
@@ -251,9 +253,13 @@ if (multiEnvEnabled) {
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: networkStack.targetGroup,
     stageTargetGroup,
+    // Single-env mode runs both prod + stage on a shared cluster/ALB.
+    // Use an explicit rolling tag so new tasks can pull images during infra updates.
+    imageTag: 'staging-latest',
+    stageImageTag: 'staging-latest',
+    stageDesiredCount: 1,
     enableDatabase,
-    dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
-    environment: 'prod',
+    environment: deployEnvironment,
     desiredCount: 1,
     createStagingService: createStagingServiceFlag,
   });

@@ -174,7 +174,10 @@ function runCdkDiff(stackName: string, cdkArgs: string[]): string {
       AWS_SESSION_TOKEN: process.env.AWS_SESSION_TOKEN || '',
     };
 
-    const args = ['cdk', 'diff', stackName, ...cdkArgs];
+    // Diff gate should evaluate ONLY the requested stack. Including dependency stacks
+    // can surface unrelated/blocking changes (e.g., a stuck database stack) and
+    // incorrectly block safe infra/app updates.
+    const args = ['cdk', 'diff', '--exclusively', stackName, ...cdkArgs];
     console.log(`Running: npx ${args.join(' ')}\n`);
 
     const result = spawnSync('npx', args, {

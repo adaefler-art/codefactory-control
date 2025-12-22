@@ -20,6 +20,16 @@ export const ENVIRONMENT = {
 
 export type Environment = typeof ENVIRONMENT[keyof typeof ENVIRONMENT];
 
+function normalizeEnvironment(value: string): Environment {
+  const v = value.toLowerCase().trim();
+  if (v === 'stage' || v === 'staging') return ENVIRONMENT.STAGE;
+  if (v === 'prod' || v === 'production') return ENVIRONMENT.PROD;
+  if (v === 'legacy') return ENVIRONMENT.LEGACY;
+  // Fall back to the provided value to preserve backward compatibility with any
+  // nonstandard environment labels used in legacy deployments.
+  return value as Environment;
+}
+
 /**
  * Configuration for AFU-9 ECS deployment
  * Resolved from CDK context and props with strict validation
@@ -58,13 +68,13 @@ export interface Afu9EcsConfig {
   
   /**
    * CPU allocation for tasks (in CPU units)
-   * @default 1024 (1 vCPU)
+   * @default 2048 (2 vCPU)
    */
   cpu: number;
   
   /**
    * Memory allocation for tasks (in MiB)
-   * @default 2048 (2 GB)
+   * @default 4096 (4 GB)
    */
   memoryLimitMiB: number;
 }
@@ -126,6 +136,13 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   dbSecretArn?: string;
 
   /**
+   * Name of the database connection secret in Secrets Manager.
+   * Defaults to the canonical application connection secret name.
+   * Must not point to any "/master" secret.
+   */
+  dbSecretName?: string;
+
+  /**
    * Image tag to use for deployments
    * @default 'staging-latest'
    */
@@ -146,13 +163,13 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
 
   /**
    * CPU allocation for tasks
-   * @default 1024 (1 vCPU)
+    * @default 2048 (2 vCPU)
    */
   cpu?: number;
 
   /**
    * Memory allocation for tasks
-   * @default 2048 (2 GB)
+    * @default 4096 (4 GB)
    */
   memoryLimitMiB?: number;
 
@@ -201,7 +218,7 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
   const ctxDbSecretName = scope.node.tryGetContext('dbSecretName');
   const ctxCreateStage = scope.node.tryGetContext('afu9-create-staging-service');
 
-  const environment = props.environment ?? ctxEnvironment ?? 'stage';
+  const environment = normalizeEnvironment((props.environment ?? ctxEnvironment ?? 'stage') as string);
   const domainName = props.domainName ?? ctxDomain;
 
   // Deprecation warning for legacy key
@@ -229,26 +246,41 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
     toOptionalBoolean(ctxEnableDbLegacy) ??
     false;
 
-  const dbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
-  const dbSecretName = ctxDbSecretName;
+  const providedDbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
+  const dbSecretName = props.dbSecretName ?? ctxDbSecretName;
   const createStagingService =
     toOptionalBoolean(props.createStagingService) ??
     toOptionalBoolean(ctxCreateStage) ??
     true;
 
-  // Fail-fast validation: If database is enabled, we need either ARN or name (before applying defaults)
-  // This prevents deployments with invalid configuration before they reach ECS
-  if (enableDatabase && !dbSecretArn && !dbSecretName) {
+  // Apply default for dbSecretName. We allow database-enabled deployments to rely
+  // on the canonical secret name to avoid unnecessary cross-stack coupling.
+  const resolvedDbSecretName = dbSecretName ?? DEFAULT_DB_SECRET_NAME;
+
+  // Guardrail: The ECS task must use the *application connection* secret (exported as Afu9DbSecretArn / named
+  // afu9/database). It must not reference any ".../master" credentials secret.
+  if (
+    enableDatabase &&
+    ((resolvedDbSecretName && /\/master(\/|$)/.test(String(resolvedDbSecretName))) ||
+      (providedDbSecretArn && /:secret:.*\/master(-|\/|$)/.test(String(providedDbSecretArn))))
+  ) {
     throw new Error(
-      'DATABASE_ENABLED=true requires dbSecretArn or dbSecretName in CDK context. ' +
-      `Provide via: -c dbSecretArn=arn:aws:secretsmanager:... ` +
-      `or -c dbSecretName=${DEFAULT_DB_SECRET_NAME} ` +
-      `or disable database with -c afu9-enable-database=false`
+      'Invalid DB secret configuration: do not use a "/master" secret for application DB credentials. ' +
+      `Use the canonical application connection secret (name: ${DEFAULT_DB_SECRET_NAME}) ` +
+      'or provide the exported ARN (Afu9DbSecretArn).'
     );
   }
 
-  // Apply default for dbSecretName after validation
-  const resolvedDbSecretName = dbSecretName ?? DEFAULT_DB_SECRET_NAME;
+  // Prefer explicit ARN if provided; otherwise use the canonical secret name.
+  // We intentionally do NOT default to CloudFormation exports here, because exports can drift
+  // and accidentally point at deprecated secrets (e.g. legacy "/master" secrets).
+  const dbSecretArn = enableDatabase ? providedDbSecretArn : undefined;
+
+  if (enableDatabase && !providedDbSecretArn && !dbSecretName) {
+    cdk.Annotations.of(scope).addWarning(
+      `DATABASE_ENABLED=true but no dbSecretArn/dbSecretName provided; defaulting dbSecretName to "${DEFAULT_DB_SECRET_NAME}".`
+    );
+  }
 
   return {
     environment,
@@ -283,8 +315,8 @@ export class Afu9EcsStack extends cdk.Stack {
       targetGroup,
       imageTag = 'stage-undefined',
       desiredCount,
-      cpu = 1024,
-      memoryLimitMiB = 2048,
+      cpu = 2048,
+      memoryLimitMiB = 4096,
     } = props;
 
     const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName, createStagingService } = resolveEcsConfig(this, props);
@@ -641,6 +673,11 @@ export class Afu9EcsStack extends cdk.Stack {
           DEPLOY_ENV: deployEnvValue,
           PORT: '3000',
           ENVIRONMENT: environmentLabel,
+          PGSSLMODE: 'require',
+          COGNITO_REGION: cdk.Fn.importValue('Afu9CognitoRegion'),
+          COGNITO_USER_POOL_ID: cdk.Fn.importValue('Afu9UserPoolId'),
+          COGNITO_CLIENT_ID: cdk.Fn.importValue('Afu9UserPoolClientId'),
+          COGNITO_ISSUER_URL: cdk.Fn.importValue('Afu9IssuerUrl'),
           DATABASE_ENABLED: enableDatabase ? 'true' : 'false',
           DATABASE_SSL: 'true',
           MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
@@ -649,6 +686,7 @@ export class Afu9EcsStack extends cdk.Stack {
           MCP_GITHUB_URL: 'http://127.0.0.1:3001',
           MCP_DEPLOY_URL: 'http://127.0.0.1:3002',
           MCP_OBSERVABILITY_URL: 'http://127.0.0.1:3003',
+          ...(domainName ? { AFU9_COOKIE_DOMAIN: `.${domainName}` } : {}),
         },
         secrets: {
           ...(dbSecret
@@ -671,12 +709,12 @@ export class Afu9EcsStack extends cdk.Stack {
         healthCheck: {
           command: [
             'CMD-SHELL',
-            "node -e \"require('http').get('http://127.0.0.1:3000/api/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+            "node -e \"const os=require('os');const http=require('http');const nets=os.networkInterfaces();let ip;for(const name of Object.keys(nets)){for(const net of (nets[name]||[])){if(!net||net.family!=='IPv4'||net.internal) continue; if(net.address&&net.address.startsWith('10.')){ip=net.address;break;}} if(ip) break;} if(!ip){for(const name of Object.keys(nets)){for(const net of (nets[name]||[])){if(!net||net.family!=='IPv4'||net.internal) continue; ip=net.address;break;} if(ip) break;}} if(!ip){console.error('no-ip');process.exit(2);} http.get('http://'+ip+':3000/api/health', r=>{process.exit(r.statusCode===200?0:1);}).on('error', e=>{console.error(e&&e.message?e.message:String(e));process.exit(3);});\"",
           ],
           interval: cdk.Duration.seconds(30),
-          timeout: cdk.Duration.seconds(5),
-          retries: 3,
-          startPeriod: cdk.Duration.seconds(60),
+          timeout: cdk.Duration.seconds(10),
+          retries: 5,
+          startPeriod: cdk.Duration.seconds(120),
         },
       });
 

@@ -199,6 +199,7 @@ jobs:
           echo ""
 
           npx cdk deploy ${{ github.event.inputs.stack_name }} \
+            --exclusively \
             --context environment=${{ github.event.inputs.environment }} \
             --context afu9-domain=${{ env.DOMAIN_NAME }} \
             --context afu9-multi-env=false \

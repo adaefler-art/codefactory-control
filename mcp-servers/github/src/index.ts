@@ -1,5 +1,22 @@
 import { MCPServer, Tool, DependencyCheck } from '../../base/src/server';
-import { Octokit } from 'octokit';
+import type { Octokit } from 'octokit';
+
+type OctokitConstructor = new (options: { auth: string }) => Octokit;
+
+async function loadOctokitConstructor(): Promise<OctokitConstructor> {
+  // IMPORTANT:
+  // - The `octokit` package is ESM-only.
+  // - Our build emits CommonJS, and TypeScript would downlevel `import('octokit')` to `require('octokit')`,
+  //   which crashes at runtime with ERR_REQUIRE_ESM.
+  // - Using a Function wrapper preserves a real dynamic import evaluated by Node at runtime.
+  const importer = new Function('return import("octokit")') as () => Promise<any>;
+  const mod = await importer();
+  const OctokitCtor = mod?.Octokit;
+  if (!OctokitCtor) {
+    throw new Error('Failed to load Octokit from octokit module');
+  }
+  return OctokitCtor as OctokitConstructor;
+}
 
 /**
  * GitHub MCP Server
@@ -24,7 +41,8 @@ import { Octokit } from 'octokit';
  * - Resource not found (404)
  */
 export class GitHubMCPServer extends MCPServer {
-  private octokit: Octokit;
+  private octokit!: Octokit;
+  private readonly octokitInit: Promise<void>;
 
   constructor(port: number = 3001) {
     super(port, 'mcp-github', '0.2.0');
@@ -33,8 +51,20 @@ export class GitHubMCPServer extends MCPServer {
     if (!token) {
       throw new Error('GITHUB_TOKEN environment variable is required');
     }
-    
-    this.octokit = new Octokit({ auth: token });
+
+    this.octokitInit = (async () => {
+      const OctokitCtor = await loadOctokitConstructor();
+      this.octokit = new OctokitCtor({ auth: token });
+    })();
+  }
+
+  override start() {
+    this.octokitInit
+      .then(() => super.start())
+      .catch((error) => {
+        this.logger.error('Failed to initialize Octokit', error);
+        process.exit(1);
+      });
   }
 
   /**
