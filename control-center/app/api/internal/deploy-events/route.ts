@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getPool } from '@/lib/db';
-import { validateDeployEventInput } from '@/lib/contracts/deployEvent';
+import { validateDeployEventInput, DeployEventInput } from '@/lib/contracts/deployEvent';
 import { insertDeployEvent } from '@/lib/db/deployEvents';
 
 export const dynamic = 'force-dynamic';
@@ -60,14 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Type-safe input after validation
-  const input = body as {
-    env: string;
-    service: string;
-    version: string;
-    commit_hash: string;
-    status: string;
-    message?: string | null;
-  };
+  const input = body as DeployEventInput;
 
   // Safe, non-secret log for traceability (no tokens, no cookies).
   console.log(

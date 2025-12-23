@@ -172,10 +172,16 @@ export function validateDeployEventInput(input: unknown): ValidationResult {
  * Sanitizes and normalizes deploy event input
  * Trims whitespace and clamps to max lengths
  * 
- * @param input - The validated input
+ * @param input - The validated input (must have passed validation)
  * @returns Sanitized DeployEventInput
+ * @throws Error if input has not been validated (null/undefined fields)
  */
 export function sanitizeDeployEventInput(input: DeployEventInput): DeployEventInput {
+  // Ensure required fields are present (should have been validated)
+  if (!input.env || !input.service || !input.version || !input.commit_hash || !input.status) {
+    throw new Error('Input must be validated before sanitization');
+  }
+
   return {
     env: input.env.trim().slice(0, DEPLOY_EVENT_CONSTRAINTS.env),
     service: input.service.trim().slice(0, DEPLOY_EVENT_CONSTRAINTS.service),

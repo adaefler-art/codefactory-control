@@ -62,10 +62,12 @@ export async function insertDeployEvent(
       event: result.rows[0],
     };
   } catch (error) {
-    // Log error for debugging (without exposing to client)
+    // Log error for debugging (without exposing sensitive data)
     console.error('[deployEvents] Insert failed:', {
       error: error instanceof Error ? error.message : String(error),
-      input: sanitized,
+      env: sanitized.env,
+      service: sanitized.service,
+      status: sanitized.status,
       timestamp: new Date().toISOString(),
     });
 
