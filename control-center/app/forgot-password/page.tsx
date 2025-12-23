@@ -4,6 +4,14 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 
+function makeCorrelationId() {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `cc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -18,10 +26,14 @@ export default function ForgotPasswordPage() {
     setSuccess(false);
 
     try {
+      const correlationId = makeCorrelationId();
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-correlation-id": correlationId,
+        },
         body: JSON.stringify({ username }),
       });
 
