@@ -97,7 +97,7 @@ export default function DashboardPage() {
   const [recentExecutions, setRecentExecutions] = useState<RecentExecution[]>([]);
   const [recentAgents, setRecentAgents] = useState<AgentRun[]>([]);
   const [latestDeployEvent, setLatestDeployEvent] = useState<DeployEvent | null>(null);
-  const [deployEventStatus, setDeployEventStatus] = useState<"loading" | "loaded" | "unavailable">("loading");
+  const [deployEventStatus, setDeployEventStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [infrastructureHealth, setInfrastructureHealth] = useState<InfrastructureHealth | null>(null);
   const [alarmStatus, setAlarmStatus] = useState<AlarmStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,21 +134,28 @@ export default function DashboardPage() {
 
         // Fetch latest deploy event (AFU9-TL-001)
         try {
-          const deployEventsRes = await fetch("/api/deploy-events?limit=1", { credentials: "include" });
+          const host = typeof window !== 'undefined' ? window.location.hostname : '';
+          const env = host.startsWith('stage.') ? 'staging' : 'prod';
+          const service = 'control-center';
+          const query = new URLSearchParams({ env, service, limit: '1' }).toString();
+
+          const deployEventsRes = await fetch(`/api/deploy-events?${query}`, { credentials: 'include' });
 
           if (!deployEventsRes.ok) {
             setLatestDeployEvent(null);
-            setDeployEventStatus("unavailable");
+            setDeployEventStatus('error');
           } else {
             const deployEventsData = await deployEventsRes.json();
-            const maybeEvent = Array.isArray(deployEventsData?.events) ? (deployEventsData.events[0] as DeployEvent | undefined) : undefined;
+            const maybeEvent = Array.isArray(deployEventsData?.events)
+              ? (deployEventsData.events[0] as DeployEvent | undefined)
+              : undefined;
 
             setLatestDeployEvent(maybeEvent ?? null);
-            setDeployEventStatus("loaded");
+            setDeployEventStatus('loaded');
           }
         } catch {
           setLatestDeployEvent(null);
-          setDeployEventStatus("unavailable");
+          setDeployEventStatus('error');
         }
 
         // Calculate stats
@@ -466,8 +473,8 @@ export default function DashboardPage() {
                     {latestDeployEvent.message ?? "—"}
                   </div>
                 </div>
-              ) : deployEventStatus === "unavailable" ? (
-                <div className="text-gray-400">Deploy events unavailable</div>
+              ) : deployEventStatus === "error" ? (
+                <div className="text-gray-400">Error loading deploy events</div>
               ) : (
                 <div className="text-gray-400">No deploy events found</div>
               )}

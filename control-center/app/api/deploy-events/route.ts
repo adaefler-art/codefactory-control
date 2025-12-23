@@ -19,6 +19,20 @@ function isDatabaseEnabled(): boolean {
   return process.env.DATABASE_ENABLED === 'true';
 }
 
+function defaultEnvFromHost(host: string | null): string {
+  const normalized = (host || '').toLowerCase();
+  if (normalized.startsWith('stage.')) return 'staging';
+  return 'prod';
+}
+
+function isPostgresAuthError(error: unknown): boolean {
+  const anyErr = error as { code?: unknown; message?: unknown };
+  const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+  if (code === '28P01' || code === '28000') return true;
+  const message = typeof anyErr?.message === 'string' ? anyErr.message : '';
+  return /password authentication failed|no pg_hba\.conf entry|authentication/i.test(message);
+}
+
 function clampInt(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
@@ -46,7 +60,7 @@ export async function GET(request: NextRequest) {
   const route = '/api/deploy-events';
 
   const { searchParams } = new URL(request.url);
-  const env = searchParams.get('env') || 'prod';
+  const env = searchParams.get('env') || defaultEnvFromHost(request.headers.get('host'));
   const service = searchParams.get('service') || 'control-center';
   const limitRaw = parseInt(searchParams.get('limit') || '20', 10);
   const limit = clampInt(limitRaw, 1, 100);
@@ -54,6 +68,17 @@ export async function GET(request: NextRequest) {
   if (!isDatabaseEnabled()) {
     logRequest({ route, method: 'GET', duration_ms: Date.now() - start, rowcount: 0, env, service });
     return NextResponse.json({ error: 'DB disabled' }, { status: 503 });
+  }
+
+  if (!process.env.DATABASE_PASSWORD) {
+    logRequest({ route, method: 'GET', duration_ms: Date.now() - start, rowcount: 0, env, service });
+    return NextResponse.json(
+      {
+        error: 'DB unavailable',
+        message: 'DATABASE_PASSWORD is not configured',
+      },
+      { status: 503 }
+    );
   }
 
   try {
@@ -82,6 +107,16 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logRequest({ route, method: 'GET', duration_ms: Date.now() - start, rowcount: 0, env, service });
     console.error('[Deploy Events API] Error:', error);
+
+    if (isPostgresAuthError(error)) {
+      return NextResponse.json(
+        {
+          error: 'DB unauthorized',
+          message: 'Database authentication failed',
+        },
+        { status: 401 }
+      );
+    }
 
     return NextResponse.json(
       {
