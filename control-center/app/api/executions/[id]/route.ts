@@ -5,8 +5,47 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../../src/lib/db';
-import { WorkflowExecutionOutput, WorkflowStepOutput, isWorkflowExecutionOutput } from '../../../../src/lib/contracts/outputContracts';
+import { getPool } from '@/lib/db';
+import { WorkflowExecutionOutput, WorkflowStepOutput, isWorkflowExecutionOutput } from '@/lib/contracts/outputContracts';
+import { normalizeOutput } from '@/lib/api/normalize-output';
+
+function debugApiEnabled(): boolean {
+  const raw = (process.env.AFU9_DEBUG_API || '').toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+function logContractTypeEvidence(params: {
+  route: string;
+  requestId: string | null;
+  candidate: Record<string, unknown>;
+}) {
+  if (!debugApiEnabled()) return;
+
+  const pick = (key: string) => {
+    const value = (params.candidate as any)?.[key];
+    return {
+      type: typeof value,
+      isDate: value instanceof Date,
+      isString: typeof value === 'string',
+      isNull: value === null,
+    };
+  };
+
+  console.log(
+    JSON.stringify({
+      level: 'debug',
+      route: params.route,
+      requestId: params.requestId,
+      evidence: {
+        started_at: pick('started_at'),
+        completed_at: pick('completed_at'),
+        created_at: pick('created_at'),
+        updated_at: pick('updated_at'),
+      },
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
 
 /**
  * Extended execution response includes joined workflow info
@@ -21,6 +60,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const requestId = request.headers.get('x-request-id');
     const { id } = await params;
     const pool = getPool();
     
@@ -81,13 +121,18 @@ export async function GET(
       );
     }
     
-    const executionRow = executionResult.rows[0];
+    const executionRow = normalizeOutput(executionResult.rows[0]) as Record<string, unknown>;
     // Extract joined fields that are not part of the base execution contract
-    const { workflow_name, workflow_description, ...executionData } = executionRow;
+    const { workflow_name, workflow_description, ...executionData } = executionRow as any;
     
     // Validate execution output contract
     if (!isWorkflowExecutionOutput(executionData)) {
-      console.error('[API /api/executions/[id]] Contract validation failed for execution:', executionData);
+      console.error('[API /api/executions/[id]] Contract validation failed for execution', {
+        id: (executionData as any)?.id,
+        workflow_id: (executionData as any)?.workflow_id,
+        status: (executionData as any)?.status,
+      });
+      logContractTypeEvidence({ route: '/api/executions/[id]', requestId, candidate: executionData });
       throw new Error('Execution output contract validation failed');
     }
     
@@ -98,7 +143,7 @@ export async function GET(
       workflow_description,
     };
     
-    const steps = stepsResult.rows;
+    const steps = normalizeOutput(stepsResult.rows) as WorkflowStepOutput[];
     
     return NextResponse.json({
       ...execution,

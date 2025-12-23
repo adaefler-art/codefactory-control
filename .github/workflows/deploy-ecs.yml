@@ -705,14 +705,105 @@ jobs:
           # Safe extraction of deployment info with try operator
           echo "$UPDATE_OUTPUT" | jq -r 'try (.service.deployments[] | "Deployment: \(.id) - Status: \(.status) - Desired: \(.desiredCount)") // "No deployment information available"'
 
-      - name: Wait for ECS service stable
+      - name: Wait for ECS service stable (with diagnostics)
         shell: bash
         run: |
           set -euo pipefail
-          aws ecs wait services-stable \
-            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
-            --services "${{ steps.target.outputs.ecs_service }}" \
-            --region "${{ env.AWS_REGION }}"
+
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          REGION="${{ env.AWS_REGION }}"
+
+          # The default AWS waiter can fail with exit code 255 without useful context.
+          # Poll the service state and dump events/task stop reasons on timeout.
+          TIMEOUT_SECONDS=1200
+          INTERVAL_SECONDS=15
+          START_TS=$(date +%s)
+
+          echo "Waiting for ECS service to become stable..."
+          echo "Cluster: ${CLUSTER}"
+          echo "Service: ${SERVICE}"
+          echo "Region:  ${REGION}"
+          echo "Timeout: ${TIMEOUT_SECONDS}s (interval=${INTERVAL_SECONDS}s)"
+
+          while true; do
+            NOW_TS=$(date +%s)
+            ELAPSED=$((NOW_TS - START_TS))
+
+            SERVICE_JSON=$(aws ecs describe-services \
+              --cluster "${CLUSTER}" \
+              --services "${SERVICE}" \
+              --region "${REGION}" \
+              --output json)
+
+            if echo "$SERVICE_JSON" | jq -e '.failures | length > 0' >/dev/null; then
+              echo "❌ ECS describe-services reported failures:" >&2
+              echo "$SERVICE_JSON" | jq '.failures' >&2
+              exit 1
+            fi
+
+            SERVICE_COUNT=$(echo "$SERVICE_JSON" | jq -r '.services | length')
+            if [ "${SERVICE_COUNT}" = "0" ]; then
+              echo "❌ ECS service not found: ${SERVICE} (cluster=${CLUSTER})" >&2
+              exit 1
+            fi
+
+            RUNNING=$(echo "$SERVICE_JSON" | jq -r '.services[0].runningCount // 0')
+            DESIRED=$(echo "$SERVICE_JSON" | jq -r '.services[0].desiredCount // 0')
+            STATUS=$(echo "$SERVICE_JSON" | jq -r '.services[0].status // "UNKNOWN"')
+            PRIMARY_ROLLOUT=$(echo "$SERVICE_JSON" | jq -r '(.services[0].deployments // []) | map(select(.status=="PRIMARY"))[0].rolloutState // "UNKNOWN"')
+            PRIMARY_REASON=$(echo "$SERVICE_JSON" | jq -r '(.services[0].deployments // []) | map(select(.status=="PRIMARY"))[0].rolloutStateReason // ""')
+
+            echo "[${ELAPSED}s] status=${STATUS} running=${RUNNING} desired=${DESIRED} primaryRollout=${PRIMARY_ROLLOUT} ${PRIMARY_REASON}"
+
+            if [ "${STATUS}" = "ACTIVE" ] && [ "${RUNNING}" = "${DESIRED}" ] && [ "${PRIMARY_ROLLOUT}" = "COMPLETED" ]; then
+              echo "✅ Service appears stable"
+              break
+            fi
+
+            if [ "${ELAPSED}" -ge "${TIMEOUT_SECONDS}" ]; then
+              echo "❌ Timed out waiting for ECS service to stabilize" >&2
+
+              echo "\n=== Service summary ===" >&2
+              echo "$SERVICE_JSON" | jq -r '.services[0] | {status, desiredCount, runningCount, pendingCount, deploymentController, deployments}' >&2
+
+              echo "\n=== Recent service events (latest 20) ===" >&2
+              echo "$SERVICE_JSON" | jq -r '.services[0].events[0:20][]? | "- [\(.createdAt)] \(.message)"' >&2 || true
+
+              echo "\n=== Running tasks (up to 10) ===" >&2
+              aws ecs list-tasks \
+                --cluster "${CLUSTER}" \
+                --service-name "${SERVICE}" \
+                --desired-status RUNNING \
+                --max-results 10 \
+                --region "${REGION}" \
+                --output json >&2 || true
+
+              echo "\n=== Stopped tasks (up to 10) ===" >&2
+              STOPPED=$(aws ecs list-tasks \
+                --cluster "${CLUSTER}" \
+                --service-name "${SERVICE}" \
+                --desired-status STOPPED \
+                --max-results 10 \
+                --region "${REGION}" \
+                --output json || true)
+              echo "${STOPPED}" | jq '.' >&2 || true
+
+              TASK_ARNS=$(echo "${STOPPED}" | jq -r '.taskArns[]?')
+              if [ -n "${TASK_ARNS}" ]; then
+                echo "\n=== Stopped task details (stop reasons) ===" >&2
+                aws ecs describe-tasks \
+                  --cluster "${CLUSTER}" \
+                  --tasks ${TASK_ARNS} \
+                  --region "${REGION}" \
+                  --output json | jq -r '.tasks[] | "task=\(.taskArn) stoppedReason=\(.stoppedReason // "")\n" + (.containers[] | "  - \(.name): exitCode=\(.exitCode // "null") reason=\(.reason // "")")' >&2 || true
+              fi
+
+              exit 1
+            fi
+
+            sleep "${INTERVAL_SECONDS}"
+          done
 
       - name: Get service status
         if: always()
@@ -725,7 +816,7 @@ jobs:
             --services "${{ steps.target.outputs.ecs_service }}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
-            --output table
+            --output table || true
 
       - name: Resolve ALB DNS
         id: alb-dns

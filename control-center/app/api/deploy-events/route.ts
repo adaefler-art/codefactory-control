@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { DeployEventOutput, isDeployEventOutput } from '@/lib/contracts/outputContracts';
 import { randomUUID } from 'crypto';
+import { normalizeOutput } from '@/lib/api/normalize-output';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -65,6 +66,38 @@ function logRequest(params: {
   );
 }
 
+function debugApiEnabled(): boolean {
+  const raw = (process.env.AFU9_DEBUG_API || '').toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+function logContractTypeEvidence(params: {
+  route: string;
+  requestId: string;
+  row: Record<string, unknown>;
+}) {
+  if (!debugApiEnabled()) return;
+
+  const createdAt = (params.row as any)?.created_at;
+  console.log(
+    JSON.stringify({
+      level: 'debug',
+      route: params.route,
+      requestId: params.requestId,
+      evidence: {
+        id_type: typeof (params.row as any)?.id,
+        created_at: {
+          type: typeof createdAt,
+          isDate: createdAt instanceof Date,
+          isString: typeof createdAt === 'string',
+          isNull: createdAt === null,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
+
 export async function GET(request: NextRequest) {
   const start = Date.now();
   const route = '/api/deploy-events';
@@ -109,10 +142,13 @@ export async function GET(request: NextRequest) {
       [env, service, limit]
     );
 
+    const normalizedRows = normalizeOutput(result.rows) as Record<string, unknown>[];
+
     // Validate output contract
-    for (const row of result.rows) {
+    for (const row of normalizedRows) {
       if (!isDeployEventOutput(row)) {
-        console.error('[Deploy Events API] Contract validation failed for row:', row);
+        console.error('[Deploy Events API] Contract validation failed for row', { id: (row as any)?.id });
+        logContractTypeEvidence({ route, requestId, row });
         throw new Error('Output contract validation failed');
       }
     }
@@ -130,7 +166,7 @@ export async function GET(request: NextRequest) {
       service,
     });
 
-    const response = NextResponse.json({ events: result.rows }, { status });
+    const response = NextResponse.json({ events: normalizedRows }, { status });
     response.headers.set('x-request-id', requestId);
     return response;
   } catch (error) {

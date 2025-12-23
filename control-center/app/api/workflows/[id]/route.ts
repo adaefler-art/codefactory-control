@@ -5,7 +5,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../../src/lib/db';
+import { getPool } from '@/lib/db';
+import { normalizeOutput } from '@/lib/api/normalize-output';
 
 export async function GET(
   request: NextRequest,
@@ -38,8 +39,8 @@ export async function GET(
         { status: 404 }
       );
     }
-    
-    return NextResponse.json(result.rows[0]);
+
+    return NextResponse.json(normalizeOutput(result.rows[0]));
   } catch (error) {
     console.error('[API /api/workflows/[id]] Error fetching workflow:', error);
     return NextResponse.json(

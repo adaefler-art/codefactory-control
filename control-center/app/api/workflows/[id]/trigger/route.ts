@@ -5,9 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../../../src/lib/db';
-import { WorkflowEngine } from '../../../../../src/lib/workflow-engine';
-import { WorkflowDefinition, WorkflowContext } from '../../../../../src/lib/types/workflow';
+import { getPool } from '@/lib/db';
+import { WorkflowEngine } from '@/lib/workflow-engine';
+import { WorkflowDefinition, WorkflowContext } from '@/lib/types/workflow';
 
 export async function POST(
   request: NextRequest,

@@ -5,8 +5,47 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../src/lib/db';
-import { WorkflowOutput, isWorkflowOutput } from '../../../src/lib/contracts/outputContracts';
+import { getPool } from '@/lib/db';
+import { WorkflowOutput, isWorkflowOutput } from '@/lib/contracts/outputContracts';
+import { normalizeOutput } from '@/lib/api/normalize-output';
+
+function debugApiEnabled(): boolean {
+  const raw = (process.env.AFU9_DEBUG_API || '').toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+function logContractTypeEvidence(params: {
+  route: string;
+  requestId: string | null;
+  candidate: Record<string, unknown>;
+}) {
+  if (!debugApiEnabled()) return;
+
+  const pick = (key: string) => {
+    const value = (params.candidate as any)?.[key];
+    return {
+      type: typeof value,
+      isDate: value instanceof Date,
+      isString: typeof value === 'string',
+      isNull: value === null,
+    };
+  };
+
+  console.log(
+    JSON.stringify({
+      level: 'debug',
+      route: params.route,
+      requestId: params.requestId,
+      evidence: {
+        created_at: pick('created_at'),
+        updated_at: pick('updated_at'),
+        version: pick('version'),
+        enabled: pick('enabled'),
+      },
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
 
 /**
  * Extended workflow response includes last run info (not part of base contract)
@@ -23,6 +62,7 @@ interface WorkflowWithLastRun extends WorkflowOutput {
 
 export async function GET(request: NextRequest) {
   try {
+    const requestId = request.headers.get('x-request-id');
     const pool = getPool();
     
     // Get all workflows with their latest execution info
@@ -57,12 +97,17 @@ export async function GET(request: NextRequest) {
     
     // Validate each workflow row against output contract
     const workflows: WorkflowWithLastRun[] = result.rows.map((row) => {
+      const normalizedRow = normalizeOutput(row) as Record<string, unknown>;
       // Extract last_run before contract validation (not part of base contract)
-      const { last_run, ...workflowData } = row;
+      const { last_run, ...workflowData } = normalizedRow as any;
       
       // Validate workflow output contract
       if (!isWorkflowOutput(workflowData)) {
-        console.error('[API /api/workflows] Contract validation failed for workflow:', workflowData);
+        console.error('[API /api/workflows] Contract validation failed for workflow', {
+          id: (workflowData as any)?.id,
+          name: (workflowData as any)?.name,
+        });
+        logContractTypeEvidence({ route: '/api/workflows', requestId, candidate: workflowData });
         throw new Error('Workflow output contract validation failed');
       }
       

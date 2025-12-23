@@ -13,26 +13,26 @@
  */
 
 import { NextRequest } from 'next/server';
-import { GET as listIssues, POST as createIssue } from '../../../app/api/issues/route';
-import { GET as getIssue, PATCH as updateIssue } from '../../../app/api/issues/[id]/route';
-import { POST as activateIssue } from '../../../app/api/issues/[id]/activate/route';
-import { POST as handoffIssue } from '../../../app/api/issues/[id]/handoff/route';
-import { Afu9IssueStatus, Afu9HandoffState, Afu9IssuePriority } from '../../../src/lib/contracts/afu9Issue';
+import { GET as listIssues, POST as createIssue } from '../../app/api/issues/route';
+import { GET as getIssue, PATCH as updateIssue } from '../../app/api/issues/[id]/route';
+import { POST as activateIssue } from '../../app/api/issues/[id]/activate/route';
+import { POST as handoffIssue } from '../../app/api/issues/[id]/handoff/route';
+import { Afu9IssueStatus, Afu9HandoffState, Afu9IssuePriority } from '../../src/lib/contracts/afu9Issue';
 
 // Mock the database module
-jest.mock('../../../src/lib/db', () => ({
+jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
 // Mock the GitHub module
-jest.mock('../../../src/lib/github', () => ({
+jest.mock('../../src/lib/github', () => ({
   createIssue: jest.fn(),
 }));
 
 // Mock database helpers
-jest.mock('../../../src/lib/db/afu9Issues', () => ({
+jest.mock('../../src/lib/db/afu9Issues', () => ({
   listAfu9Issues: jest.fn(),
   createAfu9Issue: jest.fn(),
   getAfu9IssueById: jest.fn(),
@@ -64,7 +64,7 @@ describe('AFU9 Issues API', () => {
 
   describe('GET /api/issues (list)', () => {
     test('returns list of issues', async () => {
-      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({
         success: true,
         data: [mockIssue],
@@ -82,7 +82,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('filters by status', async () => {
-      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({
         success: true,
         data: [mockIssue],
@@ -108,7 +108,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('filters by label', async () => {
-      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({
         success: true,
         data: [mockIssue],
@@ -123,7 +123,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('searches by query', async () => {
-      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({
         success: true,
         data: [mockIssue],
@@ -138,7 +138,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('handles database errors', async () => {
-      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({
         success: false,
         error: 'Database error',
@@ -155,7 +155,7 @@ describe('AFU9 Issues API', () => {
 
   describe('POST /api/issues (create)', () => {
     test('creates a new issue', async () => {
-      const { createAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { createAfu9Issue } = require('../../src/lib/db/afu9Issues');
       createAfu9Issue.mockResolvedValue({
         success: true,
         data: mockIssue,
@@ -196,7 +196,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 409 for Single-Active constraint violation', async () => {
-      const { createAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { createAfu9Issue } = require('../../src/lib/db/afu9Issues');
       createAfu9Issue.mockResolvedValue({
         success: false,
         error: 'Single-Active constraint: Issue abc is already ACTIVE',
@@ -220,7 +220,7 @@ describe('AFU9 Issues API', () => {
 
   describe('GET /api/issues/[id] (get)', () => {
     test('returns issue by ID', async () => {
-      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       getAfu9IssueById.mockResolvedValue({
         success: true,
         data: mockIssue,
@@ -246,7 +246,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 404 for non-existent issue', async () => {
-      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       getAfu9IssueById.mockResolvedValue({
         success: false,
         error: 'Issue not found',
@@ -265,7 +265,7 @@ describe('AFU9 Issues API', () => {
 
   describe('PATCH /api/issues/[id] (update)', () => {
     test('updates issue fields', async () => {
-      const { updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const updatedIssue = { ...mockIssue, title: 'Updated Title' };
       updateAfu9Issue.mockResolvedValue({
         success: true,
@@ -321,7 +321,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 409 for Single-Active constraint violation', async () => {
-      const { updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       updateAfu9Issue.mockResolvedValue({
         success: false,
         error: 'Single-Active constraint: Issue abc is already ACTIVE',
@@ -346,7 +346,7 @@ describe('AFU9 Issues API', () => {
 
   describe('POST /api/issues/[id]/activate', () => {
     test('activates an issue', async () => {
-      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       getAfu9IssueById.mockResolvedValue({
         success: true,
@@ -379,7 +379,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('deactivates current active issue before activating new one', async () => {
-      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       const currentActiveIssue = {
         ...mockIssue,
@@ -418,7 +418,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns success if already active', async () => {
-      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       
       const activeIssue = { ...mockIssue, status: Afu9IssueStatus.ACTIVE };
       getAfu9IssueById.mockResolvedValue({
@@ -442,8 +442,8 @@ describe('AFU9 Issues API', () => {
 
   describe('POST /api/issues/[id]/handoff', () => {
     test('hands off issue to GitHub', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
-      const { createIssue: createGithubIssue } = require('../../../src/lib/github');
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
       getAfu9IssueById.mockResolvedValue({
         success: true,
@@ -481,7 +481,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns success if already handed off', async () => {
-      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
 
       const syncedIssue = {
         ...mockIssue,
@@ -509,8 +509,8 @@ describe('AFU9 Issues API', () => {
     });
 
     test('handles GitHub API errors', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
-      const { createIssue: createGithubIssue } = require('../../../src/lib/github');
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
       getAfu9IssueById.mockResolvedValue({
         success: true,
@@ -539,8 +539,8 @@ describe('AFU9 Issues API', () => {
     });
 
     test('includes idempotency marker in GitHub issue body', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
-      const { createIssue: createGithubIssue } = require('../../../src/lib/github');
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
       getAfu9IssueById.mockResolvedValue({
         success: true,

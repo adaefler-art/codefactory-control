@@ -5,7 +5,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../../../src/lib/db';
+import { getPool } from '@/lib/db';
+import { normalizeOutput } from '@/lib/api/normalize-output';
 
 export async function GET(
   request: NextRequest,
@@ -60,7 +61,7 @@ export async function GET(
     ]);
     
     return NextResponse.json({
-      executions: executions.rows,
+      executions: normalizeOutput(executions.rows),
       total: parseInt(count.rows[0].total, 10),
       limit,
       offset
