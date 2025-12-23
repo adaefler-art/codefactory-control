@@ -17,14 +17,23 @@ import {
 import { WorkflowContext } from '../../src/lib/types/workflow';
 
 // Mock database
-jest.mock('../../src/lib/db', () => ({
-  getPool: jest.fn(() => ({
+jest.mock('../../src/lib/db', () => {
+  const pool = {
     query: jest.fn(),
-  })),
-  checkDatabase: jest.fn(() => Promise.resolve(true)),
-}));
+  };
+
+  return {
+    getPool: jest.fn(() => pool),
+    checkDatabase: jest.fn(() => Promise.resolve(true)),
+  };
+});
 
 describe('Issue B5: RED Workflow & Rollback', () => {
+  beforeEach(() => {
+    const pool = require('../../src/lib/db').getPool();
+    pool.query.mockReset();
+  });
+
   describe('Workflow Abort Functionality', () => {
     it('should abort a running workflow execution', async () => {
       const mockPool = require('../../src/lib/db').getPool();

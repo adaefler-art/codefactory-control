@@ -4,6 +4,7 @@ import {
   InitiateAuthCommand,
   InitiateAuthCommandInput,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { randomUUID } from 'crypto';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
@@ -27,6 +28,29 @@ const cookieSecure = process.env.NODE_ENV === 'production' || cookieSameSite ===
 const cognitoClient = new CognitoIdentityProviderClient({
   region: COGNITO_REGION,
 });
+
+function getRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function logAuthRoute(params: { requestId: string; route: string; method: string; status: number; reason: string }) {
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      ...params,
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
+
+function attachRequestId(response: NextResponse, requestId: string): NextResponse {
+  response.headers.set('x-request-id', requestId);
+  return response;
+}
 
 function applyDebugHeaders(response: NextResponse) {
   if (!AFU9_DEBUG_AUTH) return;
@@ -172,10 +196,13 @@ async function refreshTokens(refreshToken: string) {
  * POST-only to avoid state changes on GET (prefetch/CSRF risk).
  */
 export async function GET(_request: NextRequest) {
+  const requestId = getRequestId();
   const response = NextResponse.json({ success: false, error: 'Method Not Allowed' }, { status: 405 });
   response.headers.set('allow', 'POST');
   applyNoStore(response);
   applyDebugHeaders(response);
+  attachRequestId(response, requestId);
+  logAuthRoute({ requestId, route: '/api/auth/refresh', method: 'GET', status: 405, reason: 'method_not_allowed' });
   return response;
 }
 
@@ -185,6 +212,7 @@ export async function GET(_request: NextRequest) {
  * API variant (returns JSON). Clients can call this if they want to proactively refresh.
  */
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId();
   // Defense-in-depth: reject cross-site POSTs (important if SameSite=None is configured).
   const csrf = validateSameOrigin(request);
   if (!csrf.ok) {
@@ -199,6 +227,8 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json(body, { status: 403 });
     applyNoStore(response);
     applyDebugHeaders(response);
+    attachRequestId(response, requestId);
+    logAuthRoute({ requestId, route: '/api/auth/refresh', method: 'POST', status: 403, reason: 'csrf_forbidden' });
     return response;
   }
 
@@ -207,6 +237,8 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ success: false, error: 'Missing refresh token' }, { status: 401 });
     applyNoStore(response);
     applyDebugHeaders(response);
+    attachRequestId(response, requestId);
+    logAuthRoute({ requestId, route: '/api/auth/refresh', method: 'POST', status: 401, reason: 'missing_refresh_token' });
     return response;
   }
 
@@ -216,6 +248,8 @@ export async function POST(request: NextRequest) {
     setAuthCookies(response, tokens);
     applyNoStore(response);
     applyDebugHeaders(response);
+    attachRequestId(response, requestId);
+    logAuthRoute({ requestId, route: '/api/auth/refresh', method: 'POST', status: 200, reason: 'ok' });
     return response;
   } catch (error: unknown) {
     console.error('[AUTH-REFRESH] Refresh failed:', error);
@@ -223,6 +257,8 @@ export async function POST(request: NextRequest) {
     clearAuthCookies(response);
     applyNoStore(response);
     applyDebugHeaders(response);
+    attachRequestId(response, requestId);
+    logAuthRoute({ requestId, route: '/api/auth/refresh', method: 'POST', status: 401, reason: 'refresh_failed' });
     return response;
   }
 }

@@ -97,7 +97,7 @@ describe('Policy Manager', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      (verdictEngine.getLatestPolicySnapshot as jest.Mock).mockRejectedValue(
+      (verdictEngine.storePolicySnapshot as jest.Mock).mockRejectedValue(
         new Error('DB connection failed')
       );
 

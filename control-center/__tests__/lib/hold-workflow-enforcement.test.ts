@@ -18,19 +18,28 @@ import { IssueState } from '../../src/lib/types/issue-state';
 import { WorkflowContext } from '../../src/lib/types/workflow';
 
 // Mock database
-jest.mock('../../src/lib/db', () => ({
-  getPool: jest.fn(() => ({
+jest.mock('../../src/lib/db', () => {
+  const pool = {
     query: jest.fn(),
-  })),
-  checkDatabase: jest.fn(() => Promise.resolve(true)),
-}));
+  };
+
+  return {
+    getPool: jest.fn(() => pool),
+    checkDatabase: jest.fn(() => Promise.resolve(true)),
+  };
+});
 
 describe('Issue B4: HOLD Workflow Enforcement', () => {
+  beforeEach(() => {
+    const pool = require('../../src/lib/db').getPool();
+    pool.query.mockReset();
+  });
+
   describe('Workflow Pause Functionality', () => {
     it('should pause a running workflow execution', async () => {
       const mockPool = require('../../src/lib/db').getPool();
       mockPool.query.mockResolvedValueOnce({
-        rows: [],
+        rows: [{ id: 'exec-123' }],
       });
 
       await pauseExecution(
@@ -52,7 +61,7 @@ describe('Issue B4: HOLD Workflow Enforcement', () => {
     it('should include pause metadata with all required fields', async () => {
       const mockPool = require('../../src/lib/db').getPool();
       mockPool.query.mockResolvedValueOnce({
-        rows: [],
+        rows: [{ id: 'exec-456' }],
       });
 
       const pausedBy = 'system';
@@ -74,33 +83,21 @@ describe('Issue B4: HOLD Workflow Enforcement', () => {
   describe('Workflow Resume Functionality', () => {
     it('should resume a paused workflow with human approval', async () => {
       const mockPool = require('../../src/lib/db').getPool();
-      
-      // Mock getting current pause metadata
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          pause_metadata: {
-            pausedAt: '2025-12-20T10:00:00Z',
-            pausedBy: 'system',
-            reason: 'HOLD state',
-          },
-        }],
-      });
 
-      // Mock update query
+      // Single atomic update query
       mockPool.query.mockResolvedValueOnce({
-        rows: [],
+        rows: [{ id: 'exec-123', pause_metadata: { pausedBy: 'system' } }],
       });
 
       await resumeExecution('exec-123', 'approver@example.com');
 
       // Verify resume call
-      const updateCall = mockPool.query.mock.calls[1];
+      const updateCall = mockPool.query.mock.calls[0];
       expect(updateCall[0]).toContain('UPDATE workflow_executions');
       expect(updateCall[0]).toContain("status = 'running'");
-      
-      const pauseMetadata = JSON.parse(updateCall[1][1]);
-      expect(pauseMetadata.resumedBy).toBe('approver@example.com');
-      expect(pauseMetadata).toHaveProperty('resumedAt');
+
+      expect(updateCall[1][0]).toBe('exec-123');
+      expect(updateCall[1][2]).toBe('approver@example.com');
     });
 
     it('should throw error when trying to resume non-paused execution', async () => {
@@ -204,7 +201,7 @@ describe('Issue B4: HOLD Workflow Enforcement', () => {
     it('HOLD stops automatically - pauses workflow without timeout', async () => {
       // Verify that pause sets status to 'paused' with no automatic continuation
       const mockPool = require('../../src/lib/db').getPool();
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'exec-hold' }] });
 
       await pauseExecution(
         'exec-hold',
@@ -250,23 +247,23 @@ describe('Issue B4: HOLD Workflow Enforcement', () => {
       const mockPool = require('../../src/lib/db').getPool();
       
       // Pause execution
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'exec-human' }] });
       await pauseExecution('exec-human', 'system', 'HOLD state', 0);
       
       // Resume requires human user
       mockPool.query.mockResolvedValueOnce({
-        rows: [{ pause_metadata: { pausedBy: 'system' } }],
+        rows: [{ id: 'exec-human', pause_metadata: { pausedBy: 'system' } }],
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
       
       await resumeExecution('exec-human', 'human-approver@example.com');
       
       const resumeCall = mockPool.query.mock.calls[mockPool.query.mock.calls.length - 1];
-      const resumeMetadata = JSON.parse(resumeCall[1][1]);
-      
-      // Verify human approved resume
-      expect(resumeMetadata.resumedBy).toBe('human-approver@example.com');
-      expect(resumeMetadata).toHaveProperty('resumedAt');
+      expect(resumeCall[0]).toContain('UPDATE workflow_executions');
+      expect(resumeCall[0]).toContain("status = 'running'");
+
+      // Verify explicit human approved resume
+      expect(resumeCall[1][0]).toBe('exec-human');
+      expect(resumeCall[1][2]).toBe('human-approver@example.com');
     });
   });
 });

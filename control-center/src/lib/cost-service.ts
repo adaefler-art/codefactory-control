@@ -549,10 +549,16 @@ export function convertCostDataToCSV(data: CostExportRow[]): string {
     row.rdsCost.toFixed(6),
     row.calculationMethod,
   ]);
+
+  const escapeCsvCell = (value: unknown): string => {
+    const text = String(value ?? '');
+    // Escape quotes by doubling them per RFC4180
+    return text.replace(/"/g, '""');
+  };
   
   const csvLines = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
+    ...rows.map(row => row.map(cell => `"${escapeCsvCell(cell)}"`).join(',')),
   ];
   
   return csvLines.join('\n');

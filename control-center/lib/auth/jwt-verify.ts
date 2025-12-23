@@ -1,7 +1,25 @@
-import { jwtVerify, createRemoteJWKSet, JWTPayload } from 'jose';
+import type {
+  JWTPayload,
+  createRemoteJWKSet as createRemoteJWKSetType,
+  jwtVerify as jwtVerifyType,
+} from 'jose';
+
+type RemoteJWKSet = ReturnType<typeof createRemoteJWKSetType>;
+
+let joseModulePromise: Promise<{
+  jwtVerify: typeof jwtVerifyType;
+  createRemoteJWKSet: typeof createRemoteJWKSetType;
+}> | null = null;
+
+async function getJose() {
+  if (!joseModulePromise) {
+    joseModulePromise = import('jose') as any;
+  }
+  return joseModulePromise;
+}
 
 // Cache JWKS fetcher (edge runtime compatible)
-let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
+let jwksCache: RemoteJWKSet | null = null;
 let cachedJwksUrl: string | null = null;
 
 export interface CognitoJWTPayload extends JWTPayload {
@@ -39,7 +57,7 @@ function getConfig() {
  * Get or create JWKS fetcher with fail-closed error handling
  * @returns JWKS fetcher or null if configuration is invalid
  */
-function getJWKS(): ReturnType<typeof createRemoteJWKSet> | null {
+async function getJWKS(): Promise<RemoteJWKSet | null> {
   try {
     const { JWKS_URL } = getConfig();
     
@@ -54,6 +72,7 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> | null {
         console.error('[JWT-VERIFY] JWKS URL not configured. Set COGNITO_USER_POOL_ID and COGNITO_REGION environment variables.');
         return null;
       }
+      const { createRemoteJWKSet } = await getJose();
       jwksCache = createRemoteJWKSet(new URL(JWKS_URL));
     }
     return jwksCache;
@@ -93,13 +112,15 @@ export async function verifyJWT(token: string): Promise<JWTVerifyResult> {
   }
 
   try {
-    const jwks = getJWKS();
+    const jwks = await getJWKS();
     
     // Fail closed: JWKS fetcher creation failed
     if (!jwks) {
       console.error('[JWT-VERIFY] JWKS fetcher unavailable');
       return { success: false, error: 'JWKS fetcher unavailable' };
     }
+
+    const { jwtVerify } = await getJose();
 
     // Verify JWT signature, issuer, and expiration
     // Cognito ID tokens don't use audience claim, so we set it to undefined

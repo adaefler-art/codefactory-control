@@ -75,7 +75,7 @@ describe('Factory Status API', () => {
       const result = await getFactoryStatus({ limit: 10, errorLimit: 10, kpiPeriodHours: 24 });
 
       expect(result).toBeDefined();
-      expect(result.api.version).toBe('1.0.0');
+      expect(result.api.version).toBe('1.1.0');
       expect(result.timestamp).toBeDefined();
       expect(result.runs.recent).toHaveLength(1);
       expect(result.runs.total).toBe(1);
@@ -83,7 +83,7 @@ describe('Factory Status API', () => {
       expect(result.kpis.totalExecutions).toBe(1);
       expect(result.kpis.completedExecutions).toBe(1);
       expect(result.kpis.successRate).toBe(100);
-      expect(result.verdicts.enabled).toBe(false);
+      expect(result.verdicts.enabled).toBe(true);
     });
 
     test('should calculate Mean Time to Insight correctly', async () => {

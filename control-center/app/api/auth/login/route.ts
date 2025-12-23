@@ -5,6 +5,7 @@ import {
   InitiateAuthCommandInput,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { verifyJWT } from '../../../../lib/auth/jwt-verify';
+import { randomUUID } from 'crypto';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
@@ -29,6 +30,29 @@ const cognitoClient = new CognitoIdentityProviderClient({
   region: COGNITO_REGION,
 });
 
+function getRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function logAuthRoute(params: { requestId: string; route: string; method: string; status: number; reason: string }) {
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      ...params,
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
+
+function attachRequestId(response: NextResponse, requestId: string): NextResponse {
+  response.headers.set('x-request-id', requestId);
+  return response;
+}
+
 /**
  * GET /api/auth/login
  * 
@@ -37,6 +61,7 @@ const cognitoClient = new CognitoIdentityProviderClient({
  * - If not authenticated: redirect to AFU9_UNAUTH_REDIRECT
  */
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId();
   // Check if user already has valid authentication cookie
   const idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
 
@@ -47,12 +72,18 @@ export async function GET(request: NextRequest) {
     if (verifyResult.success) {
       // User is authenticated, redirect to dashboard or redirectTo param
       const redirectTo = request.nextUrl.searchParams.get('redirectTo') || '/dashboard';
-      return NextResponse.redirect(new URL(redirectTo, request.url));
+      const response = NextResponse.redirect(new URL(redirectTo, request.url));
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'GET', status: response.status, reason: 'already_authenticated_redirect' });
+      return response;
     }
   }
 
   // Not authenticated, redirect to unauth page
-  return NextResponse.redirect(AFU9_UNAUTH_REDIRECT);
+  const response = NextResponse.redirect(AFU9_UNAUTH_REDIRECT);
+  attachRequestId(response, requestId);
+  logAuthRoute({ requestId, route: '/api/auth/login', method: 'GET', status: response.status, reason: 'unauth_redirect' });
+  return response;
 }
 
 /**
@@ -83,6 +114,7 @@ export async function GET(request: NextRequest) {
  * }
  */
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId();
   try {
     // Parse request body
     const body = await request.json();
@@ -90,25 +122,31 @@ export async function POST(request: NextRequest) {
 
     // Validate input
     if (!username || !password) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'Username and password are required',
         },
         { status: 400 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 400, reason: 'missing_credentials' });
+      return response;
     }
 
     // Validate environment variables
     if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID) {
       console.error('Missing Cognito configuration');
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'Authentication service not configured',
         },
         { status: 500 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 500, reason: 'cognito_misconfigured' });
+      return response;
     }
 
     // Prepare authentication request
@@ -128,13 +166,16 @@ export async function POST(request: NextRequest) {
     // Check if authentication was successful
     if (!authResult.AuthenticationResult) {
       console.error('Authentication failed: No authentication result');
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'Authentication failed',
         },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'auth_failed_no_result' });
+      return response;
     }
 
     // Extract tokens
@@ -142,13 +183,16 @@ export async function POST(request: NextRequest) {
 
     if (!IdToken || !AccessToken) {
       console.error('Authentication failed: Missing tokens');
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'Authentication failed',
         },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'auth_failed_missing_tokens' });
+      return response;
     }
 
     // Determine redirect URL for browser clients
@@ -205,48 +249,62 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    attachRequestId(response, requestId);
+    logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: response.status, reason: 'ok' });
     return response;
   } catch (error: any) {
     console.error('Login error:', error);
 
     // Handle specific Cognito errors
     if (error.name === 'NotAuthorizedException') {
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'Invalid username or password',
         },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'not_authorized' });
+      return response;
     }
 
     if (error.name === 'UserNotFoundException') {
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'Invalid username or password',
         },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'user_not_found' });
+      return response;
     }
 
     if (error.name === 'UserNotConfirmedException') {
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: false,
           error: 'User account not confirmed',
         },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'user_not_confirmed' });
+      return response;
     }
 
     // Generic error response
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: false,
         error: 'Authentication failed',
       },
       { status: 500 }
     );
+    attachRequestId(response, requestId);
+    logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 500, reason: 'unhandled_error' });
+    return response;
   }
 }

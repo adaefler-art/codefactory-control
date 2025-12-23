@@ -24,6 +24,18 @@ import {
 
 const KPI_VERSION = '1.0.0';
 
+// KPI names produced/managed by the aggregation pipeline.
+// Used for job metadata (kpi_aggregation_jobs.kpi_names).
+const KPI_NAMES = [
+  'run_duration',
+  'success_rate',
+  'mtti',
+  'product_success_rate',
+  'factory_success_rate',
+  'factory_throughput',
+  'steering_accuracy',
+] as const;
+
 /**
  * Check if a database table exists
  * Utility to avoid repeated information_schema queries
@@ -111,11 +123,10 @@ export async function getExtendedFactoryKPIs(
   `;
   
   try {
-    const [baseResult, steeringResult, freshnessResult] = await Promise.all([
-      pool.query(baseKpisQuery, [periodHours]),
-      calculateSteeringAccuracy(periodHours),
-      getKpiFreshness(),
-    ]);
+    // Keep query ordering deterministic (helps tests and makes debugging easier)
+    const baseResult = await pool.query(baseKpisQuery, [periodHours]);
+    const steeringResult = await calculateSteeringAccuracy(periodHours);
+    const freshnessResult = await getKpiFreshness();
     
     const row = baseResult.rows[0];
     const totalExecutions = parseInt(row.total_executions, 10);
@@ -697,23 +708,28 @@ export async function aggregateProductKPIsFromRuns(
     
     if (throughputResult.rows.length > 0) {
       const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
-      const periodDays = Math.max(periodHours / 24, 1); // At least 1 day
-      const throughput = totalRuns / periodDays;
-      
-      const throughputSnapshot = await createKpiSnapshot({
-        kpiName: 'product_throughput',
-        level: 'product',
-        scopeId: repositoryId,
-        value: throughput,
-        unit: 'runs_per_day',
-        periodStart: periodStart.toISOString(),
-        periodEnd: periodEnd.toISOString(),
-        metadata: {
-          productName,
-          totalRuns,
-        },
-      });
-      snapshots.push(throughputSnapshot);
+
+      if (!Number.isFinite(totalRuns) || totalRuns <= 0) {
+        console.log(`[KPI Service] Skipping product throughput KPI (no runs) for repository ${repositoryId}`);
+      } else {
+        const periodDays = Math.max(periodHours / 24, 1); // At least 1 day
+        const throughput = totalRuns / periodDays;
+
+        const throughputSnapshot = await createKpiSnapshot({
+          kpiName: 'product_throughput',
+          level: 'product',
+          scopeId: repositoryId,
+          value: throughput,
+          unit: 'runs_per_day',
+          periodStart: periodStart.toISOString(),
+          periodEnd: periodEnd.toISOString(),
+          metadata: {
+            productName,
+            totalRuns,
+          },
+        });
+        snapshots.push(throughputSnapshot);
+      }
     }
     
     // 3. Average run duration from run-level snapshots
@@ -853,6 +869,10 @@ export async function aggregateFactoryKPIsFromProducts(
     
     if (throughputResult.rows.length > 0) {
       const totalRuns = parseInt(throughputResult.rows[0].total_runs, 10);
+
+      if (!Number.isFinite(totalRuns) || totalRuns <= 0) {
+        console.log('[KPI Service] Skipping factory throughput KPI (no runs)');
+      } else {
       const periodDays = Math.max(periodHours / 24, 1); // At least 1 day
       const throughput = totalRuns / periodDays;
       
@@ -869,6 +889,7 @@ export async function aggregateFactoryKPIsFromProducts(
         },
       });
       snapshots.push(throughputSnapshot);
+      }
     }
     
     // 4. Steering Accuracy (from verdict outcomes)

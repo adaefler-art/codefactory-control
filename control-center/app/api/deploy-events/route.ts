@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { DeployEventOutput, isDeployEventOutput } from '@/lib/contracts/outputContracts';
+import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function isDatabaseEnabled(): boolean {
   return process.env.DATABASE_ENABLED === 'true';
+}
+
+function getRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
 }
 
 function defaultEnvFromHost(host: string | null): string {
@@ -23,14 +32,25 @@ function isPostgresAuthError(error: unknown): boolean {
   return /password authentication failed|no pg_hba\.conf entry|authentication/i.test(message);
 }
 
+function isPostgresConnectError(error: unknown): boolean {
+  const anyErr = error as { code?: unknown; message?: unknown };
+  const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ETIMEDOUT') return true;
+  const message = typeof anyErr?.message === 'string' ? anyErr.message : '';
+  return /connect\s+econnrefused|connection\s+terminated|timeout|could not connect/i.test(message);
+}
+
 function clampInt(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
 }
 
 function logRequest(params: {
+  requestId: string;
   route: string;
   method: string;
+  status: number;
+  reason: string;
   duration_ms: number;
   rowcount: number;
   env?: string;
@@ -48,6 +68,7 @@ function logRequest(params: {
 export async function GET(request: NextRequest) {
   const start = Date.now();
   const route = '/api/deploy-events';
+  const requestId = getRequestId();
 
   const { searchParams } = new URL(request.url);
   const env = searchParams.get('env') || defaultEnvFromHost(request.headers.get('host'));
@@ -56,19 +77,25 @@ export async function GET(request: NextRequest) {
   const limit = clampInt(limitRaw, 1, 100);
 
   if (!isDatabaseEnabled()) {
-    logRequest({ route, method: 'GET', duration_ms: Date.now() - start, rowcount: 0, env, service });
-    return NextResponse.json({ error: 'DB disabled' }, { status: 503 });
+    const status = 503;
+    logRequest({ requestId, route, method: 'GET', status, reason: 'db_disabled', duration_ms: Date.now() - start, rowcount: 0, env, service });
+    const response = NextResponse.json({ error: 'DB disabled' }, { status });
+    response.headers.set('x-request-id', requestId);
+    return response;
   }
 
   if (!process.env.DATABASE_PASSWORD) {
-    logRequest({ route, method: 'GET', duration_ms: Date.now() - start, rowcount: 0, env, service });
-    return NextResponse.json(
+    const status = 503;
+    logRequest({ requestId, route, method: 'GET', status, reason: 'db_missing_credentials', duration_ms: Date.now() - start, rowcount: 0, env, service });
+    const response = NextResponse.json(
       {
         error: 'DB unavailable',
         message: 'DATABASE_PASSWORD is not configured',
       },
-      { status: 503 }
+      { status }
     );
+    response.headers.set('x-request-id', requestId);
+    return response;
   }
 
   try {
@@ -90,39 +117,65 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const status = 200;
     logRequest({
+      requestId,
       route,
       method: 'GET',
+      status,
+      reason: 'ok',
       duration_ms: Date.now() - start,
       rowcount: result.rowCount || 0,
       env,
       service,
     });
 
-    return NextResponse.json({
-      events: result.rows,
-    });
+    const response = NextResponse.json({ events: result.rows }, { status });
+    response.headers.set('x-request-id', requestId);
+    return response;
   } catch (error) {
-    logRequest({ route, method: 'GET', duration_ms: Date.now() - start, rowcount: 0, env, service });
     console.error('[Deploy Events API] Error:', error);
 
     if (isPostgresAuthError(error)) {
-      return NextResponse.json(
+      const status = 401;
+      logRequest({ requestId, route, method: 'GET', status, reason: 'db_auth_error', duration_ms: Date.now() - start, rowcount: 0, env, service });
+      const response = NextResponse.json(
         {
           error: 'DB unauthorized',
           message: 'Database authentication failed',
         },
-        { status: 401 }
+        { status }
       );
+      response.headers.set('x-request-id', requestId);
+      return response;
     }
 
-    return NextResponse.json(
+    if (isPostgresConnectError(error)) {
+      const status = 503;
+      logRequest({ requestId, route, method: 'GET', status, reason: 'db_connect_error', duration_ms: Date.now() - start, rowcount: 0, env, service });
+      const response = NextResponse.json(
+        {
+          error: 'DB unavailable',
+          message: 'Database connection failed',
+        },
+        { status }
+      );
+      response.headers.set('x-request-id', requestId);
+      return response;
+    }
+
+    const status = 500;
+    logRequest({ requestId, route, method: 'GET', status, reason: 'db_query_error', duration_ms: Date.now() - start, rowcount: 0, env, service });
+
+    const response = NextResponse.json(
       {
         error: 'Failed to retrieve deploy events',
         message: error instanceof Error ? error.message : String(error),
       },
-      { status: 500 }
+      { status }
     );
+    response.headers.set('x-request-id', requestId);
+    return response;
   }
 }
 
@@ -130,17 +183,22 @@ export async function POST(request: NextRequest) {
   const start = Date.now();
   const route = '/api/deploy-events';
 
-  logRequest({ route, method: 'POST', duration_ms: Date.now() - start, rowcount: 0 });
-  return NextResponse.json(
+  const requestId = getRequestId();
+  const status = 405;
+  logRequest({ requestId, route, method: 'POST', status, reason: 'method_not_allowed', duration_ms: Date.now() - start, rowcount: 0 });
+  const response = NextResponse.json(
     {
       error: 'Method Not Allowed',
       message: 'Use POST /api/internal/deploy-events (machine-auth) to write deploy events.',
     },
     {
-      status: 405,
+      status,
       headers: {
         Allow: 'GET',
       },
     }
   );
+
+  response.headers.set('x-request-id', requestId);
+  return response;
 }

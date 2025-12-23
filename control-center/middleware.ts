@@ -18,6 +18,36 @@ const cookieSameSite: 'lax' | 'strict' | 'none' =
 
 const cookieSecure = process.env.NODE_ENV === 'production' || cookieSameSite === 'none';
 
+function getRequestId(): string {
+  try {
+    // Available in Edge runtime
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function logAuthDecision(params: {
+  requestId: string;
+  route: string;
+  method: string;
+  status: number;
+  reason: string;
+}) {
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      ...params,
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
+
+function attachRequestId(response: NextResponse, requestId: string): NextResponse {
+  response.headers.set('x-request-id', requestId);
+  return response;
+}
+
 function clearCookie(response: NextResponse, name: string) {
   response.cookies.set(name, '', {
     httpOnly: true,
@@ -39,7 +69,16 @@ function clearCookie(response: NextResponse, name: string) {
  * - Environment variable driven configuration
  */
 export async function middleware(request: NextRequest) {
+  const requestId = getRequestId();
   const { pathname, hostname } = request.nextUrl;
+
+  const nextWithRequestId = () => {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-request-id', requestId);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('x-request-id', requestId);
+    return response;
+  };
 
   // Public routes that don't require authentication
   const publicRoutes = [
@@ -64,7 +103,7 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
   
   if (isPublicRoute) {
-    return NextResponse.next();
+    return nextWithRequestId();
   }
 
   // Determine if this is an API route (for differentiated error handling)
@@ -86,7 +125,7 @@ export async function middleware(request: NextRequest) {
     }
     response.headers.set('cache-control', 'no-store, max-age=0');
     response.headers.set('pragma', 'no-cache');
-    return response;
+    return attachRequestId(response, requestId);
   };
 
   // If we have no usable JWT (id/access) but do have a refresh cookie,
@@ -94,14 +133,10 @@ export async function middleware(request: NextRequest) {
   // (Cognito refresh tokens are typically opaque and cannot be verified in middleware.)
   if (!idToken && !accessToken && refreshToken) {
     if (AFU9_DEBUG_AUTH) {
-      const cookieNames = typeof (request.cookies as any).getAll === 'function'
-        ? (request.cookies as any).getAll().map((c: any) => c.name)
-        : [];
       console.log('[MIDDLEWARE][DEBUG] Refresh-only cookies present; redirecting to /auth/refresh', {
         pathname,
         hostname,
         isApiRoute,
-        cookieNames,
         configuredCookies: {
           id: AFU9_AUTH_COOKIE,
           access: AFU9_ACCESS_COOKIE,
@@ -111,27 +146,28 @@ export async function middleware(request: NextRequest) {
     }
 
     if (isApiRoute) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Unauthorized', message: 'Authentication required (refresh token present)' },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_refresh_only' });
+      return response;
     }
 
-    return redirectToRefresh();
+    const response = redirectToRefresh();
+    logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_refresh_redirect' });
+    return response;
   }
 
   // Fail closed: no auth material present
   if (!idToken && !accessToken) {
     console.log('[MIDDLEWARE] No authentication token found');
     if (AFU9_DEBUG_AUTH) {
-      const cookieNames = typeof (request.cookies as any).getAll === 'function'
-        ? (request.cookies as any).getAll().map((c: any) => c.name)
-        : [];
       console.log('[MIDDLEWARE][DEBUG] No tokens present', {
         pathname,
         hostname,
         isApiRoute,
-        cookieNames,
         configuredCookies: {
           id: AFU9_AUTH_COOKIE,
           access: AFU9_ACCESS_COOKIE,
@@ -142,13 +178,19 @@ export async function middleware(request: NextRequest) {
     
     if (isApiRoute) {
       // API routes: return 401 JSON
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Unauthorized', message: 'Authentication required' },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_missing' });
+      return response;
     } else {
       // UI routes: redirect to unauth page
-      return NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
+      const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_missing_redirect' });
+      return response;
     }
   }
 
@@ -210,20 +252,27 @@ export async function middleware(request: NextRequest) {
     
     if (isApiRoute) {
       // API routes: return 401 JSON
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Unauthorized', message: 'Invalid or expired token' },
         { status: 401 }
       );
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_invalid_or_expired' });
+      return response;
     } else {
       // UI routes: if refresh cookie is present, try refresh flow; otherwise clear cookies and redirect.
       if (refreshToken) {
-        return redirectToRefresh();
+        const response = redirectToRefresh();
+        logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_invalid_refresh_redirect' });
+        return response;
       }
 
       const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
       clearCookie(response, AFU9_AUTH_COOKIE);
       clearCookie(response, AFU9_ACCESS_COOKIE);
       clearCookie(response, AFU9_REFRESH_COOKIE);
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_invalid_redirect' });
       return response;
     }
   }
@@ -267,21 +316,27 @@ export async function middleware(request: NextRequest) {
     
     if (isApiRoute) {
       // API routes: return 403 JSON
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Forbidden', message: `Access to ${requiredStage} stage not permitted` },
         { status: 403 }
       );
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'stage_access_denied' });
+      return response;
     } else {
       // UI routes: redirect to unauth page
-      return NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url), {
+      const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url), {
         status: 403,
       });
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'stage_access_denied_redirect' });
+      return response;
     }
   }
 
   // Authentication and authorization successful
   // Add downstream context propagation headers
-  const response = NextResponse.next();
+  const response = nextWithRequestId();
   response.headers.set('x-afu9-sub', userSub);
   response.headers.set('x-afu9-stage', requiredStage);
   response.headers.set('x-afu9-groups', userGroups?.join(',') || '');

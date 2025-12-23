@@ -29,6 +29,7 @@ export async function GET() {
         status: 'ok',
         service: 'afu9-control-center',
         version: '0.2.5',
+        database_enabled: process.env.DATABASE_ENABLED === 'true',
         timestamp: new Date().toISOString(),
       },
       { status: 200 }
@@ -42,6 +43,7 @@ export async function GET() {
         status: 'ok',
         service: 'afu9-control-center',
         version: '0.2.5',
+        database_enabled: process.env.DATABASE_ENABLED === 'true',
         timestamp: new Date().toISOString(),
         warning: 'Health check executed with degraded performance',
       },

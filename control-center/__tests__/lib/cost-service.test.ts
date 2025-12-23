@@ -14,39 +14,93 @@ import {
   getCostDataForExport,
   convertCostDataToCSV,
   getCostAllocationRules,
-} from '@/lib/cost-service';
-import { getPool } from '@/lib/db';
+} from '../../src/lib/cost-service';
+import { getPool } from '../../src/lib/db';
+
+jest.mock('../../src/lib/db', () => ({
+  getPool: jest.fn(),
+}));
 
 describe('Cost Service', () => {
+  let mockPool: any;
+
+  beforeEach(() => {
+    mockPool = {
+      query: jest.fn(),
+    };
+    (getPool as jest.Mock).mockReturnValue(mockPool);
+    jest.clearAllMocks();
+  });
+
   describe('getExecutionCost', () => {
     it('should return null for non-existent execution', async () => {
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
       const cost = await getExecutionCost('non-existent-uuid');
       expect(cost).toBeNull();
     });
 
     it('should return cost data for valid execution (if exists)', async () => {
-      // This test assumes there's cost data in the database
-      // In a real test, you'd set up test data first
-      const pool = getPool();
-      const result = await pool.query(
-        'SELECT execution_id FROM aws_cost_attribution LIMIT 1'
-      );
-      
-      if (result.rows.length > 0) {
-        const executionId = result.rows[0].execution_id;
-        const cost = await getExecutionCost(executionId);
-        
-        expect(cost).not.toBeNull();
-        expect(cost?.executionId).toBe(executionId);
-        expect(cost?.totalCost).toBeGreaterThanOrEqual(0);
-        expect(cost?.totalAwsCost).toBeGreaterThanOrEqual(0);
-        expect(cost?.calculationMethod).toMatch(/estimated|cost_explorer|manual/);
-      }
+      const executionId = 'exec-uuid-1';
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            execution_id: executionId,
+            workflow_id: 'workflow-uuid-1',
+            status: 'completed',
+            started_at: '2025-12-18T10:00:00Z',
+            completed_at: '2025-12-18T10:05:00Z',
+            duration_minutes: 5,
+            lambda_cost_usd: '0.001',
+            ecs_cost_usd: '0.002',
+            rds_cost_usd: '0.0005',
+            s3_cost_usd: '0',
+            cloudwatch_cost_usd: '0',
+            secrets_manager_cost_usd: '0',
+            other_aws_cost_usd: '0',
+            llm_cost_usd: '0.003',
+            total_aws_cost_usd: '0.0035',
+            total_cost_usd: '0.0065',
+            calculation_method: 'estimated',
+            calculated_at: '2025-12-18T10:10:00Z',
+          },
+        ],
+      });
+
+      const cost = await getExecutionCost(executionId);
+      expect(cost).not.toBeNull();
+      expect(cost?.executionId).toBe(executionId);
+      expect(cost?.totalCost).toBeGreaterThanOrEqual(0);
+      expect(cost?.totalAwsCost).toBeGreaterThanOrEqual(0);
+      expect(cost?.calculationMethod).toMatch(/estimated|cost_explorer|manual/);
     });
   });
 
   describe('getRecentExecutionCosts', () => {
     it('should return an array of execution costs', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            execution_id: 'exec-uuid-1',
+            workflow_id: 'workflow-uuid-1',
+            status: 'completed',
+            started_at: '2025-12-18T10:00:00Z',
+            completed_at: '2025-12-18T10:05:00Z',
+            duration_minutes: 5,
+            lambda_cost_usd: '0.001',
+            ecs_cost_usd: '0.002',
+            rds_cost_usd: '0.0005',
+            s3_cost_usd: '0',
+            cloudwatch_cost_usd: '0',
+            secrets_manager_cost_usd: '0',
+            other_aws_cost_usd: '0',
+            llm_cost_usd: '0.003',
+            total_aws_cost_usd: '0.0035',
+            total_cost_usd: '0.0065',
+            calculation_method: 'estimated',
+            calculated_at: '2025-12-18T10:10:00Z',
+          },
+        ],
+      });
       const costs = await getRecentExecutionCosts(10);
       
       expect(Array.isArray(costs)).toBe(true);
@@ -63,6 +117,7 @@ describe('Cost Service', () => {
     });
 
     it('should respect the limit parameter', async () => {
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
       const costs = await getRecentExecutionCosts(5);
       expect(costs.length).toBeLessThanOrEqual(5);
     });
@@ -70,6 +125,25 @@ describe('Cost Service', () => {
 
   describe('getProductCostAnalysis', () => {
     it('should return product cost summaries', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            repository_id: 'repo-1',
+            product_name: 'owner/repo',
+            total_cost_usd: '1.23',
+            avg_cost_per_run_usd: '0.41',
+            cost_per_outcome_usd: '0.62',
+            lambda_cost_usd: '0.1',
+            ecs_cost_usd: '0.2',
+            rds_cost_usd: '0.3',
+            llm_cost_usd: '0.63',
+            total_executions: 3,
+            successful_outcomes: 2,
+            period_start: '2025-12-01T00:00:00Z',
+            period_end: '2025-12-31T23:59:59Z',
+          },
+        ],
+      });
       const products = await getProductCostAnalysis();
       
       expect(Array.isArray(products)).toBe(true);
@@ -88,6 +162,27 @@ describe('Cost Service', () => {
 
   describe('getFactoryCostOverview', () => {
     it('should return factory-level cost overview', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            cost_per_outcome_usd: '0.5',
+            total_lambda_cost_usd: '0.1',
+            total_ecs_cost_usd: '0.2',
+            total_rds_cost_usd: '0.3',
+            total_s3_cost_usd: '0.0',
+            total_cloudwatch_cost_usd: '0.0',
+            total_llm_cost_usd: '0.4',
+            total_aws_cost_usd: '0.6',
+            total_cost_usd: '1.0',
+            total_executions: 10,
+            successful_outcomes: 2,
+            failed_executions: 8,
+            period_start: '2025-12-01T00:00:00Z',
+            period_end: '2025-12-31T23:59:59Z',
+            calculated_at: '2025-12-31T23:59:59Z',
+          },
+        ],
+      });
       const overview = await getFactoryCostOverview();
       
       expect(overview).toHaveProperty('totalCost');
@@ -102,6 +197,27 @@ describe('Cost Service', () => {
     });
 
     it('should calculate Cost per Outcome correctly', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            cost_per_outcome_usd: '0.5',
+            total_lambda_cost_usd: '0.1',
+            total_ecs_cost_usd: '0.2',
+            total_rds_cost_usd: '0.3',
+            total_s3_cost_usd: '0.0',
+            total_cloudwatch_cost_usd: '0.0',
+            total_llm_cost_usd: '0.4',
+            total_aws_cost_usd: '0.6',
+            total_cost_usd: '1.0',
+            total_executions: 10,
+            successful_outcomes: 2,
+            failed_executions: 8,
+            period_start: '2025-12-01T00:00:00Z',
+            period_end: '2025-12-31T23:59:59Z',
+            calculated_at: '2025-12-31T23:59:59Z',
+          },
+        ],
+      });
       const overview = await getFactoryCostOverview();
       
       if (overview.successfulOutcomes > 0 && overview.totalCost > 0) {
@@ -116,6 +232,25 @@ describe('Cost Service', () => {
 
   describe('getCostDataForExport', () => {
     it('should return export data without filters', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            execution_id: 'exec-uuid-1',
+            workflow_id: 'workflow-uuid-1',
+            product_name: 'owner/repo',
+            status: 'completed',
+            started_at: '2025-12-18T10:00:00Z',
+            completed_at: '2025-12-18T10:05:00Z',
+            duration_minutes: 5,
+            total_cost_usd: '0.0065',
+            total_aws_cost_usd: '0.0035',
+            llm_cost_usd: '0.003',
+            ecs_cost_usd: '0.002',
+            rds_cost_usd: '0.0005',
+            calculation_method: 'estimated',
+          },
+        ],
+      });
       const data = await getCostDataForExport();
       
       expect(Array.isArray(data)).toBe(true);
@@ -135,6 +270,25 @@ describe('Cost Service', () => {
       const startDate = '2025-12-01';
       const endDate = '2025-12-31';
       
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            execution_id: 'exec-uuid-1',
+            workflow_id: 'workflow-uuid-1',
+            product_name: 'owner/repo',
+            status: 'completed',
+            started_at: '2025-12-18T10:00:00Z',
+            completed_at: '2025-12-18T10:05:00Z',
+            duration_minutes: 5,
+            total_cost_usd: '0.0065',
+            total_aws_cost_usd: '0.0035',
+            llm_cost_usd: '0.003',
+            ecs_cost_usd: '0.002',
+            rds_cost_usd: '0.0005',
+            calculation_method: 'estimated',
+          },
+        ],
+      });
       const data = await getCostDataForExport(startDate, endDate);
       
       expect(Array.isArray(data)).toBe(true);
@@ -191,6 +345,21 @@ describe('Cost Service', () => {
 
   describe('getCostAllocationRules', () => {
     it('should return cost allocation rules', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'rule-1',
+            rule_name: 'ECS Fargate Per Minute',
+            description: null,
+            aws_service: 'ECS',
+            allocation_method: 'per_minute',
+            base_rate_usd: '0.01',
+            shared_pool_allocation: null,
+            config: {},
+            enabled: true,
+          },
+        ],
+      });
       const rules = await getCostAllocationRules();
       
       expect(Array.isArray(rules)).toBe(true);
@@ -206,6 +375,16 @@ describe('Cost Service', () => {
     });
 
     it('should include default rules from migration', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          { id: 'r1', rule_name: 'ECS Fargate Per Minute', description: null, aws_service: 'ECS', allocation_method: 'per_minute', base_rate_usd: '0.01', shared_pool_allocation: null, config: {}, enabled: true },
+          { id: 'r2', rule_name: 'RDS PostgreSQL Shared', description: null, aws_service: 'RDS', allocation_method: 'shared_pool', base_rate_usd: null, shared_pool_allocation: '0.5', config: {}, enabled: true },
+          { id: 'r3', rule_name: 'Lambda Invocation', description: null, aws_service: 'Lambda', allocation_method: 'per_invocation', base_rate_usd: '0.0000002', shared_pool_allocation: null, config: {}, enabled: true },
+          { id: 'r4', rule_name: 'CloudWatch Logs', description: null, aws_service: 'CloudWatch', allocation_method: 'shared_pool', base_rate_usd: null, shared_pool_allocation: '0.1', config: {}, enabled: true },
+          { id: 'r5', rule_name: 'S3 Storage Operations', description: null, aws_service: 'S3', allocation_method: 'shared_pool', base_rate_usd: null, shared_pool_allocation: '0.1', config: {}, enabled: true },
+          { id: 'r6', rule_name: 'Secrets Manager', description: null, aws_service: 'SecretsManager', allocation_method: 'shared_pool', base_rate_usd: null, shared_pool_allocation: '0.1', config: {}, enabled: true },
+        ],
+      });
       const rules = await getCostAllocationRules();
       
       const expectedRules = [
@@ -227,6 +406,30 @@ describe('Cost Service', () => {
 
   describe('Cost Calculation Integration', () => {
     it('should calculate costs that sum correctly', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            execution_id: 'exec-uuid-1',
+            workflow_id: 'workflow-uuid-1',
+            status: 'completed',
+            started_at: '2025-12-18T10:00:00Z',
+            completed_at: '2025-12-18T10:05:00Z',
+            duration_minutes: 5,
+            lambda_cost_usd: '0.001',
+            ecs_cost_usd: '0.002',
+            rds_cost_usd: '0.0005',
+            s3_cost_usd: '0.0001',
+            cloudwatch_cost_usd: '0.0002',
+            secrets_manager_cost_usd: '0.0003',
+            other_aws_cost_usd: '0.0004',
+            llm_cost_usd: '0.003',
+            total_aws_cost_usd: String(0.001 + 0.002 + 0.0005 + 0.0001 + 0.0002 + 0.0003 + 0.0004),
+            total_cost_usd: String((0.001 + 0.002 + 0.0005 + 0.0001 + 0.0002 + 0.0003 + 0.0004) + 0.003),
+            calculation_method: 'estimated',
+            calculated_at: '2025-12-18T10:10:00Z',
+          },
+        ],
+      });
       const costs = await getRecentExecutionCosts(10);
       
       costs.forEach(cost => {
@@ -249,6 +452,27 @@ describe('Cost Service', () => {
 
   describe('KPI: Cost per Outcome', () => {
     it('should calculate Cost per Outcome KPI', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            cost_per_outcome_usd: '0.5',
+            total_lambda_cost_usd: '0.1',
+            total_ecs_cost_usd: '0.2',
+            total_rds_cost_usd: '0.3',
+            total_s3_cost_usd: '0.0',
+            total_cloudwatch_cost_usd: '0.0',
+            total_llm_cost_usd: '0.4',
+            total_aws_cost_usd: '0.6',
+            total_cost_usd: '1.0',
+            total_executions: 10,
+            successful_outcomes: 2,
+            failed_executions: 8,
+            period_start: '2025-12-01T00:00:00Z',
+            period_end: '2025-12-31T23:59:59Z',
+            calculated_at: '2025-12-31T23:59:59Z',
+          },
+        ],
+      });
       const overview = await getFactoryCostOverview();
       
       // Cost per Outcome should be null if no successful outcomes
@@ -289,7 +513,7 @@ describe('CSV Export Format', () => {
     const csv = convertCostDataToCSV(testData);
     
     // Should quote all fields
-    expect(csv).toContain('"uuid-with-\\"quotes\\""');
+    expect(csv).toContain('"uuid-with-""quotes"""');
     expect(csv).toContain('"completed"');
     expect(csv).toContain('"5.50"');
   });

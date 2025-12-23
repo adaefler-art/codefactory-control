@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 
 // Environment configuration
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -14,6 +15,29 @@ const cookieSameSite: 'lax' | 'strict' | 'none' =
     : 'lax';
 
 const cookieSecure = process.env.NODE_ENV === 'production' || cookieSameSite === 'none';
+
+function getRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function logAuthRoute(params: { requestId: string; route: string; method: string; status: number; reason: string }) {
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      ...params,
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
+
+function attachRequestId(response: NextResponse, requestId: string): NextResponse {
+  response.headers.set('x-request-id', requestId);
+  return response;
+}
 
 function clearCookie(response: NextResponse, name: string) {
   response.cookies.set(name, '', {
@@ -41,6 +65,7 @@ function clearCookie(response: NextResponse, name: string) {
  * }
  */
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId();
   const acceptHeader = request.headers.get('accept') || '';
   const isBrowserClient = acceptHeader.includes('text/html');
 
@@ -63,6 +88,8 @@ export async function POST(request: NextRequest) {
   clearCookie(response, AFU9_ACCESS_COOKIE);
   clearCookie(response, AFU9_REFRESH_COOKIE);
 
+  attachRequestId(response, requestId);
+  logAuthRoute({ requestId, route: '/api/auth/logout', method: 'POST', status: response.status, reason: 'ok' });
   return response;
 }
 
@@ -73,6 +100,7 @@ export async function POST(request: NextRequest) {
  * Redirects to login page
  */
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId();
   // Create redirect response
   const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
 
@@ -81,5 +109,7 @@ export async function GET(request: NextRequest) {
   clearCookie(response, AFU9_ACCESS_COOKIE);
   clearCookie(response, AFU9_REFRESH_COOKIE);
 
+  attachRequestId(response, requestId);
+  logAuthRoute({ requestId, route: '/api/auth/logout', method: 'GET', status: response.status, reason: 'ok' });
   return response;
 }

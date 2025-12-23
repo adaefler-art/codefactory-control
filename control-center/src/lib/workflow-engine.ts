@@ -174,6 +174,73 @@ export class WorkflowEngine {
       // Execute each step in sequence
       for (let i = 0; i < workflow.steps.length; i++) {
         const step = workflow.steps[i];
+
+        // Issue B5: If RED is already present in context, abort immediately before executing any steps
+        const preAbortCheck = this.shouldAbortForRed(context);
+        if (preAbortCheck.shouldAbort) {
+          console.log(`[Workflow Engine] RED verdict detected - aborting workflow at step ${i}`);
+          console.log(`[Workflow Engine] Abort reason: ${preAbortCheck.reason}`);
+
+          status = 'failed';
+          error = preAbortCheck.reason || 'RED verdict triggered';
+
+          if (dbAvailable) {
+            try {
+              await abortExecution(
+                executionId,
+                'system',
+                error,
+                i,
+                preAbortCheck.verdictInfo
+              );
+
+              if (isDebugEnabled) {
+                logger.debug('Workflow aborted due to RED verdict (pre-step)', {
+                  executionId,
+                  stepIndex: i,
+                  reason: preAbortCheck.reason,
+                  verdictInfo: preAbortCheck.verdictInfo,
+                }, 'WorkflowEngine');
+              }
+            } catch (abortError) {
+              console.error('[Workflow Engine] Failed to abort execution:', abortError);
+            }
+          }
+
+          // Break execution loop immediately - RED ist hart (no discussion)
+          break;
+        }
+
+        // Issue B4: If HOLD is already present in context, pause immediately before executing any steps
+        if (this.shouldPauseForHold(context)) {
+          console.log(`[Workflow Engine] HOLD state detected - pausing workflow at step ${i}`);
+
+          status = 'paused';
+
+          if (dbAvailable) {
+            try {
+              await pauseExecution(
+                executionId,
+                'system',
+                'HOLD state triggered - workflow paused pending human review',
+                i
+              );
+
+              if (isDebugEnabled) {
+                logger.debug('Workflow paused due to HOLD state (pre-step)', {
+                  executionId,
+                  stepIndex: i,
+                  issueState: context.issue?.state,
+                }, 'WorkflowEngine');
+              }
+            } catch (pauseError) {
+              console.error('[Workflow Engine] Failed to pause execution:', pauseError);
+            }
+          }
+
+          // Break execution loop - no timeout continuation
+          break;
+        }
         
         console.log(`[Workflow Engine] Executing step ${i + 1}/${workflow.steps.length}: ${step.name}`);
         
@@ -283,6 +350,8 @@ export class WorkflowEngine {
         // Issue B4: Check if workflow should be paused due to HOLD state
         if (this.shouldPauseForHold(context)) {
           console.log(`[Workflow Engine] HOLD state detected - pausing workflow at step ${i}`);
+
+          status = 'paused';
           
           if (dbAvailable) {
             try {
@@ -292,7 +361,6 @@ export class WorkflowEngine {
                 'HOLD state triggered - workflow paused pending human review',
                 i
               );
-              status = 'paused';
               
               if (isDebugEnabled) {
                 logger.debug('Workflow paused due to HOLD state', {
@@ -315,18 +383,19 @@ export class WorkflowEngine {
         if (abortCheck.shouldAbort) {
           console.log(`[Workflow Engine] RED verdict detected - aborting workflow at step ${i}`);
           console.log(`[Workflow Engine] Abort reason: ${abortCheck.reason}`);
+
+          status = 'failed';
+          error = abortCheck.reason || 'RED verdict triggered';
           
           if (dbAvailable) {
             try {
               await abortExecution(
                 executionId,
                 'system',
-                abortCheck.reason || 'RED verdict triggered',
+                error,
                 i,
                 abortCheck.verdictInfo
               );
-              status = 'failed';
-              error = abortCheck.reason;
               
               if (isDebugEnabled) {
                 logger.debug('Workflow aborted due to RED verdict', {
@@ -693,49 +762,73 @@ export class WorkflowEngine {
   } {
     // Check for RED verdict in multiple locations in context
     const variables = context.variables || {};
+
+    const candidates: any[] = [variables, variables.verdict];
+
+    // Also consider any object-like variable as a potential verdict container
+    for (const value of Object.values(variables)) {
+      if (value && typeof value === 'object') {
+        candidates.push(value);
+        if ((value as any).verdict && typeof (value as any).verdict === 'object') {
+          candidates.push((value as any).verdict);
+        }
+      }
+    }
+
+    const has = (obj: any, key: string) => obj && typeof obj === 'object' && key in obj;
+    const get = (obj: any, key: string) => (has(obj, key) ? obj[key] : undefined);
+
+    const findFirst = (key: string) => {
+      for (const c of candidates) {
+        const v = get(c, key);
+        if (v !== undefined) return v;
+      }
+      return undefined;
+    };
+
+    const simpleVerdict = findFirst('simpleVerdict') || variables.simpleVerdict;
+    const verdictType = findFirst('verdictType') || variables.verdictType;
+    const action = findFirst('action') || variables.action || variables.simpleAction;
+    const errorClass = findFirst('errorClass') || variables.errorClass;
     
     // Check for SimpleVerdict.RED
-    if (variables.simpleVerdict === 'RED' || 
-        variables.verdict?.simpleVerdict === 'RED') {
+    if (simpleVerdict === 'RED') {
       return {
         shouldAbort: true,
         reason: 'RED verdict triggered - critical failure detected',
         verdictInfo: {
           simpleVerdict: 'RED',
-          verdictType: variables.verdict?.verdictType || variables.verdictType,
-          action: variables.verdict?.action || variables.action,
-          errorClass: variables.verdict?.errorClass || variables.errorClass,
+          verdictType,
+          action,
+          errorClass,
         },
       };
     }
     
     // Check for VerdictType.REJECTED (maps to RED)
-    if (variables.verdictType === 'REJECTED' ||
-        variables.verdict?.verdictType === 'REJECTED') {
+    if (verdictType === 'REJECTED') {
       return {
         shouldAbort: true,
         reason: 'REJECTED verdict triggered - deployment rejected',
         verdictInfo: {
           verdictType: 'REJECTED',
           simpleVerdict: 'RED',
-          action: variables.verdict?.action || variables.action || 'ABORT',
-          errorClass: variables.verdict?.errorClass || variables.errorClass,
+          action: action || 'ABORT',
+          errorClass,
         },
       };
     }
     
     // Check for SimpleAction.ABORT
-    if (variables.action === 'ABORT' ||
-        variables.verdict?.action === 'ABORT' ||
-        variables.simpleAction === 'ABORT') {
+    if (action === 'ABORT') {
       return {
         shouldAbort: true,
         reason: 'ABORT action triggered - workflow must terminate',
         verdictInfo: {
           action: 'ABORT',
-          simpleVerdict: variables.verdict?.simpleVerdict || variables.simpleVerdict || 'RED',
-          verdictType: variables.verdict?.verdictType || variables.verdictType,
-          errorClass: variables.verdict?.errorClass || variables.errorClass,
+          simpleVerdict: (simpleVerdict as any) || 'RED',
+          verdictType,
+          errorClass,
         },
       };
     }

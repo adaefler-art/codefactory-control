@@ -13,7 +13,7 @@ import {
   validateKpiDefinition,
   validateAllCanonicalKpis,
   generateMigrationGuide,
-} from '../../lib/kpi-version-validator';
+} from '../../src/lib/kpi-version-validator';
 
 describe('KPI Version Validator', () => {
   describe('validateKpiVersion', () => {
@@ -33,12 +33,12 @@ describe('KPI Version Validator', () => {
       expect(result.message).toContain('Major version mismatch');
     });
 
-    it('should detect outdated minor version as warning', () => {
-      const result = validateKpiVersion('mtti', '0.9.0');
+    it('should treat future minor version as info', () => {
+      const result = validateKpiVersion('mtti', '1.1.0');
       
       expect(result.isCompatible).toBe(true);
-      expect(result.severity).toBe('warning');
-      expect(result.message).toContain('outdated version');
+      expect(result.severity).toBe('info');
+      expect(result.message).toContain('ahead of canonical');
     });
 
     it('should handle unknown KPI as error', () => {
@@ -76,16 +76,15 @@ describe('KPI Version Validator', () => {
       expect(result.errors[0].currentVersion).toBe('2.0.0');
     });
 
-    it('should collect warnings for outdated versions', () => {
+    it('should not fail for future minor versions', () => {
       const snapshot = [
-        { kpiName: 'mtti', kpiVersion: '0.9.0' },
+        { kpiName: 'mtti', kpiVersion: '1.1.0' },
       ];
 
       const result = validateKpiSnapshot(snapshot);
       
       expect(result.isValid).toBe(true);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0].severity).toBe('warning');
+      expect(result.errors).toHaveLength(0);
     });
   });
 
@@ -172,7 +171,7 @@ describe('KPI Version Validator', () => {
       const result = validateKpiDefinition(kpi);
       
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContain(
+      expect(result.errors).toContainEqual(
         expect.stringContaining('Invalid version format')
       );
     });
@@ -192,7 +191,7 @@ describe('KPI Version Validator', () => {
       const result = validateKpiDefinition(kpi);
       
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContain(
+      expect(result.errors).toContainEqual(
         expect.stringContaining('Invalid category')
       );
     });
@@ -212,7 +211,7 @@ describe('KPI Version Validator', () => {
       const result = validateKpiDefinition(kpi);
       
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContain(
+      expect(result.errors).toContainEqual(
         expect.stringContaining('Invalid level')
       );
     });
