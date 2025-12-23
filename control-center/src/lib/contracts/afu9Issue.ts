@@ -288,7 +288,7 @@ export function validateAfu9IssueInput(input: unknown): ValidationResult {
 export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
   // Ensure required fields are present (should have been validated)
   if (!input.title) {
-    throw new Error('Input must be validated before sanitization');
+    throw new Error('Title is required. Input must be validated before sanitization');
   }
 
   return {

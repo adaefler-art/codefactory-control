@@ -196,7 +196,7 @@ export async function listAfu9Issues(
 
   try {
     let query = 'SELECT * FROM afu9_issues WHERE 1=1';
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     let paramIndex = 1;
 
     if (status) {
@@ -262,7 +262,7 @@ export async function updateAfu9Issue(
   try {
     // Build dynamic UPDATE query
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | string[] | number | null)[] = [];
     let paramIndex = 1;
 
     if (updates.title !== undefined) {
@@ -423,7 +423,7 @@ export async function canSetIssueActive(
 ): Promise<OperationResult<boolean>> {
   try {
     let query = 'SELECT id, title FROM afu9_issues WHERE status = $1';
-    const params: any[] = [Afu9IssueStatus.ACTIVE];
+    const params: (string | Afu9IssueStatus)[] = [Afu9IssueStatus.ACTIVE];
 
     if (excludeId) {
       query += ' AND id != $2';

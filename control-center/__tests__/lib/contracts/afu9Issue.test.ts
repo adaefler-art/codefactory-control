@@ -712,7 +712,7 @@ describe('AFU9 Issue Contract', () => {
         title: '',
       };
 
-      expect(() => sanitizeAfu9IssueInput(input)).toThrow('must be validated');
+      expect(() => sanitizeAfu9IssueInput(input)).toThrow('Title is required');
     });
 
     test('preserves valid complete input (except whitespace)', () => {

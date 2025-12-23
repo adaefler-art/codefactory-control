@@ -86,7 +86,7 @@ BEGIN
     IF active_count > 0 THEN
       RAISE EXCEPTION 'Single-Active constraint violation: Only one issue can have status=ACTIVE. Found % other active issue(s). Current active issues: %',
         active_count,
-        (SELECT array_agg(id::text || ':' || title) FROM afu9_issues WHERE status = 'ACTIVE' AND id != NEW.id);
+        (SELECT array_agg(id::text || ':' || COALESCE(title, '<no title>')) FROM afu9_issues WHERE status = 'ACTIVE' AND id != NEW.id);
     END IF;
   END IF;
   
