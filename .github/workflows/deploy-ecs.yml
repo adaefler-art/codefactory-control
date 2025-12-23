@@ -891,6 +891,7 @@ jobs:
           DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
           READY_HOST: ${{ steps.target.outputs.ready_host }}
           DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          APP_VERSION: ${{ steps.build-meta.outputs.version }}
         run: |
           set -euo pipefail
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
@@ -902,7 +903,18 @@ jobs:
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           MESSAGE="Deploy succeeded: env=${DEPLOY_ENV} service=control-center sha=${{ github.sha }} run=${{ github.run_id }} (${RUN_URL})"
 
-          BODY=$(jq -nc --arg env "${DEPLOY_ENV}" --arg service "control-center" --arg message "${MESSAGE}" '{env:$env,service:$service,message:$message}')
+            STATUS="success"
+            VERSION="${APP_VERSION}"
+            COMMIT_HASH="${{ github.sha }}"
+
+          BODY=$(jq -nc \
+            --arg env "${DEPLOY_ENV}" \
+            --arg service "control-center" \
+            --arg message "${MESSAGE}" \
+            --arg version "${VERSION}" \
+            --arg commit_hash "${COMMIT_HASH}" \
+            --arg status "${STATUS}" \
+            '{env:$env,service:$service,version:$version,commit_hash:$commit_hash,status:$status,message:$message}')
 
           HTTP_CODE=$(curl -sS -o /tmp/deploy-event.json -w "%{http_code}" \
             -X POST "$URL" \
