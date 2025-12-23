@@ -33,10 +33,8 @@ export async function GET(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format (basic check)
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
+    // Validate UUID format
+    if (!isValidUUID(id)) {
       return NextResponse.json(
         { error: 'Invalid issue ID format' },
         { status: 400 }
