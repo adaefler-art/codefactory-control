@@ -6,6 +6,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
+import { WorkflowExecutionOutput, WorkflowStepOutput, isWorkflowExecutionOutput } from '../../../../src/lib/contracts/outputContracts';
+
+/**
+ * Extended execution response includes joined workflow info
+ */
+interface ExecutionWithWorkflowInfo extends WorkflowExecutionOutput {
+  workflow_name?: string;
+  workflow_description?: string;
+}
 
 export async function GET(
   request: NextRequest,
@@ -29,6 +38,8 @@ export async function GET(
         we.error,
         we.triggered_by,
         we.github_run_id,
+        we.created_at,
+        we.updated_at,
         w.name as workflow_name,
         w.description as workflow_description
       FROM workflow_executions we
@@ -40,6 +51,7 @@ export async function GET(
     const stepsQuery = `
       SELECT 
         id,
+        execution_id,
         step_name,
         step_index,
         status,
@@ -49,7 +61,9 @@ export async function GET(
         completed_at,
         duration_ms,
         error,
-        retry_count
+        retry_count,
+        created_at,
+        updated_at
       FROM workflow_steps
       WHERE execution_id = $1
       ORDER BY step_index ASC
@@ -67,7 +81,23 @@ export async function GET(
       );
     }
     
-    const execution = executionResult.rows[0];
+    const executionRow = executionResult.rows[0];
+    // Extract joined fields that are not part of the base execution contract
+    const { workflow_name, workflow_description, ...executionData } = executionRow;
+    
+    // Validate execution output contract
+    if (!isWorkflowExecutionOutput(executionData)) {
+      console.error('[API /api/executions/[id]] Contract validation failed for execution:', executionData);
+      throw new Error('Execution output contract validation failed');
+    }
+    
+    // Build response with contract-validated execution + joined fields
+    const execution: ExecutionWithWorkflowInfo = {
+      ...executionData,
+      workflow_name,
+      workflow_description,
+    };
+    
     const steps = stepsResult.rows;
     
     return NextResponse.json({

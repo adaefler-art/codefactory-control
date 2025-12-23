@@ -6,6 +6,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
+import { WorkflowOutput, isWorkflowOutput } from '../../../src/lib/contracts/outputContracts';
+
+/**
+ * Extended workflow response includes last run info (not part of base contract)
+ */
+interface WorkflowWithLastRun extends WorkflowOutput {
+  last_run?: {
+    id: string;
+    status: string;
+    started_at: string;
+    completed_at: string | null;
+    triggered_by: string | null;
+  } | null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,9 +55,26 @@ export async function GET(request: NextRequest) {
     
     const result = await pool.query(query);
     
+    // Validate each workflow row against output contract
+    const workflows: WorkflowWithLastRun[] = result.rows.map((row) => {
+      // Extract last_run before contract validation (not part of base contract)
+      const { last_run, ...workflowData } = row;
+      
+      // Validate workflow output contract
+      if (!isWorkflowOutput(workflowData)) {
+        console.error('[API /api/workflows] Contract validation failed for workflow:', workflowData);
+        throw new Error('Workflow output contract validation failed');
+      }
+      
+      return {
+        ...workflowData,
+        last_run,
+      };
+    });
+    
     return NextResponse.json({
-      workflows: result.rows,
-      total: result.rows.length
+      workflows,
+      total: workflows.length
     });
   } catch (error) {
     console.error('[API /api/workflows] Error fetching workflows:', error);
