@@ -49,6 +49,12 @@ interface AgentRun {
   error?: string;
 }
 
+interface DeployEvent {
+  id: string;
+  created_at: string;
+  message: string | null;
+}
+
 interface InfrastructureHealth {
   status: string;
   cluster?: string;
@@ -90,6 +96,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentExecutions, setRecentExecutions] = useState<RecentExecution[]>([]);
   const [recentAgents, setRecentAgents] = useState<AgentRun[]>([]);
+  const [latestDeployEvent, setLatestDeployEvent] = useState<DeployEvent | null>(null);
+  const [deployEventStatus, setDeployEventStatus] = useState<"loading" | "loaded" | "unavailable">("loading");
   const [infrastructureHealth, setInfrastructureHealth] = useState<InfrastructureHealth | null>(null);
   const [alarmStatus, setAlarmStatus] = useState<AlarmStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -98,6 +106,8 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
+        setDeployEventStatus("loading");
+
         // Fetch executions
         const executionsRes = await fetch("/api/workflow/executions?limit=10", { credentials: "include" });
         const executionsData = await executionsRes.json();
@@ -121,6 +131,25 @@ export default function DashboardPage() {
         // Fetch alarm status
         const alarmsRes = await fetch("/api/observability/alarms", { credentials: "include" });
         const alarmsData = await alarmsRes.json();
+
+        // Fetch latest deploy event (AFU9-TL-001)
+        try {
+          const deployEventsRes = await fetch("/api/deploy-events?limit=1", { credentials: "include" });
+
+          if (!deployEventsRes.ok) {
+            setLatestDeployEvent(null);
+            setDeployEventStatus("unavailable");
+          } else {
+            const deployEventsData = await deployEventsRes.json();
+            const maybeEvent = Array.isArray(deployEventsData?.events) ? (deployEventsData.events[0] as DeployEvent | undefined) : undefined;
+
+            setLatestDeployEvent(maybeEvent ?? null);
+            setDeployEventStatus("loaded");
+          }
+        } catch {
+          setLatestDeployEvent(null);
+          setDeployEventStatus("unavailable");
+        }
 
         // Calculate stats
         const executions = executionsData.executions || [];
@@ -419,6 +448,31 @@ export default function DashboardPage() {
               </Link>
             </div>
 
+            {/* Latest Deploy Event */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-8">
+              <h2 className="text-lg font-semibold text-gray-200 mb-2">Latest Deploy Event</h2>
+              <p className="text-sm text-gray-400 mb-4">
+                Neuester Eintrag aus <span className="text-gray-300">deploy_events</span>
+              </p>
+
+              {deployEventStatus === "loading" ? (
+                <div className="text-gray-400">Loading latest deploy event...</div>
+              ) : latestDeployEvent ? (
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <div className="text-xs text-gray-500 mb-2">
+                    {formatDate(latestDeployEvent.created_at)}
+                  </div>
+                  <div className="text-sm text-gray-200">
+                    {latestDeployEvent.message ?? "—"}
+                  </div>
+                </div>
+              ) : deployEventStatus === "unavailable" ? (
+                <div className="text-gray-400">Deploy events unavailable</div>
+              ) : (
+                <div className="text-gray-400">No deploy events found</div>
+              )}
+            </div>
+
             {/* System Health Status Card */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-8">
               <div className="flex items-center justify-between">
@@ -581,7 +635,7 @@ export default function DashboardPage() {
                         </div>
                         <Link
                           href={`/workflow/execution/${execution.id}`}
-                          className="text-xs text-blue-400 hover:text-blue-300 flex-shrink-0 ml-2"
+                          className="text-xs text-blue-400 hover:text-blue-300 shrink-0 ml-2"
                         >
                           View →
                         </Link>
