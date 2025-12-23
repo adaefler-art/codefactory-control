@@ -95,7 +95,7 @@ export default function IssueDetailPage({
     setActionMessage(null);
 
     try {
-      const updates: any = {};
+      const updates: Partial<Pick<Issue, 'title' | 'body' | 'status' | 'labels'>> = {};
 
       if (editedTitle !== issue.title) {
         updates.title = editedTitle;
@@ -515,7 +515,7 @@ export default function IssueDetailPage({
                 type="text"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                onKeyPress={(e) => {
+                onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
                     handleAddLabel();
