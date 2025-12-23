@@ -333,6 +333,10 @@ export interface ContractValidationResult {
 /**
  * Validates that a database row matches the expected output contract
  * 
+ * Note: This is a generic validation utility. For specific entities,
+ * prefer using type guard functions (e.g., isWorkflowOutput) which
+ * provide stricter validation and better type inference.
+ * 
  * @param row - The database row to validate
  * @param contract - The expected field names
  * @param contractName - Name of the contract for error messages
@@ -396,6 +400,7 @@ export function isWorkflowOutput(row: unknown): row is WorkflowOutput {
     typeof r.name === 'string' &&
     (r.description === null || typeof r.description === 'string') &&
     typeof r.definition === 'object' &&
+    r.definition !== null &&
     typeof r.version === 'number' &&
     typeof r.enabled === 'boolean' &&
     typeof r.created_at === 'string' &&
@@ -455,8 +460,11 @@ export function isProductOutput(row: unknown): row is ProductOutput {
     typeof r.product_key === 'string' &&
     typeof r.display_name === 'string' &&
     typeof r.metadata === 'object' &&
+    r.metadata !== null &&
     typeof r.constraints === 'object' &&
+    r.constraints !== null &&
     typeof r.kpi_targets === 'object' &&
+    r.kpi_targets !== null &&
     typeof r.enabled === 'boolean' &&
     typeof r.archived === 'boolean' &&
     typeof r.isolation_level === 'string' &&

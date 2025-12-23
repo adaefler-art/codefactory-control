@@ -8,6 +8,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
 import { WorkflowExecutionOutput, WorkflowStepOutput, isWorkflowExecutionOutput } from '../../../../src/lib/contracts/outputContracts';
 
+/**
+ * Extended execution response includes joined workflow info
+ */
+interface ExecutionWithWorkflowInfo extends WorkflowExecutionOutput {
+  workflow_name?: string;
+  workflow_description?: string;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -74,6 +82,7 @@ export async function GET(
     }
     
     const executionRow = executionResult.rows[0];
+    // Extract joined fields that are not part of the base execution contract
     const { workflow_name, workflow_description, ...executionData } = executionRow;
     
     // Validate execution output contract
@@ -82,7 +91,8 @@ export async function GET(
       throw new Error('Execution output contract validation failed');
     }
     
-    const execution = {
+    // Build response with contract-validated execution + joined fields
+    const execution: ExecutionWithWorkflowInfo = {
       ...executionData,
       workflow_name,
       workflow_description,
