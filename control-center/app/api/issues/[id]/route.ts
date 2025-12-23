@@ -19,6 +19,7 @@ import {
   isValidHandoffState,
   isValidPriority,
 } from '../../../../src/lib/contracts/afu9Issue';
+import { isValidUUID } from '../../../../src/lib/utils/uuid-validator';
 
 /**
  * GET /api/issues/[id]
@@ -91,10 +92,8 @@ export async function PATCH(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format (basic check)
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
+    // Validate UUID format
+    if (!isValidUUID(id)) {
       return NextResponse.json(
         { error: 'Invalid issue ID format' },
         { status: 400 }

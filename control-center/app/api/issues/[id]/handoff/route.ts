@@ -15,6 +15,7 @@ import {
   Afu9HandoffState,
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { createIssue } from '../../../../../src/lib/github';
+import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
 
 /**
  * POST /api/issues/[id]/handoff
@@ -34,10 +35,8 @@ export async function POST(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format (basic check)
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
+    // Validate UUID format
+    if (!isValidUUID(id)) {
       return NextResponse.json(
         { error: 'Invalid issue ID format' },
         { status: 400 }
@@ -122,7 +121,7 @@ export async function POST(
 
       if (!syncedResult.success) {
         // GitHub issue created but failed to update AFU9 issue
-        // This is a partial failure - log it
+        // This is a critical partial failure
         console.error(
           '[API /api/issues/[id]/handoff] GitHub issue created but failed to update AFU9 issue:',
           {
@@ -132,11 +131,21 @@ export async function POST(
             error: syncedResult.error,
           }
         );
+
+        return NextResponse.json(
+          {
+            error: 'Partial handoff failure: GitHub issue created but failed to update AFU9 issue',
+            details: syncedResult.error,
+            github_url: githubIssue.html_url,
+            github_issue_number: githubIssue.number,
+          },
+          { status: 500 }
+        );
       }
 
       return NextResponse.json({
         message: 'Issue handed off to GitHub successfully',
-        issue: syncedResult.data || issue,
+        issue: syncedResult.data,
         github_url: githubIssue.html_url,
         github_issue_number: githubIssue.number,
       });

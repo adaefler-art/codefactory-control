@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     let issues = result.data || [];
+    const totalBeforeFilter = issues.length;
 
     // Apply label filter if provided (post-query filtering)
     const labelParam = searchParams.get('label');
@@ -127,7 +128,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       issues,
-      total: issues.length,
+      total: totalBeforeFilter, // Total from DB before client-side filtering
+      filtered: issues.length,   // Count after filtering
       limit,
       offset,
     });
