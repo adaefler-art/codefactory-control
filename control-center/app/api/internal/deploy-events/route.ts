@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getPool } from '@/lib/db';
+import { validateDeployEventInput, DeployEventInput } from '@/lib/contracts/deployEvent';
+import { insertDeployEvent } from '@/lib/db/deployEvents';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-type DeployEventRow = {
-  id: string;
-  created_at: string;
-  env: string;
-  service: string;
-  version: string;
-  commit_hash: string;
-  status: string;
-  message: string | null;
-};
 
 function isDatabaseEnabled(): boolean {
   return process.env.DATABASE_ENABLED === 'true';
@@ -27,17 +18,7 @@ function timingSafeEquals(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-function requireString(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`Invalid ${field}`);
-  }
-  return value.trim();
-}
 
-function clampLen(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return value.slice(0, max);
-}
 
 export async function POST(request: NextRequest) {
   if (!isDatabaseEnabled()) {
@@ -51,39 +32,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let env: string;
-  let service: string;
-  let version: string;
-  let commit_hash: string;
-  let status: string;
-  let message: string | null;
-
+  // Parse and validate request body
+  let body: unknown;
   try {
-    const body = (await request.json()) as Partial<{
-      env: string;
-      service: string;
-      version: string;
-      commit_hash: string;
-      status: string;
-      message: string;
-    }>;
-
-    env = clampLen(requireString(body.env, 'env'), 32);
-    service = clampLen(requireString(body.service, 'service'), 64);
-    version = clampLen(requireString(body.version, 'version'), 64);
-    commit_hash = clampLen(requireString(body.commit_hash, 'commit_hash'), 64);
-    status = clampLen(requireString(body.status, 'status'), 32);
-    message = body.message == null ? null : clampLen(requireString(body.message, 'message'), 2000);
+    body = await request.json();
   } catch (error) {
     return NextResponse.json(
       {
-        error: 'Invalid request body',
-        message: error instanceof Error ? error.message : String(error),
+        error: 'Invalid JSON',
+        message: error instanceof Error ? error.message : 'Request body must be valid JSON',
+      },
+      { status: 400 }
+    );
+  }
+
+  // Validate against contract
+  const validation = validateDeployEventInput(body);
+  if (!validation.valid) {
+    return NextResponse.json(
+      {
+        error: 'Validation failed',
+        errors: validation.errors,
         required: ['env', 'service', 'version', 'commit_hash', 'status'],
       },
       { status: 400 }
     );
   }
+
+  // Type-safe input after validation
+  const input = body as DeployEventInput;
 
   // Safe, non-secret log for traceability (no tokens, no cookies).
   console.log(
@@ -91,32 +68,29 @@ export async function POST(request: NextRequest) {
       level: 'info',
       route: '/api/internal/deploy-events',
       action: 'insert',
-      env,
-      service,
-      version,
-      commit_hash,
-      status,
+      env: input.env,
+      service: input.service,
+      version: input.version,
+      commit_hash: input.commit_hash,
+      status: input.status,
       timestamp: new Date().toISOString(),
     })
   );
 
-  try {
-    const pool = getPool();
-    const result = await pool.query<DeployEventRow>(
-      `INSERT INTO deploy_events (env, service, version, commit_hash, status, message)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, created_at, env, service, version, commit_hash, status, message`,
-      [env, service, version, commit_hash, status, message]
-    );
+  // Insert using helper
+  const pool = getPool();
+  const result = await insertDeployEvent(pool, input);
 
-    return NextResponse.json({ event: result.rows[0] });
-  } catch (error) {
+  if (!result.success) {
+    // Database operation failed - return 503 for infrastructure issues
     return NextResponse.json(
       {
-        error: 'Failed to insert deploy event',
-        message: error instanceof Error ? error.message : String(error),
+        error: 'Database operation failed',
+        message: result.error || 'Failed to insert deploy event',
       },
-      { status: 500 }
+      { status: 503 }
     );
   }
+
+  return NextResponse.json({ event: result.event });
 }
