@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
+import { DeployEventOutput, isDeployEventOutput } from '@/lib/contracts/outputContracts';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-type DeployEventRow = {
-  id: string;
-  created_at: string;
-  env: string;
-  service: string;
-  version: string;
-  commit_hash: string;
-  status: string;
-  message: string | null;
-};
 
 function isDatabaseEnabled(): boolean {
   return process.env.DATABASE_ENABLED === 'true';
@@ -83,7 +73,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const pool = getPool();
-    const result = await pool.query<DeployEventRow>(
+    const result = await pool.query<DeployEventOutput>(
       `SELECT id, created_at, env, service, version, commit_hash, status, message
        FROM deploy_events
        WHERE env = $1 AND service = $2
@@ -91,6 +81,14 @@ export async function GET(request: NextRequest) {
        LIMIT $3`,
       [env, service, limit]
     );
+
+    // Validate output contract
+    for (const row of result.rows) {
+      if (!isDeployEventOutput(row)) {
+        console.error('[Deploy Events API] Contract validation failed for row:', row);
+        throw new Error('Output contract validation failed');
+      }
+    }
 
     logRequest({
       route,

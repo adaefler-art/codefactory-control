@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
+import { WorkflowOutput, isWorkflowOutput } from '../../../src/lib/contracts/outputContracts';
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,9 +42,26 @@ export async function GET(request: NextRequest) {
     
     const result = await pool.query(query);
     
+    // Validate each workflow row against output contract
+    const workflows = result.rows.map((row) => {
+      // Extract last_run before contract validation
+      const { last_run, ...workflowData } = row;
+      
+      // Validate workflow output contract
+      if (!isWorkflowOutput(workflowData)) {
+        console.error('[API /api/workflows] Contract validation failed for workflow:', workflowData);
+        throw new Error('Workflow output contract validation failed');
+      }
+      
+      return {
+        ...workflowData,
+        last_run,
+      };
+    });
+    
     return NextResponse.json({
-      workflows: result.rows,
-      total: result.rows.length
+      workflows,
+      total: workflows.length
     });
   } catch (error) {
     console.error('[API /api/workflows] Error fetching workflows:', error);
