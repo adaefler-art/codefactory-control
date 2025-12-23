@@ -39,21 +39,56 @@ function applyNoStore(response: NextResponse) {
   response.headers.set('pragma', 'no-cache');
 }
 
-function isSameOrigin(request: NextRequest): boolean {
-  const expectedOrigin = new URL(request.url).origin;
-  const origin = request.headers.get('origin');
-  if (origin && origin !== expectedOrigin) return false;
+function getFirstHeaderValue(value: string | null): string | null {
+  if (!value) return null;
+  // Proxies may send comma-separated lists; take the first hop.
+  return value.split(',')[0]?.trim() || null;
+}
 
+function computeExpectedOrigin(request: NextRequest): string {
+  const proto = getFirstHeaderValue(request.headers.get('x-forwarded-proto')) || 'https';
+  const host =
+    getFirstHeaderValue(request.headers.get('x-forwarded-host')) ||
+    getFirstHeaderValue(request.headers.get('host')) ||
+    new URL(request.url).host;
+
+  return `${proto}://${host}`;
+}
+
+function validateSameOrigin(request: NextRequest):
+  | { ok: true; expectedOrigin: string; origin: string | null; referer: string | null }
+  | { ok: false; reason: string; expectedOrigin: string; origin: string | null; referer: string | null } {
+  const expectedOrigin = computeExpectedOrigin(request);
+  const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
-  if (!origin && referer) {
+
+  if (origin) {
+    if (origin === expectedOrigin) return { ok: true, expectedOrigin, origin, referer };
+    return { ok: false, reason: 'origin_mismatch', expectedOrigin, origin, referer };
+  }
+
+  if (referer) {
     try {
-      if (new URL(referer).origin !== expectedOrigin) return false;
+      const refererOrigin = new URL(referer).origin;
+      if (refererOrigin === expectedOrigin) return { ok: true, expectedOrigin, origin, referer };
+      return { ok: false, reason: 'referer_mismatch', expectedOrigin, origin, referer };
     } catch {
-      // ignore invalid referer
+      return { ok: false, reason: 'invalid_referer', expectedOrigin, origin, referer };
     }
   }
 
-  return true;
+  // If neither Origin nor Referer is present, allow (some clients/proxies strip these).
+  // We still rely on SameSite cookies + refresh-token possession.
+  if (AFU9_DEBUG_AUTH) {
+    console.log('[AUTH-REFRESH][DEBUG] No Origin/Referer header present; allowing POST', {
+      expectedOrigin,
+      host: request.headers.get('host'),
+      xForwardedHost: request.headers.get('x-forwarded-host'),
+      xForwardedProto: request.headers.get('x-forwarded-proto'),
+    });
+  }
+
+  return { ok: true, expectedOrigin, origin, referer };
 }
 
 function clearAuthCookies(response: NextResponse) {
@@ -151,8 +186,17 @@ export async function GET(_request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   // Defense-in-depth: reject cross-site POSTs (important if SameSite=None is configured).
-  if (!isSameOrigin(request)) {
-    const response = NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  const csrf = validateSameOrigin(request);
+  if (!csrf.ok) {
+    const body: Record<string, unknown> = { success: false, error: 'Forbidden' };
+    if (AFU9_DEBUG_AUTH) {
+      body.reason = csrf.reason;
+      body.expectedOrigin = csrf.expectedOrigin;
+      body.origin = csrf.origin;
+      body.referer = csrf.referer;
+    }
+
+    const response = NextResponse.json(body, { status: 403 });
     applyNoStore(response);
     applyDebugHeaders(response);
     return response;
