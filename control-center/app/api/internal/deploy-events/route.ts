@@ -53,31 +53,52 @@ export async function POST(request: NextRequest) {
 
   let env: string;
   let service: string;
-  let message: string;
+  let version: string;
+  let commit_hash: string;
+  let status: string;
+  let message: string | null;
 
   try {
     const body = (await request.json()) as Partial<{
       env: string;
       service: string;
+      version: string;
+      commit_hash: string;
+      status: string;
       message: string;
     }>;
 
     env = clampLen(requireString(body.env, 'env'), 32);
     service = clampLen(requireString(body.service, 'service'), 64);
-    message = clampLen(requireString(body.message, 'message'), 2000);
+    version = clampLen(requireString(body.version, 'version'), 64);
+    commit_hash = clampLen(requireString(body.commit_hash, 'commit_hash'), 64);
+    status = clampLen(requireString(body.status, 'status'), 32);
+    message = body.message == null ? null : clampLen(requireString(body.message, 'message'), 2000);
   } catch (error) {
     return NextResponse.json(
       {
         error: 'Invalid request body',
         message: error instanceof Error ? error.message : String(error),
+        required: ['env', 'service', 'version', 'commit_hash', 'status'],
       },
       { status: 400 }
     );
   }
 
-  const version = clampLen(process.env.BUILD_VERSION ?? process.env.npm_package_version ?? 'unknown', 64);
-  const commit_hash = clampLen(request.headers.get('x-deploy-sha') ?? request.headers.get('x-github-sha') ?? 'unknown', 64);
-  const status = 'success';
+  // Safe, non-secret log for traceability (no tokens, no cookies).
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      route: '/api/internal/deploy-events',
+      action: 'insert',
+      env,
+      service,
+      version,
+      commit_hash,
+      status,
+      timestamp: new Date().toISOString(),
+    })
+  );
 
   try {
     const pool = getPool();
