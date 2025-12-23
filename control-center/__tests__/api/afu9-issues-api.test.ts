@@ -8,6 +8,7 @@
  * - PATCH /api/issues/[id] (update)
  * - POST /api/issues/[id]/activate
  * - POST /api/issues/[id]/handoff
+ * - GET /api/issues/[id]/events
  * 
  * @jest-environment node
  */
@@ -17,6 +18,7 @@ import { GET as listIssues, POST as createIssue } from '../../app/api/issues/rou
 import { GET as getIssue, PATCH as updateIssue } from '../../app/api/issues/[id]/route';
 import { POST as activateIssue } from '../../app/api/issues/[id]/activate/route';
 import { POST as handoffIssue } from '../../app/api/issues/[id]/handoff/route';
+import { GET as getIssueEvents } from '../../app/api/issues/[id]/events/route';
 import { Afu9IssueStatus, Afu9HandoffState, Afu9IssuePriority } from '../../src/lib/contracts/afu9Issue';
 
 // Mock the database module
@@ -38,6 +40,7 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueById: jest.fn(),
   updateAfu9Issue: jest.fn(),
   getActiveIssue: jest.fn(),
+  getIssueEvents: jest.fn(),
 }));
 
 describe('AFU9 Issues API', () => {
@@ -570,6 +573,106 @@ describe('AFU9 Issues API', () => {
           body: expect.stringContaining('AFU9-ISSUE:123e4567-e89b-12d3-a456-426614174000'),
         })
       );
+    });
+  });
+
+  describe('GET /api/issues/[id]/events', () => {
+    const mockEvents = [
+      {
+        id: 'event-1',
+        issue_id: '123e4567-e89b-12d3-a456-426614174000',
+        event_type: 'CREATED',
+        event_data: { title: 'Test Issue', priority: 'P1' },
+        old_status: null,
+        new_status: 'CREATED',
+        old_handoff_state: null,
+        new_handoff_state: 'NOT_SENT',
+        created_at: '2023-12-23T00:00:00Z',
+        created_by: null,
+      },
+      {
+        id: 'event-2',
+        issue_id: '123e4567-e89b-12d3-a456-426614174000',
+        event_type: 'STATUS_CHANGED',
+        event_data: {},
+        old_status: 'CREATED',
+        new_status: 'ACTIVE',
+        old_handoff_state: null,
+        new_handoff_state: null,
+        created_at: '2023-12-23T01:00:00Z',
+        created_by: null,
+      },
+    ];
+
+    test('returns activity events for an issue', async () => {
+      const { getIssueEvents } = require('../../src/lib/db/afu9Issues');
+      getIssueEvents.mockResolvedValue({
+        success: true,
+        data: mockEvents,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/events');
+      const response = await getIssueEvents(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.events).toBeDefined();
+      expect(Array.isArray(body.events)).toBe(true);
+      expect(body.events.length).toBe(2);
+      expect(body.total).toBe(2);
+      expect(body.limit).toBe(100);
+    });
+
+    test('respects limit parameter', async () => {
+      const { getIssueEvents } = require('../../src/lib/db/afu9Issues');
+      getIssueEvents.mockResolvedValue({
+        success: true,
+        data: [mockEvents[0]],
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/events?limit=1');
+      const response = await getIssueEvents(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.limit).toBe(1);
+      expect(getIssueEvents).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+        expect.anything()
+      );
+    });
+
+    test('rejects invalid issue ID', async () => {
+      const request = new NextRequest('http://localhost/api/issues/invalid-id/events');
+      const response = await getIssueEvents(request, {
+        params: { id: 'invalid-id' },
+      });
+
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error).toContain('Invalid issue ID');
+    });
+
+    test('handles database errors gracefully', async () => {
+      const { getIssueEvents } = require('../../src/lib/db/afu9Issues');
+      getIssueEvents.mockResolvedValue({
+        success: false,
+        error: 'Database connection failed',
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/events');
+      const response = await getIssueEvents(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(body.error).toBeDefined();
     });
   });
 });
