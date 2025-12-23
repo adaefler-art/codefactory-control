@@ -111,6 +111,8 @@ Potential improvements for future iterations:
 ![AFU9 Issues List View](./screenshots/issues-list-view.png)
 *AFU9 Issues list view showing filtering, status badges, and handoff state indicators*
 
+**Note**: For a detailed visual description of the UI layout and styling, see [UI Visual Description](./screenshots/UI_DESCRIPTION.md).
+
 ## Related Documentation
 
 - [AFU9 Issues API](../AFU9-ISSUES-API.md) - API documentation

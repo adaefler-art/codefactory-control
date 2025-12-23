@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -105,10 +105,11 @@ export default function IssuesPage() {
     });
   };
 
-  // Get unique labels from all issues
-  const allLabels = Array.from(
-    new Set(issues.flatMap((issue) => issue.labels))
-  ).sort();
+  // Get unique labels from all issues (memoized)
+  const allLabels = useMemo(
+    () => Array.from(new Set(issues.flatMap((issue) => issue.labels))).sort(),
+    [issues]
+  );
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
