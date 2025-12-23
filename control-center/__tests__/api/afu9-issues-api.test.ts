@@ -1,0 +1,575 @@
+/**
+ * AFU9 Issues API Tests
+ * 
+ * Tests all endpoints for the AFU9 Issues API:
+ * - GET /api/issues (list)
+ * - POST /api/issues (create)
+ * - GET /api/issues/[id] (get)
+ * - PATCH /api/issues/[id] (update)
+ * - POST /api/issues/[id]/activate
+ * - POST /api/issues/[id]/handoff
+ * 
+ * @jest-environment node
+ */
+
+import { NextRequest } from 'next/server';
+import { GET as listIssues, POST as createIssue } from '../../../app/api/issues/route';
+import { GET as getIssue, PATCH as updateIssue } from '../../../app/api/issues/[id]/route';
+import { POST as activateIssue } from '../../../app/api/issues/[id]/activate/route';
+import { POST as handoffIssue } from '../../../app/api/issues/[id]/handoff/route';
+import { Afu9IssueStatus, Afu9HandoffState, Afu9IssuePriority } from '../../../src/lib/contracts/afu9Issue';
+
+// Mock the database module
+jest.mock('../../../src/lib/db', () => ({
+  getPool: jest.fn(() => ({
+    query: jest.fn(),
+  })),
+}));
+
+// Mock the GitHub module
+jest.mock('../../../src/lib/github', () => ({
+  createIssue: jest.fn(),
+}));
+
+// Mock database helpers
+jest.mock('../../../src/lib/db/afu9Issues', () => ({
+  listAfu9Issues: jest.fn(),
+  createAfu9Issue: jest.fn(),
+  getAfu9IssueById: jest.fn(),
+  updateAfu9Issue: jest.fn(),
+  getActiveIssue: jest.fn(),
+}));
+
+describe('AFU9 Issues API', () => {
+  const mockIssue = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Test Issue',
+    body: 'Test body',
+    status: Afu9IssueStatus.CREATED,
+    labels: ['bug', 'priority-p1'],
+    priority: Afu9IssuePriority.P1,
+    assignee: 'test-user',
+    source: 'afu9',
+    handoff_state: Afu9HandoffState.NOT_SENT,
+    github_issue_number: null,
+    github_url: null,
+    last_error: null,
+    created_at: '2023-12-23T00:00:00Z',
+    updated_at: '2023-12-23T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('GET /api/issues (list)', () => {
+    test('returns list of issues', async () => {
+      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({
+        success: true,
+        data: [mockIssue],
+      });
+
+      const request = new NextRequest('http://localhost/api/issues');
+      const response = await listIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.issues).toBeDefined();
+      expect(Array.isArray(body.issues)).toBe(true);
+      expect(body.issues.length).toBe(1);
+      expect(body.total).toBe(1);
+    });
+
+    test('filters by status', async () => {
+      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({
+        success: true,
+        data: [mockIssue],
+      });
+
+      const request = new NextRequest('http://localhost/api/issues?status=CREATED');
+      const response = await listIssues(request);
+
+      expect(response.status).toBe(200);
+      expect(listAfu9Issues).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: Afu9IssueStatus.CREATED })
+      );
+    });
+
+    test('returns 400 for invalid status', async () => {
+      const request = new NextRequest('http://localhost/api/issues?status=INVALID');
+      const response = await listIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain('Invalid status');
+    });
+
+    test('filters by label', async () => {
+      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({
+        success: true,
+        data: [mockIssue],
+      });
+
+      const request = new NextRequest('http://localhost/api/issues?label=bug');
+      const response = await listIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.issues.every((i: any) => i.labels.includes('bug'))).toBe(true);
+    });
+
+    test('searches by query', async () => {
+      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({
+        success: true,
+        data: [mockIssue],
+      });
+
+      const request = new NextRequest('http://localhost/api/issues?q=Test');
+      const response = await listIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.issues.length).toBeGreaterThan(0);
+    });
+
+    test('handles database errors', async () => {
+      const { listAfu9Issues } = require('../../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({
+        success: false,
+        error: 'Database error',
+      });
+
+      const request = new NextRequest('http://localhost/api/issues');
+      const response = await listIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toBeDefined();
+    });
+  });
+
+  describe('POST /api/issues (create)', () => {
+    test('creates a new issue', async () => {
+      const { createAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      createAfu9Issue.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Test Issue',
+          body: 'Test body',
+          labels: ['bug'],
+          priority: 'P1',
+        }),
+      });
+
+      const response = await createIssue(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.id).toBe(mockIssue.id);
+      expect(body.title).toBe('Test Issue');
+    });
+
+    test('returns 400 for missing title', async () => {
+      const request = new NextRequest('http://localhost/api/issues', {
+        method: 'POST',
+        body: JSON.stringify({
+          body: 'Test body',
+        }),
+      });
+
+      const response = await createIssue(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('Invalid input');
+      expect(body.details).toBeDefined();
+    });
+
+    test('returns 409 for Single-Active constraint violation', async () => {
+      const { createAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      createAfu9Issue.mockResolvedValue({
+        success: false,
+        error: 'Single-Active constraint: Issue abc is already ACTIVE',
+      });
+
+      const request = new NextRequest('http://localhost/api/issues', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Test Issue',
+          status: 'ACTIVE',
+        }),
+      });
+
+      const response = await createIssue(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(body.error).toContain('Single-Active');
+    });
+  });
+
+  describe('GET /api/issues/[id] (get)', () => {
+    test('returns issue by ID', async () => {
+      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
+      const response = await getIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.id).toBe(mockIssue.id);
+    });
+
+    test('returns 400 for invalid UUID format', async () => {
+      const request = new NextRequest('http://localhost/api/issues/invalid-id');
+      const response = await getIssue(request, { params: { id: 'invalid-id' } });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain('Invalid issue ID format');
+    });
+
+    test('returns 404 for non-existent issue', async () => {
+      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: false,
+        error: 'Issue not found',
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
+      const response = await getIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toContain('not found');
+    });
+  });
+
+  describe('PATCH /api/issues/[id] (update)', () => {
+    test('updates issue fields', async () => {
+      const { updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const updatedIssue = { ...mockIssue, title: 'Updated Title' };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: updatedIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: 'Updated Title',
+        }),
+      });
+
+      const response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.title).toBe('Updated Title');
+    });
+
+    test('returns 400 for invalid status', async () => {
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'INVALID_STATUS',
+        }),
+      });
+
+      const response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain('Invalid status');
+    });
+
+    test('returns 400 for no fields to update', async () => {
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({}),
+      });
+
+      const response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain('No fields to update');
+    });
+
+    test('returns 409 for Single-Active constraint violation', async () => {
+      const { updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      updateAfu9Issue.mockResolvedValue({
+        success: false,
+        error: 'Single-Active constraint: Issue abc is already ACTIVE',
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'ACTIVE',
+        }),
+      });
+
+      const response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(body.error).toContain('Single-Active');
+    });
+  });
+
+  describe('POST /api/issues/[id]/activate', () => {
+    test('activates an issue', async () => {
+      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      getActiveIssue.mockResolvedValue({
+        success: true,
+        data: null,
+      });
+
+      const activatedIssue = { ...mockIssue, status: Afu9IssueStatus.ACTIVE };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: activatedIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/activate', {
+        method: 'POST',
+      });
+
+      const response = await activateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.message).toContain('activated successfully');
+      expect(body.issue.status).toBe(Afu9IssueStatus.ACTIVE);
+    });
+
+    test('deactivates current active issue before activating new one', async () => {
+      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      
+      const currentActiveIssue = {
+        ...mockIssue,
+        id: 'current-active-id',
+        status: Afu9IssueStatus.ACTIVE,
+      };
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      getActiveIssue.mockResolvedValue({
+        success: true,
+        data: currentActiveIssue,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/activate', {
+        method: 'POST',
+      });
+
+      const response = await activateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(updateAfu9Issue).toHaveBeenCalledTimes(2); // Once to deactivate, once to activate
+      expect(body.deactivated).toBeDefined();
+      expect(body.deactivated.id).toBe('current-active-id');
+    });
+
+    test('returns success if already active', async () => {
+      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+      
+      const activeIssue = { ...mockIssue, status: Afu9IssueStatus.ACTIVE };
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: activeIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/activate', {
+        method: 'POST',
+      });
+
+      const response = await activateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.message).toContain('already ACTIVE');
+    });
+  });
+
+  describe('POST /api/issues/[id]/handoff', () => {
+    test('hands off issue to GitHub', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../../src/lib/github');
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      createGithubIssue.mockResolvedValue({
+        html_url: 'https://github.com/owner/repo/issues/123',
+        number: 123,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: {
+          ...mockIssue,
+          handoff_state: Afu9HandoffState.SYNCED,
+          github_issue_number: 123,
+          github_url: 'https://github.com/owner/repo/issues/123',
+        },
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
+        method: 'POST',
+      });
+
+      const response = await handoffIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.message).toContain('handed off to GitHub successfully');
+      expect(body.github_url).toBe('https://github.com/owner/repo/issues/123');
+      expect(body.github_issue_number).toBe(123);
+    });
+
+    test('returns success if already handed off', async () => {
+      const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+
+      const syncedIssue = {
+        ...mockIssue,
+        handoff_state: Afu9HandoffState.SYNCED,
+        github_issue_number: 123,
+        github_url: 'https://github.com/owner/repo/issues/123',
+      };
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: syncedIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
+        method: 'POST',
+      });
+
+      const response = await handoffIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.message).toContain('already handed off');
+    });
+
+    test('handles GitHub API errors', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../../src/lib/github');
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      createGithubIssue.mockRejectedValue(new Error('GitHub API rate limit exceeded'));
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
+        method: 'POST',
+      });
+
+      const response = await handoffIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toContain('Failed to create GitHub issue');
+      expect(body.handoff_state).toBe(Afu9HandoffState.FAILED);
+    });
+
+    test('includes idempotency marker in GitHub issue body', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../../src/lib/github');
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      createGithubIssue.mockResolvedValue({
+        html_url: 'https://github.com/owner/repo/issues/123',
+        number: 123,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
+        method: 'POST',
+      });
+
+      await handoffIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+
+      expect(createGithubIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.stringContaining('AFU9-ISSUE:123e4567-e89b-12d3-a456-426614174000'),
+        })
+      );
+    });
+  });
+});
