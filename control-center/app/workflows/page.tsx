@@ -31,7 +31,7 @@ export default function WorkflowsPage() {
   useEffect(() => {
     async function fetchWorkflows() {
       try {
-        const response = await fetch("/api/workflows");
+        const response = await fetch("/api/workflows", { credentials: "include" });
         const data = await response.json();
 
         if (response.ok) {
@@ -66,6 +66,7 @@ export default function WorkflowsPage() {
 
       const response = await fetch("/api/workflow/execute", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },

@@ -58,9 +58,9 @@ export default function AgentDetailPage() {
     
     async function fetchAgentDetails() {
       try {
-        const response = await fetch(
-          `/api/agents/${encodeURIComponent(agentType)}`
-        );
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentType)}`, {
+          credentials: "include",
+        });
         const data = await response.json();
 
         if (response.ok) {
@@ -120,6 +120,7 @@ export default function AgentDetailPage() {
     try {
       const response = await fetch("/api/agent/execute", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: playgroundPrompt,

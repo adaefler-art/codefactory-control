@@ -24,6 +24,7 @@ export default function Navigation() {
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
       });
       // Redirect to login page

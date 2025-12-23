@@ -25,7 +25,7 @@ export default function RepositoriesPage() {
   useEffect(() => {
     async function fetchRepositories() {
       try {
-        const response = await fetch("/api/repositories");
+        const response = await fetch("/api/repositories", { credentials: "include" });
         const data = await response.json();
 
         if (response.ok) {

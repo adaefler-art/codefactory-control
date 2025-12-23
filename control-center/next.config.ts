@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
-const forcedBuildId = process.env.NEXT_BUILD_ID?.trim();
+const forcedBuildId = (
+  process.env.NEXT_BUILD_ID ||
+  process.env.BUILD_COMMIT_HASH ||
+  process.env.GITHUB_SHA
+)?.trim();
 
 const nextConfig: NextConfig = {
   reactCompiler: true,

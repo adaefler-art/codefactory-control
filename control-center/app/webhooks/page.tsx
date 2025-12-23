@@ -40,8 +40,8 @@ export default function WebhooksPage() {
   async function loadWebhookData() {
     try {
       const [eventsRes, statsRes] = await Promise.all([
-        fetch("/api/webhooks/events?limit=50"),
-        fetch("/api/webhooks/events?stats=true"),
+        fetch("/api/webhooks/events?limit=50", { credentials: "include" }),
+        fetch("/api/webhooks/events?stats=true", { credentials: "include" }),
       ]);
 
       if (!eventsRes.ok || !statsRes.ok) {

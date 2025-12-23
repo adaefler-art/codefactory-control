@@ -57,7 +57,7 @@ export default function SettingsPage() {
     async function fetchData() {
       try {
         // Fetch MCP health
-        const mcpResponse = await fetch("/api/mcp/health");
+        const mcpResponse = await fetch("/api/mcp/health", { credentials: "include" });
         const mcpData = await mcpResponse.json();
 
         if (mcpResponse.ok) {
@@ -75,7 +75,7 @@ export default function SettingsPage() {
         }
 
         // Fetch repositories
-        const repoResponse = await fetch("/api/repositories");
+        const repoResponse = await fetch("/api/repositories", { credentials: "include" });
         const repoData = await repoResponse.json();
 
         if (repoResponse.ok) {
@@ -83,7 +83,7 @@ export default function SettingsPage() {
         }
 
         // Fetch system configuration
-        const configResponse = await fetch("/api/system/config");
+        const configResponse = await fetch("/api/system/config", { credentials: "include" });
         const configData = await configResponse.json();
 
         if (configResponse.ok) {
@@ -111,6 +111,7 @@ export default function SettingsPage() {
     try {
       const response = await fetch("/api/repositories", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newRepo),
       });
@@ -138,6 +139,7 @@ export default function SettingsPage() {
     try {
       const response = await fetch(`/api/repositories/${id}`, {
         method: "DELETE",
+        credentials: "include",
       });
 
       if (response.ok) {
@@ -156,6 +158,7 @@ export default function SettingsPage() {
     try {
       const response = await fetch(`/api/repositories/${id}`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });

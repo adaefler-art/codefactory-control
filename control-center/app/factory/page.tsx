@@ -16,7 +16,9 @@ export default function FactoryPage() {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch('/api/v1/factory/status?limit=20&errorLimit=10&kpiPeriodHours=24');
+      const response = await fetch('/api/v1/factory/status?limit=20&errorLimit=10&kpiPeriodHours=24', {
+        credentials: 'include',
+      });
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);

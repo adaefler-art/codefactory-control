@@ -93,15 +93,29 @@ jobs:
           IMAGE2=test-control-center:2
           ROOT=/app/control-center
 
+          # Determinism policy (Control Center)
+          # - Gate only on content hashes under $ROOT.
+          # - Ignore known volatile build artifacts (Next manifests, trace, maps, logs, cache).
+          # - Keep this list explicit so a future refactor (e.g. adding RootFS export) won't accidentally
+          #   re-introduce common false positives like /etc/alternatives/*.gz.
+          EXCLUDES_TEXT=$(cat <<'EOF'
+          - $ROOT/.next/cache/**
+          - $ROOT/.next/**/trace*
+          - $ROOT/**/*.map
+          - $ROOT/**/*.log
+          - $ROOT/**/*manifest*
+          - $ROOT/.next/app-path-routes-manifest.json
+          - $ROOT/.next/prerender-manifest.json
+          - $ROOT/**/*client-reference-manifest*
+          - /etc/alternatives/*.gz (future RootFS-only noise)
+          EOF
+          )
+
           echo "=== Determinism scope ==="
           echo "Hash root: $ROOT"
           echo ""
           echo "=== Excludes (ignored for determinism) ==="
-          echo "- $ROOT/.next/cache/**"
-          echo "- **/*manifest*"
-          echo "- **/*.map"
-          echo "- **/trace*"
-          echo "- **/*.log"
+          echo "$EXCLUDES_TEXT"
           echo ""
 
           echo "=== Diagnostics: Image Ids (not used for gating) ==="
@@ -116,7 +130,10 @@ jobs:
             cd /app/control-center
             find . -type f \( \
               -path "./.next/cache/*" -o \
+              -path "./.next/app-path-routes-manifest.json" -o \
+              -path "./.next/prerender-manifest.json" -o \
               -name "*manifest*" -o \
+              -name "*client-reference-manifest*" -o \
               -name "*.map" -o \
               -name "trace*" -o \
               -name "*.log" \
@@ -131,7 +148,10 @@ jobs:
             cd /app/control-center
             find . -path "./.next/cache" -prune -o \
               -type f \
+              ! -path "./.next/app-path-routes-manifest.json" \
+              ! -path "./.next/prerender-manifest.json" \
               ! -name "*manifest*" \
+              ! -name "*client-reference-manifest*" \
               ! -name "*.map" \
               ! -name "trace*" \
               ! -name "*.log" \
@@ -146,7 +166,10 @@ jobs:
             cd /app/control-center
             find . -path "./.next/cache" -prune -o \
               -type f \
+              ! -path "./.next/app-path-routes-manifest.json" \
+              ! -path "./.next/prerender-manifest.json" \
               ! -name "*manifest*" \
+              ! -name "*client-reference-manifest*" \
               ! -name "*.map" \
               ! -name "trace*" \
               ! -name "*.log" \
@@ -170,6 +193,53 @@ jobs:
           fi
 
           echo "✅ Control Center included content is deterministic"
+
+          echo ""
+          echo "=== Diagnostics: excluded-content drift (does NOT fail) ==="
+          echo "If this section shows drift, it is expected noise (e.g. Next.js manifests) unless it becomes large/unexpected."
+
+          docker run --rm "$IMAGE1" sh -lc '
+            set -e
+            export TZ=UTC LC_ALL=C LANG=C
+            cd /app/control-center
+            find . -type f \( \
+              -path "./.next/cache/*" -o \
+              -path "./.next/app-path-routes-manifest.json" -o \
+              -path "./.next/prerender-manifest.json" -o \
+              -name "*manifest*" -o \
+              -name "*client-reference-manifest*" -o \
+              -name "*.map" -o \
+              -name "trace*" -o \
+              -name "*.log" \
+            \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum
+          ' > /tmp/cc-excluded-1.txt || true
+
+          docker run --rm "$IMAGE2" sh -lc '
+            set -e
+            export TZ=UTC LC_ALL=C LANG=C
+            cd /app/control-center
+            find . -type f \( \
+              -path "./.next/cache/*" -o \
+              -path "./.next/app-path-routes-manifest.json" -o \
+              -path "./.next/prerender-manifest.json" -o \
+              -name "*manifest*" -o \
+              -name "*client-reference-manifest*" -o \
+              -name "*.map" -o \
+              -name "trace*" -o \
+              -name "*.log" \
+            \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum
+          ' > /tmp/cc-excluded-2.txt || true
+
+          if ! diff -u /tmp/cc-excluded-1.txt /tmp/cc-excluded-2.txt >/dev/null 2>&1; then
+            echo "(Excluded drift detected; showing first 120 lines)"
+            diff -u /tmp/cc-excluded-1.txt /tmp/cc-excluded-2.txt | head -n 120 || true
+          else
+            echo "No excluded drift detected."
+          fi
 
 
 

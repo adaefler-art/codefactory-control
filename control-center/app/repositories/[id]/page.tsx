@@ -82,7 +82,7 @@ export default function RepositoryDetailsPage() {
       if (!id) return;
       
       try {
-        const response = await fetch(`/api/repositories/${id}`);
+        const response = await fetch(`/api/repositories/${id}`, { credentials: "include" });
         const result = await response.json();
 
         if (response.ok) {

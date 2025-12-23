@@ -68,7 +68,7 @@ export default function ObservabilityPage() {
       setError(null);
 
       // Fetch alarms
-      const alarmsRes = await fetch('/api/observability/alarms');
+      const alarmsRes = await fetch('/api/observability/alarms', { credentials: 'include' });
       const alarmsData = await alarmsRes.json();
 
       if (alarmsData.status === 'success') {
@@ -78,7 +78,8 @@ export default function ObservabilityPage() {
 
       // Fetch logs
       const logsRes = await fetch(
-        `/api/observability/logs?logGroup=${encodeURIComponent(selectedLogGroup)}&hours=${selectedHours}&limit=50`
+        `/api/observability/logs?logGroup=${encodeURIComponent(selectedLogGroup)}&hours=${selectedHours}&limit=50`,
+        { credentials: 'include' }
       );
       const logsData = await logsRes.json();
 
@@ -87,7 +88,7 @@ export default function ObservabilityPage() {
       }
 
       // Fetch infrastructure health
-      const healthRes = await fetch('/api/infrastructure/health');
+      const healthRes = await fetch('/api/infrastructure/health', { credentials: 'include' });
       const healthData = await healthRes.json();
       setHealth(healthData);
 

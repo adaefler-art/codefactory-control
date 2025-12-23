@@ -16,6 +16,7 @@ export default function NewFeaturePage() {
     try {
       const response = await fetch("/api/features", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },

@@ -99,27 +99,27 @@ export default function DashboardPage() {
     async function fetchDashboardData() {
       try {
         // Fetch executions
-        const executionsRes = await fetch("/api/workflow/executions?limit=10");
+        const executionsRes = await fetch("/api/workflow/executions?limit=10", { credentials: "include" });
         const executionsData = await executionsRes.json();
         
         // Fetch workflows
-        const workflowsRes = await fetch("/api/workflows");
+        const workflowsRes = await fetch("/api/workflows", { credentials: "include" });
         const workflowsData = await workflowsRes.json();
         
         // Fetch agents
-        const agentsRes = await fetch("/api/agents?limit=100");
+        const agentsRes = await fetch("/api/agents?limit=100", { credentials: "include" });
         const agentsData = await agentsRes.json();
         
         // Fetch repositories
-        const reposRes = await fetch("/api/repositories");
+        const reposRes = await fetch("/api/repositories", { credentials: "include" });
         const reposData = await reposRes.json();
 
         // Fetch infrastructure health
-        const healthRes = await fetch("/api/infrastructure/health");
+        const healthRes = await fetch("/api/infrastructure/health", { credentials: "include" });
         const healthData = await healthRes.json();
 
         // Fetch alarm status
-        const alarmsRes = await fetch("/api/observability/alarms");
+        const alarmsRes = await fetch("/api/observability/alarms", { credentials: "include" });
         const alarmsData = await alarmsRes.json();
 
         // Calculate stats

@@ -63,7 +63,7 @@ export default function ExecutionDetailPage({ params }: { params: Promise<{ id: 
 
   async function fetchExecution() {
     try {
-      const response = await fetch(`/api/executions/${id}`);
+      const response = await fetch(`/api/executions/${id}`, { credentials: 'include' });
       if (!response.ok) {
         throw new Error('Failed to fetch execution');
       }

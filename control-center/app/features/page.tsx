@@ -18,7 +18,7 @@ export default function FeaturesPage() {
   useEffect(() => {
     async function fetchIssues() {
       try {
-        const response = await fetch("/api/features");
+        const response = await fetch("/api/features", { credentials: "include" });
         
         if (!response.ok) {
           let errorMessage = `Server error: ${response.status}`;

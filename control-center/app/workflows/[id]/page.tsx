@@ -59,7 +59,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   async function fetchWorkflow() {
     try {
-      const response = await fetch(`/api/workflows/${id}`);
+      const response = await fetch(`/api/workflows/${id}`, { credentials: 'include' });
       if (!response.ok) {
         throw new Error('Failed to fetch workflow');
       }
@@ -74,7 +74,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   async function fetchExecutions() {
     try {
-      const response = await fetch(`/api/workflows/${id}/executions?limit=20`);
+      const response = await fetch(`/api/workflows/${id}/executions?limit=20`, { credentials: 'include' });
       if (!response.ok) {
         throw new Error('Failed to fetch executions');
       }
@@ -92,6 +92,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       
       const response = await fetch(`/api/workflows/${id}/trigger`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

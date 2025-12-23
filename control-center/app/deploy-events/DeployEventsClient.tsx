@@ -43,7 +43,10 @@ export default function DeployEventsClient({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/deploy-events?${query}`, { cache: 'no-store' });
+      const res = await fetch(`/api/deploy-events?${query}`, {
+        cache: 'no-store',
+        credentials: 'include',
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -80,6 +83,7 @@ export default function DeployEventsClient({
 
       const res = await fetch('/api/deploy-events', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });

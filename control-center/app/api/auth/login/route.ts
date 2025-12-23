@@ -11,7 +11,18 @@ const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
+const AFU9_ACCESS_COOKIE = process.env.AFU9_ACCESS_COOKIE || 'afu9_access';
+const AFU9_REFRESH_COOKIE = process.env.AFU9_REFRESH_COOKIE || 'afu9_refresh';
 const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || 'https://afu-9.com/';
+const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN;
+const AFU9_COOKIE_SAMESITE_ENV = (process.env.AFU9_COOKIE_SAMESITE || 'lax').toLowerCase();
+
+const cookieSameSite: 'lax' | 'strict' | 'none' =
+  AFU9_COOKIE_SAMESITE_ENV === 'none' || AFU9_COOKIE_SAMESITE_ENV === 'strict'
+    ? (AFU9_COOKIE_SAMESITE_ENV as 'none' | 'strict')
+    : 'lax';
+
+const cookieSecure = process.env.NODE_ENV === 'production' || cookieSameSite === 'none';
 
 // Initialize Cognito client
 const cognitoClient = new CognitoIdentityProviderClient({
@@ -160,33 +171,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Set HttpOnly, Secure cookies with SameSite=Lax (using configurable cookie name)
+    // Set HttpOnly cookies for auth.
+    // Defaults are safe for same-origin use; optional env toggles allow cross-subdomain deployments.
     // ID Token (contains user info and groups)
     response.cookies.set(AFU9_AUTH_COOKIE, IdToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
       maxAge: 60 * 60, // 1 hour (matches token validity)
       path: '/',
+      ...(AFU9_COOKIE_DOMAIN ? { domain: AFU9_COOKIE_DOMAIN } : {}),
     });
 
     // Access Token (for API calls)
-    response.cookies.set('afu9_access', AccessToken, {
+    response.cookies.set(AFU9_ACCESS_COOKIE, AccessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
       maxAge: 60 * 60, // 1 hour (matches token validity)
       path: '/',
+      ...(AFU9_COOKIE_DOMAIN ? { domain: AFU9_COOKIE_DOMAIN } : {}),
     });
 
     // Optionally store refresh token (longer expiry)
     if (RefreshToken) {
-      response.cookies.set('afu9_refresh', RefreshToken, {
+      response.cookies.set(AFU9_REFRESH_COOKIE, RefreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: cookieSecure,
+        sameSite: cookieSameSite,
         maxAge: 60 * 60 * 24 * 30, // 30 days (matches token validity)
         path: '/',
+        ...(AFU9_COOKIE_DOMAIN ? { domain: AFU9_COOKIE_DOMAIN } : {}),
       });
     }
 

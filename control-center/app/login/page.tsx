@@ -21,7 +21,7 @@ export default function LoginPage() {
 
   // Fetch build metadata on component mount
   useEffect(() => {
-    fetch('/api/build-metadata')
+    fetch('/api/build-metadata', { credentials: 'include' })
       .then(res => res.json())
       .then(data => setBuildMetadata(data))
       .catch(err => console.error('Failed to load build metadata:', err));
@@ -34,6 +34,7 @@ export default function LoginPage() {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ username, password }),
       });
