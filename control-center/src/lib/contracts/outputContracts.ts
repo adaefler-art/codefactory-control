@@ -229,6 +229,90 @@ export interface DeployEventOutput {
 }
 
 /**
+ * Policy Snapshot Output Contract
+ * Source: database/migrations/004_verdict_engine.sql
+ * Table: policy_snapshots
+ */
+export interface PolicySnapshotOutput {
+  id: string;
+  version: string;
+  policies: Record<string, unknown>;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/**
+ * Verdict Output Contract
+ * Source: database/migrations/004_verdict_engine.sql
+ * Table: verdicts
+ */
+export interface VerdictOutput {
+  id: string;
+  execution_id: string | null;
+  policy_snapshot_id: string | null;
+  fingerprint_id: string;
+  error_class: string;
+  service: string;
+  confidence_score: number;
+  proposed_action: 'WAIT_AND_RETRY' | 'OPEN_ISSUE' | 'HUMAN_REQUIRED';
+  tokens: string[];
+  signals: Record<string, unknown>;
+  playbook_id: string | null;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/**
+ * Verdict Audit Log Output Contract
+ * Source: database/migrations/004_verdict_engine.sql
+ * Table: verdict_audit_log
+ */
+export interface VerdictAuditLogOutput {
+  id: string;
+  verdict_id: string | null;
+  event_type: string;
+  event_data: Record<string, unknown> | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+/**
+ * Issue Tracking Output Contract
+ * Source: database/migrations/010_issue_state_tracking.sql
+ * Table: issue_tracking
+ */
+export interface IssueTrackingOutput {
+  id: string;
+  github_issue_number: number;
+  repository: string;
+  state: 'CREATED' | 'SPEC_READY' | 'IMPLEMENTING' | 'VERIFIED' | 'MERGE_READY' | 'DONE' | 'HOLD' | 'KILLED';
+  previous_state: string | null;
+  state_changed_at: string;
+  state_changed_by: string | null;
+  state_change_reason: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Issue State History Output Contract
+ * Source: database/migrations/010_issue_state_tracking.sql
+ * Table: issue_state_history
+ */
+export interface IssueStateHistoryOutput {
+  id: string;
+  issue_tracking_id: string | null;
+  from_state: string | null;
+  to_state: string;
+  transition_at: string;
+  transition_by: string | null;
+  transition_reason: string | null;
+  context: Record<string, unknown>;
+  created_at: string;
+}
+
+/**
  * Contract Validation Error
  */
 export interface ContractValidationError {
