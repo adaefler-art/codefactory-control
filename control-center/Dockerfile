@@ -57,6 +57,9 @@ ENV __NEXT_PREVIEW_MODE_ID=${NEXT_PREVIEW_MODE_ID}
 ENV __NEXT_PREVIEW_MODE_SIGNING_KEY=${NEXT_PREVIEW_MODE_SIGNING_KEY}
 ENV __NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${NEXT_PREVIEW_MODE_ENCRYPTION_KEY}
 
+# Generate public/build-metadata.json deterministically from BUILD_* args
+RUN node prebuild.js
+
 RUN npm run build
 
 # Stage 3: Production

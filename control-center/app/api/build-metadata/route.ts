@@ -9,7 +9,7 @@ import path from 'path';
  * 
  * Response:
  * {
- *   "version": "0.1.0",
+ *   "version": "0.4.0",
  *   "timestamp": "2025-12-20T10:42:00.000Z",
  *   "commitHash": "a1b2c3d",
  *   "environment": "production"
@@ -27,7 +27,7 @@ export async function GET() {
 
     // Fallback metadata if file doesn't exist
     return NextResponse.json({
-      version: process.env.BUILD_VERSION || '0.1.0',
+      version: process.env.BUILD_VERSION || process.env.npm_package_version || 'unknown',
       timestamp: new Date().toISOString(),
       commitHash: process.env.BUILD_COMMIT_HASH || 'unknown',
       environment: process.env.BUILD_ENV || process.env.DEPLOY_ENV || 'development',
@@ -37,7 +37,7 @@ export async function GET() {
     
     // Fallback metadata on error
     return NextResponse.json({
-      version: '0.1.0',
+      version: process.env.BUILD_VERSION || process.env.npm_package_version || 'unknown',
       timestamp: new Date().toISOString(),
       commitHash: 'unknown',
       environment: 'unknown',
