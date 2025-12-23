@@ -1,15 +1,15 @@
 /**
  * API Route: Self-Propel Issue
- * 
- * POST /api/issues/[issueNumber]/self-propel
- * 
- * Triggers the self-propelling workflow for an issue, automatically
- * transitioning it through all states from CREATED to DONE.
+ *
+ * POST /api/issues/[id]/self-propel
+ *
+ * NOTE: The path segment is named [id] to avoid Next.js dynamic slug conflicts.
+ * The value is interpreted as an issue number for this endpoint.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getWorkflowEngine } from '../../../../../src/lib/workflow-engine';
-import { WorkflowDefinition, WorkflowContext } from '../../../../../src/lib/types/workflow';
+import { getWorkflowEngine } from '@/lib/workflow-engine';
+import { WorkflowContext, WorkflowDefinition } from '@/lib/types/workflow';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -22,7 +22,7 @@ const SELF_PROPELLING_WORKFLOW_PATH = path.join(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { issueNumber: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
     const selfPropellingEnabled = process.env.AFU9_ENABLE_SELF_PROPELLING === 'true';
@@ -30,7 +30,7 @@ export async function POST(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const { issueNumber } = params;
+    const { id } = params;
     const body = await request.json();
     const { owner, repo, baseBranch = 'main' } = body;
 
@@ -41,12 +41,9 @@ export async function POST(
       );
     }
 
-    const issueNum = parseInt(issueNumber, 10);
-    if (isNaN(issueNum)) {
-      return NextResponse.json(
-        { error: 'Invalid issue number' },
-        { status: 400 }
-      );
+    const issueNum = parseInt(id, 10);
+    if (Number.isNaN(issueNum)) {
+      return NextResponse.json({ error: 'Invalid issue number' }, { status: 400 });
     }
 
     console.log('[API] Starting self-propelling workflow', {
@@ -56,7 +53,6 @@ export async function POST(
       baseBranch,
     });
 
-    // Load workflow definition from explicit runtime artifact path
     if (!fs.existsSync(SELF_PROPELLING_WORKFLOW_PATH)) {
       return NextResponse.json(
         {
@@ -70,7 +66,6 @@ export async function POST(
     const workflowContent = fs.readFileSync(SELF_PROPELLING_WORKFLOW_PATH, 'utf-8');
     const selfPropellingWorkflow = JSON.parse(workflowContent) as WorkflowDefinition;
 
-    // Create workflow context
     const context: WorkflowContext = {
       variables: {},
       input: {
@@ -89,12 +84,8 @@ export async function POST(
       },
     };
 
-    // Execute the self-propelling workflow
     const engine = getWorkflowEngine();
-    const result = await engine.execute(
-      selfPropellingWorkflow as WorkflowDefinition,
-      context
-    );
+    const result = await engine.execute(selfPropellingWorkflow as WorkflowDefinition, context);
 
     console.log('[API] Self-propelling workflow completed', {
       executionId: result.executionId,
@@ -116,7 +107,7 @@ export async function POST(
     });
   } catch (error) {
     console.error('[API] Error in self-propelling workflow:', error);
-    
+
     return NextResponse.json(
       {
         error: 'Failed to execute self-propelling workflow',

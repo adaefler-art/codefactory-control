@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { POST as selfPropelPost } from '../../app/api/issues/[issueNumber]/self-propel/route';
+import { POST as selfPropelPost } from '../../app/api/issues/[id]/self-propel/route';
 
 describe('Self-propelling safety guards', () => {
   const originalEnv = process.env;
@@ -19,7 +19,7 @@ describe('Self-propelling safety guards', () => {
 
     const res = await selfPropelPost(
       { json: async () => ({ owner: 'o', repo: 'r' }) } as any,
-      { params: { issueNumber: '1' } } as any
+      { params: { id: '1' } } as any
     );
 
     expect(res.status).toBe(404);
