@@ -97,70 +97,17 @@ export async function POST(request: NextRequest) {
   const start = Date.now();
   const route = '/api/deploy-events';
 
-  if (!isDatabaseEnabled()) {
-    logRequest({ route, method: 'POST', duration_ms: Date.now() - start, rowcount: 0 });
-    return NextResponse.json({ error: 'DB disabled' }, { status: 503 });
-  }
-
-  try {
-    const body = (await request.json()) as Partial<{
-      env: string;
-      service: string;
-      version: string;
-      commit_hash: string;
-      status: string;
-      message: string | null;
-    }>;
-
-    const env = body.env || 'prod';
-    const service = body.service || 'control-center';
-
-    const version = body.version;
-    const commit_hash = body.commit_hash;
-    const status = body.status;
-    const message = body.message ?? null;
-
-    if (!version || !commit_hash || !status) {
-      logRequest({ route, method: 'POST', duration_ms: Date.now() - start, rowcount: 0, env, service });
-      return NextResponse.json(
-        {
-          error: 'Missing required fields',
-          required: ['version', 'commit_hash', 'status'],
-        },
-        { status: 400 }
-      );
-    }
-
-    const pool = getPool();
-    const result = await pool.query<DeployEventRow>(
-      `INSERT INTO deploy_events (env, service, version, commit_hash, status, message)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, created_at, env, service, version, commit_hash, status, message`,
-      [env, service, version, commit_hash, status, message]
-    );
-
-    logRequest({
-      route,
-      method: 'POST',
-      duration_ms: Date.now() - start,
-      rowcount: result.rowCount || 0,
-      env,
-      service,
-    });
-
-    return NextResponse.json({
-      event: result.rows[0],
-    });
-  } catch (error) {
-    logRequest({ route, method: 'POST', duration_ms: Date.now() - start, rowcount: 0 });
-    console.error('[Deploy Events API] Error:', error);
-
-    return NextResponse.json(
-      {
-        error: 'Failed to insert deploy event',
-        message: error instanceof Error ? error.message : String(error),
+  logRequest({ route, method: 'POST', duration_ms: Date.now() - start, rowcount: 0 });
+  return NextResponse.json(
+    {
+      error: 'Method Not Allowed',
+      message: 'Use POST /api/internal/deploy-events (machine-auth) to write deploy events.',
+    },
+    {
+      status: 405,
+      headers: {
+        Allow: 'GET',
       },
-      { status: 500 }
-    );
-  }
+    }
+  );
 }

@@ -350,6 +350,14 @@ npx cdk deploy Afu9IamStack \
 
 Configure secrets in AWS Secrets Manager. The ECS stack creates placeholder secrets that must be updated.
 
+#### 3.x: Deploy Events machine-auth token (internal)
+
+- **Purpose**: Allows the deploy workflow to record a successful deploy by writing an entry to the `deploy_events` table.
+- **Endpoint**: `POST /api/internal/deploy-events` (internal-only; not for browsers/users; no user JWT).
+- **Auth**: request header `x-internal-token` must match `DEPLOY_EVENTS_TOKEN` in the Control Center runtime.
+- **GitHub Actions**: add repository secret `DEPLOY_EVENTS_TOKEN`.
+- **ECS task injection**: the deploy workflow injects `DEPLOY_EVENTS_TOKEN` into the `control-center` container environment during the "Create new task definition with environment tags" step (deploy workflow).
+
 #### 3.1: Update GitHub Secret
 
 ```bash

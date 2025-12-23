@@ -385,9 +385,17 @@ jobs:
       - name: Create new task definition with environment tags
         id: task-def
         shell: bash
+        env:
+          DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
         run: |
           set -euo pipefail
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
+
+          if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
+            echo "❌ DEPLOY_EVENTS_TOKEN secret is missing" >&2
+            exit 1
+          fi
+          export DEPLOY_EVENTS_TOKEN
 
           echo "Listing clusters for debugging..."
           aws ecs list-clusters --region "${{ env.AWS_REGION }}" --output text || true
@@ -461,6 +469,7 @@ jobs:
              --arg mcp_observability_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
              '.containerDefinitions |= map(
                if .name == "control-center" then .image = $cc_image
+                 | .environment = ((.environment // []) | map(select(.name != "DEPLOY_EVENTS_TOKEN")) + [{name: "DEPLOY_EVENTS_TOKEN", value: env.DEPLOY_EVENTS_TOKEN}])
                elif .name == "mcp-github" then .image = $mcp_github_image
                elif .name == "mcp-deploy" then .image = $mcp_deploy_image
                elif .name == "mcp-observability" then .image = $mcp_observability_image
@@ -875,6 +884,38 @@ jobs:
             if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
             Start-Sleep -Seconds 5
           }
+
+      - name: Record deploy event (internal)
+        shell: bash
+        env:
+          DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
+            echo "❌ DEPLOY_EVENTS_TOKEN secret is missing" >&2
+            exit 1
+          fi
+
+          URL="https://${READY_HOST}/api/internal/deploy-events"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          MESSAGE="Deploy succeeded: env=${DEPLOY_ENV} service=control-center sha=${{ github.sha }} run=${{ github.run_id }} (${RUN_URL})"
+
+          BODY=$(jq -nc --arg env "${DEPLOY_ENV}" --arg service "control-center" --arg message "${MESSAGE}" '{env:$env,service:$service,message:$message}')
+
+          HTTP_CODE=$(curl -sS -o /tmp/deploy-event.json -w "%{http_code}" \
+            -X POST "$URL" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-token: ${DEPLOY_EVENTS_TOKEN}" \
+            -H "x-deploy-sha: ${{ github.sha }}" \
+            --data "$BODY")
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "❌ Failed to record deploy event (HTTP $HTTP_CODE)" >&2
+            cat /tmp/deploy-event.json >&2 || true
+            exit 1
+          fi
 
       - name: Deployment summary
         shell: bash
