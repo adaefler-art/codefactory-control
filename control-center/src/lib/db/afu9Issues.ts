@@ -499,3 +499,65 @@ export async function countIssuesByStatus(
     };
   }
 }
+
+/**
+ * AFU9 Issue Event Row
+ * Represents a row from the afu9_issue_events table
+ */
+export interface Afu9IssueEventRow {
+  id: string;
+  issue_id: string;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  old_status: string | null;
+  new_status: string | null;
+  old_handoff_state: string | null;
+  new_handoff_state: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+/**
+ * Get activity log events for an AFU9 issue
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param issueId - Issue UUID
+ * @param limit - Maximum number of events to retrieve (default: 100)
+ * @returns Operation result with events or error
+ */
+export async function getIssueEvents(
+  pool: Pool,
+  issueId: string,
+  limit: number = 100
+): Promise<OperationResult<Afu9IssueEventRow[]>> {
+  try {
+    const result = await pool.query<Afu9IssueEventRow>(
+      `SELECT 
+        id, issue_id, event_type, event_data, 
+        old_status, new_status, 
+        old_handoff_state, new_handoff_state,
+        created_at, created_by
+       FROM afu9_issue_events 
+       WHERE issue_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT $2`,
+      [issueId, limit]
+    );
+
+    return {
+      success: true,
+      data: result.rows,
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Get issue events failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      issueId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}

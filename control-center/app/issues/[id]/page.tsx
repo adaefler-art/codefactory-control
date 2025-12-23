@@ -21,6 +21,19 @@ interface Issue {
   updated_at: string;
 }
 
+interface ActivityEvent {
+  id: string;
+  issue_id: string;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  old_status: string | null;
+  new_status: string | null;
+  old_handoff_state: string | null;
+  new_handoff_state: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
 export default function IssueDetailPage({
   params,
 }: {
@@ -31,6 +44,15 @@ export default function IssueDetailPage({
   const [issue, setIssue] = useState<Issue | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Activity log state
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [showActivityLog, setShowActivityLog] = useState(false);
+
+  // Activation warning state
+  const [showActivationWarning, setShowActivationWarning] = useState(false);
+  const [currentActiveIssue, setCurrentActiveIssue] = useState<{ id: string; title: string } | null>(null);
 
   // Edit states
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -84,6 +106,50 @@ export default function IssueDetailPage({
       setError(err instanceof Error ? err.message : "Failed to load issue");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchActivityEvents = async () => {
+    setIsLoadingEvents(true);
+    try {
+      const response = await fetch(`/api/issues/${id}/events`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch activity events");
+      }
+
+      const data = await response.json();
+      setActivityEvents(data.events || []);
+    } catch (err) {
+      console.error("Error fetching activity events:", err);
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  };
+
+  const checkActiveIssue = async () => {
+    try {
+      const response = await fetch(`/api/issues?status=ACTIVE&limit=1`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      if (data.issues && data.issues.length > 0 && data.issues[0].id !== id) {
+        return {
+          id: data.issues[0].id,
+          title: data.issues[0].title,
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error("Error checking active issue:", err);
+      return null;
     }
   };
 
@@ -150,9 +216,25 @@ export default function IssueDetailPage({
   const handleActivate = async () => {
     if (!issue) return;
 
+    // Check if another issue is active
+    const activeIssue = await checkActiveIssue();
+    if (activeIssue) {
+      setCurrentActiveIssue(activeIssue);
+      setShowActivationWarning(true);
+      return;
+    }
+
+    // Proceed with activation
+    await performActivation();
+  };
+
+  const performActivation = async () => {
+    if (!issue) return;
+
     setIsActivating(true);
     setActionMessage(null);
     setSaveError(null);
+    setShowActivationWarning(false);
 
     try {
       const response = await fetch(`/api/issues/${id}/activate`, {
@@ -172,6 +254,11 @@ export default function IssueDetailPage({
           ? `Issue activated. Previously active issue "${data.deactivated.title}" was deactivated.`
           : "Issue activated successfully"
       );
+      
+      // Refresh activity log
+      if (showActivityLog) {
+        fetchActivityEvents();
+      }
     } catch (err) {
       console.error("Error activating issue:", err);
       setSaveError(err instanceof Error ? err.message : "Failed to activate issue");
@@ -264,6 +351,69 @@ export default function IssueDetailPage({
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const getEventTypeLabel = (eventType: string) => {
+    const labels: Record<string, string> = {
+      CREATED: "Created",
+      STATUS_CHANGED: "Status Changed",
+      HANDOFF_STATE_CHANGED: "Handoff State Changed",
+      GITHUB_SYNCED: "Synced to GitHub",
+      ERROR_OCCURRED: "Error Occurred",
+      FIELD_UPDATED: "Field Updated",
+    };
+    return labels[eventType] || eventType;
+  };
+
+  const getEventTypeBadgeColor = (eventType: string) => {
+    switch (eventType) {
+      case "CREATED":
+        return "bg-blue-900/30 text-blue-200 border border-blue-700";
+      case "STATUS_CHANGED":
+        return "bg-purple-900/30 text-purple-200 border border-purple-700";
+      case "HANDOFF_STATE_CHANGED":
+        return "bg-yellow-900/30 text-yellow-200 border border-yellow-700";
+      case "GITHUB_SYNCED":
+        return "bg-green-900/30 text-green-200 border border-green-700";
+      case "ERROR_OCCURRED":
+        return "bg-red-900/30 text-red-200 border border-red-700";
+      default:
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+    }
+  };
+
+  const formatEventDetails = (event: ActivityEvent) => {
+    const details: string[] = [];
+
+    if (event.old_status && event.new_status) {
+      details.push(`${event.old_status} → ${event.new_status}`);
+    } else if (event.new_status) {
+      details.push(`Status: ${event.new_status}`);
+    }
+
+    if (event.old_handoff_state && event.new_handoff_state) {
+      details.push(`${event.old_handoff_state} → ${event.new_handoff_state}`);
+    } else if (event.new_handoff_state) {
+      details.push(`Handoff: ${event.new_handoff_state}`);
+    }
+
+    if (event.event_data && Object.keys(event.event_data).length > 0) {
+      if (event.event_data.github_issue_number) {
+        details.push(`GitHub Issue #${event.event_data.github_issue_number}`);
+      }
+      if (event.event_data.error) {
+        details.push(`Error: ${event.event_data.error}`);
+      }
+    }
+
+    return details.join(" | ");
+  };
+
+  const toggleActivityLog = () => {
+    setShowActivityLog(!showActivityLog);
+    if (!showActivityLog && activityEvents.length === 0) {
+      fetchActivityEvents();
+    }
   };
 
   if (isLoading) {
@@ -615,6 +765,111 @@ export default function IssueDetailPage({
             </div>
           </div>
         </div>
+
+        {/* Activity Log Section */}
+        <div className="mt-6 bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <button
+            onClick={toggleActivityLog}
+            className="w-full px-6 py-4 flex items-center justify-between bg-gray-800/30 hover:bg-gray-800/50 transition-colors"
+          >
+            <h2 className="text-xl font-semibold text-purple-400">
+              Activity Log
+            </h2>
+            <span className="text-gray-400">
+              {showActivityLog ? "▼" : "▶"}
+            </span>
+          </button>
+
+          {showActivityLog && (
+            <div className="p-6">
+              {isLoadingEvents ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500"></div>
+                  <p className="mt-2 text-gray-400">Loading activity log...</p>
+                </div>
+              ) : activityEvents.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-400">No activity events recorded</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activityEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-start gap-4 p-4 bg-gray-800/30 border border-gray-700 rounded-lg"
+                    >
+                      <div className="flex-shrink-0 pt-1">
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded-md ${getEventTypeBadgeColor(
+                            event.event_type
+                          )}`}
+                        >
+                          {getEventTypeLabel(event.event_type)}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-300">
+                          {formatEventDetails(event)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {formatDate(event.created_at)}
+                          {event.created_by && ` • by ${event.created_by}`}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Activation Warning Dialog */}
+        {showActivationWarning && currentActiveIssue && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-yellow-700 rounded-lg p-6 max-w-md mx-4">
+              <h3 className="text-xl font-bold text-yellow-400 mb-4">
+                ⚠️ Single-Active Issue Mode
+              </h3>
+              <div className="text-gray-300 space-y-3">
+                <p>
+                  Another issue is currently ACTIVE:
+                </p>
+                <div className="p-3 bg-gray-800 border border-gray-700 rounded-md">
+                  <p className="font-medium text-purple-400">
+                    {currentActiveIssue.title}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    ID: {currentActiveIssue.id.substring(0, 8)}
+                  </p>
+                </div>
+                <p className="text-sm">
+                  Only one issue can be ACTIVE at a time. Activating this issue
+                  will automatically set the other issue to CREATED status.
+                </p>
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={performActivation}
+                  disabled={isActivating}
+                  className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
+                >
+                  {isActivating ? "Activating..." : "Proceed with Activation"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowActivationWarning(false);
+                    setCurrentActiveIssue(null);
+                  }}
+                  disabled={isActivating}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
