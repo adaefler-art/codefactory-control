@@ -1,0 +1,621 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+interface Issue {
+  id: string;
+  title: string;
+  body: string | null;
+  status: "CREATED" | "ACTIVE" | "BLOCKED" | "DONE";
+  labels: string[];
+  priority: "P0" | "P1" | "P2" | null;
+  assignee: string | null;
+  source: string;
+  handoff_state: "NOT_SENT" | "SENT" | "SYNCED" | "FAILED";
+  github_issue_number: number | null;
+  github_url: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export default function IssueDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const router = useRouter();
+  const [issue, setIssue] = useState<Issue | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Edit states
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [editedBody, setEditedBody] = useState("");
+  const [editedStatus, setEditedStatus] = useState<Issue["status"]>("CREATED");
+  const [editedLabels, setEditedLabels] = useState<string[]>([]);
+  const [newLabel, setNewLabel] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Action states
+  const [isActivating, setIsActivating] = useState(false);
+  const [isHandingOff, setIsHandingOff] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchIssue();
+  }, [id]);
+
+  useEffect(() => {
+    if (issue) {
+      setEditedTitle(issue.title);
+      setEditedBody(issue.body || "");
+      setEditedStatus(issue.status);
+      setEditedLabels(issue.labels);
+    }
+  }, [issue]);
+
+  const fetchIssue = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/issues/${id}`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Issue not found");
+        }
+        throw new Error("Failed to fetch issue");
+      }
+
+      const data = await response.json();
+      setIssue(data);
+    } catch (err) {
+      console.error("Error fetching issue:", err);
+      setError(err instanceof Error ? err.message : "Failed to load issue");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!issue) return;
+
+    setIsSaving(true);
+    setSaveError(null);
+    setActionMessage(null);
+
+    try {
+      const updates: any = {};
+
+      if (editedTitle !== issue.title) {
+        updates.title = editedTitle;
+      }
+      if (editedBody !== (issue.body || "")) {
+        updates.body = editedBody;
+      }
+      if (editedStatus !== issue.status) {
+        updates.status = editedStatus;
+      }
+      if (JSON.stringify(editedLabels) !== JSON.stringify(issue.labels)) {
+        updates.labels = editedLabels;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        setSaveError("No changes to save");
+        return;
+      }
+
+      const response = await fetch(`/api/issues/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 409) {
+          throw new Error(
+            errorData.error || "Single-Active constraint violation"
+          );
+        }
+        throw new Error(errorData.error || "Failed to update issue");
+      }
+
+      const updatedIssue = await response.json();
+      setIssue(updatedIssue);
+      setIsEditingTitle(false);
+      setActionMessage("Issue updated successfully");
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err) {
+      console.error("Error updating issue:", err);
+      setSaveError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleActivate = async () => {
+    if (!issue) return;
+
+    setIsActivating(true);
+    setActionMessage(null);
+    setSaveError(null);
+
+    try {
+      const response = await fetch(`/api/issues/${id}/activate`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to activate issue");
+      }
+
+      const data = await response.json();
+      setIssue(data.issue);
+      setActionMessage(
+        data.deactivated
+          ? `Issue activated. Previously active issue "${data.deactivated.title}" was deactivated.`
+          : "Issue activated successfully"
+      );
+    } catch (err) {
+      console.error("Error activating issue:", err);
+      setSaveError(err instanceof Error ? err.message : "Failed to activate issue");
+    } finally {
+      setIsActivating(false);
+    }
+  };
+
+  const handleHandoff = async () => {
+    if (!issue) return;
+
+    setIsHandingOff(true);
+    setActionMessage(null);
+    setSaveError(null);
+
+    try {
+      const response = await fetch(`/api/issues/${id}/handoff`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to handoff issue to GitHub");
+      }
+
+      const data = await response.json();
+      setIssue(data.issue);
+      setActionMessage(
+        `Issue handed off to GitHub successfully! GitHub Issue #${data.github_issue_number}`
+      );
+    } catch (err) {
+      console.error("Error handing off issue:", err);
+      setSaveError(
+        err instanceof Error ? err.message : "Failed to handoff issue"
+      );
+    } finally {
+      setIsHandingOff(false);
+    }
+  };
+
+  const handleAddLabel = () => {
+    const trimmedLabel = newLabel.trim();
+    if (trimmedLabel && !editedLabels.includes(trimmedLabel)) {
+      setEditedLabels([...editedLabels, trimmedLabel]);
+      setNewLabel("");
+    }
+  };
+
+  const handleRemoveLabel = (labelToRemove: string) => {
+    setEditedLabels(editedLabels.filter((label) => label !== labelToRemove));
+  };
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "ACTIVE":
+        return "bg-green-900/30 text-green-200 border border-green-700";
+      case "DONE":
+        return "bg-blue-900/30 text-blue-200 border border-blue-700";
+      case "BLOCKED":
+        return "bg-red-900/30 text-red-200 border border-red-700";
+      case "CREATED":
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+      default:
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+    }
+  };
+
+  const getHandoffStateBadgeColor = (state: string) => {
+    switch (state) {
+      case "SYNCED":
+        return "bg-green-900/30 text-green-200 border border-green-700";
+      case "SENT":
+        return "bg-yellow-900/30 text-yellow-200 border border-yellow-700";
+      case "FAILED":
+        return "bg-red-900/30 text-red-200 border border-red-700";
+      case "NOT_SENT":
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+      default:
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("de-DE", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-100">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+            <p className="mt-4 text-gray-400">Loading issue...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-100">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+            <p className="text-red-300">Error: {error}</p>
+            <Link
+              href="/issues"
+              className="mt-4 inline-block text-purple-400 hover:text-purple-300"
+            >
+              ← Back to Issues
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!issue) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-6">
+          <Link
+            href="/issues"
+            className="text-purple-400 hover:text-purple-300 mb-4 inline-block"
+          >
+            ← Back to Issues
+          </Link>
+        </div>
+
+        {/* Success/Error Messages */}
+        {actionMessage && (
+          <div className="mb-6 bg-green-900/20 border border-green-700 rounded-lg p-4">
+            <p className="text-green-300">{actionMessage}</p>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="mb-6 bg-red-900/20 border border-red-700 rounded-lg p-4">
+            <p className="text-red-300">{saveError}</p>
+          </div>
+        )}
+
+        {/* Main Card */}
+        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          {/* Title Section */}
+          <div className="p-6 border-b border-gray-800">
+            {isEditingTitle ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
+                  >
+                    {isSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditingTitle(false);
+                      setEditedTitle(issue.title);
+                    }}
+                    disabled={isSaving}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between">
+                <h1 className="text-3xl font-bold text-purple-400">
+                  {issue.title}
+                </h1>
+                <button
+                  onClick={() => setIsEditingTitle(true)}
+                  className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-md transition-colors"
+                >
+                  Edit Title
+                </button>
+              </div>
+            )}
+            <div className="mt-2 text-sm text-gray-500">
+              Issue #{issue.id.substring(0, 8)}
+            </div>
+          </div>
+
+          {/* Metadata Section */}
+          <div className="p-6 border-b border-gray-800 bg-gray-800/30">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Status
+                </label>
+                <select
+                  value={editedStatus}
+                  onChange={(e) =>
+                    setEditedStatus(e.target.value as Issue["status"])
+                  }
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="CREATED">CREATED</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="BLOCKED">BLOCKED</option>
+                  <option value="DONE">DONE</option>
+                </select>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Priority
+                </label>
+                <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-400">
+                  {issue.priority || "No priority set"}
+                </div>
+              </div>
+
+              {/* Handoff State */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Handoff State
+                </label>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 text-sm font-medium rounded-md ${getHandoffStateBadgeColor(
+                      issue.handoff_state
+                    )}`}
+                  >
+                    {issue.handoff_state}
+                  </span>
+                  {issue.handoff_state === "FAILED" && (
+                    <span className="text-red-400 text-sm" title={issue.last_error || "Failed"}>
+                      ⚠️
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* GitHub Link */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  GitHub Issue
+                </label>
+                {issue.github_url ? (
+                  <a
+                    href={issue.github_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-purple-400 transition-colors"
+                  >
+                    #{issue.github_issue_number} ↗
+                  </a>
+                ) : (
+                  <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-500">
+                    Not handed off
+                  </div>
+                )}
+              </div>
+
+              {/* Dates */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Created
+                </label>
+                <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-400">
+                  {formatDate(issue.created_at)}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Updated
+                </label>
+                <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-400">
+                  {formatDate(issue.updated_at)}
+                </div>
+              </div>
+            </div>
+
+            {/* Last Error (if failed handoff) */}
+            {issue.handoff_state === "FAILED" && issue.last_error && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-red-300 mb-2">
+                  Handoff Error
+                </label>
+                <div className="px-3 py-2 bg-red-900/20 border border-red-700 rounded-md text-red-300 text-sm">
+                  {issue.last_error}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Labels Section */}
+          <div className="p-6 border-b border-gray-800">
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              Labels
+            </label>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {editedLabels.length === 0 ? (
+                <span className="text-sm text-gray-500">No labels</span>
+              ) : (
+                editedLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-2 px-3 py-1 text-sm font-medium rounded-md bg-blue-900/30 text-blue-200 border border-blue-700"
+                  >
+                    {label}
+                    <button
+                      onClick={() => handleRemoveLabel(label)}
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddLabel();
+                  }
+                }}
+                placeholder="Add new label..."
+                className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                onClick={handleAddLabel}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md font-medium transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Body Section */}
+          <div className="p-6 border-b border-gray-800">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-300">
+                Description
+              </label>
+              <button
+                onClick={() => setShowPreview(!showPreview)}
+                className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-md transition-colors"
+              >
+                {showPreview ? "Edit" : "Preview"}
+              </button>
+            </div>
+            {showPreview ? (
+              <div className="px-4 py-3 bg-gray-800 border border-gray-700 rounded-md text-gray-300 min-h-[200px] whitespace-pre-wrap">
+                {editedBody || <span className="text-gray-500">No description</span>}
+              </div>
+            ) : (
+              <textarea
+                value={editedBody}
+                onChange={(e) => setEditedBody(e.target.value)}
+                rows={10}
+                placeholder="Enter issue description (Markdown supported)..."
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+              />
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="p-6 bg-gray-800/30">
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+
+              <button
+                onClick={handleActivate}
+                disabled={isActivating || issue.status === "ACTIVE"}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isActivating
+                  ? "Activating..."
+                  : issue.status === "ACTIVE"
+                  ? "Already Active"
+                  : "Activate"}
+              </button>
+
+              <button
+                onClick={handleHandoff}
+                disabled={
+                  isHandingOff ||
+                  issue.handoff_state === "SYNCED" ||
+                  issue.handoff_state === "SENT"
+                }
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isHandingOff
+                  ? "Handing off..."
+                  : issue.handoff_state === "SYNCED"
+                  ? "Already Synced"
+                  : issue.handoff_state === "SENT"
+                  ? "Handoff in Progress"
+                  : "Handoff to GitHub"}
+              </button>
+
+              {issue.github_url && (
+                <a
+                  href={issue.github_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium transition-colors inline-flex items-center gap-2"
+                >
+                  Open GitHub Issue ↗
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
