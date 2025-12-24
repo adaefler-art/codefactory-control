@@ -104,6 +104,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: control-center/package-lock.json
 
+      - name: Install root dependencies (local packages)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --omit=dev
+
       - name: Install dependencies (control-center)
         working-directory: control-center
         shell: bash
