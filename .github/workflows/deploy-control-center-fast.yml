@@ -1,0 +1,258 @@
+name: Deploy Control Center (Fast)
+
+# Fast, app-only deploy:
+# - No CDK
+# - No DNS
+# - No DB migrations
+# - Updates ONLY the "control-center" container image in the current ECS service task definition
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+        default: staging
+  push:
+    branches:
+      - main
+    paths:
+      - "control-center/**"
+      - ".github/workflows/deploy-control-center-fast.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-cc-fast-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+
+jobs:
+  build-and-deploy:
+    name: Build + Deploy Control Center (Fast)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate image tags
+        id: image-tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard AWS_DEPLOY_ROLE_ARN
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ]; then
+            echo "❌ AWS_DEPLOY_ROLE_ARN is missing (secret is empty or undefined)" >&2
+            exit 1
+          fi
+
+      - name: Resolve deploy target
+        id: target
+        shell: pwsh
+        run: |
+          $deployEnv = "${{ env.DEPLOY_ENV }}"
+          $stagingCluster = "${{ vars.STAGING_ECS_CLUSTER }}"
+          if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster' }
+
+          if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
+            Write-Error "Unsupported DEPLOY_ENV: $deployEnv"; exit 1
+          }
+
+          if ($deployEnv -eq 'production') {
+            $tagPrefix = 'prod'
+            $ecsService = 'afu9-control-center'
+            $ecsCluster = 'afu9-cluster'
+            $readyHost = 'afu-9.com'
+          } else {
+            $tagPrefix = 'stage'
+            $ecsService = 'afu9-control-center-staging'
+            $ecsCluster = $stagingCluster
+            $readyHost = 'stage.afu-9.com'
+          }
+
+          "deploy_env=$deployEnv" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag_prefix=$tagPrefix" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ecs_service=$ecsService" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ecs_cluster=$ecsCluster" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ready_host=$readyHost" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: control-center/package-lock.json
+
+      - name: Install dependencies (control-center)
+        working-directory: control-center
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Test (control-center)
+        working-directory: control-center
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Build (control-center)
+        working-directory: control-center
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get ECR repository URI
+        id: ecr
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "control_center=$(aws ecr describe-repositories --repository-names afu9/control-center --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Control Center
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./control-center/Dockerfile
+          push: true
+          build-args: |
+            BUILD_COMMIT_HASH=${{ github.sha }}
+            BUILD_ENV=${{ steps.target.outputs.deploy_env }}
+          tags: |
+            ${{ steps.ecr.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ github.sha }}
+            ${{ steps.ecr.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update ECS service (control-center image only)
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          REGION="${{ env.AWS_REGION }}"
+          REPO_URI="${{ steps.ecr.outputs.control_center }}"
+          TAG_PREFIX="${{ steps.target.outputs.tag_prefix }}"
+          IMAGE_TAG="${TAG_PREFIX}-${{ github.sha }}"
+          IMAGE_URI="${REPO_URI}:${IMAGE_TAG}"
+
+          echo "Target: cluster=${CLUSTER} service=${SERVICE}"
+          echo "Image:  ${IMAGE_URI}"
+
+          SERVICE_JSON=$(aws ecs describe-services \
+            --cluster "${CLUSTER}" \
+            --services "${SERVICE}" \
+            --region "${REGION}" \
+            --output json)
+
+          if echo "$SERVICE_JSON" | jq -e '.failures | length > 0' >/dev/null; then
+            echo "❌ ECS describe-services reported failures:" >&2
+            echo "$SERVICE_JSON" | jq '.failures' >&2
+            exit 1
+          fi
+
+          TASK_DEF_ARN=$(echo "$SERVICE_JSON" | jq -r '.services[0].taskDefinition // ""')
+          if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
+            echo "❌ Could not resolve current task definition for service" >&2
+            exit 1
+          fi
+          echo "Current task definition: $TASK_DEF_ARN"
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --region "$REGION" \
+            --query 'taskDefinition' > task-def.json
+
+          jq --arg image "$IMAGE_URI" '
+            .containerDefinitions |= map(
+              if .name == "control-center" then .image = $image else . end
+            )
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' task-def.json > new-task-def.json
+
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --region "$REGION" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          if [ -z "$NEW_TASK_DEF_ARN" ] || [ "$NEW_TASK_DEF_ARN" = "None" ]; then
+            echo "❌ Failed to register new task definition" >&2
+            exit 1
+          fi
+
+          echo "New task definition: $NEW_TASK_DEF_ARN"
+
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$NEW_TASK_DEF_ARN" \
+            --region "$REGION" \
+            --output json >/dev/null
+
+          echo "Waiting for services-stable..."
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --region "$REGION"
+
+      - name: Smoke check (/api/ready)
+        shell: pwsh
+        env:
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostName = $env:READY_HOST
+          if (-not $hostName) { throw 'READY_HOST is empty' }
+
+          $uri = "https://$hostName/api/ready"
+          Write-Host "Probing $uri"
+
+          for ($i = 1; $i -le 30; $i++) {
+            try {
+              $resp = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 10
+              if ($resp.StatusCode -eq 200) {
+                Write-Host "✅ Ready (attempt $i)"
+                exit 0
+              }
+            } catch {
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          throw "Readiness probe failed"

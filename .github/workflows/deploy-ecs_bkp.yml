@@ -24,23 +24,6 @@ on:
           - production
           - staging
         default: production
-      run_migrations:
-        description: "Run database migrations (auto: detect by changed files)"
-        required: false
-        type: choice
-        options:
-          - auto
-          - "true"
-          - "false"
-        default: auto
-      run_alb_checks:
-        description: "Run ALB DNS + target health checks"
-        required: false
-        type: choice
-        options:
-          - "true"
-          - "false"
-        default: "false"
   push:
     branches:
       - main
@@ -77,72 +60,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Decide gates
-        id: gates
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $eventName = "${{ github.event_name }}"
-          $deployEnv = "${{ env.DEPLOY_ENV }}"
-
-          # Defaults
-          $runMigrationsInput = "${{ github.event.inputs.run_migrations }}"
-          if (-not $runMigrationsInput) { $runMigrationsInput = 'auto' }
-
-          $runAlbChecksInput = "${{ github.event.inputs.run_alb_checks }}"
-          if (-not $runAlbChecksInput) { $runAlbChecksInput = 'false' }
-
-          $shouldMigrate = $false
-          $runAlbChecks = ($runAlbChecksInput -eq 'true')
-
-          function Test-MigrationRelevant([string[]]$paths) {
-            foreach ($p in ($paths | Where-Object { $_ })) {
-              if ($p -match '(^|/)(migrations/|prisma/|supabase/|database/migrations/)' -or
-                  $p -match '(^|/)(schema\.prisma|workflow-schema\.json)$') {
-                return $true
-              }
-            }
-            return $false
-          }
-
-          if ($eventName -eq 'workflow_dispatch') {
-            # Respect inputs; auto => detect by recent commit diff (best-effort)
-            if ($runMigrationsInput -eq 'true') {
-              $shouldMigrate = $true
-            } elseif ($runMigrationsInput -eq 'false') {
-              $shouldMigrate = $false
-            } else {
-              $changed = @()
-              try {
-                $changed = git diff --name-only HEAD~1 HEAD 2>$null
-              } catch {
-                $changed = @()
-              }
-              $shouldMigrate = (Test-MigrationRelevant -paths $changed)
-            }
-          } else {
-            # Push: auto-detect by changed files
-            $before = "${{ github.event.before }}"
-            $after = "${{ github.sha }}"
-            $changed = @()
-            try {
-              if ($before -and $before -ne '0000000000000000000000000000000000000000') {
-                $changed = git diff --name-only $before $after
-              } else {
-                $changed = git diff --name-only HEAD~1 HEAD
-              }
-            } catch {
-              $changed = @()
-            }
-            $shouldMigrate = (Test-MigrationRelevant -paths $changed)
-          }
-
-          Write-Host "Decide gates: event=$eventName env=$deployEnv run_migrations_input=$runMigrationsInput => should_migrate=$shouldMigrate run_alb_checks=$runAlbChecks"
-
-          "should_migrate=$($shouldMigrate.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "run_alb_checks=$($runAlbChecks.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Display trigger context
         run: echo "Triggered by ${{ github.event_name }} on branch ${{ github.ref_name }} @ ${{ github.sha }}"
@@ -470,11 +387,9 @@ jobs:
         shell: bash
         env:
           DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
-          SHOULD_MIGRATE: ${{ steps.gates.outputs.should_migrate }}
         run: |
           set -euo pipefail
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
-          echo "should_migrate=${SHOULD_MIGRATE}"
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
             echo "❌ DEPLOY_EVENTS_TOKEN secret is missing" >&2
@@ -594,37 +509,27 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
-          MIGRATION_TASK_DEF_ARN=""
-          if [ "${SHOULD_MIGRATE}" = "true" ]; then
-            echo "Preparing migration task definition (should_migrate=true)"
+          # Migration tasks must not depend on sidecar images.
+          # ECS pulls all images in a task definition, even if we only override the command
+          # for one container. If the service task def includes mcp-* sidecars (stage-latest),
+          # migrations would fail before the app container runs.
+          jq '.containerDefinitions |= map(select(.name=="control-center"))
+              | .containerDefinitions[0] |= del(.dependsOn)
+              ' new-task-def.json > migration-task-def.json
 
-            # Migration tasks must not depend on sidecar images.
-            # ECS pulls all images in a task definition, even if we only override the command
-            # for one container. If the service task def includes mcp-* sidecars (stage-latest),
-            # migrations would fail before the app container runs.
-            jq '.containerDefinitions |= map(select(.name=="control-center"))
-                | .containerDefinitions[0] |= del(.dependsOn)
-                ' new-task-def.json > migration-task-def.json
-
-            MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition \
-              --cli-input-json file://migration-task-def.json \
-              --region "${{ env.AWS_REGION }}" \
-              --query 'taskDefinition.taskDefinitionArn' \
-              --output text)
-          else
-            echo "Skipping migration task definition (should_migrate=false)"
-          fi
+          MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://migration-task-def.json \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
 
           echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "migration_task_def_arn=$MIGRATION_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "New task definition: $NEW_TASK_DEF_ARN"
-          if [ -n "${MIGRATION_TASK_DEF_ARN}" ]; then
-            echo "Migration task definition: $MIGRATION_TASK_DEF_ARN"
-          fi
+          echo "Migration task definition: $MIGRATION_TASK_DEF_ARN"
 
       - name: Run database migrations (gate)
         id: migrate
-        if: steps.gates.outputs.should_migrate == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -915,7 +820,6 @@ jobs:
 
       - name: Resolve ALB DNS
         id: alb-dns
-        if: steps.gates.outputs.run_alb_checks == 'true'
         shell: pwsh
         run: |
           # $env:GITHUB_OUTPUT exists in GitHub Actions; locally it can be null. Write to it only when present.
@@ -955,7 +859,6 @@ jobs:
           Write-Host "Resolved ALB DNS: $albDns"
 
       - name: ALB target health (no jq)
-        if: steps.gates.outputs.run_alb_checks == 'true'
         shell: pwsh
         env:
           DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
