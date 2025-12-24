@@ -104,11 +104,21 @@ jobs:
           cache: "npm"
           cache-dependency-path: control-center/package-lock.json
 
-      - name: Install root dependencies (local packages)
+      - name: Install + build deploy-memory (local package)
+        working-directory: packages/deploy-memory
         shell: bash
         run: |
           set -euo pipefail
-          npm ci --omit=dev
+          npm ci
+          npm run build
+
+      - name: Install + build verdict-engine (local package)
+        working-directory: packages/verdict-engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
 
       - name: Install dependencies (control-center)
         working-directory: control-center
