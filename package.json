@@ -9,6 +9,7 @@
   "scripts": {
     "build": "npm run validate-secrets && tsc",
     "watch": "tsc -w",
+    "dev:control-center": "npm --prefix control-center run dev --",
     "cdk": "cdk",
     "synth": "ts-node scripts/synth-with-validation.ts",
     "synth:no-validation": "cdk synth",
