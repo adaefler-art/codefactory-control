@@ -37,9 +37,12 @@ interface ActivityEvent {
 export default function IssueDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string }> | { id: string };
 }) {
-  const { id } = use(params);
+  const resolvedParams: { id: string } =
+    // Next.js may pass params as a Promise in some client-page setups.
+    typeof (params as any)?.then === "function" ? use(params as Promise<{ id: string }>) : (params as { id: string });
+  const { id } = resolvedParams;
   const router = useRouter();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -93,10 +96,17 @@ export default function IssueDetailPage({
       });
 
       if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Issue not found");
+        if (response.status === 404) throw new Error("Issue not found");
+
+        let details = "Failed to fetch issue";
+        try {
+          const errBody = await response.json();
+          if (errBody?.error) details = String(errBody.error);
+        } catch {
+          // ignore JSON parse errors
         }
-        throw new Error("Failed to fetch issue");
+
+        throw new Error(`HTTP ${response.status}: ${details}`);
       }
 
       const data = await response.json();

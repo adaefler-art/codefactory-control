@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 interface Issue {
   id: string;
@@ -22,7 +21,6 @@ interface Issue {
 }
 
 export default function IssuesPage() {
-  const router = useRouter();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -234,15 +232,17 @@ export default function IssuesPage() {
                     {issues.map((issue) => (
                       <tr
                         key={issue.id}
-                        className="hover:bg-gray-800/50 cursor-pointer transition-colors"
-                        onClick={() => router.push(`/issues/${issue.id}`)}
+                        className="hover:bg-gray-800/50 transition-colors"
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center">
                             <div>
-                              <div className="text-sm font-medium text-purple-400 hover:text-purple-300">
+                              <Link
+                                href={`/issues/${issue.id}`}
+                                className="text-sm font-medium text-purple-400 hover:text-purple-300"
+                              >
                                 {issue.title}
-                              </div>
+                              </Link>
                               {issue.priority && (
                                 <div className="text-xs text-gray-500 mt-1">
                                   {issue.priority}

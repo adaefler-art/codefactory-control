@@ -34,6 +34,15 @@ export async function GET(
     const pool = getPool();
     const { id } = params;
 
+    // Temporary diagnostics for the "Failed to fetch issue" bug.
+    // Only logs in DEV to avoid noisy production logs.
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[API /api/issues/[id]] GET', {
+        id,
+        url: request.nextUrl.toString(),
+      });
+    }
+
     // Validate UUID format
     if (!isValidUUID(id)) {
       return NextResponse.json(
@@ -58,7 +67,18 @@ export async function GET(
       );
     }
 
+    if (!result.data) {
+      return NextResponse.json(
+        { error: 'Issue not found', id },
+        { status: 404 }
+      );
+    }
+
     const responseBody: any = { ...result.data };
+    if (!responseBody.id && typeof responseBody.issue_id === 'string') {
+      responseBody.id = responseBody.issue_id;
+      delete responseBody.issue_id;
+    }
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
