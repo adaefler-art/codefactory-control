@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "parameters": [
+    {
+      "key": "AFU9_DEBUG_API",
+      "title": "Debug API responses",
+      "description": "If enabled, certain API routes may include additional debugging fields (e.g., contextTrace).",
+      "scope": "api",
+      "category": "observability",
+      "type": "boolean",
+      "defaultValue": false,
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    },
+    {
+      "key": "LAWBOOK_VERSION",
+      "title": "Lawbook format version",
+      "description": "Version of the canonical Lawbook JSON schemas loaded by the Control Center.",
+      "scope": "api",
+      "category": "reliability",
+      "type": "number",
+      "defaultValue": 1,
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    }
+  ]
+}

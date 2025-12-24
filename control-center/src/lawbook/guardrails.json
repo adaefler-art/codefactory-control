@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "guardrails": [
+    {
+      "id": "LB-GR-001",
+      "title": "No silent behavior changes",
+      "description": "In MVP stage A, do not change core behavior of existing routes/flows; only add transparency and read-only surfaces.",
+      "scope": "api",
+      "category": "reliability",
+      "enforcement": "hard",
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    },
+    {
+      "id": "LB-GR-002",
+      "title": "CamelCase + ISO dates",
+      "description": "All public API responses must use camelCase and ISO-8601 date strings.",
+      "scope": "api",
+      "category": "quality",
+      "enforcement": "hard",
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    },
+    {
+      "id": "LB-GR-003",
+      "title": "No write endpoints in Stage A",
+      "description": "Lawbook is read-only in Stage A: no editor, no overrides, no audit/write APIs.",
+      "scope": "api",
+      "category": "safety",
+      "enforcement": "hard",
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    }
+  ]
+}

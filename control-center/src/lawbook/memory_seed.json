@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "LB-MEM-001",
+      "title": "AFU-9 mission",
+      "content": "AFU-9 is an autonomous software factory. In Stage A, prioritize transparency and stable context without changing behavior.",
+      "scope": "global",
+      "category": "product",
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    },
+    {
+      "id": "LB-MEM-002",
+      "title": "E2E scope constraint",
+      "content": "Do not expand E2E issue scope; avoid UI rework for Issues; keep e2e tests running.",
+      "scope": "ui",
+      "category": "reliability",
+      "createdAt": "2025-12-24T00:00:00.000Z",
+      "updatedAt": "2025-12-24T00:00:00.000Z"
+    }
+  ]
+}
