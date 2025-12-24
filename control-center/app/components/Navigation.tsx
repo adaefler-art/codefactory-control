@@ -11,6 +11,7 @@ export default function Navigation() {
     { href: "/workflows", label: "Workflows" },
     { href: "/agents", label: "Agents" },
     { href: "/issues", label: "Issues" },
+    { href: "/lawbook", label: "Lawbook" },
     { href: "/features", label: "Features" },
     { href: "/new-feature", label: "New Feature" },
     { href: "/ninefold", label: "Ninefold" },
