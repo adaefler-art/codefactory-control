@@ -394,6 +394,14 @@ Monthly AWS costs (approximate):
 5. **Advanced Monitoring**: X-Ray for distributed tracing
 6. **Cost Optimization**: Savings Plans, Reserved Instances for RDS
 
+## Key Development Patterns
+
+AFU-9 follows strict patterns for data handling and API development:
+
+- **[API Boundary Normalization](./API_BOUNDARY_NORMALIZATION.md)**: Mandatory pattern for safely serializing database data at API boundaries to prevent output contract validation failures
+- **[Database Schema](./database-schema.md)**: PostgreSQL schema definitions and constraints
+- **[MCP Protocol](./mcp-protocol.md)**: Communication pattern between Control Center and MCP-Servers
+
 ## References
 
 - [AWS ECS Best Practices](https://docs.aws.amazon.com/AmazonECS/latest/bestpracticesguide/)
