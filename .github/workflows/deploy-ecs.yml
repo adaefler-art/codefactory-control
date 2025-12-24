@@ -450,13 +450,13 @@ jobs:
 
           {
             echo "## Deploy Provenance"
-            echo "- Branch: \\`${BRANCH}\\`"
-            echo "- SHA: \\`${SHA}\\`"
-            echo "- Environment: \\`${DEPLOY_ENV}\\`"
-            echo "- Control Center Image: \\`${REPO_URI}:${IMAGE_TAG}\\`"
-            echo "- Control Center Digest: \\`${DIGEST}\\`"
-            echo "- ECS Cluster: \\`${CLUSTER}\\`"
-            echo "- ECS Service: \\`${SERVICE}\\`"
+            echo "- Branch: \`${BRANCH}\`"
+            echo "- SHA: \`${SHA}\`"
+            echo "- Environment: \`${DEPLOY_ENV}\`"
+            echo "- Control Center Image: \`${REPO_URI}:${IMAGE_TAG}\`"
+            echo "- Control Center Digest: \`${DIGEST}\`"
+            echo "- ECS Cluster: \`${CLUSTER}\`"
+            echo "- ECS Service: \`${SERVICE}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: "Guardrail: block legacy DB secret (/master)"
