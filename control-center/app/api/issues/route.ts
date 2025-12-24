@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
 import { listAfu9Issues, createAfu9Issue } from '../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { normalizeIssueForApi } from './_shared';
 import {
   Afu9IssueStatus,
   Afu9HandoffState,
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
     }
 
     const responseBody: any = {
-      issues,
+      issues: issues.map((issue) => normalizeIssueForApi(issue)),
       total: totalBeforeFilter, // Total from DB before client-side filtering
       filtered: issues.length, // Count after filtering
       limit,
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const responseBody: any = { ...result.data };
+    const responseBody: any = normalizeIssueForApi(result.data);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }

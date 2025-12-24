@@ -15,8 +15,8 @@ import {
 import {
   Afu9IssueStatus,
 } from '../../../../../src/lib/contracts/afu9Issue';
-import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 
 /**
  * POST /api/issues/[id]/activate
@@ -33,36 +33,19 @@ export async function POST(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format
-    if (!isValidUUID(id)) {
-      return NextResponse.json(
-        { error: 'Invalid issue ID format' },
-        { status: 400 }
-      );
+    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    if (!resolved.ok) {
+      return NextResponse.json(resolved.body, { status: resolved.status });
     }
 
-    // Get the issue to activate
-    const issueResult = await getAfu9IssueById(pool, id);
-    if (!issueResult.success) {
-      if (issueResult.error && issueResult.error.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Issue not found', id },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json(
-        { error: 'Failed to get issue', details: issueResult.error },
-        { status: 500 }
-      );
-    }
-
-    const issue = issueResult.data;
+    const issue = resolved.row as any;
+    const internalId = String(issue.id);
 
     // Check if already ACTIVE
     if (issue?.status === Afu9IssueStatus.ACTIVE) {
       const responseBody: any = {
         message: 'Issue is already ACTIVE',
-        issue,
+        issue: normalizeIssueForApi(issue),
       };
       if (isDebugApiEnabled()) {
         responseBody.contextTrace = await buildContextTrace(request);
@@ -85,7 +68,7 @@ export async function POST(
     const currentActiveIssue = activeIssueResult.data;
 
     // Deactivate the current active issue (if exists and different from target)
-    if (currentActiveIssue && currentActiveIssue.id !== id) {
+    if (currentActiveIssue && currentActiveIssue.id !== internalId) {
       const deactivateResult = await updateAfu9Issue(pool, currentActiveIssue.id, {
         status: Afu9IssueStatus.CREATED,
       });
@@ -102,7 +85,7 @@ export async function POST(
     }
 
     // Activate the target issue
-    const activateResult = await updateAfu9Issue(pool, id, {
+    const activateResult = await updateAfu9Issue(pool, internalId, {
       status: Afu9IssueStatus.ACTIVE,
     });
 
@@ -115,10 +98,11 @@ export async function POST(
 
     const responseBody: any = {
       message: 'Issue activated successfully',
-      issue: activateResult.data,
+      issue: normalizeIssueForApi(activateResult.data),
       deactivated: currentActiveIssue
         ? {
             id: currentActiveIssue.id,
+            publicId: String(currentActiveIssue.id).substring(0, 8),
             title: currentActiveIssue.title,
           }
         : null,

@@ -8,8 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import { getIssueEvents } from '../../../../../src/lib/db/afu9Issues';
-import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { fetchIssueRowByIdentifier } from '../../_shared';
 
 /**
  * GET /api/issues/[id]/events
@@ -27,13 +27,12 @@ export async function GET(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format
-    if (!isValidUUID(id)) {
-      return NextResponse.json(
-        { error: 'Invalid issue ID format' },
-        { status: 400 }
-      );
+    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    if (!resolved.ok) {
+      return NextResponse.json(resolved.body, { status: resolved.status });
     }
+
+    const internalId = (resolved.row as any).id as string;
 
     // Parse limit parameter
     const searchParams = request.nextUrl.searchParams;
@@ -43,7 +42,7 @@ export async function GET(
     );
 
     // Get events from database
-    const result = await getIssueEvents(pool, id, limit);
+    const result = await getIssueEvents(pool, internalId, limit);
 
     if (!result.success) {
       return NextResponse.json(

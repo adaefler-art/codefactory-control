@@ -8,15 +8,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import {
-  getAfu9IssueById,
   updateAfu9Issue,
 } from '../../../../../src/lib/db/afu9Issues';
 import {
   Afu9HandoffState,
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { createIssue } from '../../../../../src/lib/github';
-import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 
 /**
  * POST /api/issues/[id]/handoff
@@ -36,42 +35,19 @@ export async function POST(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format
-    if (!isValidUUID(id)) {
-      return NextResponse.json(
-        { error: 'Invalid issue ID format' },
-        { status: 400 }
-      );
+    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    if (!resolved.ok) {
+      return NextResponse.json(resolved.body, { status: resolved.status });
     }
 
-    // Get the issue to handoff
-    const issueResult = await getAfu9IssueById(pool, id);
-    if (!issueResult.success) {
-      if (issueResult.error && issueResult.error.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Issue not found', id },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json(
-        { error: 'Failed to get issue', details: issueResult.error },
-        { status: 500 }
-      );
-    }
-
-    const issue = issueResult.data;
-    if (!issue) {
-      return NextResponse.json(
-        { error: 'Issue not found', id },
-        { status: 404 }
-      );
-    }
+    const issue = resolved.row as any;
+    const internalId = String(issue.id);
 
     // Check if already handed off successfully
     if (issue.handoff_state === Afu9HandoffState.SYNCED) {
       const responseBody: any = {
         message: 'Issue already handed off to GitHub',
-        issue,
+        issue: normalizeIssueForApi(issue),
         github_url: issue.github_url,
         github_issue_number: issue.github_issue_number,
       };
@@ -82,7 +58,7 @@ export async function POST(
     }
 
     // Mark as SENT before attempting GitHub creation
-    const sentResult = await updateAfu9Issue(pool, id, {
+    const sentResult = await updateAfu9Issue(pool, internalId, {
       handoff_state: Afu9HandoffState.SENT,
       last_error: null, // Clear previous error
     });
@@ -99,7 +75,7 @@ export async function POST(
 
     try {
       // Create idempotency key marker
-      const idempotencyKey = `AFU9-ISSUE:${id}`;
+      const idempotencyKey = `AFU9-ISSUE:${internalId}`;
       
       // Build GitHub issue body with idempotency marker
       const githubBody = [
@@ -117,7 +93,7 @@ export async function POST(
       });
 
       // Update AFU9 issue with GitHub details
-      const syncedResult = await updateAfu9Issue(pool, id, {
+      const syncedResult = await updateAfu9Issue(pool, internalId, {
         handoff_state: Afu9HandoffState.SYNCED,
         github_issue_number: githubIssue.number,
         github_url: githubIssue.html_url,
@@ -150,7 +126,7 @@ export async function POST(
 
       const responseBody: any = {
         message: 'Issue handed off to GitHub successfully',
-        issue: syncedResult.data,
+        issue: normalizeIssueForApi(syncedResult.data),
         github_url: githubIssue.html_url,
         github_issue_number: githubIssue.number,
       };
@@ -163,7 +139,7 @@ export async function POST(
       const errorMessage =
         githubError instanceof Error ? githubError.message : String(githubError);
 
-      await updateAfu9Issue(pool, id, {
+      await updateAfu9Issue(pool, internalId, {
         handoff_state: Afu9HandoffState.FAILED,
         last_error: errorMessage,
       });

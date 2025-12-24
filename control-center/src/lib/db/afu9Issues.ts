@@ -152,6 +152,54 @@ export async function getAfu9IssueById(
 }
 
 /**
+ * Get an AFU9 issue by publicId/shortId.
+ *
+ * The Control Center UI uses an 8-hex public id derived from the UUID prefix
+ * (e.g. uuid "c300abd8-..." => publicId "c300abd8").
+ *
+ * @param pool - PostgreSQL connection pool
+ * @param publicId - 8-hex issue public id
+ */
+export async function getAfu9IssueByPublicId(
+  pool: Pool,
+  publicId: string
+): Promise<OperationResult> {
+  try {
+    const result = await pool.query<Afu9IssueRow>(
+      `SELECT *
+       FROM afu9_issues
+       WHERE LOWER(LEFT(id::text, 8)) = LOWER($1)
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [publicId]
+    );
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: `Issue not found: ${publicId}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Get by publicId failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      publicId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
  * Get the currently active issue (if any)
  * 
  * @param pool - PostgreSQL connection pool

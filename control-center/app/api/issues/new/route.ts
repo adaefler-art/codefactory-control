@@ -23,28 +23,24 @@ import {
 } from '../../../../src/lib/contracts/afu9Issue';
 import { normalizeOutput } from '@/lib/api/normalize-output';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { normalizeIssueForApi, toPublicIdFromUuid } from '../_shared';
 
 type DraftIssue = {
   id: string;
+  publicId: string;
   title: string;
-  description: string;
-  status: 'CREATED';
-  labels: string[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-type NewIssueResponse = {
-  id: string;
-  title: string;
-  description: string;
+  body: string | null;
   status: Afu9IssueStatus;
   labels: string[];
   priority: Afu9IssuePriority | null;
-  handoffState: Afu9HandoffState;
-  githubIssue: { number: number | null; url: string | null } | null;
-  createdAt: string;
-  updatedAt: string;
+  assignee: string | null;
+  source: string;
+  handoff_state: Afu9HandoffState;
+  github_issue_number: number | null;
+  github_url: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 function isStringArray(value: unknown): value is string[] {
@@ -92,14 +88,24 @@ function logRequest(params: {
 }
 
 function createDraftIssue(nowIso: string): DraftIssue {
+  const id = randomUUID();
+  const publicId = toPublicIdFromUuid(id) ?? id.substring(0, 8).toLowerCase();
   return {
-    id: randomUUID(),
+    id,
+    publicId,
     title: '',
-    description: '',
-    status: 'CREATED',
+    body: '',
+    status: Afu9IssueStatus.CREATED,
     labels: [],
-    createdAt: nowIso,
-    updatedAt: nowIso,
+    priority: null,
+    assignee: null,
+    source: 'afu9',
+    handoff_state: Afu9HandoffState.NOT_SENT,
+    github_issue_number: null,
+    github_url: null,
+    last_error: null,
+    created_at: nowIso,
+    updated_at: nowIso,
   };
 }
 
@@ -120,7 +126,7 @@ export async function GET(request: NextRequest) {
     // and never fail the endpoint with 400.
     const draft = createDraftIssue(nowIso);
 
-    const responseBody: any = draft;
+    const responseBody: any = normalizeIssueForApi(draft);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
@@ -142,7 +148,7 @@ export async function GET(request: NextRequest) {
     const nowIso = new Date().toISOString();
     const fallback = createDraftIssue(nowIso);
 
-    const responseBody: any = fallback;
+    const responseBody: any = normalizeIssueForApi(fallback);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
@@ -201,9 +207,21 @@ export async function PATCH(request: NextRequest) {
       return response;
     }
 
-    // Minimal validation (title optional; status defaults CREATED)
+    // Minimal validation.
+    // For the New-Issue flow we require a non-empty title to avoid creating
+    // accidental placeholder issues (e.g. "Untitled Issue") that then get
+    // duplicated when the user later submits the real title.
     const rawTitle = body?.title;
-    if (rawTitle !== undefined && typeof rawTitle !== 'string') {
+    if (rawTitle === undefined) {
+      const response = NextResponse.json(
+        { error: 'Title is required' },
+        { status: 400 }
+      );
+      response.headers.set('x-request-id', requestId);
+      return response;
+    }
+
+    if (typeof rawTitle !== 'string') {
       const response = NextResponse.json(
         { error: 'Invalid title' },
         { status: 400 }
@@ -274,8 +292,15 @@ export async function PATCH(request: NextRequest) {
       return response;
     }
 
-    let title = typeof rawTitle === 'string' ? rawTitle.trim() : '';
-    if (!title) title = 'Untitled Issue';
+    const title = rawTitle.trim();
+    if (!title) {
+      const response = NextResponse.json(
+        { error: 'Title is required' },
+        { status: 400 }
+      );
+      response.headers.set('x-request-id', requestId);
+      return response;
+    }
 
     const description =
       typeof rawDescription === 'string' ? rawDescription : '';
@@ -313,26 +338,12 @@ export async function PATCH(request: NextRequest) {
       return response;
     }
 
-    const normalized = normalizeOutput(result.data) as any;
+    // Return the same shape as the rest of the Issues API.
+    const responseBody: any = normalizeIssueForApi(normalizeOutput(result.data));
 
-    const responseBody: NewIssueResponse = {
-      id: String(normalized.id),
-      title: String(normalized.title ?? title),
-      description: (normalized.body ?? '') as string,
-      status: (normalized.status ?? status) as Afu9IssueStatus,
-      labels: (normalized.labels ?? []) as string[],
-      priority: (normalized.priority ?? null) as Afu9IssuePriority | null,
-      handoffState: (normalized.handoff_state ?? Afu9HandoffState.NOT_SENT) as Afu9HandoffState,
-      githubIssue:
-        normalized.github_issue_number != null || normalized.github_url != null
-          ? {
-              number: (normalized.github_issue_number ?? null) as number | null,
-              url: (normalized.github_url ?? null) as string | null,
-            }
-          : null,
-      createdAt: toIsoString(normalized.created_at),
-      updatedAt: toIsoString(normalized.updated_at),
-    };
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
 
     const response = NextResponse.json(responseBody, { status: 201 });
     response.headers.set('x-request-id', requestId);

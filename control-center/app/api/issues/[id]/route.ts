@@ -8,7 +8,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
 import {
-  getAfu9IssueById,
   updateAfu9Issue,
 } from '../../../../src/lib/db/afu9Issues';
 import {
@@ -19,8 +18,8 @@ import {
   isValidHandoffState,
   isValidPriority,
 } from '../../../../src/lib/contracts/afu9Issue';
-import { isValidUUID } from '../../../../src/lib/utils/uuid-validator';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../_shared';
 
 /**
  * GET /api/issues/[id]
@@ -43,42 +42,12 @@ export async function GET(
       });
     }
 
-    // Validate UUID format
-    if (!isValidUUID(id)) {
-      return NextResponse.json(
-        { error: 'Invalid issue ID format' },
-        { status: 400 }
-      );
+    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    if (!resolved.ok) {
+      return NextResponse.json(resolved.body, { status: resolved.status });
     }
 
-    const result = await getAfu9IssueById(pool, id);
-
-    if (!result.success) {
-      if (result.error && result.error.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Issue not found', id },
-          { status: 404 }
-        );
-      }
-
-      return NextResponse.json(
-        { error: 'Failed to get issue', details: result.error },
-        { status: 500 }
-      );
-    }
-
-    if (!result.data) {
-      return NextResponse.json(
-        { error: 'Issue not found', id },
-        { status: 404 }
-      );
-    }
-
-    const responseBody: any = { ...result.data };
-    if (!responseBody.id && typeof responseBody.issue_id === 'string') {
-      responseBody.id = responseBody.issue_id;
-      delete responseBody.issue_id;
-    }
+    const responseBody: any = normalizeIssueForApi(resolved.row);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
@@ -115,13 +84,12 @@ export async function PATCH(
     const pool = getPool();
     const { id } = params;
 
-    // Validate UUID format
-    if (!isValidUUID(id)) {
-      return NextResponse.json(
-        { error: 'Invalid issue ID format' },
-        { status: 400 }
-      );
+    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    if (!resolved.ok) {
+      return NextResponse.json(resolved.body, { status: resolved.status });
     }
+
+    const internalId = (resolved.row as any).id as string;
 
     const body = await request.json();
 
@@ -209,7 +177,7 @@ export async function PATCH(
     }
 
     // Update issue
-    const result = await updateAfu9Issue(pool, id, updates);
+    const result = await updateAfu9Issue(pool, internalId, updates);
 
     if (!result.success) {
       if (result.error && result.error.includes('not found')) {
@@ -233,7 +201,7 @@ export async function PATCH(
       );
     }
 
-    const responseBody: any = { ...result.data };
+    const responseBody: any = normalizeIssueForApi(result.data);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }

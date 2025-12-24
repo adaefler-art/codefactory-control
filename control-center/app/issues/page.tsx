@@ -5,6 +5,7 @@ import Link from "next/link";
 
 interface Issue {
   id: string;
+  publicId: string;
   title: string;
   body: string | null;
   status: "CREATED" | "ACTIVE" | "BLOCKED" | "DONE";
@@ -16,8 +17,10 @@ interface Issue {
   github_issue_number: number | null;
   github_url: string | null;
   last_error: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export default function IssuesPage() {
@@ -92,8 +95,10 @@ export default function IssuesPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "—";
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "—";
     return date.toLocaleDateString("de-DE", {
       year: "numeric",
       month: "short",
@@ -238,7 +243,7 @@ export default function IssuesPage() {
                           <div className="flex items-center">
                             <div>
                               <Link
-                                href={`/issues/${issue.id}`}
+                                href={`/issues/${issue.publicId}`}
                                 className="text-sm font-medium text-purple-400 hover:text-purple-300"
                               >
                                 {issue.title}
@@ -298,7 +303,7 @@ export default function IssuesPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                          {formatDate(issue.updated_at)}
+                          {formatDate(issue.updatedAt ?? issue.updated_at)}
                         </td>
                       </tr>
                     ))}

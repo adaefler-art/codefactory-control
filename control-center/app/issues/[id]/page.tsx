@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 interface Issue {
   id: string;
+  publicId: string | null;
   title: string;
   body: string | null;
   status: "CREATED" | "ACTIVE" | "BLOCKED" | "DONE";
@@ -17,8 +18,10 @@ interface Issue {
   github_issue_number: number | null;
   github_url: string | null;
   last_error: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 interface ActivityEvent {
@@ -55,7 +58,7 @@ export default function IssueDetailPage({
 
   // Activation warning state
   const [showActivationWarning, setShowActivationWarning] = useState(false);
-  const [currentActiveIssue, setCurrentActiveIssue] = useState<{ id: string; title: string } | null>(null);
+  const [currentActiveIssue, setCurrentActiveIssue] = useState<{ publicId: string; title: string } | null>(null);
 
   // Edit states
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -150,9 +153,9 @@ export default function IssueDetailPage({
       }
 
       const data = await response.json();
-      if (data.issues && data.issues.length > 0 && data.issues[0].id !== id) {
+      if (data.issues && data.issues.length > 0 && data.issues[0].publicId !== id) {
         return {
-          id: data.issues[0].id,
+          publicId: data.issues[0].publicId,
           title: data.issues[0].title,
         };
       }
@@ -165,6 +168,11 @@ export default function IssueDetailPage({
 
   const handleSave = async () => {
     if (!issue) return;
+
+    if (id === 'new' && editedTitle.trim().length === 0) {
+      setSaveError('Title is required');
+      return;
+    }
 
     setIsSaving(true);
     setSaveError(null);
@@ -213,7 +221,22 @@ export default function IssueDetailPage({
       const updatedIssue = await response.json();
       setIssue(updatedIssue);
       setIsEditingTitle(false);
-      setActionMessage("Issue updated successfully");
+
+      if (id === 'new') {
+        const createdPublicId: string | undefined =
+          (updatedIssue?.publicId as string | undefined) ??
+          (typeof updatedIssue?.id === 'string' ? updatedIssue.id.substring(0, 8) : undefined);
+
+        if (createdPublicId) {
+          router.replace(`/issues/${createdPublicId}`);
+          setActionMessage('Issue created successfully');
+        } else {
+          setActionMessage('Issue created successfully');
+        }
+      } else {
+        setActionMessage('Issue updated successfully');
+      }
+
       setTimeout(() => setActionMessage(null), 3000);
     } catch (err) {
       console.error("Error updating issue:", err);
@@ -352,8 +375,10 @@ export default function IssueDetailPage({
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "—";
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "—";
     return date.toLocaleDateString("de-DE", {
       year: "numeric",
       month: "short",
@@ -534,7 +559,7 @@ export default function IssueDetailPage({
               </div>
             )}
             <div className="mt-2 text-sm text-gray-500">
-              Issue #{issue.id.substring(0, 8)}
+              Issue #{(issue.publicId ?? issue.id.substring(0, 8))}
             </div>
           </div>
 
@@ -618,7 +643,7 @@ export default function IssueDetailPage({
                   Created
                 </label>
                 <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-400">
-                  {formatDate(issue.created_at)}
+                  {formatDate(issue.createdAt ?? issue.created_at)}
                 </div>
               </div>
 
@@ -627,7 +652,7 @@ export default function IssueDetailPage({
                   Updated
                 </label>
                 <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-400">
-                  {formatDate(issue.updated_at)}
+                  {formatDate(issue.updatedAt ?? issue.updated_at)}
                 </div>
               </div>
             </div>
@@ -850,7 +875,7 @@ export default function IssueDetailPage({
                     {currentActiveIssue.title}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    ID: {currentActiveIssue.id.substring(0, 8)}
+                    ID: {currentActiveIssue.publicId}
                   </p>
                 </div>
                 <p className="text-sm">

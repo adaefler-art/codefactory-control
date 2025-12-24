@@ -38,6 +38,7 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   listAfu9Issues: jest.fn(),
   createAfu9Issue: jest.fn(),
   getAfu9IssueById: jest.fn(),
+  getAfu9IssueByPublicId: jest.fn(),
   updateAfu9Issue: jest.fn(),
   getActiveIssue: jest.fn(),
   getIssueEvents: jest.fn(),
@@ -82,6 +83,11 @@ describe('AFU9 Issues API', () => {
       expect(Array.isArray(body.issues)).toBe(true);
       expect(body.issues.length).toBe(1);
       expect(body.total).toBe(1);
+
+      // Normalized fields used by the UI.
+      expect(body.issues[0].publicId).toBe('123e4567');
+      expect(Number.isNaN(Date.parse(body.issues[0].createdAt))).toBe(false);
+      expect(Number.isNaN(Date.parse(body.issues[0].updatedAt))).toBe(false);
     });
 
     test('filters by status', async () => {
@@ -239,6 +245,22 @@ describe('AFU9 Issues API', () => {
       expect(body.id).toBe(mockIssue.id);
     });
 
+    test('returns issue by publicId (8-hex)', async () => {
+      const { getAfu9IssueByPublicId } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueByPublicId.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567');
+      const response = await getIssue(request, { params: { id: '123e4567' } });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.id).toBe(mockIssue.id);
+      expect(body.publicId).toBe('123e4567');
+    });
+
     test('returns 400 for invalid UUID format', async () => {
       const request = new NextRequest('http://localhost/api/issues/invalid-id');
       const response = await getIssue(request, { params: { id: 'invalid-id' } });
@@ -268,7 +290,11 @@ describe('AFU9 Issues API', () => {
 
   describe('PATCH /api/issues/[id] (update)', () => {
     test('updates issue fields', async () => {
-      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
       const updatedIssue = { ...mockIssue, title: 'Updated Title' };
       updateAfu9Issue.mockResolvedValue({
         success: true,
@@ -292,6 +318,11 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 400 for invalid status', async () => {
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
         method: 'PATCH',
         body: JSON.stringify({
@@ -309,6 +340,11 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 400 for no fields to update', async () => {
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
         method: 'PATCH',
         body: JSON.stringify({}),
@@ -324,7 +360,11 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 409 for Single-Active constraint violation', async () => {
-      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
       updateAfu9Issue.mockResolvedValue({
         success: false,
         error: 'Single-Active constraint: Issue abc is already ACTIVE',
