@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkflowEngine } from '@/lib/workflow-engine';
 import { WorkflowContext, WorkflowDefinition } from '@/lib/types/workflow';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -95,7 +96,7 @@ export async function POST(
       stepsTotal: result.metadata.stepsTotal,
     });
 
-    return NextResponse.json({
+    const responseBody: any = {
       success: true,
       executionId: result.executionId,
       status: result.status,
@@ -104,7 +105,13 @@ export async function POST(
       stepsTotal: result.metadata.stepsTotal,
       durationMs: result.metadata.durationMs,
       message: 'Self-propelling workflow executed successfully',
-    });
+    };
+
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('[API] Error in self-propelling workflow:', error);
 

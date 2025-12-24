@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import { getIssueEvents } from '../../../../../src/lib/db/afu9Issues';
 import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 
 /**
  * GET /api/issues/[id]/events
@@ -51,11 +52,17 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
+    const responseBody: any = {
       events: result.data || [],
       total: (result.data || []).length,
       limit,
-    });
+    };
+
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('[API /api/issues/[id]/events] Error getting events:', error);
     return NextResponse.json(

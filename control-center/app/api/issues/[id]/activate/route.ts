@@ -16,6 +16,7 @@ import {
   Afu9IssueStatus,
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 
 /**
  * POST /api/issues/[id]/activate
@@ -59,10 +60,14 @@ export async function POST(
 
     // Check if already ACTIVE
     if (issue?.status === Afu9IssueStatus.ACTIVE) {
-      return NextResponse.json({
+      const responseBody: any = {
         message: 'Issue is already ACTIVE',
         issue,
-      });
+      };
+      if (isDebugApiEnabled()) {
+        responseBody.contextTrace = await buildContextTrace(request);
+      }
+      return NextResponse.json(responseBody);
     }
 
     // Get the current active issue (if any)
@@ -108,7 +113,7 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({
+    const responseBody: any = {
       message: 'Issue activated successfully',
       issue: activateResult.data,
       deactivated: currentActiveIssue
@@ -117,7 +122,13 @@ export async function POST(
             title: currentActiveIssue.title,
           }
         : null,
-    });
+    };
+
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('[API /api/issues/[id]/activate] Error activating issue:', error);
     return NextResponse.json(

@@ -20,6 +20,7 @@ import {
   isValidPriority,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { isValidUUID } from '../../../../src/lib/utils/uuid-validator';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 
 /**
  * GET /api/issues/[id]
@@ -57,7 +58,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(result.data);
+    const responseBody: any = { ...result.data };
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('[API /api/issues/[id]] Error getting issue:', error);
     return NextResponse.json(
@@ -208,7 +213,11 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json(result.data);
+    const responseBody: any = { ...result.data };
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('[API /api/issues/[id]] Error updating issue:', error);
     return NextResponse.json(

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
 import { listAfu9Issues, createAfu9Issue } from '../../../src/lib/db/afu9Issues';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import {
   Afu9IssueStatus,
   Afu9HandoffState,
@@ -126,13 +127,19 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    const responseBody: any = {
       issues,
       total: totalBeforeFilter, // Total from DB before client-side filtering
-      filtered: issues.length,   // Count after filtering
+      filtered: issues.length, // Count after filtering
       limit,
       offset,
-    });
+    };
+
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('[API /api/issues] Error listing issues:', error);
     return NextResponse.json(
@@ -199,7 +206,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(result.data, { status: 201 });
+    const responseBody: any = { ...result.data };
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+    return NextResponse.json(responseBody, { status: 201 });
   } catch (error) {
     console.error('[API /api/issues] Error creating issue:', error);
     return NextResponse.json(

@@ -22,6 +22,7 @@ import {
   isValidStatus,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { normalizeOutput } from '@/lib/api/normalize-output';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 
 type DraftIssue = {
   id: string;
@@ -119,7 +120,12 @@ export async function GET(request: NextRequest) {
     // and never fail the endpoint with 400.
     const draft = createDraftIssue(nowIso);
 
-    const response = NextResponse.json(draft, { status: 200 });
+    const responseBody: any = draft;
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+
+    const response = NextResponse.json(responseBody, { status: 200 });
     response.headers.set('x-request-id', requestId);
 
     logRequest({
@@ -136,7 +142,12 @@ export async function GET(request: NextRequest) {
     const nowIso = new Date().toISOString();
     const fallback = createDraftIssue(nowIso);
 
-    const response = NextResponse.json(fallback, { status: 200 });
+    const responseBody: any = fallback;
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+
+    const response = NextResponse.json(responseBody, { status: 200 });
     response.headers.set('x-request-id', requestId);
 
     logRequest({

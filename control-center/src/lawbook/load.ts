@@ -80,6 +80,20 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(normalize(value));
 }
 
+async function resolveLawbookJsonPath(fileName: string): Promise<string> {
+  const cwdPath = path.resolve(process.cwd(), 'src/lawbook', fileName);
+  try {
+    await fs.access(cwdPath);
+    return cwdPath;
+  } catch {
+    // fall through
+  }
+
+  const modulePath = path.resolve(__dirname, fileName);
+  await fs.access(modulePath);
+  return modulePath;
+}
+
 export function computeStableHash(value: unknown): string {
   const json = stableStringify(value);
   return createHash('sha256').update(json).digest('hex');
@@ -168,7 +182,7 @@ function validateMemoryEntry(value: unknown, idx: number): MemorySeedEntry {
 }
 
 export async function loadGuardrails(): Promise<LoadedLawbook<GuardrailsFile>> {
-  const filePath = path.resolve(process.cwd(), 'src/lawbook/guardrails.json');
+  const filePath = await resolveLawbookJsonPath('guardrails.json');
   const raw = await readJsonFile(filePath);
   assert(isRecord(raw), 'guardrails.json must be an object');
   assert(typeof raw.version === 'number', 'guardrails.json.version must be a number');
@@ -180,7 +194,7 @@ export async function loadGuardrails(): Promise<LoadedLawbook<GuardrailsFile>> {
 }
 
 export async function loadParameters(): Promise<LoadedLawbook<ParametersFile>> {
-  const filePath = path.resolve(process.cwd(), 'src/lawbook/parameters.json');
+  const filePath = await resolveLawbookJsonPath('parameters.json');
   const raw = await readJsonFile(filePath);
   assert(isRecord(raw), 'parameters.json must be an object');
   assert(typeof raw.version === 'number', 'parameters.json.version must be a number');
@@ -192,7 +206,7 @@ export async function loadParameters(): Promise<LoadedLawbook<ParametersFile>> {
 }
 
 export async function loadMemorySeed(): Promise<LoadedLawbook<MemorySeedFile>> {
-  const filePath = path.resolve(process.cwd(), 'src/lawbook/memory_seed.json');
+  const filePath = await resolveLawbookJsonPath('memory_seed.json');
   const raw = await readJsonFile(filePath);
   assert(isRecord(raw), 'memory_seed.json must be an object');
   assert(typeof raw.version === 'number', 'memory_seed.json.version must be a number');

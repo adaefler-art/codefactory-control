@@ -16,6 +16,7 @@ import {
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { createIssue } from '../../../../../src/lib/github';
 import { isValidUUID } from '../../../../../src/lib/utils/uuid-validator';
+import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 
 /**
  * POST /api/issues/[id]/handoff
@@ -68,12 +69,16 @@ export async function POST(
 
     // Check if already handed off successfully
     if (issue.handoff_state === Afu9HandoffState.SYNCED) {
-      return NextResponse.json({
+      const responseBody: any = {
         message: 'Issue already handed off to GitHub',
         issue,
         github_url: issue.github_url,
         github_issue_number: issue.github_issue_number,
-      });
+      };
+      if (isDebugApiEnabled()) {
+        responseBody.contextTrace = await buildContextTrace(request);
+      }
+      return NextResponse.json(responseBody);
     }
 
     // Mark as SENT before attempting GitHub creation
@@ -143,12 +148,16 @@ export async function POST(
         );
       }
 
-      return NextResponse.json({
+      const responseBody: any = {
         message: 'Issue handed off to GitHub successfully',
         issue: syncedResult.data,
         github_url: githubIssue.html_url,
         github_issue_number: githubIssue.number,
-      });
+      };
+      if (isDebugApiEnabled()) {
+        responseBody.contextTrace = await buildContextTrace(request);
+      }
+      return NextResponse.json(responseBody);
     } catch (githubError) {
       // GitHub creation failed - update handoff_state to FAILED
       const errorMessage =
