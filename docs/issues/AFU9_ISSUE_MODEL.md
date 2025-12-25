@@ -32,6 +32,15 @@ The AFU9 Issue Domain Model provides a structured way to track issues internally
 | `github_url` | string(500) | No | Full GitHub issue URL |
 | `last_error` | text | No | Last error message from handoff or processing |
 
+### Execution State Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `execution_state` | enum | Yes | Execution status: `IDLE`, `RUNNING`, `DONE`, or `FAILED` (default: `IDLE`) |
+| `execution_started_at` | timestamp | No | Timestamp when execution started |
+| `execution_completed_at` | timestamp | No | Timestamp when execution completed |
+| `execution_output` | JSONB | No | Execution output, logs, or error details |
+
 ## Status Model
 
 The `status` field tracks the issue through its lifecycle within AFU9:
@@ -91,6 +100,34 @@ NOT_SENT → SENT → SYNCED
 2. When ready, AFU9 sends issue to GitHub → `handoff_state = SENT`
 3. On success: `handoff_state = SYNCED`, `github_issue_number` and `github_url` are set
 4. On failure: `handoff_state = FAILED`, `last_error` contains error details
+
+## ExecutionState Model
+
+The `execution_state` field tracks the execution progress of an issue:
+
+| ExecutionState | Description |
+|----------------|-------------|
+| `IDLE` | Issue has not been executed yet (default) |
+| `RUNNING` | Issue execution is currently in progress |
+| `DONE` | Issue execution completed successfully |
+| `FAILED` | Issue execution failed |
+
+### ExecutionState Lifecycle
+
+```
+IDLE → RUNNING → DONE
+         ↓
+       FAILED
+         ↓
+      (reset) → IDLE
+```
+
+**Typical Flow:**
+1. Issue is created with `execution_state = IDLE`
+2. Execution starts → `execution_state = RUNNING`, `execution_started_at` is set
+3. On success: `execution_state = DONE`, `execution_completed_at` is set
+4. On failure: `execution_state = FAILED`, `execution_completed_at` is set, `execution_output` may contain error details
+5. Can be reset to `IDLE` to allow re-execution
 
 ## Single-Issue-Mode Enforcement
 
@@ -206,6 +243,10 @@ CREATE TABLE afu9_issues (
   github_issue_number INTEGER,
   github_url VARCHAR(500),
   last_error TEXT,
+  execution_state VARCHAR(50) NOT NULL DEFAULT 'IDLE',
+  execution_started_at TIMESTAMPTZ,
+  execution_completed_at TIMESTAMPTZ,
+  execution_output JSONB,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -242,6 +283,12 @@ Shows issues awaiting GitHub handoff or with failed handoff:
 SELECT * FROM afu9_pending_handoff;
 ```
 
+### `afu9_executing_issues`
+Shows issues that are currently executing or have completed execution:
+```sql
+SELECT * FROM afu9_executing_issues;
+```
+
 ### `afu9_issue_stats`
 Aggregated statistics by status:
 ```sql
@@ -259,6 +306,7 @@ import {
   Afu9IssueStatus,
   Afu9HandoffState,
   Afu9IssuePriority,
+  Afu9ExecutionState,
   validateAfu9IssueInput,
   sanitizeAfu9IssueInput,
 } from './lib/contracts/afu9Issue';
@@ -323,18 +371,40 @@ await updateAfu9Issue(pool, result.data.id, {
   github_issue_number: 123,
   github_url: 'https://github.com/org/repo/issues/123',
 });
+
+// Start execution
+await updateAfu9Issue(pool, issueId, {
+  execution_state: Afu9ExecutionState.RUNNING,
+  execution_started_at: new Date().toISOString(),
+});
+
+// Complete execution successfully
+await updateAfu9Issue(pool, issueId, {
+  execution_state: Afu9ExecutionState.DONE,
+  execution_completed_at: new Date().toISOString(),
+  execution_output: { result: 'success', logs: '...' },
+});
+
+// Or mark execution as failed
+await updateAfu9Issue(pool, issueId, {
+  execution_state: Afu9ExecutionState.FAILED,
+  execution_completed_at: new Date().toISOString(),
+  execution_output: { error: 'Execution failed', details: '...' },
+});
 ```
 
 ## Migration
 
 The database schema is defined in:
 ```
-database/migrations/014_afu9_issues.sql
+database/migrations/014_afu9_issues.sql      # Initial schema
+database/migrations/015_extend_afu9_issue_status.sql  # Extended status enum
+database/migrations/017_add_execution_state.sql       # Execution state tracking
 ```
 
-Run the migration:
+Run migrations:
 ```bash
-./scripts/deploy-migrations.sh 014_afu9_issues.sql
+./scripts/deploy-migrations.sh
 ```
 
 ## Testing
