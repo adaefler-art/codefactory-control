@@ -1,6 +1,6 @@
 -- Migration 016: Add activated_at timestamp to afu9_issues
--- Tracks when an issue was last activated (set to IMPLEMENTING or ACTIVE)
--- Updates single-active constraint to check for IMPLEMENTING status
+-- Tracks when an issue was last activated (set to IMPLEMENTING status)
+-- Updates single-active constraint to check IMPLEMENTING status
 
 -- ========================================
 -- Add activated_at column
@@ -46,6 +46,6 @@ CREATE TRIGGER trg_enforce_single_active_issue
 -- ========================================
 -- Comments
 -- ========================================
-COMMENT ON COLUMN afu9_issues.activated_at IS 'Timestamp when the issue was last activated (set to IMPLEMENTING status)';
+COMMENT ON COLUMN afu9_issues.activated_at IS 'Timestamp when the issue status was last changed to IMPLEMENTING (i.e., when the issue was activated for work)';
 COMMENT ON TRIGGER trg_enforce_single_active_issue ON afu9_issues IS 'Ensures only one issue can have status=IMPLEMENTING at a time (Single-Issue-Mode)';
 
