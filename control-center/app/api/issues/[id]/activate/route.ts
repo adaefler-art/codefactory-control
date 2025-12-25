@@ -23,8 +23,8 @@ import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
  * POST /api/issues/[id]/activate
  * 
  * Sets this issue to IMPLEMENTING (and sets activated_at timestamp).
- * Sets the current ACTIVE issue to DONE.
- * Only one issue can be ACTIVE at a time (Single-Active constraint).
+ * Sets the current IMPLEMENTING issue to DONE.
+ * Only one issue can be IMPLEMENTING at a time (Single-Active constraint).
  */
 export async function POST(
   request: NextRequest,

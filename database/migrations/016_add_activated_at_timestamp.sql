@@ -46,6 +46,6 @@ CREATE TRIGGER trg_enforce_single_active_issue
 -- ========================================
 -- Comments
 -- ========================================
-COMMENT ON COLUMN afu9_issues.activated_at IS 'Timestamp when the issue was last activated (set to IMPLEMENTING or ACTIVE status)';
+COMMENT ON COLUMN afu9_issues.activated_at IS 'Timestamp when the issue was last activated (set to IMPLEMENTING status)';
 COMMENT ON TRIGGER trg_enforce_single_active_issue ON afu9_issues IS 'Ensures only one issue can have status=IMPLEMENTING at a time (Single-Issue-Mode)';
 
