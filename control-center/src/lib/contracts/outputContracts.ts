@@ -472,3 +472,104 @@ export function isProductOutput(row: unknown): row is ProductOutput {
     typeof r.updated_at === 'string'
   );
 }
+
+/**
+ * AFU9 Issue Output Contract
+ * Source: database/migrations/014_afu9_issues.sql
+ * Table: afu9_issues
+ */
+export interface Afu9IssueOutput {
+  id: string;
+  title: string;
+  body: string | null;
+  status: string;
+  labels: string[];
+  priority: string | null;
+  assignee: string | null;
+  source: string;
+  handoff_state: string;
+  github_issue_number: number | null;
+  github_url: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  activated_at: string | null;
+  execution_state: string;
+  execution_started_at: string | null;
+  execution_completed_at: string | null;
+  execution_output: Record<string, unknown> | null;
+}
+
+/**
+ * Type guard for Afu9IssueOutput
+ * Validates that a row matches the Afu9IssueOutput contract
+ */
+export function isAfu9IssueOutput(row: unknown): row is Afu9IssueOutput {
+  if (!row || typeof row !== 'object') return false;
+  const r = row as Record<string, unknown>;
+
+  return (
+    typeof r.id === 'string' &&
+    typeof r.title === 'string' &&
+    (r.body === null || typeof r.body === 'string') &&
+    typeof r.status === 'string' &&
+    Array.isArray(r.labels) &&
+    r.labels.every((label) => typeof label === 'string') &&
+    (r.priority === null || typeof r.priority === 'string') &&
+    (r.assignee === null || typeof r.assignee === 'string') &&
+    typeof r.source === 'string' &&
+    typeof r.handoff_state === 'string' &&
+    (r.github_issue_number === null || typeof r.github_issue_number === 'number') &&
+    (r.github_url === null || typeof r.github_url === 'string') &&
+    (r.last_error === null || typeof r.last_error === 'string') &&
+    typeof r.created_at === 'string' &&
+    typeof r.updated_at === 'string' &&
+    (r.activated_at === null || typeof r.activated_at === 'string') &&
+    typeof r.execution_state === 'string' &&
+    (r.execution_started_at === null || typeof r.execution_started_at === 'string') &&
+    (r.execution_completed_at === null || typeof r.execution_completed_at === 'string') &&
+    (r.execution_output === null || (typeof r.execution_output === 'object' && !Array.isArray(r.execution_output)))
+  );
+}
+
+/**
+ * AFU9 Issue Event Output Contract
+ * Source: database/migrations/015_afu9_issue_events.sql
+ * Table: afu9_issue_events
+ */
+export interface Afu9IssueEventOutput {
+  id: string;
+  issue_id: string;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  old_status: string | null;
+  new_status: string | null;
+  old_handoff_state: string | null;
+  new_handoff_state: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+/**
+ * Type guard for Afu9IssueEventOutput
+ * Validates that a row matches the Afu9IssueEventOutput contract
+ */
+export function isAfu9IssueEventOutput(row: unknown): row is Afu9IssueEventOutput {
+  if (!row || typeof row !== 'object') return false;
+  const r = row as Record<string, unknown>;
+
+  return (
+    typeof r.id === 'string' &&
+    typeof r.issue_id === 'string' &&
+    typeof r.event_type === 'string' &&
+    typeof r.event_data === 'object' &&
+    r.event_data !== null &&
+    !Array.isArray(r.event_data) &&
+    (r.old_status === null || typeof r.old_status === 'string') &&
+    (r.new_status === null || typeof r.new_status === 'string') &&
+    (r.old_handoff_state === null || typeof r.old_handoff_state === 'string') &&
+    (r.new_handoff_state === null || typeof r.new_handoff_state === 'string') &&
+    typeof r.created_at === 'string' &&
+    (r.created_by === null || typeof r.created_by === 'string')
+  );
+}
