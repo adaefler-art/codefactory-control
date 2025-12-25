@@ -74,9 +74,9 @@ export default function IssuesPage() {
       case "SPEC_READY":
         return "bg-cyan-900/30 text-cyan-200 border border-cyan-700";
       case "DONE":
-        return "bg-green-900/30 text-green-200 border border-green-700";
+        return "bg-emerald-900/30 text-emerald-200 border border-emerald-700";
       case "BLOCKED":
-        return "bg-red-900/30 text-red-200 border border-red-700";
+        return "bg-orange-900/30 text-orange-200 border border-orange-700";
       case "FAILED":
         return "bg-red-900/30 text-red-200 border border-red-700";
       case "CREATED":
