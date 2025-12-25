@@ -104,6 +104,8 @@ export function normalizeIssueForApi(input: unknown): any {
   const createdAt = toIsoOrNull(normalized?.createdAt ?? normalized?.created_at);
   const updatedAt = toIsoOrNull(normalized?.updatedAt ?? normalized?.updated_at);
   const activatedAt = toIsoOrNull(normalized?.activatedAt ?? normalized?.activated_at);
+  const executionStartedAt = toIsoOrNull(normalized?.executionStartedAt ?? normalized?.execution_started_at);
+  const executionCompletedAt = toIsoOrNull(normalized?.executionCompletedAt ?? normalized?.execution_completed_at);
 
   const api: any = {
     // Required/primary fields
@@ -126,6 +128,10 @@ export function normalizeIssueForApi(input: unknown): any {
     githubUrl: normalized?.githubUrl ?? normalized?.github_url ?? null,
     lastError: normalized?.lastError ?? normalized?.last_error ?? null,
     activatedAt,
+    executionState: normalized?.executionState ?? normalized?.execution_state ?? 'IDLE',
+    executionStartedAt,
+    executionCompletedAt,
+    executionOutput: normalized?.executionOutput ?? normalized?.execution_output ?? null,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
@@ -136,6 +142,10 @@ export function normalizeIssueForApi(input: unknown): any {
   api.created_at = createdAt;
   api.updated_at = updatedAt;
   api.activated_at = activatedAt;
+  api.execution_state = api.executionState;
+  api.execution_started_at = executionStartedAt;
+  api.execution_completed_at = executionCompletedAt;
+  api.execution_output = api.executionOutput;
 
   return api;
 }
