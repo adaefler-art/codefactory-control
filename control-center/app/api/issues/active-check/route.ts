@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
 import { getActiveIssue } from '../../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
+import { toPublicIdFromUuid } from '../_shared';
 
 /**
  * GET /api/issues/active-check
@@ -48,11 +49,11 @@ export async function GET(request: NextRequest) {
       contextTrace?: unknown;
     } = {
       hasActive,
-      activeIssue: hasActive
+      activeIssue: hasActive && activeIssue
         ? {
-            id: activeIssue!.id,
-            publicId: String(activeIssue!.id).substring(0, 8),
-            title: activeIssue!.title,
+            id: activeIssue.id,
+            publicId: toPublicIdFromUuid(activeIssue.id) ?? activeIssue.id.substring(0, 8),
+            title: activeIssue.title,
           }
         : null,
     };
