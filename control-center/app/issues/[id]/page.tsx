@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
 import { isValidUUID } from "@/lib/utils/uuid-validator";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 interface Issue {
   id: string;
@@ -111,25 +112,11 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
-      if (!response.ok) {
-        if (response.status === 404) throw new Error("Issue not found");
-
-        let details = "Failed to fetch issue";
-        try {
-          const errBody = await response.json();
-          if (errBody?.error) details = String(errBody.error);
-        } catch {
-          // ignore JSON parse errors
-        }
-
-        throw new Error(`HTTP ${response.status}: ${details}`);
-      }
-
-      const data = await response.json();
+      const data = await safeFetch(response);
       setIssue(data);
     } catch (err) {
       console.error("Error fetching issue:", err);
-      setError(err instanceof Error ? err.message : "Failed to load issue");
+      setError(formatErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -142,11 +129,7 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch activity events");
-      }
-
-      const data = await response.json();
+      const data = await safeFetch(response);
       setActivityEvents(data.events || []);
     } catch (err) {
       console.error("Error fetching activity events:", err);
@@ -161,11 +144,7 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json();
+      const data = await safeFetch(response);
       if (data.hasActive && data.activeIssue && data.activeIssue.publicId !== id) {
         return {
           publicId: data.activeIssue.publicId,
@@ -231,17 +210,7 @@ export default function IssueDetailPage({
         body: JSON.stringify(updates),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 409) {
-          throw new Error(
-            errorData.error || "Single-Active constraint violation"
-          );
-        }
-        throw new Error(errorData.error || "Failed to update issue");
-      }
-
-      const updatedIssue = await response.json();
+      const updatedIssue = await safeFetch(response);
       setIssue(updatedIssue);
       setIsEditingTitle(false);
       setActionMessage('Issue updated successfully');
@@ -249,7 +218,7 @@ export default function IssueDetailPage({
       setTimeout(() => setActionMessage(null), 3000);
     } catch (err) {
       console.error("Error updating issue:", err);
-      setSaveError(err instanceof Error ? err.message : "Failed to save changes");
+      setSaveError(formatErrorMessage(err));
     } finally {
       setIsSaving(false);
     }
@@ -284,12 +253,7 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to activate issue");
-      }
-
-      const data = await response.json();
+      const data = await safeFetch(response);
       setIssue(data.issue);
       setActionMessage(
         data.deactivated
@@ -301,7 +265,7 @@ export default function IssueDetailPage({
       refreshActivityLogIfVisible();
     } catch (err) {
       console.error("Error activating issue:", err);
-      setSaveError(err instanceof Error ? err.message : "Failed to activate issue");
+      setSaveError(formatErrorMessage(err));
     } finally {
       setIsActivating(false);
     }
@@ -320,12 +284,7 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to handoff issue to GitHub");
-      }
-
-      const data = await response.json();
+      const data = await safeFetch(response);
       setIssue(data.issue);
       setActionMessage(
         `Issue handed off to GitHub successfully! GitHub Issue #${data.github_issue_number}`
@@ -335,9 +294,7 @@ export default function IssueDetailPage({
       refreshActivityLogIfVisible();
     } catch (err) {
       console.error("Error handing off issue:", err);
-      setSaveError(
-        err instanceof Error ? err.message : "Failed to handoff issue"
-      );
+      setSaveError(formatErrorMessage(err));
       // Refresh issue to get updated error state
       fetchIssue();
     } finally {

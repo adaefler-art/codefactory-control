@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 interface Issue {
   id: string;
@@ -62,15 +63,11 @@ export default function NewIssuePage() {
         credentials: "include",
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch draft issue");
-      }
-
-      const data = await response.json();
+      const data = await safeFetch(response);
       setIssue(data);
     } catch (err) {
       console.error("Error fetching draft issue:", err);
-      setError(err instanceof Error ? err.message : "Failed to load draft issue");
+      setError(formatErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -102,17 +99,7 @@ export default function NewIssuePage() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 409) {
-          throw new Error(
-            errorData.error || "Single-Active constraint violation"
-          );
-        }
-        throw new Error(errorData.error || "Failed to create issue");
-      }
-
-      const createdIssue = await response.json();
+      const createdIssue = await safeFetch(response);
       
       // Navigate to the created issue
       const createdPublicId = createdIssue?.publicId ?? createdIssue?.id?.substring(0, 8);
@@ -123,7 +110,7 @@ export default function NewIssuePage() {
       }
     } catch (err) {
       console.error("Error creating issue:", err);
-      setSaveError(err instanceof Error ? err.message : "Failed to create issue");
+      setSaveError(formatErrorMessage(err));
     } finally {
       setIsSaving(false);
     }

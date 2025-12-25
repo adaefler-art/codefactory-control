@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 interface DashboardStats {
   executions: {
@@ -111,27 +112,27 @@ export default function DashboardPage() {
 
         // Fetch executions
         const executionsRes = await fetch("/api/workflow/executions?limit=10", { credentials: "include" });
-        const executionsData = await executionsRes.json();
+        const executionsData = await safeFetch(executionsRes);
         
         // Fetch workflows
         const workflowsRes = await fetch("/api/workflows", { credentials: "include" });
-        const workflowsData = await workflowsRes.json();
+        const workflowsData = await safeFetch(workflowsRes);
         
         // Fetch agents
         const agentsRes = await fetch("/api/agents?limit=100", { credentials: "include" });
-        const agentsData = await agentsRes.json();
+        const agentsData = await safeFetch(agentsRes);
         
         // Fetch repositories
         const reposRes = await fetch("/api/repositories", { credentials: "include" });
-        const reposData = await reposRes.json();
+        const reposData = await safeFetch(reposRes);
 
         // Fetch infrastructure health
         const healthRes = await fetch("/api/infrastructure/health", { credentials: "include" });
-        const healthData = await healthRes.json();
+        const healthData = await safeFetch(healthRes);
 
         // Fetch alarm status
         const alarmsRes = await fetch("/api/observability/alarms", { credentials: "include" });
-        const alarmsData = await alarmsRes.json();
+        const alarmsData = await safeFetch(alarmsRes);
 
         // Fetch latest deploy event (AFU9-TL-001)
         try {
@@ -149,7 +150,13 @@ export default function DashboardPage() {
             if (isStagingHost) {
               let body: unknown = null;
               try {
-                body = await deployEventsRes.json();
+                const contentType = deployEventsRes.headers.get('content-type');
+                if (contentType?.includes('application/json')) {
+                  body = await deployEventsRes.json();
+                } else {
+                  const text = await deployEventsRes.text();
+                  body = text.substring(0, 200);
+                }
               } catch {
                 body = null;
               }
@@ -158,7 +165,7 @@ export default function DashboardPage() {
               setDeployEventErrorDetails(null);
             }
           } else {
-            const deployEventsData = await deployEventsRes.json();
+            const deployEventsData = await safeFetch(deployEventsRes);
             const maybeEvent = Array.isArray(deployEventsData?.events)
               ? (deployEventsData.events[0] as DeployEvent | undefined)
               : undefined;
@@ -223,7 +230,7 @@ export default function DashboardPage() {
         setAlarmStatus(alarmsData);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
-        setError("Fehler beim Laden der Dashboard-Daten");
+        setError(formatErrorMessage(err));
       } finally {
         setIsLoading(false);
       }

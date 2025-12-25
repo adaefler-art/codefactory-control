@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 interface Issue {
   id: string;
@@ -47,15 +48,11 @@ export default function IssuesPage() {
         credentials: "include"
       });
       
-      if (!response.ok) {
-        throw new Error("Failed to fetch issues");
-      }
-      
-      const data = await response.json();
+      const data = await safeFetch(response);
       setIssues(data.issues || []);
     } catch (err) {
       console.error("Error fetching issues:", err);
-      setError(err instanceof Error ? err.message : "Failed to load issues");
+      setError(formatErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
