@@ -55,6 +55,7 @@ export interface Afu9IssueInput {
   github_issue_number?: number | null;
   github_url?: string | null;
   last_error?: string | null;
+  activated_at?: string | null;
 }
 
 /**
@@ -76,6 +77,7 @@ export interface Afu9IssueRow {
   last_error: string | null;
   created_at: string;
   updated_at: string;
+  activated_at: string | null;
 }
 
 /**
@@ -313,5 +315,6 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
         : input.github_url.trim().slice(0, AFU9_ISSUE_CONSTRAINTS.github_url),
     last_error:
       input.last_error === undefined || input.last_error === null ? null : input.last_error.trim(),
+    activated_at: input.activated_at === undefined ? null : input.activated_at,
   };
 }

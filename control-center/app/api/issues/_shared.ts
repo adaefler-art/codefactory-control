@@ -103,6 +103,7 @@ export function normalizeIssueForApi(input: unknown): any {
 
   const createdAt = toIsoOrNull(normalized?.createdAt ?? normalized?.created_at);
   const updatedAt = toIsoOrNull(normalized?.updatedAt ?? normalized?.updated_at);
+  const activatedAt = toIsoOrNull(normalized?.activatedAt ?? normalized?.activated_at);
 
   const api: any = {
     // Required/primary fields
@@ -124,6 +125,7 @@ export function normalizeIssueForApi(input: unknown): any {
     githubIssueNumber: normalized?.githubIssueNumber ?? normalized?.github_issue_number ?? null,
     githubUrl: normalized?.githubUrl ?? normalized?.github_url ?? null,
     lastError: normalized?.lastError ?? normalized?.last_error ?? null,
+    activatedAt,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
@@ -133,6 +135,7 @@ export function normalizeIssueForApi(input: unknown): any {
   api.last_error = api.lastError;
   api.created_at = createdAt;
   api.updated_at = updatedAt;
+  api.activated_at = activatedAt;
 
   return api;
 }

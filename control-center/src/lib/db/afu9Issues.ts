@@ -49,7 +49,7 @@ export async function createAfu9Issue(
   const sanitized = sanitizeAfu9IssueInput(input);
 
   // Check Single-Active constraint before creating
-  if (sanitized.status === Afu9IssueStatus.ACTIVE) {
+  if (sanitized.status === Afu9IssueStatus.IMPLEMENTING) {
     const canSetActive = await canSetIssueActive(pool, null);
     if (!canSetActive.success) {
       return {
@@ -63,9 +63,9 @@ export async function createAfu9Issue(
     const result = await pool.query<Afu9IssueRow>(
       `INSERT INTO afu9_issues (
         title, body, status, labels, priority, assignee, source,
-        handoff_state, github_issue_number, github_url, last_error
+        handoff_state, github_issue_number, github_url, last_error, activated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         sanitized.title,
@@ -79,6 +79,7 @@ export async function createAfu9Issue(
         sanitized.github_issue_number,
         sanitized.github_url,
         sanitized.last_error,
+        sanitized.activated_at,
       ]
     );
 
@@ -209,7 +210,7 @@ export async function getActiveIssue(pool: Pool): Promise<OperationResult<Afu9Is
   try {
     const result = await pool.query<Afu9IssueRow>(
       'SELECT * FROM afu9_issues WHERE status = $1',
-      [Afu9IssueStatus.ACTIVE]
+      [Afu9IssueStatus.IMPLEMENTING]
     );
 
     return {
@@ -296,8 +297,8 @@ export async function updateAfu9Issue(
   id: string,
   updates: Partial<Afu9IssueInput>
 ): Promise<OperationResult> {
-  // Check Single-Active constraint if updating to ACTIVE status
-  if (updates.status === Afu9IssueStatus.ACTIVE) {
+  // Check Single-Active constraint if updating to IMPLEMENTING status
+  if (updates.status === Afu9IssueStatus.IMPLEMENTING) {
     const canSetActive = await canSetIssueActive(pool, id);
     if (!canSetActive.success) {
       return {
@@ -370,6 +371,12 @@ export async function updateAfu9Issue(
     if (updates.last_error !== undefined) {
       fields.push(`last_error = $${paramIndex}`);
       values.push(updates.last_error);
+      paramIndex++;
+    }
+
+    if (updates.activated_at !== undefined) {
+      fields.push(`activated_at = $${paramIndex}`);
+      values.push(updates.activated_at);
       paramIndex++;
     }
 
@@ -471,7 +478,7 @@ export async function canSetIssueActive(
 ): Promise<OperationResult<boolean>> {
   try {
     let query = 'SELECT id, title FROM afu9_issues WHERE status = $1';
-    const params: (string | Afu9IssueStatus)[] = [Afu9IssueStatus.ACTIVE];
+    const params: (string | Afu9IssueStatus)[] = [Afu9IssueStatus.IMPLEMENTING];
 
     if (excludeId) {
       query += ' AND id != $2';
@@ -484,7 +491,7 @@ export async function canSetIssueActive(
       const activeIssue = result.rows[0];
       return {
         success: false,
-        error: `Single-Active constraint: Issue ${activeIssue.id} ("${activeIssue.title}") is already ACTIVE. Only one issue can have status=ACTIVE at a time.`,
+        error: `Single-Active constraint: Issue ${activeIssue.id} ("${activeIssue.title}") is already IMPLEMENTING. Only one issue can have status=IMPLEMENTING at a time.`,
       };
     }
 
