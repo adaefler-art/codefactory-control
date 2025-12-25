@@ -3,6 +3,8 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
+import { isValidUUID } from "@/lib/utils/uuid-validator";
 
 interface Issue {
   id: string;
@@ -46,6 +48,13 @@ export default function IssueDetailPage({
     // Next.js may pass params as a Promise in some client-page setups.
     typeof (params as any)?.then === "function" ? use(params as Promise<{ id: string }>) : (params as { id: string });
   const { id } = resolvedParams;
+  
+  // Validate that id is a valid UUID to prevent routing fallback issues
+  // The "new" route is now handled by /issues/new/page.tsx
+  if (!isValidUUID(id)) {
+    notFound();
+  }
+  
   const router = useRouter();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -169,11 +178,6 @@ export default function IssueDetailPage({
   const handleSave = async () => {
     if (!issue) return;
 
-    if (id === 'new' && editedTitle.trim().length === 0) {
-      setSaveError('Title is required');
-      return;
-    }
-
     setIsSaving(true);
     setSaveError(null);
     setActionMessage(null);
@@ -221,21 +225,7 @@ export default function IssueDetailPage({
       const updatedIssue = await response.json();
       setIssue(updatedIssue);
       setIsEditingTitle(false);
-
-      if (id === 'new') {
-        const createdPublicId: string | undefined =
-          (updatedIssue?.publicId as string | undefined) ??
-          (typeof updatedIssue?.id === 'string' ? updatedIssue.id.substring(0, 8) : undefined);
-
-        if (createdPublicId) {
-          router.replace(`/issues/${createdPublicId}`);
-          setActionMessage('Issue created successfully');
-        } else {
-          setActionMessage('Issue created successfully');
-        }
-      } else {
-        setActionMessage('Issue updated successfully');
-      }
+      setActionMessage('Issue updated successfully');
 
       setTimeout(() => setActionMessage(null), 3000);
     } catch (err) {
