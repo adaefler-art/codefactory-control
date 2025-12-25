@@ -40,6 +40,16 @@ export enum Afu9IssuePriority {
 }
 
 /**
+ * AFU9 Issue Execution State enum
+ */
+export enum Afu9ExecutionState {
+  IDLE = 'IDLE',
+  RUNNING = 'RUNNING',
+  DONE = 'DONE',
+  FAILED = 'FAILED',
+}
+
+/**
  * AFU9 Issue Input Contract
  * Represents the required and optional fields for creating/updating an issue
  */
@@ -56,6 +66,10 @@ export interface Afu9IssueInput {
   github_url?: string | null;
   last_error?: string | null;
   activated_at?: string | null;
+  execution_state?: Afu9ExecutionState;
+  execution_started_at?: string | null;
+  execution_completed_at?: string | null;
+  execution_output?: Record<string, unknown> | null;
 }
 
 /**
@@ -78,6 +92,10 @@ export interface Afu9IssueRow {
   created_at: string;
   updated_at: string;
   activated_at: string | null;
+  execution_state: Afu9ExecutionState;
+  execution_started_at: string | null;
+  execution_completed_at: string | null;
+  execution_output: Record<string, unknown> | null;
 }
 
 /**
@@ -128,6 +146,13 @@ export function isValidHandoffState(state: string): state is Afu9HandoffState {
  */
 export function isValidPriority(priority: string): priority is Afu9IssuePriority {
   return Object.values(Afu9IssuePriority).includes(priority as Afu9IssuePriority);
+}
+
+/**
+ * Type guard for Afu9ExecutionState
+ */
+export function isValidExecutionState(state: string): state is Afu9ExecutionState {
+  return Object.values(Afu9ExecutionState).includes(state as Afu9ExecutionState);
 }
 
 /**
@@ -276,6 +301,46 @@ export function validateAfu9IssueInput(input: unknown): ValidationResult {
     }
   }
 
+  // Validate optional field: execution_state
+  if (data.execution_state !== undefined) {
+    if (typeof data.execution_state !== 'string' || !isValidExecutionState(data.execution_state)) {
+      errors.push({
+        field: 'execution_state',
+        message: `execution_state must be one of: ${Object.values(Afu9ExecutionState).join(', ')}`,
+      });
+    }
+  }
+
+  // Validate optional field: execution_started_at
+  if (data.execution_started_at !== undefined && data.execution_started_at !== null) {
+    if (typeof data.execution_started_at !== 'string') {
+      errors.push({
+        field: 'execution_started_at',
+        message: 'execution_started_at must be a string (ISO 8601) if provided',
+      });
+    }
+  }
+
+  // Validate optional field: execution_completed_at
+  if (data.execution_completed_at !== undefined && data.execution_completed_at !== null) {
+    if (typeof data.execution_completed_at !== 'string') {
+      errors.push({
+        field: 'execution_completed_at',
+        message: 'execution_completed_at must be a string (ISO 8601) if provided',
+      });
+    }
+  }
+
+  // Validate optional field: execution_output
+  if (data.execution_output !== undefined && data.execution_output !== null) {
+    if (typeof data.execution_output !== 'object') {
+      errors.push({
+        field: 'execution_output',
+        message: 'execution_output must be an object if provided',
+      });
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -316,5 +381,9 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     last_error:
       input.last_error === undefined || input.last_error === null ? null : input.last_error.trim(),
     activated_at: input.activated_at === undefined ? null : input.activated_at,
+    execution_state: input.execution_state || Afu9ExecutionState.IDLE,
+    execution_started_at: input.execution_started_at === undefined ? null : input.execution_started_at,
+    execution_completed_at: input.execution_completed_at === undefined ? null : input.execution_completed_at,
+    execution_output: input.execution_output === undefined ? null : input.execution_output,
   };
 }

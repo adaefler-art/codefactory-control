@@ -24,6 +24,10 @@ interface Issue {
   updated_at: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  execution_state: "IDLE" | "RUNNING" | "DONE" | "FAILED";
+  execution_started_at: string | null;
+  execution_completed_at: string | null;
+  execution_output: Record<string, unknown> | null;
 }
 
 interface ActivityEvent {
@@ -389,6 +393,21 @@ export default function IssueDetailPage({
     }
   };
 
+  const getExecutionStateBadgeColor = (state: string) => {
+    switch (state) {
+      case "RUNNING":
+        return "bg-blue-900/30 text-blue-200 border border-blue-700 animate-pulse";
+      case "DONE":
+        return "bg-green-900/30 text-green-200 border border-green-700";
+      case "FAILED":
+        return "bg-red-900/30 text-red-200 border border-red-700";
+      case "IDLE":
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+      default:
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+    }
+  };
+
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return "—";
     const date = new Date(dateString);
@@ -633,6 +652,22 @@ export default function IssueDetailPage({
                 </div>
               </div>
 
+              {/* Execution State */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Execution State
+                </label>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 text-sm font-medium rounded-md ${getExecutionStateBadgeColor(
+                      issue.execution_state || "IDLE"
+                    )}`}
+                  >
+                    {issue.execution_state || "IDLE"}
+                  </span>
+                </div>
+              </div>
+
               {/* GitHub Link */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -673,6 +708,33 @@ export default function IssueDetailPage({
                 </div>
               </div>
             </div>
+
+            {/* Execution Timestamps - show when execution has started */}
+            {issue.execution_state && issue.execution_state !== "IDLE" && issue.execution_started_at && (
+              <div className="mt-4 p-4 bg-blue-900/10 border border-blue-800/30 rounded-lg">
+                <h3 className="text-sm font-semibold text-blue-300 mb-3">Execution Timeline</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                      Started
+                    </label>
+                    <div className="text-sm text-gray-300">
+                      {formatDate(issue.execution_started_at)}
+                    </div>
+                  </div>
+                  {issue.execution_completed_at && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">
+                        Completed
+                      </label>
+                      <div className="text-sm text-gray-300">
+                        {formatDate(issue.execution_completed_at)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Last Error (if failed handoff) */}
             {issue.handoff_state === "FAILED" && issue.last_error && (
