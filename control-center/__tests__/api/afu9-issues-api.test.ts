@@ -208,14 +208,14 @@ describe('AFU9 Issues API', () => {
       const { createAfu9Issue } = require('../../src/lib/db/afu9Issues');
       createAfu9Issue.mockResolvedValue({
         success: false,
-        error: 'Single-Active constraint: Issue abc is already ACTIVE',
+        error: 'Single-Active constraint: Issue abc is already IMPLEMENTING',
       });
 
       const request = new NextRequest('http://localhost/api/issues', {
         method: 'POST',
         body: JSON.stringify({
           title: 'Test Issue',
-          status: 'ACTIVE',
+          status: 'IMPLEMENTING',
         }),
       });
 
@@ -367,13 +367,13 @@ describe('AFU9 Issues API', () => {
       });
       updateAfu9Issue.mockResolvedValue({
         success: false,
-        error: 'Single-Active constraint: Issue abc is already ACTIVE',
+        error: 'Single-Active constraint: Issue abc is already IMPLEMENTING',
       });
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
         method: 'PATCH',
         body: JSON.stringify({
-          status: 'ACTIVE',
+          status: 'IMPLEMENTING',
         }),
       });
 
@@ -462,7 +462,7 @@ describe('AFU9 Issues API', () => {
   });
 
   describe('POST /api/issues/[id]/activate', () => {
-    test('activates an issue', async () => {
+    test('activates an issue with IMPLEMENTING status', async () => {
       const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       getAfu9IssueById.mockResolvedValue({
@@ -475,7 +475,7 @@ describe('AFU9 Issues API', () => {
         data: null,
       });
 
-      const activatedIssue = { ...mockIssue, status: Afu9IssueStatus.ACTIVE };
+      const activatedIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING, activated_at: '2023-12-23T12:00:00Z' };
       updateAfu9Issue.mockResolvedValue({
         success: true,
         data: activatedIssue,
@@ -492,16 +492,24 @@ describe('AFU9 Issues API', () => {
 
       expect(response.status).toBe(200);
       expect(body.message).toContain('activated successfully');
-      expect(body.issue.status).toBe(Afu9IssueStatus.ACTIVE);
+      expect(body.issue.status).toBe(Afu9IssueStatus.IMPLEMENTING);
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        '123e4567-e89b-12d3-a456-426614174000',
+        expect.objectContaining({
+          status: Afu9IssueStatus.IMPLEMENTING,
+          activated_at: expect.any(String),
+        })
+      );
     });
 
-    test('deactivates current active issue before activating new one', async () => {
+    test('deactivates current implementing issue to DONE before activating new one', async () => {
       const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       const currentActiveIssue = {
         ...mockIssue,
         id: 'current-active-id',
-        status: Afu9IssueStatus.ACTIVE,
+        status: Afu9IssueStatus.IMPLEMENTING,
       };
 
       getAfu9IssueById.mockResolvedValue({
@@ -530,17 +538,24 @@ describe('AFU9 Issues API', () => {
 
       expect(response.status).toBe(200);
       expect(updateAfu9Issue).toHaveBeenCalledTimes(2); // Once to deactivate, once to activate
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        'current-active-id',
+        expect.objectContaining({
+          status: Afu9IssueStatus.DONE,
+        })
+      );
       expect(body.deactivated).toBeDefined();
       expect(body.deactivated.id).toBe('current-active-id');
     });
 
-    test('returns success if already active', async () => {
+    test('returns success if already implementing', async () => {
       const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       
-      const activeIssue = { ...mockIssue, status: Afu9IssueStatus.ACTIVE };
+      const implementingIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING };
       getAfu9IssueById.mockResolvedValue({
         success: true,
-        data: activeIssue,
+        data: implementingIssue,
       });
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/activate', {
@@ -553,7 +568,7 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.message).toContain('already ACTIVE');
+      expect(body.message).toContain('already IMPLEMENTING');
     });
   });
 
