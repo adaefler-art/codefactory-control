@@ -522,9 +522,12 @@ export async function countIssuesByStatus(
 
     const counts: Record<Afu9IssueStatus, number> = {
       [Afu9IssueStatus.CREATED]: 0,
+      [Afu9IssueStatus.SPEC_READY]: 0,
+      [Afu9IssueStatus.IMPLEMENTING]: 0,
       [Afu9IssueStatus.ACTIVE]: 0,
       [Afu9IssueStatus.BLOCKED]: 0,
       [Afu9IssueStatus.DONE]: 0,
+      [Afu9IssueStatus.FAILED]: 0,
     };
 
     result.rows.forEach((row) => {

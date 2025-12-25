@@ -12,9 +12,12 @@
  */
 export enum Afu9IssueStatus {
   CREATED = 'CREATED',
+  SPEC_READY = 'SPEC_READY',
+  IMPLEMENTING = 'IMPLEMENTING',
   ACTIVE = 'ACTIVE',
   BLOCKED = 'BLOCKED',
   DONE = 'DONE',
+  FAILED = 'FAILED',
 }
 
 /**
