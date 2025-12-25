@@ -15,9 +15,11 @@ import {
   Afu9IssueStatus,
   Afu9HandoffState,
   Afu9IssuePriority,
+  Afu9ExecutionState,
   isValidStatus,
   isValidHandoffState,
   isValidPriority,
+  isValidExecutionState,
 } from '../../../src/lib/contracts/afu9Issue';
 
 describe('AFU9 Issue Contract', () => {
@@ -61,6 +63,19 @@ describe('AFU9 Issue Contract', () => {
       expect(isValidPriority('P3')).toBe(false);
       expect(isValidPriority('p0')).toBe(false);
       expect(isValidPriority('HIGH')).toBe(false);
+    });
+
+    test('isValidExecutionState accepts valid states', () => {
+      expect(isValidExecutionState('IDLE')).toBe(true);
+      expect(isValidExecutionState('RUNNING')).toBe(true);
+      expect(isValidExecutionState('DONE')).toBe(true);
+      expect(isValidExecutionState('FAILED')).toBe(true);
+    });
+
+    test('isValidExecutionState rejects invalid states', () => {
+      expect(isValidExecutionState('INVALID')).toBe(false);
+      expect(isValidExecutionState('idle')).toBe(false);
+      expect(isValidExecutionState('PENDING')).toBe(false);
     });
   });
 
