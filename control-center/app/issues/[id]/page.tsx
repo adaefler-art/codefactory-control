@@ -313,11 +313,18 @@ export default function IssueDetailPage({
       setActionMessage(
         `Issue handed off to GitHub successfully! GitHub Issue #${data.github_issue_number}`
       );
+      
+      // Refresh activity log if visible
+      if (showActivityLog) {
+        fetchActivityEvents();
+      }
     } catch (err) {
       console.error("Error handing off issue:", err);
       setSaveError(
         err instanceof Error ? err.message : "Failed to handoff issue"
       );
+      // Refresh issue to get updated error state
+      fetchIssue();
     } finally {
       setIsHandingOff(false);
     }
@@ -658,13 +665,20 @@ export default function IssueDetailPage({
 
             {/* Last Error (if failed handoff) */}
             {issue.handoff_state === "FAILED" && issue.last_error && (
-              <div className="mt-4">
+              <div className="mt-4 bg-red-900/20 border border-red-700 rounded-lg p-4">
                 <label className="block text-sm font-medium text-red-300 mb-2">
                   Handoff Error
                 </label>
-                <div className="px-3 py-2 bg-red-900/20 border border-red-700 rounded-md text-red-300 text-sm">
+                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3">
                   {issue.last_error}
                 </div>
+                <button
+                  onClick={handleHandoff}
+                  disabled={isHandingOff}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isHandingOff ? "Retrying..." : "Retry Handoff"}
+                </button>
               </div>
             )}
           </div>
