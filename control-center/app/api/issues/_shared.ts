@@ -21,8 +21,10 @@ const PUBLIC_ID_REGEX = /^[0-9a-f]{8}$/i;
 
 export function classifyIssueIdentifier(value: string): IssueIdentifierKind {
   if (typeof value !== 'string') return 'invalid';
-  if (isValidUUID(value)) return 'uuid';
-  if (PUBLIC_ID_REGEX.test(value)) return 'publicId';
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return 'invalid';
+  if (isValidUUID(trimmed)) return 'uuid';
+  if (PUBLIC_ID_REGEX.test(trimmed)) return 'publicId';
   return 'invalid';
 }
 
@@ -60,7 +62,8 @@ function toIsoOrNull(value: unknown): string | null {
 }
 
 export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string) {
-  const kind = classifyIssueIdentifier(idOrPublicId);
+  const normalized = typeof idOrPublicId === 'string' ? idOrPublicId.trim() : '';
+  const kind = classifyIssueIdentifier(normalized);
   if (kind === 'invalid') {
     return {
       ok: false as const,
@@ -71,8 +74,8 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
 
   const result =
     kind === 'uuid'
-      ? await getAfu9IssueById(pool, idOrPublicId)
-      : await getAfu9IssueByPublicId(pool, idOrPublicId);
+      ? await getAfu9IssueById(pool, normalized)
+      : await getAfu9IssueByPublicId(pool, normalized);
 
   if (!result.success) {
     const msg = typeof (result as any)?.error === 'string' ? String((result as any).error) : '';
@@ -82,7 +85,7 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
       ok: false as const,
       status: (isNotFound ? 404 : 500) as const,
       body: isNotFound
-        ? { error: 'Issue not found', id: idOrPublicId }
+        ? { error: 'Issue not found', id: normalized }
         : { error: 'Failed to fetch issue', details: msg || 'Unknown error' },
     };
   }
@@ -91,7 +94,7 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
     return {
       ok: false as const,
       status: 404 as const,
-      body: { error: 'Issue not found', id: idOrPublicId },
+      body: { error: 'Issue not found', id: normalized },
     };
   }
 
