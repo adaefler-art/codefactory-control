@@ -175,6 +175,12 @@ export default function IssueDetailPage({
     }
   };
 
+  const refreshActivityLogIfVisible = () => {
+    if (showActivityLog) {
+      fetchActivityEvents();
+    }
+  };
+
   const handleSave = async () => {
     if (!issue) return;
 
@@ -279,9 +285,7 @@ export default function IssueDetailPage({
       );
       
       // Refresh activity log
-      if (showActivityLog) {
-        fetchActivityEvents();
-      }
+      refreshActivityLogIfVisible();
     } catch (err) {
       console.error("Error activating issue:", err);
       setSaveError(err instanceof Error ? err.message : "Failed to activate issue");
@@ -315,9 +319,7 @@ export default function IssueDetailPage({
       );
       
       // Refresh activity log if visible
-      if (showActivityLog) {
-        fetchActivityEvents();
-      }
+      refreshActivityLogIfVisible();
     } catch (err) {
       console.error("Error handing off issue:", err);
       setSaveError(
@@ -787,7 +789,8 @@ export default function IssueDetailPage({
                 disabled={
                   isHandingOff ||
                   issue.handoff_state === "SYNCED" ||
-                  issue.handoff_state === "SENT"
+                  issue.handoff_state === "SENT" ||
+                  issue.handoff_state === "FAILED"
                 }
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -797,6 +800,8 @@ export default function IssueDetailPage({
                   ? "Already Synced"
                   : issue.handoff_state === "SENT"
                   ? "Handoff in Progress"
+                  : issue.handoff_state === "FAILED"
+                  ? "Handoff Failed (See Error Panel)"
                   : "Handoff to GitHub"}
               </button>
 
