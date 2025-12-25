@@ -175,6 +175,21 @@ export default function IssueDetailPage({
     }
   };
 
+  const refreshActivityLogIfVisible = () => {
+    if (showActivityLog) {
+      fetchActivityEvents().catch((err) => {
+        console.error("Failed to refresh activity log:", err);
+      });
+    }
+  };
+
+  const truncateErrorMessage = (message: string, maxLength: number = 500): string => {
+    if (message.length <= maxLength) {
+      return message;
+    }
+    return message.substring(0, maxLength) + '... (truncated)';
+  };
+
   const handleSave = async () => {
     if (!issue) return;
 
@@ -279,9 +294,7 @@ export default function IssueDetailPage({
       );
       
       // Refresh activity log
-      if (showActivityLog) {
-        fetchActivityEvents();
-      }
+      refreshActivityLogIfVisible();
     } catch (err) {
       console.error("Error activating issue:", err);
       setSaveError(err instanceof Error ? err.message : "Failed to activate issue");
@@ -313,11 +326,16 @@ export default function IssueDetailPage({
       setActionMessage(
         `Issue handed off to GitHub successfully! GitHub Issue #${data.github_issue_number}`
       );
+      
+      // Refresh activity log if visible
+      refreshActivityLogIfVisible();
     } catch (err) {
       console.error("Error handing off issue:", err);
       setSaveError(
         err instanceof Error ? err.message : "Failed to handoff issue"
       );
+      // Refresh issue to get updated error state
+      fetchIssue();
     } finally {
       setIsHandingOff(false);
     }
@@ -658,13 +676,20 @@ export default function IssueDetailPage({
 
             {/* Last Error (if failed handoff) */}
             {issue.handoff_state === "FAILED" && issue.last_error && (
-              <div className="mt-4">
+              <div className="mt-4 bg-red-900/20 border border-red-700 rounded-lg p-4">
                 <label className="block text-sm font-medium text-red-300 mb-2">
                   Handoff Error
                 </label>
-                <div className="px-3 py-2 bg-red-900/20 border border-red-700 rounded-md text-red-300 text-sm">
-                  {issue.last_error}
+                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3 break-words">
+                  {truncateErrorMessage(issue.last_error)}
                 </div>
+                <button
+                  onClick={handleHandoff}
+                  disabled={isHandingOff}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isHandingOff ? "Retrying..." : "Retry Handoff"}
+                </button>
               </div>
             )}
           </div>
@@ -773,7 +798,8 @@ export default function IssueDetailPage({
                 disabled={
                   isHandingOff ||
                   issue.handoff_state === "SYNCED" ||
-                  issue.handoff_state === "SENT"
+                  issue.handoff_state === "SENT" ||
+                  issue.handoff_state === "FAILED"
                 }
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -783,6 +809,8 @@ export default function IssueDetailPage({
                   ? "Already Synced"
                   : issue.handoff_state === "SENT"
                   ? "Handoff in Progress"
+                  : issue.handoff_state === "FAILED"
+                  ? "Handoff Failed (See Error Panel)"
                   : "Handoff to GitHub"}
               </button>
 
