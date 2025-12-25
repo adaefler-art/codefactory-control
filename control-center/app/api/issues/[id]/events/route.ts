@@ -10,6 +10,8 @@ import { getPool } from '../../../../../src/lib/db';
 import { getIssueEvents } from '../../../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier } from '../../_shared';
+import { normalizeOutput } from '@/lib/api/normalize-output';
+import { isAfu9IssueEventOutput } from '@/lib/contracts/outputContracts';
 
 /**
  * GET /api/issues/[id]/events
@@ -51,9 +53,25 @@ export async function GET(
       );
     }
 
+    // Normalize events to ensure timestamps are ISO strings
+    const normalizedEvents = normalizeOutput(result.data || []);
+
+    // Validate each event against the output contract
+    if (Array.isArray(normalizedEvents)) {
+      for (const event of normalizedEvents) {
+        if (!isAfu9IssueEventOutput(event)) {
+          console.error('[API /api/issues/[id]/events] Event output contract validation failed', {
+            issueId: internalId,
+            eventId: (event as any)?.id,
+          });
+          throw new Error('Afu9IssueEventOutput contract validation failed');
+        }
+      }
+    }
+
     const responseBody: any = {
-      events: result.data || [],
-      total: (result.data || []).length,
+      events: normalizedEvents,
+      total: Array.isArray(normalizedEvents) ? normalizedEvents.length : 0,
       limit,
     };
 

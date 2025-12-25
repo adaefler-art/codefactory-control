@@ -11,6 +11,7 @@ import { getPool } from '../../../../src/lib/db';
 import { getActiveIssue } from '../../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { toPublicIdFromUuid } from '../_shared';
+import { normalizeOutput } from '@/lib/api/normalize-output';
 
 /**
  * GET /api/issues/active-check
@@ -43,17 +44,20 @@ export async function GET(request: NextRequest) {
     const activeIssue = activeIssueResult.data;
     const hasActive = activeIssue !== null;
 
+    // Normalize active issue data if it exists
+    const normalizedActiveIssue = activeIssue ? normalizeOutput(activeIssue) : null;
+
     const responseBody: {
       hasActive: boolean;
       activeIssue: { id: string; publicId: string; title: string } | null;
       contextTrace?: unknown;
     } = {
       hasActive,
-      activeIssue: hasActive && activeIssue
+      activeIssue: hasActive && normalizedActiveIssue
         ? {
-            id: activeIssue.id,
-            publicId: toPublicIdFromUuid(activeIssue.id) ?? activeIssue.id.substring(0, 8),
-            title: activeIssue.title,
+            id: (normalizedActiveIssue as any).id,
+            publicId: toPublicIdFromUuid((normalizedActiveIssue as any).id) ?? (normalizedActiveIssue as any).id.substring(0, 8),
+            title: (normalizedActiveIssue as any).title,
           }
         : null,
     };

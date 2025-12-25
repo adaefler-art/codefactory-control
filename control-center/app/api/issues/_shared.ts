@@ -5,9 +5,11 @@
  * - Identifier parsing (UUID v4 OR 8-hex publicId)
  * - DB lookup by internal UUID or publicId
  * - Consistent API response shape w/ ISO timestamps
+ * - Contract validation for output safety
  */
 
 import { normalizeOutput } from '@/lib/api/normalize-output';
+import { isAfu9IssueOutput } from '@/lib/contracts/outputContracts';
 import type { Pool } from 'pg';
 import {
   parseIssueId,
@@ -85,6 +87,7 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
 }
 
 export function normalizeIssueForApi(input: unknown): any {
+  // Step 1: Normalize output (Date -> ISO string, etc.)
   const normalized = normalizeOutput(input) as any;
 
   const internalId =
@@ -107,31 +110,64 @@ export function normalizeIssueForApi(input: unknown): any {
   const executionStartedAt = toIsoOrNull(normalized?.executionStartedAt ?? normalized?.execution_started_at);
   const executionCompletedAt = toIsoOrNull(normalized?.executionCompletedAt ?? normalized?.execution_completed_at);
 
+  // Build the core contract fields (snake_case for contract validation)
+  const contractData: any = {
+    id: internalId,
+    title: typeof normalized?.title === 'string' ? normalized.title : '',
+    body: normalized?.body ?? null,
+    status: normalized?.status ?? null,
+    labels: Array.isArray(normalized?.labels) ? normalized.labels : [],
+    priority: normalized?.priority ?? null,
+    assignee: normalized?.assignee ?? null,
+    source: normalized?.source ?? null,
+    handoff_state: normalized?.handoffState ?? normalized?.handoff_state ?? null,
+    github_issue_number: normalized?.githubIssueNumber ?? normalized?.github_issue_number ?? null,
+    github_url: normalized?.githubUrl ?? normalized?.github_url ?? null,
+    last_error: normalized?.lastError ?? normalized?.last_error ?? null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    activated_at: activatedAt,
+    execution_state: normalized?.executionState ?? normalized?.execution_state ?? 'IDLE',
+    execution_started_at: executionStartedAt,
+    execution_completed_at: executionCompletedAt,
+    execution_output: normalized?.executionOutput ?? normalized?.execution_output ?? null,
+  };
+
+  // Step 2: Validate against output contract
+  if (!isAfu9IssueOutput(contractData)) {
+    console.error('[normalizeIssueForApi] Output contract validation failed', {
+      id: internalId,
+      publicId,
+    });
+    throw new Error('Afu9IssueOutput contract validation failed');
+  }
+
+  // Step 3: Return API-friendly format with both camelCase and snake_case
   const api: any = {
     // Required/primary fields
     id: internalId,
     publicId: publicId ?? null,
-    title: typeof normalized?.title === 'string' ? normalized.title : '',
-    status: normalized?.status ?? null,
-    labels: Array.isArray(normalized?.labels) ? normalized.labels : [],
+    title: contractData.title,
+    status: contractData.status,
+    labels: contractData.labels,
     createdAt,
     updatedAt,
 
     // Common optional fields (camelCase)
-    body: normalized?.body ?? null,
-    description: normalized?.description ?? normalized?.body ?? null,
-    priority: normalized?.priority ?? null,
-    assignee: normalized?.assignee ?? null,
-    source: normalized?.source ?? null,
-    handoffState: normalized?.handoffState ?? normalized?.handoff_state ?? null,
-    githubIssueNumber: normalized?.githubIssueNumber ?? normalized?.github_issue_number ?? null,
-    githubUrl: normalized?.githubUrl ?? normalized?.github_url ?? null,
-    lastError: normalized?.lastError ?? normalized?.last_error ?? null,
+    body: contractData.body,
+    description: contractData.body, // Alias for backward compatibility
+    priority: contractData.priority,
+    assignee: contractData.assignee,
+    source: contractData.source,
+    handoffState: contractData.handoff_state,
+    githubIssueNumber: contractData.github_issue_number,
+    githubUrl: contractData.github_url,
+    lastError: contractData.last_error,
     activatedAt,
-    executionState: normalized?.executionState ?? normalized?.execution_state ?? 'IDLE',
+    executionState: contractData.execution_state,
     executionStartedAt,
     executionCompletedAt,
-    executionOutput: normalized?.executionOutput ?? normalized?.execution_output ?? null,
+    executionOutput: contractData.execution_output,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.

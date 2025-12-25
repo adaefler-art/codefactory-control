@@ -12,6 +12,7 @@ import { Afu9ExecutionState } from '../../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 import { withApi, apiError } from '../../../../../src/lib/http/withApi';
+import { normalizeOutput } from '@/lib/api/normalize-output';
 
 /**
  * GET /api/issues/[id]/execution
@@ -30,13 +31,17 @@ export const GET = withApi(async (
   }
 
   const issue = resolved.row as any;
+  
+  // Normalize to ensure timestamps are ISO strings
+  const normalized = normalizeOutput(issue);
+  
   const responseBody: any = {
-    id: issue.id,
-    publicId: issue.id.substring(0, 8),
-    execution_state: issue.execution_state || 'IDLE',
-    execution_started_at: issue.execution_started_at,
-    execution_completed_at: issue.execution_completed_at,
-    execution_output: issue.execution_output,
+    id: normalized.id,
+    publicId: normalized.id.substring(0, 8),
+    execution_state: normalized.execution_state || 'IDLE',
+    execution_started_at: normalized.execution_started_at,
+    execution_completed_at: normalized.execution_completed_at,
+    execution_output: normalized.execution_output,
   };
 
   if (isDebugApiEnabled()) {
