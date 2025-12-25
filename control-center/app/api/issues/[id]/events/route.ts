@@ -60,9 +60,18 @@ export async function GET(
     if (Array.isArray(normalizedEvents)) {
       for (const event of normalizedEvents) {
         if (!isAfu9IssueEventOutput(event)) {
+          // Log validation failure with evidence
+          const eventRecord = event as Record<string, unknown>;
+          const evidence: Record<string, string> = {};
+          ['id', 'issue_id', 'event_type', 'created_at'].forEach(field => {
+            const value = eventRecord[field];
+            evidence[field] = `type=${typeof value}, isNull=${value === null}`;
+          });
+          
           console.error('[API /api/issues/[id]/events] Event output contract validation failed', {
             issueId: internalId,
-            eventId: (event as any)?.id,
+            eventId: eventRecord?.id,
+            evidence,
           });
           throw new Error('Afu9IssueEventOutput contract validation failed');
         }

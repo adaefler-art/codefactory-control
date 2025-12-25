@@ -135,9 +135,23 @@ export function normalizeIssueForApi(input: unknown): any {
 
   // Step 2: Validate against output contract
   if (!isAfu9IssueOutput(contractData)) {
+    // Log validation failure with field evidence for debugging
+    const evidence: Record<string, string> = {};
+    const checkField = (field: string) => {
+      const value = contractData[field];
+      evidence[field] = `type=${typeof value}, isNull=${value === null}, isArray=${Array.isArray(value)}`;
+    };
+    
+    checkField('id');
+    checkField('title');
+    checkField('status');
+    checkField('created_at');
+    checkField('updated_at');
+    
     console.error('[normalizeIssueForApi] Output contract validation failed', {
       id: internalId,
       publicId,
+      evidence,
     });
     throw new Error('Afu9IssueOutput contract validation failed');
   }

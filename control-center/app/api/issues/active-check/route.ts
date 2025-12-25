@@ -55,9 +55,10 @@ export async function GET(request: NextRequest) {
       hasActive,
       activeIssue: hasActive && normalizedActiveIssue
         ? {
-            id: (normalizedActiveIssue as any).id,
-            publicId: toPublicIdFromUuid((normalizedActiveIssue as any).id) ?? (normalizedActiveIssue as any).id.substring(0, 8),
-            title: (normalizedActiveIssue as any).title,
+            id: (normalizedActiveIssue as Record<string, unknown>).id as string,
+            publicId: toPublicIdFromUuid((normalizedActiveIssue as Record<string, unknown>).id as string) ?? 
+                      ((normalizedActiveIssue as Record<string, unknown>).id as string).substring(0, 8),
+            title: (normalizedActiveIssue as Record<string, unknown>).title as string,
           }
         : null,
     };
