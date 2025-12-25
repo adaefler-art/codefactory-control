@@ -21,7 +21,6 @@ import {
   isValidPriority,
   isValidStatus,
 } from '../../../../src/lib/contracts/afu9Issue';
-import { normalizeOutput } from '@/lib/api/normalize-output';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { normalizeIssueForApi, toPublicIdFromUuid } from '../_shared';
 
@@ -339,7 +338,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Return the same shape as the rest of the Issues API.
-    const responseBody: any = normalizeIssueForApi(normalizeOutput(result.data));
+    const responseBody: any = normalizeIssueForApi(result.data);
 
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
