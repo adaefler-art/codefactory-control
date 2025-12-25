@@ -109,6 +109,7 @@ export const AFU9_ISSUE_CONSTRAINTS = {
   status: 50,
   handoff_state: 50,
   priority: 10,
+  execution_state: 50,
 } as const;
 
 /**

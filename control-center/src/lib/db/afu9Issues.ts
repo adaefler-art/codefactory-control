@@ -405,6 +405,8 @@ export async function updateAfu9Issue(
 
     if (updates.execution_output !== undefined) {
       fields.push(`execution_output = $${paramIndex}`);
+      // execution_output should be a plain object (validated by contract)
+      // PostgreSQL JSONB expects a JSON string, so we stringify if it's not null
       values.push(updates.execution_output ? JSON.stringify(updates.execution_output) : null);
       paramIndex++;
     }
