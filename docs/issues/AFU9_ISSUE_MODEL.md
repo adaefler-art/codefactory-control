@@ -38,26 +38,34 @@ The `status` field tracks the issue through its lifecycle within AFU9:
 
 | Status | Description | Terminal? |
 |--------|-------------|-----------|
-| `CREATED` | Issue created but not yet active | No |
-| `ACTIVE` | Issue is currently being worked on | No |
+| `CREATED` | Issue created but not yet started | No |
+| `SPEC_READY` | Issue specification is complete and ready for implementation | No |
+| `IMPLEMENTING` | Issue is currently being implemented | No |
+| `ACTIVE` | Issue is currently active (legacy, prefer IMPLEMENTING) | No |
 | `BLOCKED` | Issue is blocked and cannot proceed | No |
-| `DONE` | Issue is completed | Yes |
+| `DONE` | Issue is completed successfully | Yes |
+| `FAILED` | Issue implementation failed | Yes |
 
 ### Status Transitions
 
 ```
-CREATED → ACTIVE → DONE
-    ↓       ↓
-  BLOCKED → BLOCKED
-    ↓       ↓
-  ACTIVE  CREATED
+CREATED → SPEC_READY → IMPLEMENTING → DONE
+    ↓         ↓            ↓            
+  BLOCKED   BLOCKED      BLOCKED       
+    ↓         ↓            ↓            
+ CREATED   CREATED     IMPLEMENTING    
+                           ↓
+                        FAILED
 ```
 
 Valid transitions:
-- `CREATED` → `ACTIVE`, `BLOCKED`, `DONE`
-- `ACTIVE` → `BLOCKED`, `DONE`
-- `BLOCKED` → `CREATED`, `ACTIVE`, `DONE`
+- `CREATED` → `SPEC_READY`, `IMPLEMENTING`, `ACTIVE`, `BLOCKED`, `DONE`, `FAILED`
+- `SPEC_READY` → `IMPLEMENTING`, `BLOCKED`, `DONE`, `FAILED`
+- `IMPLEMENTING` → `BLOCKED`, `DONE`, `FAILED`
+- `ACTIVE` → `IMPLEMENTING`, `BLOCKED`, `DONE`, `FAILED`
+- `BLOCKED` → `CREATED`, `SPEC_READY`, `IMPLEMENTING`, `ACTIVE`, `DONE`, `FAILED`
 - `DONE` (terminal, no further transitions)
+- `FAILED` (terminal, no further transitions)
 
 ## HandoffState Model
 
