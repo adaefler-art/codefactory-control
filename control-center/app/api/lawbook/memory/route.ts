@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeStableHash, loadMemorySeed } from '@/lawbook/load';
 import type { ContextTrace, MemorySeedEntry } from '@/lawbook/types';
+import { withApi } from '../../../../src/lib/http/withApi';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,45 +17,40 @@ function buildParamsHash(request: NextRequest): string {
   return computeStableHash({ pathname: url.pathname, query: entries });
 }
 
-export async function GET(request: NextRequest) {
-  try {
-    const seed = await loadMemorySeed();
+export const GET = withApi(async (request: NextRequest) => {
+  const seed = await loadMemorySeed();
 
-    // Stage A: no persistence layer for session memory; keep shape stable.
-    const sessionEntries: MemorySeedEntry[] = [];
-    const sessionHash = computeStableHash({ version: seed.data.version, entries: sessionEntries });
+  // Stage A: no persistence layer for session memory; keep shape stable.
+  const sessionEntries: MemorySeedEntry[] = [];
+  const sessionHash = computeStableHash({ version: seed.data.version, entries: sessionEntries });
 
-    const responseBody: any = {
-      seed: {
-        hash: seed.hash,
-        version: seed.data.version,
-        entries: seed.data.entries,
-      },
-      session: {
-        hash: sessionHash,
-        version: seed.data.version,
-        entries: sessionEntries,
-      },
-      hash: computeStableHash({ seedHash: seed.hash, sessionHash }),
+  const responseBody: any = {
+    seed: {
+      hash: seed.hash,
+      version: seed.data.version,
+      entries: seed.data.entries,
+    },
+    session: {
+      hash: sessionHash,
+      version: seed.data.version,
+      entries: sessionEntries,
+    },
+    hash: computeStableHash({ seedHash: seed.hash, sessionHash }),
+  };
+
+  if (debugApiEnabled()) {
+    const trace: ContextTrace = {
+      paramsHash: buildParamsHash(request),
+      guardrailIdsApplied: [],
+      memoryIdsUsed: seed.data.entries.map((e) => e.id),
     };
-
-    if (debugApiEnabled()) {
-      const trace: ContextTrace = {
-        paramsHash: buildParamsHash(request),
-        guardrailIdsApplied: [],
-        memoryIdsUsed: seed.data.entries.map((e) => e.id),
-      };
-      responseBody.contextTrace = trace;
-    }
-
-    return NextResponse.json(responseBody, { status: 200 });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: 'Failed to load lawbook memory',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    responseBody.contextTrace = trace;
   }
-}
+
+  return NextResponse.json(responseBody, { status: 200 });
+}, {
+  mapError: (error, requestId) => ({
+    error: 'Failed to load lawbook memory',
+    details: error instanceof Error ? error.message : 'Unknown error',
+  }),
+});

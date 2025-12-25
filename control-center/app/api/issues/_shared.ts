@@ -9,56 +9,31 @@
 
 import { normalizeOutput } from '@/lib/api/normalize-output';
 import type { Pool } from 'pg';
-import { isValidUUID } from '../../../src/lib/utils/uuid-validator';
+import {
+  parseIssueId,
+  toShortHex8FromUuid,
+  type IssueIdentifierKind,
+} from '../../../src/lib/contracts/ids';
+import { toIsoStringOrNull } from '../../../src/lib/contracts/dates';
 import {
   getAfu9IssueById,
   getAfu9IssueByPublicId,
 } from '../../../src/lib/db/afu9Issues';
 
-export type IssueIdentifierKind = 'uuid' | 'publicId' | 'invalid';
-
-const PUBLIC_ID_REGEX = /^[0-9a-f]{8}$/i;
+export { type IssueIdentifierKind };
 
 export function classifyIssueIdentifier(value: string): IssueIdentifierKind {
-  if (typeof value !== 'string') return 'invalid';
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return 'invalid';
-  if (isValidUUID(trimmed)) return 'uuid';
-  if (PUBLIC_ID_REGEX.test(trimmed)) return 'publicId';
-  return 'invalid';
+  const parsed = parseIssueId(value);
+  // Map shortHex8 to publicId for backwards compatibility
+  return parsed.kind === 'shortHex8' ? 'publicId' : parsed.kind;
 }
 
 export function toPublicIdFromUuid(uuid: string): string | null {
-  if (typeof uuid !== 'string') return null;
-  const match = uuid.match(/^([0-9a-f]{8})-/i);
-  if (match) return match[1].toLowerCase();
-  const fallback = uuid.match(/^([0-9a-f]{8})/i);
-  return fallback ? fallback[1].toLowerCase() : null;
+  return toShortHex8FromUuid(uuid);
 }
 
 function toIsoOrNull(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === 'number') {
-    const d = new Date(value);
-    return Number.isFinite(d.getTime()) ? d.toISOString() : null;
-  }
-  if (typeof value === 'string') {
-    const d = new Date(value);
-    return Number.isFinite(d.getTime()) ? d.toISOString() : null;
-  }
-  if (typeof value === 'object') {
-    const asAny = value as any;
-    if (typeof asAny.toISOString === 'function') {
-      try {
-        const s = asAny.toISOString();
-        return typeof s === 'string' ? s : null;
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
+  return toIsoStringOrNull(value);
 }
 
 export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string) {
