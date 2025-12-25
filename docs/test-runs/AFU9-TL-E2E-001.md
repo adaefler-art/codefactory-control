@@ -140,9 +140,11 @@ Prüfen, ob AFU-9 in der Lage ist,
    - Impact: Medium
    - Status: Bekannt, separate Issue erforderlich
 
-2. **Self-Propel Endpoint**: Der `/api/issues/[id]/self-propel` Endpoint existiert, aber ist noch nicht vollständig dokumentiert
-   - Impact: Low
+2. **Self-Propel Endpoint**: Der `/api/issues/[id]/self-propel` Endpoint existiert für autonome Issue-Ausführung, aber ist noch nicht vollständig dokumentiert
+   - Funktion: Startet autonome Ausführung eines Issues durch AFU-9 Agent
+   - Impact: Low (Funktionalität vorhanden, nur Dokumentation fehlt)
    - Status: Dokumentation folgt in separater PR
+   - Referenz: `control-center/app/api/issues/[id]/self-propel/route.ts`
 
 ### Behobene Probleme während des Tests
 - Keine kritischen Probleme während der Testausführung

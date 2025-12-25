@@ -364,24 +364,41 @@ describe('AFU9 Issue Workflow - Phase 5: Negative Tests', () => {
     //   }
   });
 
-  test('README: Second ACTIVE issue triggers constraint violation', () => {
+  test('README: Second ACTIVE issue via direct creation triggers constraint', () => {
     // Prerequisites:
     //   - One issue is ACTIVE
     // 
-    // Note: This tests the database-level constraint enforcement.
-    // The API layer also checks before creating, but this validates
-    // that the DB trigger prevents any bypass attempts.
+    // This tests database-level constraint enforcement when attempting
+    // to create a second issue directly with ACTIVE status.
     // 
-    // Command (direct creation attempt):
+    // Command:
     //   curl -X POST http://localhost:3000/api/issues \
     //     -H "Content-Type: application/json" \
-    //     -d '{"title": "Second Active", "status": "ACTIVE"}'
+    //     -d '{"title": "Second Active Direct", "status": "ACTIVE"}'
     // 
-    // Alternative (activate second issue after creation):
-    //   ISSUE_ID_2="<uuid-of-second-issue>"
+    // Expected Result:
+    //   HTTP 409 Conflict
+    //   Error message contains "Single-Active constraint violation"
+  });
+
+  test('README: Second ACTIVE issue via activation triggers constraint', () => {
+    // Prerequisites:
+    //   - First issue is ACTIVE
+    //   - Second issue exists with status CREATED
+    // 
+    // This tests the activate endpoint's constraint enforcement.
+    // 
+    // Command:
+    //   # First create a second issue
+    //   curl -X POST http://localhost:3000/api/issues \
+    //     -H "Content-Type: application/json" \
+    //     -d '{"title": "Second Issue"}' | jq -r '.id'
+    //   # Save as ISSUE_ID_2
+    //   
+    //   # Try to activate it (should fail)
     //   curl -X POST http://localhost:3000/api/issues/${ISSUE_ID_2}/activate
     // 
-    // Expected Result (both methods):
+    // Expected Result:
     //   HTTP 409 Conflict
     //   Error message contains "Single-Active constraint violation"
   });
