@@ -8,11 +8,16 @@
  * - GitHub handoff
  * - Event logging
  * 
- * NOTE: This is a manual E2E test that documents the expected behavior.
+ * ⚠️  IMPORTANT: This is a MANUAL E2E test suite that documents expected behavior.
+ * These are NOT automated Jest tests - they are documentation-style tests that
+ * provide step-by-step commands for manual execution and validation.
+ * 
+ * To execute: Follow the "Complete E2E Test Procedure" at the end of this file.
+ * 
  * Automated execution requires:
- * - Running database (local or staging)
- * - GitHub credentials configured
- * - Control Center running
+ * - Running database (local via docker-compose or staging)
+ * - GitHub credentials configured (GITHUB_TOKEN)
+ * - Control Center running (npm run dev:control-center)
  */
 
 /**
@@ -346,8 +351,9 @@ describe('AFU9 Issue Workflow - Phase 5: Negative Tests', () => {
     //   HTTP 400 Bad Request
     //   {
     //     "error": "Invalid input",
-    //     "details": ["status must be one of: CREATED, SPEC_READY, ...]
+    //     "details": ["status must be one of: CREATED, SPEC_READY, IMPLEMENTING, ACTIVE, BLOCKED, DONE, FAILED"]
     //   }
+    //   Note: See docs/issues/AFU9_ISSUE_MODEL.md for complete status enum
   });
 
   test('README: Missing title is rejected', () => {
@@ -364,7 +370,7 @@ describe('AFU9 Issue Workflow - Phase 5: Negative Tests', () => {
     //   }
   });
 
-  test('README: Second ACTIVE issue via direct creation triggers constraint', () => {
+  test('README: Single-issue-mode prevents direct creation of second ACTIVE issue', () => {
     // Prerequisites:
     //   - One issue is ACTIVE
     // 
@@ -381,7 +387,7 @@ describe('AFU9 Issue Workflow - Phase 5: Negative Tests', () => {
     //   Error message contains "Single-Active constraint violation"
   });
 
-  test('README: Second ACTIVE issue via activation triggers constraint', () => {
+  test('README: Single-issue-mode prevents activation of second ACTIVE issue', () => {
     // Prerequisites:
     //   - First issue is ACTIVE
     //   - Second issue exists with status CREATED
