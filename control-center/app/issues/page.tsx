@@ -8,7 +8,7 @@ interface Issue {
   publicId: string;
   title: string;
   body: string | null;
-  status: "CREATED" | "ACTIVE" | "BLOCKED" | "DONE";
+  status: "CREATED" | "SPEC_READY" | "IMPLEMENTING" | "ACTIVE" | "BLOCKED" | "DONE" | "FAILED";
   labels: string[];
   priority: "P0" | "P1" | "P2" | null;
   assignee: string | null;
@@ -67,14 +67,20 @@ export default function IssuesPage() {
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
-      case "ACTIVE":
-        return "bg-green-900/30 text-green-200 border border-green-700";
-      case "DONE":
-        return "bg-blue-900/30 text-blue-200 border border-blue-700";
-      case "BLOCKED":
-        return "bg-red-900/30 text-red-200 border border-red-700";
       case "CREATED":
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
+      case "SPEC_READY":
+        return "bg-cyan-900/30 text-cyan-200 border border-cyan-700";
+      case "IMPLEMENTING":
+        return "bg-blue-900/30 text-blue-200 border border-blue-700";
+      case "ACTIVE":
+        return "bg-green-900/30 text-green-200 border border-green-700";
+      case "BLOCKED":
+        return "bg-orange-900/30 text-orange-200 border border-orange-700";
+      case "DONE":
+        return "bg-emerald-900/30 text-emerald-200 border border-emerald-700";
+      case "FAILED":
+        return "bg-red-900/30 text-red-200 border border-red-700";
       default:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
     }
@@ -144,9 +150,12 @@ export default function IssuesPage() {
                 >
                   <option value="">All Statuses</option>
                   <option value="CREATED">CREATED</option>
+                  <option value="SPEC_READY">SPEC_READY</option>
+                  <option value="IMPLEMENTING">IMPLEMENTING</option>
                   <option value="ACTIVE">ACTIVE</option>
                   <option value="BLOCKED">BLOCKED</option>
                   <option value="DONE">DONE</option>
+                  <option value="FAILED">FAILED</option>
                 </select>
               </div>
 

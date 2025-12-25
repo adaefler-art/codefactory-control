@@ -385,6 +385,80 @@ describe('AFU9 Issues API', () => {
       expect(response.status).toBe(409);
       expect(body.error).toContain('Single-Active');
     });
+
+    test('accepts new status values SPEC_READY, IMPLEMENTING, and FAILED', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      // Test SPEC_READY
+      const specReadyIssue = { ...mockIssue, status: Afu9IssueStatus.SPEC_READY };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: specReadyIssue,
+      });
+
+      let request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'SPEC_READY',
+        }),
+      });
+
+      let response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      let body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe('SPEC_READY');
+
+      // Test IMPLEMENTING
+      const implementingIssue = { ...mockIssue, status: 'IMPLEMENTING' as any };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: implementingIssue,
+      });
+
+      request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'IMPLEMENTING',
+        }),
+      });
+
+      response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe('IMPLEMENTING');
+
+      // Test FAILED
+      const failedIssue = { ...mockIssue, status: 'FAILED' as any };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: failedIssue,
+      });
+
+      request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'FAILED',
+        }),
+      });
+
+      response = await updateIssue(request, {
+        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+      });
+      body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe('FAILED');
+    });
   });
 
   describe('POST /api/issues/[id]/activate', () => {

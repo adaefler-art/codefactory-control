@@ -24,9 +24,12 @@ describe('AFU9 Issue Contract', () => {
   describe('Type Guards', () => {
     test('isValidStatus accepts valid statuses', () => {
       expect(isValidStatus('CREATED')).toBe(true);
+      expect(isValidStatus('SPEC_READY')).toBe(true);
+      expect(isValidStatus('IMPLEMENTING')).toBe(true);
       expect(isValidStatus('ACTIVE')).toBe(true);
       expect(isValidStatus('BLOCKED')).toBe(true);
       expect(isValidStatus('DONE')).toBe(true);
+      expect(isValidStatus('FAILED')).toBe(true);
     });
 
     test('isValidStatus rejects invalid statuses', () => {
