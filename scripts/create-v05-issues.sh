@@ -4,14 +4,69 @@
 
 REPO="adaefler-art/codefactory-control"
 
+GH_BIN="${GH_BIN:-gh}"
+if ! command -v "$GH_BIN" >/dev/null 2>&1; then
+  if command -v gh.exe >/dev/null 2>&1; then
+    GH_BIN="gh.exe"
+  else
+    echo "❌ GitHub CLI not found. Install 'gh' or ensure gh.exe is on PATH." >&2
+    exit 1
+  fi
+fi
+
+SKIP_EPICS="${SKIP_EPICS:-0}"
+SKIP_EXISTING="${SKIP_EXISTING:-1}"
+
+get_issue_number_by_title() {
+  local title="$1"
+  "$GH_BIN" issue list \
+    --repo "$REPO" \
+    --state all \
+    --limit 5 \
+    --search "\"$title\" in:title" \
+    --json number,title \
+    --template '{{range .}}{{.number}}{{"\n"}}{{end}}' \
+    | head -n 1
+}
+
+require_issue_number() {
+  local value="$1"
+  local label="$2"
+  if [ -z "$value" ]; then
+    echo "❌ Could not find existing issue for: $label" >&2
+    exit 1
+  fi
+}
+
+create_if_missing() {
+  local title="$1"
+  shift
+
+  if [ "$SKIP_EXISTING" = "1" ]; then
+    local existing
+    existing=$(get_issue_number_by_title "$title")
+    if [ -n "$existing" ]; then
+      echo "↩️  Skipping existing: $title (#$existing)"
+      return 0
+    fi
+  fi
+
+  "$@"
+}
+
 echo "🚀 Creating AFU-9 v0.5 Epics & Issues..."
 
 # ========================================
 # EPICS
 # ========================================
 
-echo "📋 Creating Epic E5-1..."
-EPIC_E5_1=$(gh issue create \
+if [ "$SKIP_EPICS" = "1" ]; then
+  EPIC_E5_1=$(get_issue_number_by_title "E5-1: AFU-9 Issue E2E Workflow (CORE)")
+  require_issue_number "$EPIC_E5_1" "E5-1: AFU-9 Issue E2E Workflow (CORE)"
+  echo "↩️  Using Epic E5-1 (#$EPIC_E5_1)"
+else
+  echo "📋 Creating Epic E5-1..."
+  EPIC_E5_1=$($GH_BIN issue create \
   --repo "$REPO" \
   --title "E5-1: AFU-9 Issue E2E Workflow (CORE)" \
   --body "**Purpose:** Funktionsfähiger, stabiler Issue-Durchstich. 
@@ -23,12 +78,18 @@ EPIC_E5_1=$(gh issue create \
 - Contracts: \`control-center/src/lib/contracts/afu9Issue.ts\`
 - UI: \`control-center/app/issues/\`" \
   --label "v0.5,epic" \
-  | grep -oP '(?<=issues/)\d+')
+  | sed -E 's#.*/issues/([0-9]+).*#\1#')
 
-echo "✅ Created Epic E5-1 (#$EPIC_E5_1)"
+  echo "✅ Created Epic E5-1 (#$EPIC_E5_1)"
+fi
 
-echo "📋 Creating Epic E5-2..."
-EPIC_E5_2=$(gh issue create \
+if [ "$SKIP_EPICS" = "1" ]; then
+  EPIC_E5_2=$(get_issue_number_by_title "E5-2: Activation & Execution Semantics")
+  require_issue_number "$EPIC_E5_2" "E5-2: Activation & Execution Semantics"
+  echo "↩️  Using Epic E5-2 (#$EPIC_E5_2)"
+else
+  echo "📋 Creating Epic E5-2..."
+  EPIC_E5_2=$($GH_BIN issue create \
   --repo "$REPO" \
   --title "E5-2: Activation & Execution Semantics" \
   --body "**Purpose:** Deterministische Aktivierung (kein Parallelismus).
@@ -39,12 +100,18 @@ EPIC_E5_2=$(gh issue create \
 - DB Constraint: Migration 014 \`trigger enforce_single_active_issue\`
 - Docs: \`docs/issues/SINGLE_ISSUE_MODE.md\`" \
   --label "v0.5,epic" \
-  | grep -oP '(?<=issues/)\d+')
+  | sed -E 's#.*/issues/([0-9]+).*#\1#')
 
-echo "✅ Created Epic E5-2 (#$EPIC_E5_2)"
+  echo "✅ Created Epic E5-2 (#$EPIC_E5_2)"
+fi
 
-echo "📋 Creating Epic E5-3..."
-EPIC_E5_3=$(gh issue create \
+if [ "$SKIP_EPICS" = "1" ]; then
+  EPIC_E5_3=$(get_issue_number_by_title "E5-3: GitHub Handoff Contract")
+  require_issue_number "$EPIC_E5_3" "E5-3: GitHub Handoff Contract"
+  echo "↩️  Using Epic E5-3 (#$EPIC_E5_3)"
+else
+  echo "📋 Creating Epic E5-3..."
+  EPIC_E5_3=$($GH_BIN issue create \
   --repo "$REPO" \
   --title "E5-3: GitHub Handoff Contract" \
   --body "**Purpose:** Saubere Übergabe an GitHub als Execution-Backend.
@@ -55,15 +122,21 @@ EPIC_E5_3=$(gh issue create \
 - GitHub Client: \`control-center/src/lib/clients/github.ts\`
 - Idempotenz via \`AFU9-ISSUE: <uuid>\` Marker" \
   --label "v0.5,epic" \
-  | grep -oP '(?<=issues/)\d+')
+  | sed -E 's#.*/issues/([0-9]+).*#\1#')
 
-echo "✅ Created Epic E5-3 (#$EPIC_E5_3)"
+  echo "✅ Created Epic E5-3 (#$EPIC_E5_3)"
+fi
 
-echo "📋 Creating Epic E5-4..."
-EPIC_E5_4=$(gh issue create \
+if [ "$SKIP_EPICS" = "1" ]; then
+  EPIC_E5_4=$(get_issue_number_by_title "E5-4: Execution Feedback (Minimal)")
+  require_issue_number "$EPIC_E5_4" "E5-4: Execution Feedback (Minimal)"
+  echo "↩️  Using Epic E5-4 (#$EPIC_E5_4)"
+else
+  echo "📋 Creating Epic E5-4..."
+  EPIC_E5_4=$($GH_BIN issue create \
   --repo "$REPO" \
   --title "E5-4: Execution Feedback (Minimal)" \
-  --body "**Purpose:** AFU-9 ist nicht „blind". 
+  --body "**Purpose:** AFU-9 ist nicht blind. 
 **Outcome:** Minimaler Execution-Status am Issue sichtbar.
 
 ## Technischer Kontext
@@ -71,12 +144,18 @@ EPIC_E5_4=$(gh issue create \
 - Felder: \`execution_state\`, \`execution_started_at\`, \`execution_completed_at\`
 - UI Component:  Execution Badge mit Timestamps" \
   --label "v0.5,epic" \
-  | grep -oP '(?<=issues/)\d+')
+  | sed -E 's#.*/issues/([0-9]+).*#\1#')
 
-echo "✅ Created Epic E5-4 (#$EPIC_E5_4)"
+  echo "✅ Created Epic E5-4 (#$EPIC_E5_4)"
+fi
 
-echo "📋 Creating Epic E5-5..."
-EPIC_E5_5=$(gh issue create \
+if [ "$SKIP_EPICS" = "1" ]; then
+  EPIC_E5_5=$(get_issue_number_by_title "E5-5: UI & API Robustness")
+  require_issue_number "$EPIC_E5_5" "E5-5: UI & API Robustness"
+  echo "↩️  Using Epic E5-5 (#$EPIC_E5_5)"
+else
+  echo "📋 Creating Epic E5-5..."
+  EPIC_E5_5=$($GH_BIN issue create \
   --repo "$REPO" \
   --title "E5-5: UI & API Robustness" \
   --body "**Purpose:** Keine stillen Fehler mehr.
@@ -87,20 +166,27 @@ EPIC_E5_5=$(gh issue create \
 - Docs: \`docs/architecture/API_BOUNDARY_NORMALIZATION.md\`
 - Pattern aus Issue #312" \
   --label "v0.5,epic" \
-  | grep -oP '(?<=issues/)\d+')
+  | sed -E 's#.*/issues/([0-9]+).*#\1#')
 
-echo "✅ Created Epic E5-5 (#$EPIC_E5_5)"
+  echo "✅ Created Epic E5-5 (#$EPIC_E5_5)"
+fi
 
-echo "📋 Creating Epic E5-6..."
-EPIC_E5_6=$(gh issue create \
+if [ "$SKIP_EPICS" = "1" ]; then
+  EPIC_E5_6=$(get_issue_number_by_title "E5-6: AFU-9 v0.5 Testlauf")
+  require_issue_number "$EPIC_E5_6" "E5-6: AFU-9 v0.5 Testlauf"
+  echo "↩️  Using Epic E5-6 (#$EPIC_E5_6)"
+else
+  echo "📋 Creating Epic E5-6..."
+  EPIC_E5_6=$($GH_BIN issue create \
   --repo "$REPO" \
   --title "E5-6: AFU-9 v0.5 Testlauf" \
   --body "**Purpose:** Nachweis der Funktionsfähigkeit.
 **Outcome:** Ein dokumentierter E2E-Testlauf gemäß AFU-9 Testlauf-Template." \
   --label "v0.5,epic" \
-  | grep -oP '(?<=issues/)\d+')
+  | sed -E 's#.*/issues/([0-9]+).*#\1#')
 
-echo "✅ Created Epic E5-6 (#$EPIC_E5_6)"
+  echo "✅ Created Epic E5-6 (#$EPIC_E5_6)"
+fi
 
 # ========================================
 # CHILD ISSUES - Epic E5-1
@@ -109,7 +195,7 @@ echo "✅ Created Epic E5-6 (#$EPIC_E5_6)"
 echo ""
 echo "🎯 Creating Child Issues for Epic E5-1..."
 
-gh issue create \
+create_if_missing "I5-1.1: Fix Create/Save Flow for Issues" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-1.1: Fix Create/Save Flow for Issues" \
   --body "**Epic:** #$EPIC_E5_1
@@ -140,9 +226,9 @@ return NextResponse.json({ issue: normalized });
 ## Referenzen
 - API Boundary Normalization: \`docs/architecture/API_BOUNDARY_NORMALIZATION.md\`
 - Existierende PATCH:  \`control-center/app/api/issues/[id]/route.ts\`" \
-  --label "v0.5,issue-system,robustness,epic: E5-1"
+  --label "v0.5"
 
-gh issue create \
+create_if_missing "I5-1.2: Issue Update & Statuswechsel" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-1.2: Issue Update & Statuswechsel" \
   --body "**Epic:** #$EPIC_E5_1
@@ -183,9 +269,9 @@ export enum Afu9IssueStatus {
 ## Referenzen
 - Issue Model: \`docs/issues/AFU9_ISSUE_MODEL.md\`
 - DB Contracts: Issue #297" \
-  --label "v0.5,issue-system,epic:E5-1"
+  --label "v0.5"
 
-gh issue create \
+create_if_missing "I5-1.3: Issue Listing & Navigation Robustness" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-1.3: Issue Listing & Navigation Robustness" \
   --body "**Epic:** #$EPIC_E5_1
@@ -214,7 +300,7 @@ if (!isValidUUID(id)) {
 ## Referenzen
 - UUID Validator: \`control-center/src/lib/utils/uuid-validator.ts\`
 - UI Tests: \`__tests__/app/issues/page.test.tsx\`" \
-  --label "v0.5,issue-system,robustness,epic:E5-1"
+  --label "v0.5"
 
 # ========================================
 # CHILD ISSUES - Epic E5-2
@@ -223,7 +309,7 @@ if (!isValidUUID(id)) {
 echo ""
 echo "🎯 Creating Child Issues for Epic E5-2..."
 
-gh issue create \
+create_if_missing "I5-2.1: Enforce Single Active Issue" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-2.1: Enforce Single Active Issue" \
   --body "**Epic:** #$EPIC_E5_2
@@ -272,9 +358,9 @@ const handleActivate = async () => {
 ## Referenzen
 - Single-Issue Mode: \`docs/issues/SINGLE_ISSUE_MODE.md\`
 - Activity Log: \`docs/issues/ACTIVITY_LOG.md\`" \
-  --label "v0.5,activation,epic:E5-2"
+  --label "v0.5"
 
-gh issue create \
+create_if_missing "I5-2.2: Activation Status Mapping" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-2.2: Activation Status Mapping" \
   --body "**Epic:** #$EPIC_E5_2
@@ -316,7 +402,7 @@ export async function POST(request, { params }) {
 ## Referenzen
 - Activation API: \`control-center/app/api/issues/[id]/activate/route.ts\`
 - Status-Enum: siehe I5-1.2" \
-  --label "v0.5,activation,epic:E5-2"
+  --label "v0.5"
 
 # ========================================
 # CHILD ISSUES - Epic E5-3
@@ -325,7 +411,7 @@ export async function POST(request, { params }) {
 echo ""
 echo "🎯 Creating Child Issues for Epic E5-3..."
 
-gh issue create \
+create_if_missing "I5-3.1: Create GitHub Issue from AFU-9 Issue" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-3.1: Create GitHub Issue from AFU-9 Issue" \
   --body "**Epic:** #$EPIC_E5_3
@@ -371,9 +457,9 @@ export async function POST(request, { params }) {
 ## Referenzen
 - Handoff API: \`control-center/app/api/issues/[id]/handoff/route. ts\`
 - GitHub Client: \`control-center/src/lib/clients/github.ts\`" \
-  --label "v0.5,github-handoff,epic:E5-3"
+  --label "v0.5"
 
-gh issue create \
+create_if_missing "I5-3.2: Handoff State Tracking" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-3.2: Handoff State Tracking" \
   --body "**Epic:** #$EPIC_E5_3
@@ -421,7 +507,7 @@ try {
 
 ## Referenzen
 - UI Detail: \`docs/issues/UI_DETAIL.md\`" \
-  --label "v0.5,github-handoff,robustness,epic:E5-3"
+  --label "v0.5"
 
 # ========================================
 # CHILD ISSUES - Epic E5-4
@@ -430,7 +516,7 @@ try {
 echo ""
 echo "🎯 Creating Child Issues for Epic E5-4..."
 
-gh issue create \
+create_if_missing "I5-4.1: Execution State Visibility" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-4.1: Execution State Visibility" \
   --body "**Epic:** #$EPIC_E5_4
@@ -481,7 +567,7 @@ export async function POST(request, { params }) {
 
 ## Referenzen
 - Issue Model: \`docs/issues/AFU9_ISSUE_MODEL. md\`" \
-  --label "v0.5,issue-system,epic:E5-4"
+  --label "v0.5"
 
 # ========================================
 # CHILD ISSUES - Epic E5-5
@@ -490,7 +576,7 @@ export async function POST(request, { params }) {
 echo ""
 echo "🎯 Creating Child Issues for Epic E5-5..."
 
-gh issue create \
+create_if_missing "I5-5.1: API Contracts Hardened" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-5.1: API Contracts Hardened" \
   --body "**Epic:** #$EPIC_E5_5
@@ -533,16 +619,16 @@ Auf ALLE Issue-Routes anwenden
 ## Referenzen
 - API Boundary: \`docs/architecture/API_BOUNDARY_NORMALIZATION.md\`
 - Read Contracts: \`docs/db/READ_CONTRACTS.md\`" \
-  --label "v0.5,robustness,epic:E5-5"
+  --label "v0.5"
 
-gh issue create \
+create_if_missing "I5-5.2: Error Surface in UI" $GH_BIN issue create \
   --repo "$REPO" \
   --title "I5-5.2: Error Surface in UI" \
   --body "**Epic:** #$EPIC_E5_5
 
 ## Scope
 - API-Fehler sichtbar & erklärend
-- Kein „Unexpected JSON end"
+- Kein „Unexpected JSON end“
 
 ## Acceptance
 - Nutzer versteht Fehlerursache
@@ -595,7 +681,7 @@ return NextResponse.json(
 
 ## Referenzen
 - UI Visual: \`docs/issues/UI_VISUAL_DESCRIPTION.md\`" \
-  --label "v0.5,robustness,epic:E5-5"
+  --label "v0.5"
 
 echo ""
 echo "✅ All AFU-9 v0.5 Epics & Issues created successfully!"
