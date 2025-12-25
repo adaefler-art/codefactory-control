@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 interface Workflow {
   id: string;
@@ -32,16 +33,11 @@ export default function WorkflowsPage() {
     async function fetchWorkflows() {
       try {
         const response = await fetch("/api/workflows", { credentials: "include" });
-        const data = await response.json();
-
-        if (response.ok) {
-          setWorkflows(data.workflows || []);
-        } else {
-          setError(data.error || "Fehler beim Laden der Workflows");
-        }
+        const data = await safeFetch(response);
+        setWorkflows(data.workflows || []);
       } catch (err) {
         console.error("Error fetching workflows:", err);
-        setError("Fehler beim Laden der Workflows");
+        setError(formatErrorMessage(err));
       } finally {
         setIsLoading(false);
       }
@@ -83,18 +79,13 @@ export default function WorkflowsPage() {
         }),
       });
 
-      const result = await response.json();
-
-      if (response.ok) {
-        alert(`Workflow executed successfully!\nExecution ID: ${result.executionId}`);
-        setSelectedWorkflow(null);
-        setExecutionInput("");
-      } else {
-        alert(`Fehler: ${result.error || result.message}`);
-      }
+      const result = await safeFetch(response);
+      alert(`Workflow executed successfully!\nExecution ID: ${result.executionId}`);
+      setSelectedWorkflow(null);
+      setExecutionInput("");
     } catch (err) {
       console.error("Error executing workflow:", err);
-      alert("Fehler beim Ausführen des Workflows");
+      alert(`Fehler: ${formatErrorMessage(err)}`);
     } finally {
       setIsExecuting(false);
     }
