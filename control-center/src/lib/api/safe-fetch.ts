@@ -3,6 +3,12 @@
  * Prevents "Unexpected JSON end" errors by checking response status before parsing
  */
 
+// Error messages
+const ERROR_MESSAGES = {
+  JSON_PARSE_FAILED: 'Antwort konnte nicht als JSON verarbeitet werden',
+  UNKNOWN_ERROR: 'Ein unbekannter Fehler ist aufgetreten',
+} as const;
+
 export interface ApiError {
   status: number;
   message: string;
@@ -60,7 +66,7 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
     // JSON parsing failed on successful response
     throw {
       status: response.status,
-      message: 'Antwort konnte nicht als JSON verarbeitet werden',
+      message: ERROR_MESSAGES.JSON_PARSE_FAILED,
       details: error instanceof Error ? error.message : 'JSON parse error',
     } as ApiError;
   }
@@ -98,5 +104,5 @@ export function formatErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return 'Ein unbekannter Fehler ist aufgetreten';
+  return ERROR_MESSAGES.UNKNOWN_ERROR;
 }
