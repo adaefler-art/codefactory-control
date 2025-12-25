@@ -1,8 +1,9 @@
 /**
  * API Route: /api/issues/[id]/activate
  * 
- * Activates an AFU9 issue (sets it to ACTIVE and all others to CREATED)
+ * Activates an AFU9 issue (sets it to IMPLEMENTING and previous active to DONE)
  * Issue #297: AFU9 Issues API (List/Detail/Edit/Activate/Handoff)
+ * Issue I5-2.2: Activation Status Mapping
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -21,9 +22,9 @@ import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 /**
  * POST /api/issues/[id]/activate
  * 
- * Sets this issue to ACTIVE and all other ACTIVE issues to CREATED.
- * Leaves DONE and BLOCKED issues unchanged.
- * Only one issue can be ACTIVE at a time (Single-Active constraint).
+ * Sets this issue to IMPLEMENTING (and sets activated_at timestamp).
+ * Sets the current IMPLEMENTING issue to DONE.
+ * Only one issue can be IMPLEMENTING at a time (Single-Active constraint).
  */
 export async function POST(
   request: NextRequest,
@@ -41,10 +42,10 @@ export async function POST(
     const issue = resolved.row as any;
     const internalId = String(issue.id);
 
-    // Check if already ACTIVE
-    if (issue?.status === Afu9IssueStatus.ACTIVE) {
+    // Check if already IMPLEMENTING
+    if (issue?.status === Afu9IssueStatus.IMPLEMENTING) {
       const responseBody: any = {
-        message: 'Issue is already ACTIVE',
+        message: 'Issue is already IMPLEMENTING',
         issue: normalizeIssueForApi(issue),
       };
       if (isDebugApiEnabled()) {
@@ -53,7 +54,7 @@ export async function POST(
       return NextResponse.json(responseBody);
     }
 
-    // Get the current active issue (if any)
+    // Get the current implementing issue (if any)
     const activeIssueResult = await getActiveIssue(pool);
     if (!activeIssueResult.success) {
       return NextResponse.json(
@@ -70,7 +71,7 @@ export async function POST(
     // Deactivate the current active issue (if exists and different from target)
     if (currentActiveIssue && currentActiveIssue.id !== internalId) {
       const deactivateResult = await updateAfu9Issue(pool, currentActiveIssue.id, {
-        status: Afu9IssueStatus.CREATED,
+        status: Afu9IssueStatus.DONE,
       });
 
       if (!deactivateResult.success) {
@@ -84,9 +85,10 @@ export async function POST(
       }
     }
 
-    // Activate the target issue
+    // Activate the target issue with IMPLEMENTING status and set activated_at timestamp
     const activateResult = await updateAfu9Issue(pool, internalId, {
-      status: Afu9IssueStatus.ACTIVE,
+      status: Afu9IssueStatus.IMPLEMENTING,
+      activated_at: new Date().toISOString(),
     });
 
     if (!activateResult.success) {

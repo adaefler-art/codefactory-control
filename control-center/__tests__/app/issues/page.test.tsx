@@ -198,7 +198,8 @@ describe('Issues List UI Page', () => {
     render(<IssuesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('FAILED')).toBeInTheDocument();
+      const failedElements = screen.getAllByText('FAILED');
+      expect(failedElements.length).toBeGreaterThan(0);
       expect(screen.getByText('⚠️')).toBeInTheDocument();
     });
   });
