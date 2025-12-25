@@ -455,6 +455,29 @@ describe('AFU9 Issue Contract', () => {
       expect(result.errors.some((e) => e.field === 'last_error')).toBe(true);
     });
 
+    test('rejects array as execution_output', () => {
+      const input = {
+        title: 'Test',
+        execution_output: ['item1', 'item2'] as any,
+      };
+
+      const result = validateAfu9IssueInput(input);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.field === 'execution_output')).toBe(true);
+    });
+
+    test('accepts object as execution_output', () => {
+      const input = {
+        title: 'Test',
+        execution_output: { result: 'success', logs: 'test logs' },
+      };
+
+      const result = validateAfu9IssueInput(input);
+
+      expect(result.valid).toBe(true);
+    });
+
     test('validates at exact max lengths (boundary test)', () => {
       const input = {
         title: 'a'.repeat(AFU9_ISSUE_CONSTRAINTS.title),

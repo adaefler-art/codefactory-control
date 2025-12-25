@@ -333,10 +333,10 @@ export function validateAfu9IssueInput(input: unknown): ValidationResult {
 
   // Validate optional field: execution_output
   if (data.execution_output !== undefined && data.execution_output !== null) {
-    if (typeof data.execution_output !== 'object') {
+    if (typeof data.execution_output !== 'object' || Array.isArray(data.execution_output)) {
       errors.push({
         field: 'execution_output',
-        message: 'execution_output must be an object if provided',
+        message: 'execution_output must be an object (not an array) if provided',
       });
     }
   }

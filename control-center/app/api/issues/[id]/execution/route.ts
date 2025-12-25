@@ -67,6 +67,7 @@ export const POST = withApi(async (
   }
 
   const internalId = (resolved.row as any).id as string;
+  const currentIssue = resolved.row as any;
   const body = await request.json();
 
   if (!body.action || typeof body.action !== 'string') {
@@ -75,11 +76,27 @@ export const POST = withApi(async (
 
   const action = body.action;
   const output = body.output || null;
+  const currentExecutionState = currentIssue.execution_state || 'IDLE';
 
   let updates: any = {};
 
   switch (action) {
     case 'start':
+      // Only allow starting from IDLE or FAILED state
+      if (currentExecutionState === 'RUNNING') {
+        return apiError(
+          'Cannot start execution: already running',
+          409,
+          'Current state is RUNNING. Complete or fail the current execution first.'
+        );
+      }
+      if (currentExecutionState === 'DONE') {
+        return apiError(
+          'Cannot start execution: already completed',
+          409,
+          'Current state is DONE. Reset to IDLE first if you want to re-execute.'
+        );
+      }
       updates = {
         execution_state: Afu9ExecutionState.RUNNING,
         execution_started_at: new Date().toISOString(),
@@ -89,6 +106,14 @@ export const POST = withApi(async (
       break;
 
     case 'complete':
+      // Only allow completing from RUNNING state
+      if (currentExecutionState !== 'RUNNING') {
+        return apiError(
+          'Cannot complete execution: not running',
+          409,
+          `Current state is ${currentExecutionState}. Only RUNNING executions can be completed.`
+        );
+      }
       updates = {
         execution_state: Afu9ExecutionState.DONE,
         execution_completed_at: new Date().toISOString(),
@@ -97,6 +122,14 @@ export const POST = withApi(async (
       break;
 
     case 'fail':
+      // Only allow failing from RUNNING state
+      if (currentExecutionState !== 'RUNNING') {
+        return apiError(
+          'Cannot fail execution: not running',
+          409,
+          `Current state is ${currentExecutionState}. Only RUNNING executions can be failed.`
+        );
+      }
       updates = {
         execution_state: Afu9ExecutionState.FAILED,
         execution_completed_at: new Date().toISOString(),
@@ -105,6 +138,14 @@ export const POST = withApi(async (
       break;
 
     case 'reset':
+      // Can reset from any state except RUNNING
+      if (currentExecutionState === 'RUNNING') {
+        return apiError(
+          'Cannot reset execution: currently running',
+          409,
+          'Complete or fail the running execution before resetting.'
+        );
+      }
       updates = {
         execution_state: Afu9ExecutionState.IDLE,
         execution_started_at: null,
