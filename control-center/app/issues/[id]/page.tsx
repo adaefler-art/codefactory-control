@@ -177,8 +177,17 @@ export default function IssueDetailPage({
 
   const refreshActivityLogIfVisible = () => {
     if (showActivityLog) {
-      fetchActivityEvents();
+      fetchActivityEvents().catch((err) => {
+        console.error("Failed to refresh activity log:", err);
+      });
     }
+  };
+
+  const truncateErrorMessage = (message: string, maxLength: number = 500): string => {
+    if (message.length <= maxLength) {
+      return message;
+    }
+    return message.substring(0, maxLength) + '... (truncated)';
   };
 
   const handleSave = async () => {
@@ -671,8 +680,8 @@ export default function IssueDetailPage({
                 <label className="block text-sm font-medium text-red-300 mb-2">
                   Handoff Error
                 </label>
-                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3">
-                  {issue.last_error}
+                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3 break-words">
+                  {truncateErrorMessage(issue.last_error)}
                 </div>
                 <button
                   onClick={handleHandoff}
