@@ -368,12 +368,20 @@ describe('AFU9 Issue Workflow - Phase 5: Negative Tests', () => {
     // Prerequisites:
     //   - One issue is ACTIVE
     // 
-    // Command:
+    // Note: This tests the database-level constraint enforcement.
+    // The API layer also checks before creating, but this validates
+    // that the DB trigger prevents any bypass attempts.
+    // 
+    // Command (direct creation attempt):
     //   curl -X POST http://localhost:3000/api/issues \
     //     -H "Content-Type: application/json" \
     //     -d '{"title": "Second Active", "status": "ACTIVE"}'
     // 
-    // Expected Result:
+    // Alternative (activate second issue after creation):
+    //   ISSUE_ID_2="<uuid-of-second-issue>"
+    //   curl -X POST http://localhost:3000/api/issues/${ISSUE_ID_2}/activate
+    // 
+    // Expected Result (both methods):
     //   HTTP 409 Conflict
     //   Error message contains "Single-Active constraint violation"
   });
