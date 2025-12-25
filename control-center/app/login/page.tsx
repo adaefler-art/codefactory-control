@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 interface BuildMetadata {
   version: string;
@@ -22,7 +23,7 @@ export default function LoginPage() {
   // Fetch build metadata on component mount
   useEffect(() => {
     fetch('/api/build-metadata', { credentials: 'include' })
-      .then(res => res.json())
+      .then(res => safeFetch(res))
       .then(data => setBuildMetadata(data))
       .catch(err => console.error('Failed to load build metadata:', err));
   }, []);
@@ -38,13 +39,10 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Login failed");
-      }
+      await safeFetch(res);
       router.push("/dashboard");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(formatErrorMessage(err));
     } finally {
       setLoading(false);
     }

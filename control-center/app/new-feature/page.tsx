@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 export default function NewFeaturePage() {
   const [title, setTitle] = useState("");
@@ -23,9 +24,9 @@ export default function NewFeaturePage() {
         body: JSON.stringify({ title, briefing }),
       });
 
-      const data = await response.json();
+      const data = await safeFetch(response);
 
-      if (response.ok && data.status === "ok") {
+      if (data.status === "ok") {
         alert(`Feature erstellt: ${data.url}`);
         setTitle("");
         setBriefing("");
@@ -35,7 +36,7 @@ export default function NewFeaturePage() {
       }
     } catch (error) {
       console.error("Error submitting feature:", error);
-      setError("Netzwerkfehler: Bitte überprüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.");
+      setError(formatErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
