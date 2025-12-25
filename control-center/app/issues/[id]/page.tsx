@@ -153,7 +153,7 @@ export default function IssueDetailPage({
 
   const checkActiveIssue = async () => {
     try {
-      const response = await fetch(`/api/issues?status=ACTIVE&limit=1`, {
+      const response = await fetch(`/api/issues/active-check`, {
         credentials: "include",
       });
 
@@ -162,10 +162,10 @@ export default function IssueDetailPage({
       }
 
       const data = await response.json();
-      if (data.issues && data.issues.length > 0 && data.issues[0].publicId !== id) {
+      if (data.hasActive && data.activeIssue && data.activeIssue.publicId !== id) {
         return {
-          publicId: data.issues[0].publicId,
-          title: data.issues[0].title,
+          publicId: data.activeIssue.publicId,
+          title: data.activeIssue.title,
         };
       }
       return null;
