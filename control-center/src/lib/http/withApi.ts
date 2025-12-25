@@ -5,6 +5,8 @@
  * Prevents unhandled 500 errors and ensures consistent JSON response format.
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 

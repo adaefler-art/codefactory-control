@@ -12,10 +12,8 @@ import {
 } from '../../../../src/lib/db/afu9Issues';
 import {
   Afu9IssueStatus,
-  Afu9HandoffState,
   Afu9IssuePriority,
   isValidStatus,
-  isValidHandoffState,
   isValidPriority,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';

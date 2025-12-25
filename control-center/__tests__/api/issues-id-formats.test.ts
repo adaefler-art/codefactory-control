@@ -5,15 +5,15 @@
  */
 
 import { NextRequest } from 'next/server';
-import { GET } from '../../../app/api/issues/[id]/route';
+import { GET } from '../../app/api/issues/[id]/route';
 
-jest.mock('../../../src/lib/db', () => ({
+jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
-jest.mock('../../../src/lib/db/afu9Issues', () => ({
+jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueById: jest.fn(),
   getAfu9IssueByPublicId: jest.fn(),
   updateAfu9Issue: jest.fn(),
@@ -42,7 +42,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   };
 
   test('accepts full UUID v4', async () => {
-    const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
     const req = new NextRequest('http://localhost/api/issues/c300abd8-1234-5678-90ab-cdef12345678');
@@ -59,7 +59,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   });
 
   test('accepts 8-character hex shortId', async () => {
-    const { getAfu9IssueByPublicId } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueByPublicId } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueByPublicId.mockResolvedValue({ success: true, data: mockIssue });
 
     const req = new NextRequest('http://localhost/api/issues/c300abd8');
@@ -76,7 +76,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   });
 
   test('normalizes shortId to lowercase', async () => {
-    const { getAfu9IssueByPublicId } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueByPublicId } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueByPublicId.mockResolvedValue({ success: true, data: mockIssue });
 
     const req = new NextRequest('http://localhost/api/issues/C300ABD8');
@@ -100,7 +100,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   });
 
   test('returns 404 when issue not found (UUID)', async () => {
-    const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueById.mockResolvedValue({
       success: false,
       error: 'Issue not found',
@@ -117,7 +117,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   });
 
   test('returns 404 when issue not found (shortId)', async () => {
-    const { getAfu9IssueByPublicId } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueByPublicId } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueByPublicId.mockResolvedValue({
       success: false,
       error: 'Issue not found: c300abd8',
@@ -134,7 +134,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   });
 
   test('returns structured error with requestId on unhandled error', async () => {
-    const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueById.mockRejectedValue(new Error('Database connection failed'));
 
     const req = new NextRequest('http://localhost/api/issues/c300abd8-1234-5678-90ab-cdef12345678');
@@ -151,7 +151,7 @@ describe('GET /api/issues/[id] - ID format support', () => {
   });
 
   test('includes ISO timestamps in response', async () => {
-    const { getAfu9IssueById } = require('../../../src/lib/db/afu9Issues');
+    const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
     getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
     const req = new NextRequest('http://localhost/api/issues/c300abd8-1234-5678-90ab-cdef12345678');

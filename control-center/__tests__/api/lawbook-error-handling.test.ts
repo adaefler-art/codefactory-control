@@ -5,11 +5,11 @@
  */
 
 import { NextRequest } from 'next/server';
-import { GET as getParameters } from '../../../app/api/lawbook/parameters/route';
-import { GET as getGuardrails } from '../../../app/api/lawbook/guardrails/route';
-import { GET as getMemory } from '../../../app/api/lawbook/memory/route';
+import { GET as getParameters } from '../../app/api/lawbook/parameters/route';
+import { GET as getGuardrails } from '../../app/api/lawbook/guardrails/route';
+import { GET as getMemory } from '../../app/api/lawbook/memory/route';
 
-jest.mock('../../../control-center/lawbook/load', () => ({
+jest.mock('../../src/lawbook/load', () => ({
   loadParameters: jest.fn(),
   loadGuardrails: jest.fn(),
   loadMemorySeed: jest.fn(),
@@ -23,7 +23,7 @@ describe('Lawbook endpoints - Error handling', () => {
 
   describe('GET /api/lawbook/parameters', () => {
     test('returns 200 with valid data', async () => {
-      const { loadParameters } = require('../../../control-center/lawbook/load');
+      const { loadParameters } = require('../../src/lawbook/load');
       loadParameters.mockResolvedValue({
         hash: 'param-hash',
         data: {
@@ -43,7 +43,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('returns 500 with structured error on failure', async () => {
-      const { loadParameters } = require('../../../control-center/lawbook/load');
+      const { loadParameters } = require('../../src/lawbook/load');
       loadParameters.mockRejectedValue(new Error('File not found'));
 
       const req = new NextRequest('http://localhost/api/lawbook/parameters');
@@ -58,7 +58,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('never returns unhandled 500', async () => {
-      const { loadParameters } = require('../../../control-center/lawbook/load');
+      const { loadParameters } = require('../../src/lawbook/load');
       loadParameters.mockImplementation(() => {
         throw new Error('Catastrophic failure');
       });
@@ -75,7 +75,7 @@ describe('Lawbook endpoints - Error handling', () => {
 
   describe('GET /api/lawbook/guardrails', () => {
     test('returns 200 with valid data', async () => {
-      const { loadGuardrails } = require('../../../control-center/lawbook/load');
+      const { loadGuardrails } = require('../../src/lawbook/load');
       loadGuardrails.mockResolvedValue({
         hash: 'guard-hash',
         data: {
@@ -96,7 +96,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('returns 500 with structured error on failure', async () => {
-      const { loadGuardrails } = require('../../../control-center/lawbook/load');
+      const { loadGuardrails } = require('../../src/lawbook/load');
       loadGuardrails.mockRejectedValue(new Error('Parse error'));
 
       const req = new NextRequest('http://localhost/api/lawbook/guardrails');
@@ -110,7 +110,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('never returns unhandled 500', async () => {
-      const { loadGuardrails } = require('../../../control-center/lawbook/load');
+      const { loadGuardrails } = require('../../src/lawbook/load');
       loadGuardrails.mockImplementation(() => {
         throw new TypeError('Unexpected type');
       });
@@ -126,7 +126,7 @@ describe('Lawbook endpoints - Error handling', () => {
 
   describe('GET /api/lawbook/memory', () => {
     test('returns 200 with valid data', async () => {
-      const { loadMemorySeed } = require('../../../control-center/lawbook/load');
+      const { loadMemorySeed } = require('../../src/lawbook/load');
       loadMemorySeed.mockResolvedValue({
         hash: 'mem-hash',
         data: {
@@ -147,7 +147,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('returns 500 with structured error on failure', async () => {
-      const { loadMemorySeed } = require('../../../control-center/lawbook/load');
+      const { loadMemorySeed } = require('../../src/lawbook/load');
       loadMemorySeed.mockRejectedValue(new Error('Memory load failed'));
 
       const req = new NextRequest('http://localhost/api/lawbook/memory');
@@ -161,7 +161,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('never returns unhandled 500', async () => {
-      const { loadMemorySeed } = require('../../../control-center/lawbook/load');
+      const { loadMemorySeed } = require('../../src/lawbook/load');
       loadMemorySeed.mockImplementation(() => {
         throw new Error('Critical error');
       });
@@ -177,7 +177,7 @@ describe('Lawbook endpoints - Error handling', () => {
 
   describe('All lawbook endpoints', () => {
     test('always include requestId in error responses', async () => {
-      const { loadParameters, loadGuardrails, loadMemorySeed } = require('../../../control-center/lawbook/load');
+      const { loadParameters, loadGuardrails, loadMemorySeed } = require('../../src/lawbook/load');
       
       loadParameters.mockRejectedValue(new Error('Test error'));
       loadGuardrails.mockRejectedValue(new Error('Test error'));
@@ -199,7 +199,7 @@ describe('Lawbook endpoints - Error handling', () => {
     });
 
     test('always include timestamp in error responses', async () => {
-      const { loadParameters } = require('../../../control-center/lawbook/load');
+      const { loadParameters } = require('../../src/lawbook/load');
       loadParameters.mockRejectedValue(new Error('Test error'));
 
       const req = new NextRequest('http://localhost/api/lawbook/parameters');

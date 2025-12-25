@@ -37,15 +37,19 @@ function toIsoOrNull(value: unknown): string | null {
 }
 
 export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string) {
-  const normalized = typeof idOrPublicId === 'string' ? idOrPublicId.trim() : '';
-  const kind = classifyIssueIdentifier(normalized);
-  if (kind === 'invalid') {
+  const rawValue = typeof idOrPublicId === 'string' ? idOrPublicId : '';
+  const parsed = parseIssueId(rawValue);
+  
+  if (!parsed.isValid) {
     return {
       ok: false as const,
       status: 400 as const,
       body: { error: 'Invalid issue ID format' },
     };
   }
+
+  const normalized = parsed.value;
+  const kind = parsed.kind === 'shortHex8' ? 'publicId' : parsed.kind;
 
   const result =
     kind === 'uuid'
