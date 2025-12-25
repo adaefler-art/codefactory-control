@@ -90,9 +90,11 @@ Where `[id]` is the UUID of the AFU9 issue.
 
 #### Last Error
 - **Display**: Only shown when `handoff_state === "FAILED"`
-- **Styling**: Red background with border, displayed prominently
+- **Styling**: Red background with border, displayed prominently in a dedicated error panel
 - **Content**: Full error message from `last_error` field
 - **Purpose**: Help users understand why handoff failed
+- **Actions**: Includes a "Retry Handoff" button to attempt handoff again
+- **Location**: Displayed within the metadata section, immediately visible when an error occurs
 
 ## Actions
 
@@ -131,6 +133,8 @@ Where `[id]` is the UUID of the AFU9 issue.
   - Creates GitHub issue via Feature Bridge
   - Updates `handoff_state`, `github_url`, and `github_issue_number`
   - Idempotent: Returns existing GitHub issue if already handed off
+  - Refreshes activity log after successful handoff
+  - Refreshes issue state after failed handoff to display error
 - **States**:
   - Normal: "Handoff to GitHub"
   - Handing off: "Handing off..." (disabled)
@@ -141,6 +145,18 @@ Where `[id]` is the UUID of the AFU9 issue.
   - Shows error message in red banner
   - Updates `handoff_state` to FAILED
   - Sets `last_error` field with error details
+  - Displays dedicated error panel with retry button
+
+### 3.1. Retry Handoff
+- **Button**: Red button in error panel (only shown when `handoff_state === "FAILED"`)
+- **Behavior**:
+  - Uses the same handoff logic as the main "Handoff to GitHub" button
+  - Clears previous error state before attempting retry
+  - Updates issue state on success or failure
+- **States**:
+  - Normal: "Retry Handoff"
+  - Retrying: "Retrying..." (disabled)
+- **Location**: Displayed within the error panel in the metadata section
 
 ### 4. Open GitHub Issue
 - **Button**: Gray button in action bar (only shown when `github_url` exists)
@@ -185,13 +201,15 @@ All errors are displayed in prominent, color-coded banners at the top of the pag
 - **Trigger**: GitHub API error, network error, configuration issue
 - **Response**: Updates `handoff_state` to FAILED, sets `last_error`
 - **Display**: 
-  - Red banner with error message
+  - Red banner with error message at the top of the page
   - Warning icon (⚠️) in Handoff State badge
-  - Full error details in "Handoff Error" section
+  - Full error details in dedicated "Handoff Error" panel in metadata section
+  - Red-styled "Retry Handoff" button in the error panel
 - **User Action**: 
-  - Review error message
-  - Fix underlying issue (e.g., check GitHub token)
-  - Retry handoff
+  - Review error message in the error panel
+  - Fix underlying issue (e.g., check GitHub token, network connectivity)
+  - Click "Retry Handoff" button to attempt handoff again
+  - On retry, the system clears previous error and attempts fresh handoff
 
 #### 3. Issue Not Found
 - **Trigger**: Invalid or non-existent issue ID
