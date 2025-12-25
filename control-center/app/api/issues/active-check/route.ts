@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
     const activeIssue = activeIssueResult.data;
     const hasActive = activeIssue !== null;
 
-    const responseBody: any = {
+    const responseBody: {
+      hasActive: boolean;
+      activeIssue: { id: string; publicId: string; title: string } | null;
+      contextTrace?: unknown;
+    } = {
       hasActive,
       activeIssue: hasActive
         ? {
