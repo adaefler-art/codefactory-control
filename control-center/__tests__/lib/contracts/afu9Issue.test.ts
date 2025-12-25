@@ -15,9 +15,11 @@ import {
   Afu9IssueStatus,
   Afu9HandoffState,
   Afu9IssuePriority,
+  Afu9ExecutionState,
   isValidStatus,
   isValidHandoffState,
   isValidPriority,
+  isValidExecutionState,
 } from '../../../src/lib/contracts/afu9Issue';
 
 describe('AFU9 Issue Contract', () => {
@@ -61,6 +63,19 @@ describe('AFU9 Issue Contract', () => {
       expect(isValidPriority('P3')).toBe(false);
       expect(isValidPriority('p0')).toBe(false);
       expect(isValidPriority('HIGH')).toBe(false);
+    });
+
+    test('isValidExecutionState accepts valid states', () => {
+      expect(isValidExecutionState('IDLE')).toBe(true);
+      expect(isValidExecutionState('RUNNING')).toBe(true);
+      expect(isValidExecutionState('DONE')).toBe(true);
+      expect(isValidExecutionState('FAILED')).toBe(true);
+    });
+
+    test('isValidExecutionState rejects invalid states', () => {
+      expect(isValidExecutionState('INVALID')).toBe(false);
+      expect(isValidExecutionState('idle')).toBe(false);
+      expect(isValidExecutionState('PENDING')).toBe(false);
     });
   });
 
@@ -438,6 +453,29 @@ describe('AFU9 Issue Contract', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.some((e) => e.field === 'last_error')).toBe(true);
+    });
+
+    test('rejects array as execution_output', () => {
+      const input = {
+        title: 'Test',
+        execution_output: ['item1', 'item2'] as any,
+      };
+
+      const result = validateAfu9IssueInput(input);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.field === 'execution_output')).toBe(true);
+    });
+
+    test('accepts object as execution_output', () => {
+      const input = {
+        title: 'Test',
+        execution_output: { result: 'success', logs: 'test logs' },
+      };
+
+      const result = validateAfu9IssueInput(input);
+
+      expect(result.valid).toBe(true);
     });
 
     test('validates at exact max lengths (boundary test)', () => {
