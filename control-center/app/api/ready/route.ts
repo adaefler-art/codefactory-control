@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 
 // Version should match control-center package.json
 // In a production system, this could be read from process.env.APP_VERSION
@@ -63,7 +64,9 @@ function getRequiredDependencies(): string[] {
  * 
  * @see /api/health for liveness checks (always returns 200)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
+  
   try {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
       service: { status: 'ok' },
@@ -214,14 +217,14 @@ export async function GET() {
       ...(errors.length > 0 && { errors }),
     };
 
-    return NextResponse.json(
+    return jsonResponse(
       response,
-      { status: ready ? 200 : 503 }
+      { status: ready ? 200 : 503, requestId }
     );
   } catch (error) {
     console.error('Readiness check failed:', error);
     
-    return NextResponse.json(
+    return jsonResponse(
       {
         ready: false,
         service: 'afu9-control-center',
@@ -236,7 +239,7 @@ export async function GET() {
           optional: [],
         },
       },
-      { status: 503 }
+      { status: 503, requestId }
     );
   }
 }

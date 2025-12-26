@@ -13,6 +13,7 @@ export interface ApiError {
   status: number;
   message: string;
   details?: unknown;
+  requestId?: string;
 }
 
 /**
@@ -26,6 +27,13 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
     const statusText = typeof response.statusText === 'string' ? response.statusText.trim() : '';
     let errorMessage = statusText ? `HTTP ${response.status}: ${statusText}` : `HTTP ${response.status}`;
     let errorDetails: unknown = null;
+    let requestId: string | undefined = undefined;
+
+    // Extract request-id from response headers
+    const headerRequestId = response.headers.get('x-request-id');
+    if (headerRequestId) {
+      requestId = headerRequestId;
+    }
 
     // Try to parse error details from JSON
     try {
@@ -37,6 +45,10 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
         }
         if (errorData?.details) {
           errorDetails = errorData.details;
+        }
+        // Also check for requestId in response body
+        if (errorData?.requestId && !requestId) {
+          requestId = String(errorData.requestId);
         }
       } else {
         // Non-JSON response (e.g., HTML error page)
@@ -54,6 +66,7 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
       status: response.status,
       message: errorMessage,
       details: errorDetails,
+      requestId,
     };
 
     throw apiError;
@@ -94,11 +107,19 @@ export function isApiError(error: unknown): error is ApiError {
  */
 export function formatErrorMessage(error: unknown): string {
   if (isApiError(error)) {
+    let message = error.message;
+    
     // Include details if available
     if (error.details && typeof error.details === 'string') {
-      return `${error.message} (${error.details})`;
+      message = `${message} (${error.details})`;
     }
-    return error.message;
+    
+    // Include request-id if available
+    if (error.requestId) {
+      message = `${message} [Request-ID: ${error.requestId}]`;
+    }
+    
+    return message;
   }
 
   if (error instanceof Error) {
