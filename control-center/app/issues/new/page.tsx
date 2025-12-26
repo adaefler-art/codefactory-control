@@ -101,10 +101,9 @@ export default function NewIssuePage() {
 
       const createdIssue = await safeFetch(response);
       
-      // Navigate to the created issue
-      const createdPublicId = createdIssue?.publicId ?? createdIssue?.id?.substring(0, 8);
-      if (createdPublicId) {
-        router.push(`/issues/${createdPublicId}`);
+      // Navigate to the created issue using UUID (detail page requires UUID)
+      if (createdIssue?.id) {
+        router.push(`/issues/${createdIssue.id}`);
       } else {
         router.push('/issues');
       }
