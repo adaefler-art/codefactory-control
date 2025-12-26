@@ -19,6 +19,7 @@ import {
   isValidHandoffState,
   isValidPriority,
 } from '../../../src/lib/contracts/afu9Issue';
+import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 
 /**
  * GET /api/issues
@@ -34,6 +35,8 @@ import {
  * - offset: Pagination offset (default: 0)
  */
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
+  
   try {
     const pool = getPool();
     const searchParams = request.nextUrl.searchParams;
@@ -43,13 +46,11 @@ export async function GET(request: NextRequest) {
     let status: Afu9IssueStatus | undefined;
     if (statusParam) {
       if (!isValidStatus(statusParam)) {
-        return NextResponse.json(
-          {
-            error: 'Invalid status parameter',
-            details: `Status must be one of: ${Object.values(Afu9IssueStatus).join(', ')}`,
-          },
-          { status: 400 }
-        );
+        return errorResponse('Invalid status parameter', {
+          status: 400,
+          requestId,
+          details: `Status must be one of: ${Object.values(Afu9IssueStatus).join(', ')}`,
+        });
       }
       status = statusParam as Afu9IssueStatus;
     }
@@ -59,13 +60,11 @@ export async function GET(request: NextRequest) {
     let handoff_state: Afu9HandoffState | undefined;
     if (handoffStateParam) {
       if (!isValidHandoffState(handoffStateParam)) {
-        return NextResponse.json(
-          {
-            error: 'Invalid handoff_state parameter',
-            details: `handoff_state must be one of: ${Object.values(Afu9HandoffState).join(', ')}`,
-          },
-          { status: 400 }
-        );
+        return errorResponse('Invalid handoff_state parameter', {
+          status: 400,
+          requestId,
+          details: `handoff_state must be one of: ${Object.values(Afu9HandoffState).join(', ')}`,
+        });
       }
       handoff_state = handoffStateParam as Afu9HandoffState;
     }
@@ -86,10 +85,11 @@ export async function GET(request: NextRequest) {
     });
 
     if (!result.success) {
-      return NextResponse.json(
-        { error: 'Failed to list issues', details: result.error },
-        { status: 500 }
-      );
+      return errorResponse('Failed to list issues', {
+        status: 500,
+        requestId,
+        details: result.error,
+      });
     }
 
     let issues = result.data || [];
@@ -140,16 +140,14 @@ export async function GET(request: NextRequest) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
 
-    return NextResponse.json(responseBody);
+    return jsonResponse(responseBody, { requestId });
   } catch (error) {
     console.error('[API /api/issues] Error listing issues:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to list issues',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return errorResponse('Failed to list issues', {
+      status: 500,
+      requestId,
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 }
 
@@ -166,6 +164,8 @@ export async function GET(request: NextRequest) {
  * - status: Afu9IssueStatus (optional, default: CREATED)
  */
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request);
+  
   try {
     const pool = getPool();
     const body = await request.json();
@@ -173,13 +173,18 @@ export async function POST(request: NextRequest) {
     // Validate input
     const validation = validateAfu9IssueInput(body);
     if (!validation.valid) {
-      return NextResponse.json(
-        {
-          error: 'Invalid input',
-          details: validation.errors,
-        },
-        { status: 400 }
-      );
+      // Format errors as user-friendly list
+      const errorMessages = Array.isArray(validation.errors)
+        ? validation.errors.join('; ')
+        : typeof validation.errors === 'string'
+        ? validation.errors
+        : 'Validation failed';
+        
+      return errorResponse('Invalid input', {
+        status: 400,
+        requestId,
+        details: errorMessages,
+      });
     }
 
     // Create issue
@@ -195,31 +200,30 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       // Check for Single-Active constraint violation
       if (result.error && result.error.includes('Single-Active')) {
-        return NextResponse.json(
-          { error: result.error },
-          { status: 409 } // Conflict
-        );
+        return errorResponse(result.error, {
+          status: 409,
+          requestId,
+        });
       }
 
-      return NextResponse.json(
-        { error: 'Failed to create issue', details: result.error },
-        { status: 500 }
-      );
+      return errorResponse('Failed to create issue', {
+        status: 500,
+        requestId,
+        details: result.error,
+      });
     }
 
     const responseBody: any = normalizeIssueForApi(result.data);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
-    return NextResponse.json(responseBody, { status: 201 });
+    return jsonResponse(responseBody, { status: 201, requestId });
   } catch (error) {
     console.error('[API /api/issues] Error creating issue:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to create issue',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return errorResponse('Failed to create issue', {
+      status: 500,
+      requestId,
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 }

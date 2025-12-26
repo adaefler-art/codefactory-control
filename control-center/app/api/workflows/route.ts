@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { WorkflowOutput, isWorkflowOutput } from '@/lib/contracts/outputContracts';
 import { normalizeOutput } from '@/lib/api/normalize-output';
+import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 
 function debugApiEnabled(): boolean {
   const raw = (process.env.AFU9_DEBUG_API || '').toLowerCase();
@@ -61,8 +62,9 @@ interface WorkflowWithLastRun extends WorkflowOutput {
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
+  
   try {
-    const requestId = request.headers.get('x-request-id');
     const pool = getPool();
     
     // Get all workflows with their latest execution info
@@ -117,15 +119,15 @@ export async function GET(request: NextRequest) {
       };
     });
     
-    return NextResponse.json({
+    return jsonResponse({
       workflows,
       total: workflows.length
-    });
+    }, { requestId });
   } catch (error) {
     console.error('[API /api/workflows] Error fetching workflows:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch workflows' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch workflows', {
+      status: 500,
+      requestId,
+    });
   }
 }
