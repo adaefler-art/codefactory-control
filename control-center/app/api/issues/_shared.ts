@@ -1,7 +1,18 @@
 /**
  * Shared helpers for Issues API routes.
  *
- * Implements:
+ * **Issue #3: Identifier Consistency**
+ * 
+ * Implements unified identifier handling:
+ * - `id` = UUID v4 (canonical, internal identifier)
+ * - `publicId` = 8-hex display format (derived from UUID prefix)
+ * 
+ * API Contract:
+ * - Accepts: UUID v4 OR 8-hex prefix (read-only lookup)
+ * - Returns: 200 (found), 404 (not found), 400 (invalid format)
+ * - Guarantees: No 400 for any valid UUID or 8-hex prefix
+ * 
+ * Features:
  * - Identifier parsing (UUID v4 OR 8-hex publicId)
  * - DB lookup by internal UUID or publicId
  * - Consistent API response shape w/ ISO timestamps
@@ -24,12 +35,26 @@ import {
 
 export { type IssueIdentifierKind };
 
+/**
+ * Classify an issue identifier string
+ * 
+ * Maps internal 'shortHex8' kind to 'publicId' for API compatibility.
+ * 
+ * @param value - Identifier to classify
+ * @returns 'uuid' | 'publicId' | 'invalid'
+ */
 export function classifyIssueIdentifier(value: string): IssueIdentifierKind {
   const parsed = parseIssueId(value);
-  // Map shortHex8 to publicId for backwards compatibility
+  // Map shortHex8 to publicId for API semantics
   return parsed.kind === 'shortHex8' ? 'publicId' : parsed.kind;
 }
 
+/**
+ * Convert UUID to publicId (8-hex display format)
+ * 
+ * @param uuid - Canonical UUID identifier
+ * @returns 8-hex publicId or null
+ */
 export function toPublicIdFromUuid(uuid: string): string | null {
   return toShortHex8FromUuid(uuid);
 }
@@ -38,10 +63,27 @@ function toIsoOrNull(value: unknown): string | null {
   return toIsoStringOrNull(value);
 }
 
+/**
+ * Fetch issue row by identifier (UUID or publicId)
+ * 
+ * **Issue #3: Identifier Consistency Contract**
+ * 
+ * This function implements the authoritative identifier handling for all
+ * Issues API endpoints. It enforces the following contract:
+ * 
+ * - Accepts: Valid UUID v4 OR valid 8-hex publicId
+ * - Returns: 200 (success), 404 (not found), 400 (invalid format)
+ * - Guarantee: No 400 for any valid UUID or 8-hex prefix
+ * 
+ * @param pool - Database connection pool
+ * @param idOrPublicId - Either full UUID or 8-hex publicId
+ * @returns Resolved issue row or error with appropriate status code
+ */
 export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string) {
   const rawValue = typeof idOrPublicId === 'string' ? idOrPublicId : '';
   const parsed = parseIssueId(rawValue);
   
+  // Invalid format → 400 Bad Request
   if (!parsed.isValid) {
     return {
       ok: false as const,
@@ -51,13 +93,16 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
   }
 
   const normalized = parsed.value;
+  // Map shortHex8 to publicId for database lookup
   const kind = parsed.kind === 'shortHex8' ? 'publicId' : parsed.kind;
 
+  // Lookup by UUID (canonical) or publicId (8-hex prefix)
   const result =
     kind === 'uuid'
       ? await getAfu9IssueById(pool, normalized)
       : await getAfu9IssueByPublicId(pool, normalized);
 
+  // Database error → 500 Internal Server Error
   if (!result.success) {
     const msg = typeof (result as any)?.error === 'string' ? String((result as any).error) : '';
     const isNotFound = msg.toLowerCase().includes('issue not found');
@@ -71,6 +116,7 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
     };
   }
 
+  // No data returned → 404 Not Found
   if (!result.data) {
     return {
       ok: false as const,
@@ -79,6 +125,7 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
     };
   }
 
+  // Success → 200 OK
   return {
     ok: true as const,
     status: 200 as const,
@@ -86,6 +133,18 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
   };
 }
 
+/**
+ * Normalize issue data for API response
+ * 
+ * Transforms database row into API-friendly format with:
+ * - Both `id` (UUID canonical) and `publicId` (8-hex display)
+ * - ISO 8601 timestamps
+ * - Contract validation for safety
+ * - Both camelCase and snake_case fields for backward compatibility
+ * 
+ * @param input - Raw database row
+ * @returns Normalized API response object
+ */
 export function normalizeIssueForApi(input: unknown): any {
   // Step 1: Normalize output (Date -> ISO string, etc.)
   const normalized = normalizeOutput(input) as any;
