@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
     const job = await executeKpiAggregationPipeline(periodHours);
     
     return NextResponse.json({
-      success: true,
       job,
       message: 'KPI aggregation pipeline triggered successfully',
     });

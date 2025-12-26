@@ -100,7 +100,6 @@ export async function GET(request: NextRequest) {
  * 
  * Response (API clients):
  * {
- *   "success": true,
  *   "message": "Login successful"
  * }
  * 
@@ -215,7 +214,6 @@ export async function POST(request: NextRequest) {
     } else {
       // API client: return JSON response
       response = NextResponse.json({
-        success: true,
         message: 'Login successful',
       });
     }

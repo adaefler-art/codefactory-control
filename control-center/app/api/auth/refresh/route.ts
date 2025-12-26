@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const tokens = await refreshTokens(refreshToken);
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json({ message: 'Token refreshed' });
     setAuthCookies(response, tokens);
     applyNoStore(response);
     applyDebugHeaders(response);

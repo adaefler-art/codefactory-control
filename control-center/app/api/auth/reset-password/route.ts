@@ -36,7 +36,6 @@ function getRequestId(): string {
  * 
  * Response:
  * {
- *   "success": true,
  *   "message": "Password reset successful"
  * }
  */
@@ -81,7 +80,6 @@ export async function POST(request: NextRequest) {
     await cognitoClient.send(command);
 
     return NextResponse.json({
-      success: true,
       message: 'Password reset successful',
     });
   } catch (error: unknown) {

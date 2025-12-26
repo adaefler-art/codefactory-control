@@ -62,7 +62,6 @@ const cognitoClient = new CognitoIdentityProviderClient({
  * 
  * Response:
  * {
- *   "success": true,
  *   "message": "Password reset code sent to your email"
  * }
  */
@@ -131,7 +130,6 @@ export async function POST(request: NextRequest) {
 
     // Always return success message for security (don't reveal if user exists)
     const response = NextResponse.json({
-      success: true,
       message: 'If the email address exists, a password reset code has been sent.',
     });
     response.headers.set('x-afu9-correlation-id', correlationId);
