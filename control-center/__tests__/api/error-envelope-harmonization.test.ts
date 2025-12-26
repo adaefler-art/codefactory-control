@@ -31,7 +31,7 @@ jest.mock('@aws-sdk/client-cognito-identity-provider', () => ({
 }));
 
 // Mock KPI service
-jest.mock('../../src/lib/kpi-service', () => ({
+jest.mock('@/lib/kpi-service', () => ({
   executeKpiAggregationPipeline: jest.fn(),
   getBuildDeterminismMetrics: jest.fn(),
   calculateBuildDeterminismKPI: jest.fn(),
@@ -192,7 +192,7 @@ describe('API Error Envelope Harmonization', () => {
 
     describe('POST /api/v1/kpi/aggregate', () => {
       test('returns canonical error format on pipeline failure', async () => {
-        const { executeKpiAggregationPipeline } = require('../../src/lib/kpi-service');
+        const { executeKpiAggregationPipeline } = require('@/lib/kpi-service');
         executeKpiAggregationPipeline.mockRejectedValue(new Error('Pipeline failed'));
 
         const req = new NextRequest('http://localhost/api/v1/kpi/aggregate', {
@@ -212,7 +212,7 @@ describe('API Error Envelope Harmonization', () => {
 
     describe('GET /api/v1/kpi/build-determinism', () => {
       test('returns canonical error format on service failure', async () => {
-        const { getBuildDeterminismMetrics } = require('../../src/lib/kpi-service');
+        const { getBuildDeterminismMetrics } = require('@/lib/kpi-service');
         getBuildDeterminismMetrics.mockRejectedValue(new Error('Database connection failed'));
 
         const req = new NextRequest('http://localhost/api/v1/kpi/build-determinism', {
@@ -267,7 +267,7 @@ describe('API Error Envelope Harmonization', () => {
     });
 
     test('no error responses include success field', async () => {
-      const { getBuildDeterminismMetrics } = require('../../src/lib/kpi-service');
+      const { getBuildDeterminismMetrics } = require('@/lib/kpi-service');
       getBuildDeterminismMetrics.mockRejectedValue(new Error('Test error'));
 
       const req = new NextRequest('http://localhost/api/v1/kpi/build-determinism', {
