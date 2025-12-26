@@ -113,7 +113,7 @@ describe('Issues List UI Page', () => {
     render(<IssuesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Error:.*Failed to fetch issues/i)).toBeInTheDocument();
+      expect(screen.getByText(/Error:\s*HTTP\s*500/i)).toBeInTheDocument();
     });
   });
 

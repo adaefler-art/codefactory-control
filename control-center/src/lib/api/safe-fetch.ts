@@ -23,7 +23,8 @@ export interface ApiError {
 export async function safeFetch<T = unknown>(response: Response): Promise<T> {
   // Check if response is OK first
   if (!response.ok) {
-    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    const statusText = typeof response.statusText === 'string' ? response.statusText.trim() : '';
+    let errorMessage = statusText ? `HTTP ${response.status}: ${statusText}` : `HTTP ${response.status}`;
     let errorDetails: unknown = null;
 
     // Try to parse error details from JSON
