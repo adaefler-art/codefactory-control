@@ -1,7 +1,7 @@
 /**
- * Tests for Issue [id] page routing
+ * Tests for issue [id] page routing
  * 
- * Tests that invalid IDs show AFU-9 error banner instead of Next.js 404
+ * Tests that invalid ids show AFU-9 error banner instead of Next.js 404
  * 
  * @jest-environment jsdom
  */
