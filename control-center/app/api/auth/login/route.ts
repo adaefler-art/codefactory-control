@@ -109,8 +109,9 @@ export async function GET(request: NextRequest) {
  * 
  * Error response:
  * {
- *   "success": false,
- *   "error": "Invalid credentials"
+ *   "error": "Invalid credentials",
+ *   "requestId": "string",
+ *   "timestamp": "ISO-8601"
  * }
  */
 export async function POST(request: NextRequest) {
@@ -124,8 +125,9 @@ export async function POST(request: NextRequest) {
     if (!username || !password) {
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Username and password are required',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
@@ -139,8 +141,9 @@ export async function POST(request: NextRequest) {
       console.error('Missing Cognito configuration');
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Authentication service not configured',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 500 }
       );
@@ -168,8 +171,9 @@ export async function POST(request: NextRequest) {
       console.error('Authentication failed: No authentication result');
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Authentication failed',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 401 }
       );
@@ -185,8 +189,9 @@ export async function POST(request: NextRequest) {
       console.error('Authentication failed: Missing tokens');
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Authentication failed',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 401 }
       );
@@ -259,8 +264,9 @@ export async function POST(request: NextRequest) {
     if (error.name === 'NotAuthorizedException') {
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Invalid username or password',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 401 }
       );
@@ -272,8 +278,9 @@ export async function POST(request: NextRequest) {
     if (error.name === 'UserNotFoundException') {
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Invalid username or password',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 401 }
       );
@@ -285,8 +292,9 @@ export async function POST(request: NextRequest) {
     if (error.name === 'UserNotConfirmedException') {
       const response = NextResponse.json(
         {
-          success: false,
           error: 'User account not confirmed',
+          requestId,
+          timestamp: new Date().toISOString(),
         },
         { status: 401 }
       );
@@ -298,8 +306,9 @@ export async function POST(request: NextRequest) {
     // Generic error response
     const response = NextResponse.json(
       {
-        success: false,
         error: 'Authentication failed',
+        requestId,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );

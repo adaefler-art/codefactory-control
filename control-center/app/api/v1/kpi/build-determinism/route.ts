@@ -13,11 +13,13 @@ import {
   calculateBuildDeterminismKPI, 
   getBuildDeterminismMetrics 
 } from '@/lib/kpi-service';
+import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
+  const requestId = randomUUID();
   try {
     // Get current metrics
     const metrics = await getBuildDeterminismMetrics();
@@ -48,9 +50,9 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json(
       {
-        success: false,
         error: 'Failed to retrieve Build Determinism metrics',
         details: error instanceof Error ? error.message : String(error),
+        requestId,
         timestamp: new Date().toISOString(),
       },
       { status: 500 }

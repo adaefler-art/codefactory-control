@@ -9,8 +9,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { executeKpiAggregationPipeline } from '@/lib/kpi-service';
+import { randomUUID } from 'crypto';
 
 export async function POST(request: NextRequest) {
+  const requestId = randomUUID();
   try {
     // Parse request body for optional parameters
     let periodHours = 24;
@@ -39,9 +41,10 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(
       {
-        success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-        message: 'Failed to trigger KPI aggregation pipeline',
+        details: 'Failed to trigger KPI aggregation pipeline',
+        requestId,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
@@ -50,11 +53,13 @@ export async function POST(request: NextRequest) {
 
 // Return method not allowed for other HTTP methods
 export async function GET() {
+  const requestId = randomUUID();
   return NextResponse.json(
     {
-      success: false,
       error: 'Method not allowed',
-      message: 'Use POST to trigger aggregation',
+      details: 'Use POST to trigger aggregation',
+      requestId,
+      timestamp: new Date().toISOString(),
     },
     { status: 405 }
   );

@@ -3,6 +3,7 @@ import {
   CognitoIdentityProviderClient,
   ConfirmForgotPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { randomUUID } from 'crypto';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
@@ -12,6 +13,14 @@ const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
 const cognitoClient = new CognitoIdentityProviderClient({
   region: COGNITO_REGION,
 });
+
+function getRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
 
 /**
  * POST /api/auth/reset-password
@@ -40,8 +49,9 @@ export async function POST(request: NextRequest) {
     if (!username || !code || !newPassword) {
       return NextResponse.json(
         {
-          success: false,
           error: 'Username, code, and new password are required',
+          requestId: getRequestId(),
+          timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
@@ -52,8 +62,9 @@ export async function POST(request: NextRequest) {
       console.error('Missing Cognito configuration');
       return NextResponse.json(
         {
-          success: false,
           error: 'Password reset service not configured',
+          requestId: getRequestId(),
+          timestamp: new Date().toISOString(),
         },
         { status: 500 }
       );
@@ -81,8 +92,9 @@ export async function POST(request: NextRequest) {
       if (error.name === 'CodeMismatchException') {
         return NextResponse.json(
           {
-            success: false,
             error: 'Invalid verification code',
+            requestId: getRequestId(),
+            timestamp: new Date().toISOString(),
           },
           { status: 400 }
         );
@@ -91,8 +103,9 @@ export async function POST(request: NextRequest) {
       if (error.name === 'ExpiredCodeException') {
         return NextResponse.json(
           {
-            success: false,
             error: 'Verification code has expired',
+            requestId: getRequestId(),
+            timestamp: new Date().toISOString(),
           },
           { status: 400 }
         );
@@ -101,8 +114,9 @@ export async function POST(request: NextRequest) {
       if (error.name === 'InvalidPasswordException') {
         return NextResponse.json(
           {
-            success: false,
             error: 'Password does not meet requirements',
+            requestId: getRequestId(),
+            timestamp: new Date().toISOString(),
           },
           { status: 400 }
         );
@@ -111,8 +125,9 @@ export async function POST(request: NextRequest) {
       if (error.name === 'LimitExceededException') {
         return NextResponse.json(
           {
-            success: false,
             error: 'Too many attempts. Please try again later.',
+            requestId: getRequestId(),
+            timestamp: new Date().toISOString(),
           },
           { status: 429 }
         );
@@ -122,8 +137,9 @@ export async function POST(request: NextRequest) {
     // Generic error response
     return NextResponse.json(
       {
-        success: false,
         error: 'Password reset failed',
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
