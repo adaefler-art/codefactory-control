@@ -61,6 +61,16 @@ export function jsonResponse<T>(
 }
 
 /**
+ * Error response structure
+ */
+export interface ErrorResponseData {
+  error: string;
+  details?: string;
+  requestId?: string;
+  timestamp: string;
+}
+
+/**
  * Create an error response with x-request-id header
  */
 export function errorResponse(
@@ -71,9 +81,10 @@ export function errorResponse(
     details?: string;
     timestamp?: string;
   }
-): NextResponse {
-  const responseData: any = {
+): NextResponse<ErrorResponseData> {
+  const responseData: ErrorResponseData = {
     error,
+    timestamp: options?.timestamp ?? new Date().toISOString(),
   };
   
   if (options?.details) {
@@ -82,12 +93,6 @@ export function errorResponse(
   
   if (options?.requestId) {
     responseData.requestId = options.requestId;
-  }
-  
-  if (options?.timestamp) {
-    responseData.timestamp = options.timestamp;
-  } else {
-    responseData.timestamp = new Date().toISOString();
   }
   
   return jsonResponse(responseData, {
