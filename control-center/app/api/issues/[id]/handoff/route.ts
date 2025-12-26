@@ -3,6 +3,10 @@
  * 
  * Hands off an AFU9 issue to GitHub (creates GitHub issue)
  * Issue #297: AFU9 Issues API (List/Detail/Edit/Activate/Handoff)
+ * Issue #3: Identifier Consistency (UUID + publicId)
+ * 
+ * **Identifier Handling:**
+ * - Accepts both UUID (canonical) and 8-hex publicId (display)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -26,6 +30,10 @@ import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
  * - Creates GitHub issue and updates handoff_state
  * - Updates github_url, github_issue_number on success
  * - Updates last_error on failure
+ * 
+ * **Identifier Formats (Issue #3):**
+ * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+ * - 8-hex publicId: "a1b2c3d4"
  */
 export async function POST(
   request: NextRequest,

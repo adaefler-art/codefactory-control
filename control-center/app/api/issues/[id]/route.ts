@@ -3,6 +3,12 @@
  * 
  * Manages individual AFU9 issue - get and update operations
  * Issue #297: AFU9 Issues API (List/Detail/Edit/Activate/Handoff)
+ * Issue #3: Identifier Consistency (UUID + publicId)
+ * 
+ * **Identifier Handling:**
+ * - Accepts both UUID (canonical) and 8-hex publicId (display)
+ * - Returns 200 (found), 404 (not found), or 400 (invalid format)
+ * - Uses fetchIssueRowByIdentifier for consistent validation
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,6 +29,12 @@ import { withApi, apiError } from '../../../../src/lib/http/withApi';
 /**
  * GET /api/issues/[id]
  * Get a specific issue by ID
+ * 
+ * **Identifier Formats (Issue #3):**
+ * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+ * - 8-hex publicId: "a1b2c3d4"
+ * 
+ * Both formats are accepted and return the same issue data.
  */
 export const GET = withApi(async (
   request: NextRequest,
@@ -55,6 +67,10 @@ export const GET = withApi(async (
 /**
  * PATCH /api/issues/[id]
  * Update an existing issue
+ * 
+ * **Identifier Formats (Issue #3):**
+ * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+ * - 8-hex publicId: "a1b2c3d4"
  * 
  * Body (all fields optional):
  * - title: string
