@@ -32,6 +32,65 @@ describe('safeFetch', () => {
     });
   });
 
+  it('should extract request-id from response headers', async () => {
+    const mockResponse = {
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      headers: new Headers({
+        'content-type': 'application/json',
+        'x-request-id': 'test-request-123',
+      }),
+      json: jest.fn().mockResolvedValue({ error: 'Server error' }),
+    } as unknown as Response;
+
+    await expect(safeFetch(mockResponse)).rejects.toMatchObject({
+      status: 500,
+      message: 'Server error',
+      requestId: 'test-request-123',
+    });
+  });
+
+  it('should extract request-id from response body if not in headers', async () => {
+    const mockResponse = {
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: jest.fn().mockResolvedValue({
+        error: 'Validation failed',
+        requestId: 'body-request-456',
+      }),
+    } as unknown as Response;
+
+    await expect(safeFetch(mockResponse)).rejects.toMatchObject({
+      status: 400,
+      message: 'Validation failed',
+      requestId: 'body-request-456',
+    });
+  });
+
+  it('should prefer request-id from headers over body', async () => {
+    const mockResponse = {
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      headers: new Headers({
+        'content-type': 'application/json',
+        'x-request-id': 'header-request-789',
+      }),
+      json: jest.fn().mockResolvedValue({
+        error: 'Error',
+        requestId: 'body-request-123',
+      }),
+    } as unknown as Response;
+
+    await expect(safeFetch(mockResponse)).rejects.toMatchObject({
+      status: 400,
+      requestId: 'header-request-789',
+    });
+  });
+
   it('should handle non-JSON error responses', async () => {
     const mockResponse = {
       ok: false,
@@ -117,6 +176,25 @@ describe('formatErrorMessage', () => {
       details: 'Title is required',
     };
     expect(formatErrorMessage(error)).toBe('Validation failed (Title is required)');
+  });
+
+  it('should include request-id in ApiError message', () => {
+    const error: ApiError = {
+      status: 500,
+      message: 'Server error',
+      requestId: 'req-123',
+    };
+    expect(formatErrorMessage(error)).toBe('Server error [Request-ID: req-123]');
+  });
+
+  it('should include both details and request-id in ApiError message', () => {
+    const error: ApiError = {
+      status: 400,
+      message: 'Validation failed',
+      details: 'Title is required',
+      requestId: 'req-456',
+    };
+    expect(formatErrorMessage(error)).toBe('Validation failed (Title is required) [Request-ID: req-456]');
   });
 
   it('should format regular Error message', () => {

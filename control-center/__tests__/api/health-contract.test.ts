@@ -14,8 +14,20 @@ import { GET as healthHandler } from '../../app/api/health/route';
 import { GET as readyHandler } from '../../app/api/ready/route';
 
 describe('Health Endpoint Contract', () => {
+  // Mock NextRequest for testing
+  const createMockRequest = (requestId?: string) => {
+    const headers = new Headers();
+    if (requestId) {
+      headers.set('x-request-id', requestId);
+    }
+    return {
+      headers,
+    } as any;
+  };
+
   test('/api/health ALWAYS returns 200', async () => {
-    const response = await healthHandler();
+    const request = createMockRequest();
+    const response = await healthHandler(request);
     expect(response.status).toBe(200);
     
     const body = await response.json();
@@ -25,8 +37,26 @@ describe('Health Endpoint Contract', () => {
     expect(body.timestamp).toBeDefined();
   });
 
+  test('/api/health includes x-request-id in response headers', async () => {
+    const request = createMockRequest('health-test-123');
+    const response = await healthHandler(request);
+    
+    expect(response.headers.get('x-request-id')).toBe('health-test-123');
+  });
+
+  test('/api/health generates request-id if not provided', async () => {
+    const request = createMockRequest();
+    const response = await healthHandler(request);
+    
+    const requestId = response.headers.get('x-request-id');
+    expect(requestId).toBeDefined();
+    expect(requestId).not.toBeNull();
+    expect(typeof requestId).toBe('string');
+  });
+
   test('/api/health response structure is consistent', async () => {
-    const response = await healthHandler();
+    const request = createMockRequest();
+    const response = await healthHandler(request);
     const body = await response.json();
     
     // Verify required fields
@@ -44,7 +74,8 @@ describe('Health Endpoint Contract', () => {
     // This test validates the critical guarantee: health NEVER blocks deploys
     // Even if internal errors occur, the endpoint returns 200
     
-    const response = await healthHandler();
+    const request = createMockRequest();
+    const response = await healthHandler(request);
     
     // CRITICAL: Must be 200, never 500/503
     expect(response.status).toBe(200);
@@ -64,6 +95,17 @@ describe('Ready Endpoint Contract', () => {
   // Store original env vars
   const originalEnv = { ...process.env };
 
+  // Mock NextRequest for testing
+  const createMockRequest = (requestId?: string) => {
+    const headers = new Headers();
+    if (requestId) {
+      headers.set('x-request-id', requestId);
+    }
+    return {
+      headers,
+    } as any;
+  };
+
   beforeEach(() => {
     // Reset environment to clean state before each test
     process.env = { ...originalEnv };
@@ -80,10 +122,20 @@ describe('Ready Endpoint Contract', () => {
     process.env = originalEnv;
   });
 
+  test('/api/ready includes x-request-id in response headers', async () => {
+    process.env.DATABASE_ENABLED = 'false';
+    const request = createMockRequest('ready-test-456');
+    
+    const response = await readyHandler(request);
+    
+    expect(response.headers.get('x-request-id')).toBe('ready-test-456');
+  });
+
   test('/api/ready returns 200 when DATABASE_ENABLED=false', async () => {
     process.env.DATABASE_ENABLED = 'false';
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(200);
@@ -94,7 +146,8 @@ describe('Ready Endpoint Contract', () => {
 
   test('/api/ready returns 200 when DATABASE_ENABLED is not set (default)', async () => {
     // DATABASE_ENABLED not set - should default to disabled
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(200);
@@ -105,7 +158,8 @@ describe('Ready Endpoint Contract', () => {
   test('/api/ready returns 503 when DATABASE_ENABLED=true but secrets missing', async () => {
     process.env.DATABASE_ENABLED = 'true';
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(503);
@@ -124,7 +178,8 @@ describe('Ready Endpoint Contract', () => {
     process.env.DATABASE_USER = 'testuser';
     process.env.DATABASE_PASSWORD = 'testpass';
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(200);
@@ -138,7 +193,8 @@ describe('Ready Endpoint Contract', () => {
     process.env.DATABASE_HOST = 'localhost';
     // Missing PORT, NAME, USER, PASSWORD
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(503);
@@ -157,7 +213,8 @@ describe('Ready Endpoint Contract', () => {
     process.env.DATABASE_USER = 'testuser';
     process.env.DATABASE_PASSWORD = 'testpass';
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(503);
@@ -167,7 +224,8 @@ describe('Ready Endpoint Contract', () => {
   test('/api/ready response structure includes all required fields', async () => {
     process.env.DATABASE_ENABLED = 'false';
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     // Core fields
@@ -192,7 +250,8 @@ describe('Ready Endpoint Contract', () => {
     // When database is disabled, it should not be in required list
     process.env.DATABASE_ENABLED = 'false';
     
-    const responseDisabled = await readyHandler();
+    const requestDisabled = createMockRequest();
+    const responseDisabled = await readyHandler(requestDisabled);
     const bodyDisabled = await responseDisabled.json();
     
     expect(bodyDisabled.dependencies.required).toEqual(['environment']);
@@ -206,7 +265,8 @@ describe('Ready Endpoint Contract', () => {
     process.env.DATABASE_USER = 'testuser';
     process.env.DATABASE_PASSWORD = 'testpass';
     
-    const responseEnabled = await readyHandler();
+    const requestEnabled = createMockRequest();
+    const responseEnabled = await readyHandler(requestEnabled);
     const bodyEnabled = await responseEnabled.json();
     
     expect(bodyEnabled.dependencies.required).toContain('environment');
@@ -220,7 +280,8 @@ describe('Ready Endpoint Contract', () => {
     
     // Even if MCP servers fail, ready should return 200
     // because MCP servers are optional dependencies
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     // Should be ready even if MCP checks fail
@@ -238,7 +299,8 @@ describe('Ready Endpoint Contract', () => {
     process.env.DATABASE_ENABLED = 'true';
     process.env.DATABASE_PORT = '999999'; // Out of valid port range
     
-    const response = await readyHandler();
+    const request = createMockRequest();
+    const response = await readyHandler(request);
     const body = await response.json();
     
     expect(response.status).toBe(503);
@@ -269,8 +331,11 @@ describe('Health vs Ready Semantics', () => {
     process.env.DATABASE_ENABLED = 'true';
     // Missing DB credentials
     
-    const healthResponse = await healthHandler();
-    const readyResponse = await readyHandler();
+    const healthRequest = createMockRequest();
+    const readyRequest = createMockRequest();
+    
+    const healthResponse = await healthHandler(healthRequest);
+    const readyResponse = await readyHandler(readyRequest);
     
     // Health should ALWAYS be 200
     expect(healthResponse.status).toBe(200);
@@ -284,10 +349,12 @@ describe('Health vs Ready Semantics', () => {
   });
 
   test('/api/health has no dependency checks, /api/ready has dependency checks', async () => {
-    const healthResponse = await healthHandler();
+    const healthRequest = createMockRequest();
+    const healthResponse = await healthHandler(healthRequest);
     const healthBody = await healthResponse.json();
     
-    const readyResponse = await readyHandler();
+    const readyRequest = createMockRequest();
+    const readyResponse = await readyHandler(readyRequest);
     const readyBody = await readyResponse.json();
     
     // Health should have no checks field
