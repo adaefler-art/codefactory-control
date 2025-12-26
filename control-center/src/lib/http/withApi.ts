@@ -94,12 +94,23 @@ export function withApi<T = any>(
   options?: WithApiOptions
 ): ApiHandler<T | ApiErrorResponse> {
   return async (request: NextRequest, context?: any) => {
-    const requestId = randomUUID();
+    // Extract request-id from middleware (or generate if missing)
+    let requestId = request.headers.get('x-request-id');
+    if (!requestId) {
+      requestId = randomUUID();
+    }
+    
     const logger = options?.logger ?? defaultLogger;
 
     try {
       // Execute the handler
       const response = await handler(request, context);
+      
+      // Ensure x-request-id header is set on the response
+      if (!response.headers.has('x-request-id')) {
+        response.headers.set('x-request-id', requestId);
+      }
+      
       return response;
     } catch (error) {
       // Log the error
@@ -131,8 +142,10 @@ export function withApi<T = any>(
         }
       }
 
-      // Return structured JSON error
-      return NextResponse.json<ApiErrorResponse>(baseError, { status: 500 });
+      // Return structured JSON error with request-id header
+      const errorResponse = NextResponse.json<ApiErrorResponse>(baseError, { status: 500 });
+      errorResponse.headers.set('x-request-id', requestId);
+      return errorResponse;
     }
   };
 }
@@ -145,6 +158,7 @@ export function withApi<T = any>(
  * @param error - Error message
  * @param status - HTTP status code (default: 400)
  * @param details - Additional error details
+ * @param requestId - Optional request ID (will be generated if not provided)
  * @returns NextResponse with structured error
  * 
  * @example
@@ -155,11 +169,12 @@ export function withApi<T = any>(
 export function apiError(
   error: string,
   status: number = 400,
-  details?: string
+  details?: string,
+  requestId?: string
 ): NextResponse<ApiErrorResponse> {
   const response: ApiErrorResponse = {
     error,
-    requestId: randomUUID(),
+    requestId: requestId || randomUUID(),
     timestamp: new Date().toISOString(),
   };
 
@@ -167,7 +182,9 @@ export function apiError(
     response.details = details;
   }
 
-  return NextResponse.json(response, { status });
+  const nextResponse = NextResponse.json(response, { status });
+  nextResponse.headers.set('x-request-id', response.requestId);
+  return nextResponse;
 }
 
 /**
@@ -176,16 +193,19 @@ export function apiError(
  * 
  * @param service - Name of the unavailable service
  * @param details - Additional details
+ * @param requestId - Optional request ID
  * @returns NextResponse with 503 status
  */
 export function serviceUnavailable(
   service: string,
-  details?: string
+  details?: string,
+  requestId?: string
 ): NextResponse<ApiErrorResponse> {
   return apiError(
     `Service unavailable: ${service}`,
     503,
-    details
+    details,
+    requestId
   );
 }
 
@@ -194,12 +214,14 @@ export function serviceUnavailable(
  * 
  * @param resource - Name of the resource not found
  * @param id - Optional resource identifier
+ * @param requestId - Optional request ID
  * @returns NextResponse with 404 status
  */
 export function notFound(
   resource: string,
-  id?: string
+  id?: string,
+  requestId?: string
 ): NextResponse<ApiErrorResponse> {
   const message = id ? `${resource} not found: ${id}` : `${resource} not found`;
-  return apiError(message, 404);
+  return apiError(message, 404, undefined, requestId);
 }
