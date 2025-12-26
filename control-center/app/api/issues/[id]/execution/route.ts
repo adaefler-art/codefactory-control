@@ -3,6 +3,10 @@
  * 
  * Manages execution state for AFU9 issues
  * Issue #adaefler-art/codefactory-control#319 (Epic) - I5-4.1: Execution State Visibility
+ * Issue #3: Identifier Consistency (UUID + publicId)
+ * 
+ * **Identifier Handling:**
+ * - Accepts both UUID (canonical) and 8-hex publicId (display)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,6 +21,10 @@ import { normalizeOutput } from '@/lib/api/normalize-output';
 /**
  * GET /api/issues/[id]/execution
  * Get execution status of an issue
+ * 
+ * **Identifier Formats (Issue #3):**
+ * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+ * - 8-hex publicId: "a1b2c3d4"
  */
 export const GET = withApi(async (
   request: NextRequest,
@@ -54,6 +62,10 @@ export const GET = withApi(async (
 /**
  * POST /api/issues/[id]/execution
  * Control execution state
+ * 
+ * **Identifier Formats (Issue #3):**
+ * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+ * - 8-hex publicId: "a1b2c3d4"
  * 
  * Body:
  * - action: 'start' | 'complete' | 'fail' | 'reset'

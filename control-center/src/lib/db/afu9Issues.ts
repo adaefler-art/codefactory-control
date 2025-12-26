@@ -116,10 +116,10 @@ export async function createAfu9Issue(
 }
 
 /**
- * Get an AFU9 issue by ID
+ * Get an AFU9 issue by ID (canonical UUID)
  * 
  * @param pool - PostgreSQL connection pool
- * @param id - Issue UUID
+ * @param id - Issue UUID (canonical identifier)
  * @returns Operation result with issue or error
  */
 export async function getAfu9IssueById(
@@ -158,13 +158,19 @@ export async function getAfu9IssueById(
 }
 
 /**
- * Get an AFU9 issue by publicId/shortId.
+ * Get an AFU9 issue by publicId (8-hex display format).
  *
- * The Control Center UI uses an 8-hex public id derived from the UUID prefix
- * (e.g. uuid "c300abd8-..." => publicId "c300abd8").
+ * **Issue #3: Identifier Consistency**
+ * 
+ * The publicId is an 8-hex display format derived from the UUID prefix.
+ * Example: UUID "c300abd8-1234-..." → publicId "c300abd8"
+ * 
+ * This is a read-only lookup mechanism. The canonical identifier is
+ * always the full UUID stored in the `id` column.
  *
  * @param pool - PostgreSQL connection pool
- * @param publicId - 8-hex issue public id
+ * @param publicId - 8-hex issue publicId (display format)
+ * @returns Operation result with issue or error
  */
 export async function getAfu9IssueByPublicId(
   pool: Pool,

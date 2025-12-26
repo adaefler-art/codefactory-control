@@ -3,6 +3,10 @@
  * 
  * Retrieves activity log events for an AFU9 issue
  * Issue #5: AFU9 Single-Issue Mode Enforcement + Activity Log
+ * Issue #3: Identifier Consistency (UUID + publicId)
+ * 
+ * **Identifier Handling:**
+ * - Accepts both UUID (canonical) and 8-hex publicId (display)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,6 +21,10 @@ import { isAfu9IssueEventOutput } from '@/lib/contracts/outputContracts';
  * GET /api/issues/[id]/events
  * 
  * Retrieves the activity log events for an issue
+ * 
+ * **Identifier Formats (Issue #3):**
+ * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+ * - 8-hex publicId: "a1b2c3d4"
  * 
  * Query parameters:
  * - limit: Maximum number of events to return (default: 100, max: 500)
