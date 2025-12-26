@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { getRequestId as extractRequestId } from '../api/response-helpers';
 
 /**
  * Structured API error response
@@ -95,10 +96,7 @@ export function withApi<T = any>(
 ): ApiHandler<T | ApiErrorResponse> {
   return async (request: NextRequest, context?: any) => {
     // Extract request-id from middleware (or generate if missing)
-    let requestId = request.headers.get('x-request-id');
-    if (!requestId) {
-      requestId = randomUUID();
-    }
+    const requestId = extractRequestId(request);
     
     const logger = options?.logger ?? defaultLogger;
 

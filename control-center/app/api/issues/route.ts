@@ -173,10 +173,17 @@ export async function POST(request: NextRequest) {
     // Validate input
     const validation = validateAfu9IssueInput(body);
     if (!validation.valid) {
+      // Format errors as user-friendly list
+      const errorMessages = Array.isArray(validation.errors)
+        ? validation.errors.join('; ')
+        : typeof validation.errors === 'string'
+        ? validation.errors
+        : 'Validation failed';
+        
       return errorResponse('Invalid input', {
         status: 400,
         requestId,
-        details: JSON.stringify(validation.errors),
+        details: errorMessages,
       });
     }
 
