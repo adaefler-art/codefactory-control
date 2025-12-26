@@ -74,6 +74,10 @@ ecs-stopped-tasks.json
 test-analysis.json
 test-report.md
 
+# Local purge / maintenance artifacts (may contain sensitive data)
+artifacts/
+**/artifacts/
+
 # Downloaded tools (for validation)
 actionlint
 /LICENSE.txt
