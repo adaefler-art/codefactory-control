@@ -249,7 +249,7 @@ export default function IssuesPage() {
                           <div className="flex items-center">
                             <div>
                               <Link
-                                href={`/issues/${issue.publicId}`}
+                                href={`/issues/${issue.id}`}
                                 className="text-sm font-medium text-purple-400 hover:text-purple-300"
                               >
                                 {issue.title}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
 import { isValidUUID } from "@/lib/utils/uuid-validator";
-import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
 
 interface Issue {
   id: string;
@@ -112,11 +112,20 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
-      const data = await safeFetch(response);
+      const data = await safeFetch<Issue>(response);
       setIssue(data);
     } catch (err) {
       console.error("Error fetching issue:", err);
-      setError(formatErrorMessage(err));
+
+      if (isApiError(err)) {
+        if (err.status === 400 || err.status === 404) {
+          setError(`Issue not found (${id})`);
+        } else {
+          setError(`Failed to load issue (HTTP ${err.status})`);
+        }
+      } else {
+        setError(formatErrorMessage(err));
+      }
     } finally {
       setIsLoading(false);
     }
