@@ -81,17 +81,33 @@ function stableStringify(value: unknown): string {
 }
 
 async function resolveLawbookJsonPath(fileName: string): Promise<string> {
-  const cwdPath = path.resolve(process.cwd(), 'src/lawbook', fileName);
-  try {
-    await fs.access(cwdPath);
-    return cwdPath;
-  } catch {
-    // fall through
+  // Try multiple path strategies to support both dev and production environments
+  const candidatePaths = [
+    // Strategy 1: Development - src/lawbook relative to project root
+    path.resolve(process.cwd(), 'src/lawbook', fileName),
+    // Strategy 2: Next.js standalone - relative to control-center directory
+    path.resolve(process.cwd(), 'control-center/src/lawbook', fileName),
+    // Strategy 3: Compiled module - same directory as this file
+    path.resolve(__dirname, fileName),
+    // Strategy 4: Next.js server chunks - go up from compiled location
+    path.resolve(__dirname, '../../src/lawbook', fileName),
+    path.resolve(__dirname, '../../../src/lawbook', fileName),
+  ];
+
+  const errors: string[] = [];
+  
+  for (const candidatePath of candidatePaths) {
+    try {
+      await fs.access(candidatePath);
+      return candidatePath;
+    } catch (err) {
+      errors.push(`${candidatePath}: ${err instanceof Error ? err.message : 'not found'}`);
+    }
   }
 
-  const modulePath = path.resolve(__dirname, fileName);
-  await fs.access(modulePath);
-  return modulePath;
+  // If all strategies fail, throw a detailed error
+  const errorMsg = `Failed to locate ${fileName}. Tried:\n${errors.join('\n')}`;
+  throw new Error(errorMsg);
 }
 
 export function computeStableHash(value: unknown): string {
@@ -100,12 +116,21 @@ export function computeStableHash(value: unknown): string {
 }
 
 async function readJsonFile(filePath: string): Promise<unknown> {
-  const raw = await fs.readFile(filePath, 'utf8');
   try {
-    return JSON.parse(raw);
-  } catch (err) {
+    const raw = await fs.readFile(filePath, 'utf8');
+    try {
+      return JSON.parse(raw);
+    } catch (parseErr) {
+      throw new Error(
+        `Invalid JSON in ${path.basename(filePath)} (${filePath}): ${parseErr instanceof Error ? parseErr.message : 'parse error'}`
+      );
+    }
+  } catch (readErr) {
+    if (readErr && typeof readErr === 'object' && 'code' in readErr && readErr.code === 'ENOENT') {
+      throw new Error(`File not found: ${filePath}`);
+    }
     throw new Error(
-      `Invalid JSON in ${path.basename(filePath)}: ${err instanceof Error ? err.message : 'parse error'}`
+      `Failed to read ${path.basename(filePath)} (${filePath}): ${readErr instanceof Error ? readErr.message : 'unknown error'}`
     );
   }
 }
