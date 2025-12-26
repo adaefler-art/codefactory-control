@@ -9,53 +9,38 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { executeKpiAggregationPipeline } from '@/lib/kpi-service';
+import { withApi, apiError } from '@/lib/http/withApi';
 
-export async function POST(request: NextRequest) {
+export const POST = withApi(async (request: NextRequest) => {
+  // Parse request body for optional parameters
+  let periodHours = 24;
+  
   try {
-    // Parse request body for optional parameters
-    let periodHours = 24;
-    
-    try {
-      const body = await request.json();
-      if (body.periodHours && typeof body.periodHours === 'number') {
-        periodHours = body.periodHours;
-      }
-    } catch {
-      // Body is optional, use defaults
+    const body = await request.json();
+    if (body.periodHours && typeof body.periodHours === 'number') {
+      periodHours = body.periodHours;
     }
-    
-    console.log(`[KPI API] Triggering aggregation pipeline (periodHours: ${periodHours})`);
-    
-    // Execute the aggregation pipeline
-    const job = await executeKpiAggregationPipeline(periodHours);
-    
-    return NextResponse.json({
-      success: true,
-      job,
-      message: 'KPI aggregation pipeline triggered successfully',
-    });
-  } catch (error) {
-    console.error('[KPI API] Error triggering aggregation:', error);
-    
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        message: 'Failed to trigger KPI aggregation pipeline',
-      },
-      { status: 500 }
-    );
+  } catch {
+    // Body is optional, use defaults
   }
-}
+  
+  console.log(`[KPI API] Triggering aggregation pipeline (periodHours: ${periodHours})`);
+  
+  // Execute the aggregation pipeline
+  const job = await executeKpiAggregationPipeline(periodHours);
+  
+  return NextResponse.json({
+    job,
+    message: 'KPI aggregation pipeline triggered successfully',
+  });
+}, {
+  mapError: (error, requestId) => ({
+    error: error instanceof Error ? error.message : 'Unknown error',
+    details: 'Failed to trigger KPI aggregation pipeline',
+  }),
+});
 
 // Return method not allowed for other HTTP methods
 export async function GET() {
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Method not allowed',
-      message: 'Use POST to trigger aggregation',
-    },
-    { status: 405 }
-  );
+  return apiError('Method not allowed', 405, 'Use POST to trigger aggregation');
 }

@@ -62,7 +62,6 @@ const cognitoClient = new CognitoIdentityProviderClient({
  * 
  * Response:
  * {
- *   "success": true,
  *   "message": "Password reset code sent to your email"
  * }
  */
@@ -77,8 +76,9 @@ export async function POST(request: NextRequest) {
     if (!username) {
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Username is required',
+          requestId: correlationId,
+          timestamp: new Date().toISOString(),
         },
         { status: 400 }
       );
@@ -100,8 +100,9 @@ export async function POST(request: NextRequest) {
 
       const response = NextResponse.json(
         {
-          success: false,
           error: 'Password reset service not configured',
+          requestId: correlationId,
+          timestamp: new Date().toISOString(),
         },
         { status: 500 }
       );
@@ -129,7 +130,6 @@ export async function POST(request: NextRequest) {
 
     // Always return success message for security (don't reveal if user exists)
     const response = NextResponse.json({
-      success: true,
       message: 'If the email address exists, a password reset code has been sent.',
     });
     response.headers.set('x-afu9-correlation-id', correlationId);
@@ -150,12 +150,12 @@ export async function POST(request: NextRequest) {
     }));
 
     const responseBody: Record<string, unknown> = {
-      success: false,
       error: 'Password reset failed',
+      requestId: correlationId,
+      timestamp: new Date().toISOString(),
     };
     if (AFU9_DEBUG_AUTH) {
-      responseBody.errorCode = errorCode;
-      responseBody.errorMessage = errorMessage;
+      responseBody.details = `${errorCode}: ${errorMessage}`;
     }
 
     // Non-200 on Cognito/service errors so staging failures are visible.

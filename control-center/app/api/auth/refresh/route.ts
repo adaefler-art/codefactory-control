@@ -197,7 +197,11 @@ async function refreshTokens(refreshToken: string) {
  */
 export async function GET(_request: NextRequest) {
   const requestId = getRequestId();
-  const response = NextResponse.json({ success: false, error: 'Method Not Allowed' }, { status: 405 });
+  const response = NextResponse.json({ 
+    error: 'Method Not Allowed',
+    requestId,
+    timestamp: new Date().toISOString(),
+  }, { status: 405 });
   response.headers.set('allow', 'POST');
   applyNoStore(response);
   applyDebugHeaders(response);
@@ -216,9 +220,13 @@ export async function POST(request: NextRequest) {
   // Defense-in-depth: reject cross-site POSTs (important if SameSite=None is configured).
   const csrf = validateSameOrigin(request);
   if (!csrf.ok) {
-    const body: Record<string, unknown> = { success: false, error: 'Forbidden' };
+    const body: Record<string, unknown> = { 
+      error: 'Forbidden',
+      requestId,
+      timestamp: new Date().toISOString(),
+    };
     if (AFU9_DEBUG_AUTH) {
-      body.reason = csrf.reason;
+      body.details = csrf.reason;
       body.expectedOrigin = csrf.expectedOrigin;
       body.origin = csrf.origin;
       body.referer = csrf.referer;
@@ -234,7 +242,11 @@ export async function POST(request: NextRequest) {
 
   const refreshToken = request.cookies.get(AFU9_REFRESH_COOKIE)?.value;
   if (!refreshToken) {
-    const response = NextResponse.json({ success: false, error: 'Missing refresh token' }, { status: 401 });
+    const response = NextResponse.json({ 
+      error: 'Missing refresh token',
+      requestId,
+      timestamp: new Date().toISOString(),
+    }, { status: 401 });
     applyNoStore(response);
     applyDebugHeaders(response);
     attachRequestId(response, requestId);
@@ -244,7 +256,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const tokens = await refreshTokens(refreshToken);
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json({ message: 'Token refreshed' });
     setAuthCookies(response, tokens);
     applyNoStore(response);
     applyDebugHeaders(response);
@@ -253,7 +265,11 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error: unknown) {
     console.error('[AUTH-REFRESH] Refresh failed:', error);
-    const response = NextResponse.json({ success: false, error: 'Refresh failed' }, { status: 401 });
+    const response = NextResponse.json({ 
+      error: 'Refresh failed',
+      requestId,
+      timestamp: new Date().toISOString(),
+    }, { status: 401 });
     clearAuthCookies(response);
     applyNoStore(response);
     applyDebugHeaders(response);
