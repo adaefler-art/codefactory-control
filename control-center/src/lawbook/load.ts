@@ -126,7 +126,7 @@ async function readJsonFile(filePath: string): Promise<unknown> {
       );
     }
   } catch (readErr) {
-    if ((readErr as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (readErr && typeof readErr === 'object' && 'code' in readErr && readErr.code === 'ENOENT') {
       throw new Error(`File not found: ${filePath}`);
     }
     throw new Error(
