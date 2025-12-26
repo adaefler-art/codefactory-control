@@ -3,8 +3,6 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { notFound } from "next/navigation";
-import { isValidUUID } from "@/lib/utils/uuid-validator";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
 
 interface Issue {
@@ -53,12 +51,6 @@ export default function IssueDetailPage({
     // Next.js may pass params as a Promise in some client-page setups.
     typeof (params as any)?.then === "function" ? use(params as Promise<{ id: string }>) : (params as { id: string });
   const { id } = resolvedParams;
-  
-  // Validate that id is a valid UUID to prevent routing fallback issues
-  // The "new" route is now handled by /issues/new/page.tsx
-  if (!isValidUUID(id)) {
-    notFound();
-  }
   
   const router = useRouter();
   const [issue, setIssue] = useState<Issue | null>(null);
