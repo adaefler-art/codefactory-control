@@ -237,7 +237,7 @@ describe('AFU9 Issues API', () => {
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
       const response = await getIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -253,7 +253,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const request = new NextRequest('http://localhost/api/issues/123e4567');
-      const response = await getIssue(request, { params: { id: '123e4567' } });
+      const response = await getIssue(request, { params: Promise.resolve({ id: '123e4567' }) });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -263,7 +263,7 @@ describe('AFU9 Issues API', () => {
 
     test('returns 400 for invalid UUID format', async () => {
       const request = new NextRequest('http://localhost/api/issues/invalid-id');
-      const response = await getIssue(request, { params: { id: 'invalid-id' } });
+      const response = await getIssue(request, { params: Promise.resolve({ id: 'invalid-id' }) });
       const body = await response.json();
 
       expect(response.status).toBe(400);
@@ -279,7 +279,7 @@ describe('AFU9 Issues API', () => {
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
       const response = await getIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -309,7 +309,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -331,7 +331,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -351,7 +351,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -378,7 +378,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -408,7 +408,7 @@ describe('AFU9 Issues API', () => {
       });
 
       let response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       let body = await response.json();
 
@@ -430,7 +430,7 @@ describe('AFU9 Issues API', () => {
       });
 
       response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       body = await response.json();
 
@@ -452,7 +452,7 @@ describe('AFU9 Issues API', () => {
       });
 
       response = await updateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       body = await response.json();
 
@@ -486,7 +486,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await activateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -532,7 +532,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await activateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -563,7 +563,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await activateIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -602,7 +602,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await handoffIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -632,7 +632,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await handoffIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -661,7 +661,7 @@ describe('AFU9 Issues API', () => {
       });
 
       const response = await handoffIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -694,7 +694,7 @@ describe('AFU9 Issues API', () => {
       });
 
       await handoffIssue(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
 
       expect(createGithubIssue).toHaveBeenCalledWith(
@@ -742,7 +742,7 @@ describe('AFU9 Issues API', () => {
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/events');
       const response = await getIssueEventsApi(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -768,7 +768,7 @@ describe('AFU9 Issues API', () => {
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/events?limit=1');
       const response = await getIssueEventsApi(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
       const body = await response.json();
 
@@ -784,7 +784,7 @@ describe('AFU9 Issues API', () => {
     test('rejects invalid issue ID', async () => {
       const request = new NextRequest('http://localhost/api/issues/invalid-id/events');
       const response = await getIssueEventsApi(request, {
-        params: { id: 'invalid-id' },
+        params: Promise.resolve({ id: 'invalid-id' }),
       });
 
       expect(response.status).toBe(400);
@@ -801,7 +801,7 @@ describe('AFU9 Issues API', () => {
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/events');
       const response = await getIssueEventsApi(request, {
-        params: { id: '123e4567-e89b-12d3-a456-426614174000' },
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
       });
 
       expect(response.status).toBe(500);
