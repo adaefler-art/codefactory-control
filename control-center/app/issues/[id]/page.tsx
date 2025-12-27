@@ -99,6 +99,7 @@ export default function IssueDetailPage({
     try {
       const response = await fetch(`/api/issues/${id}`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await safeFetch<Issue>(response);
@@ -125,6 +126,7 @@ export default function IssueDetailPage({
     try {
       const response = await fetch(`/api/issues/${id}/events`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await safeFetch(response);
@@ -140,6 +142,7 @@ export default function IssueDetailPage({
     try {
       const response = await fetch(`/api/issues/active-check`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await safeFetch(response);
