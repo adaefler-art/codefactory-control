@@ -23,7 +23,7 @@ const SELF_PROPELLING_WORKFLOW_PATH = path.join(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const selfPropellingEnabled = process.env.AFU9_ENABLE_SELF_PROPELLING === 'true';
@@ -31,7 +31,7 @@ export async function POST(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { owner, repo, baseBranch = 'main' } = body;
 

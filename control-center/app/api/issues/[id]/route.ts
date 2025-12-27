@@ -38,10 +38,10 @@ import { withApi, apiError } from '../../../../src/lib/http/withApi';
  */
 export const GET = withApi(async (
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) => {
   const pool = getPool();
-  const { id } = params;
+  const { id } = await params;
 
   // Temporary diagnostics for the "Failed to fetch issue" bug.
   // Only logs in DEV to avoid noisy production logs.
@@ -82,10 +82,10 @@ export const GET = withApi(async (
  */
 export const PATCH = withApi(async (
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) => {
   const pool = getPool();
-  const { id } = params;
+  const { id } = await params;
 
   const resolved = await fetchIssueRowByIdentifier(pool, id);
   if (!resolved.ok) {
