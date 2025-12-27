@@ -45,7 +45,8 @@ export default function IssuesPage() {
       if (searchQuery) params.append("q", searchQuery);
       
       const response = await fetch(`/api/issues?${params.toString()}`, {
-        credentials: "include"
+        credentials: "include",
+        cache: "no-store"
       });
       
       const data = await safeFetch(response);

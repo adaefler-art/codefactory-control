@@ -61,6 +61,7 @@ export default function NewIssuePage() {
     try {
       const response = await fetch(`/api/issues/new`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await safeFetch(response);
