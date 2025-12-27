@@ -11,7 +11,8 @@ import { Construct } from 'constructs';
  * - Outputs for Control Center configuration
  * 
  * Security considerations:
- * - No MFA or password reset flows (per requirements)
+ * - No MFA (per requirements)
+ * - Email-based password reset enabled
  * - Groups for environment-based access control:
  *   - afu9-admin-prod -> prod environment access
  *   - afu9-engineer-stage -> stage environment access
@@ -52,8 +53,8 @@ export class Afu9AuthStack extends cdk.Stack {
         requireDigits: true,
         requireSymbols: false,
       },
-      // Account recovery: disabled per requirements (no password reset flows)
-      accountRecovery: cognito.AccountRecovery.NONE,
+      // Account recovery: email-based password reset enabled
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       // MFA: disabled per requirements
       mfa: cognito.Mfa.OFF,
       // Self-service sign-up: disabled (admin creates users)
@@ -61,7 +62,7 @@ export class Afu9AuthStack extends cdk.Stack {
       // Standard attributes
       standardAttributes: {
         email: {
-          required: false,
+          required: true,
           mutable: true,
         },
       },
