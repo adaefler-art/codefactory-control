@@ -45,12 +45,9 @@ interface ActivityEvent {
 export default function IssueDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }> | { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const resolvedParams: { id: string } =
-    // Next.js may pass params as a Promise in some client-page setups.
-    typeof (params as any)?.then === "function" ? use(params as Promise<{ id: string }>) : (params as { id: string });
-  const { id } = resolvedParams;
+  const { id } = use(params);
   
   const router = useRouter();
   const [issue, setIssue] = useState<Issue | null>(null);
