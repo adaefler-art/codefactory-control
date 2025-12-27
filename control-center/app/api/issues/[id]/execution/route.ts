@@ -28,10 +28,10 @@ import { normalizeOutput } from '@/lib/api/normalize-output';
  */
 export const GET = withApi(async (
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) => {
   const pool = getPool();
-  const { id } = params;
+  const { id } = await params;
 
   const resolved = await fetchIssueRowByIdentifier(pool, id);
   if (!resolved.ok) {
@@ -73,10 +73,10 @@ export const GET = withApi(async (
  */
 export const POST = withApi(async (
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) => {
   const pool = getPool();
-  const { id } = params;
+  const { id } = await params;
 
   const resolved = await fetchIssueRowByIdentifier(pool, id);
   if (!resolved.ok) {
