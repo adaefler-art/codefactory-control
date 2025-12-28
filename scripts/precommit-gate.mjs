@@ -1,5 +1,20 @@
 import { execSync } from "node:child_process";
 
+/**
+ * Pre-commit Gate
+ * 
+ * Part of ISSUE 1 & 4 — Repo Canon & Guardrails + Repo Hygiene Automation
+ * 
+ * Enforces:
+ * - No forbidden paths in staged changes (.next/, .worktrees/, standalone/)
+ * - No mixed-scope changes (control-center + infra)
+ * - Repository canon verification (routes, empty folders, etc.)
+ * 
+ * Usage:
+ *   node scripts/precommit-gate.mjs
+ *   ALLOW_MIXED_CHANGES=true git commit  # Override mixed-scope check
+ */
+
 function run(cmd) {
   return execSync(cmd, { stdio: "inherit" });
 }
