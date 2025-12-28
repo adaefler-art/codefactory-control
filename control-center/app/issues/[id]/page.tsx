@@ -603,9 +603,10 @@ export default function IssueDetailPage({
                 </label>
                 <select
                   value={editedPriority || ""}
-                  onChange={(e) =>
-                    setEditedPriority((e.target.value as Issue["priority"]) || null)
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setEditedPriority(value === "" ? null : value as Issue["priority"]);
+                  }}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="">No priority set</option>
