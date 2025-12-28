@@ -46,6 +46,11 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     default: false,
     deprecated: ['multiEnv'],
   },
+  'afu9-prod-paused': {
+    type: 'boolean',
+    description: 'Enable Low-Cost Pause Mode for PROD (sets desiredCount=0, disables routing)',
+    default: false,
+  },
 
   // DNS and domain configuration
   'afu9-domain': {

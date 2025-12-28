@@ -15,6 +15,10 @@ import { Construct } from 'constructs';
  * This stack manages ALB listener rules and Route53 DNS records for
  * environment-specific subdomains while sharing a single ALB across
  * all environments for cost optimization.
+ * 
+ * Low-Cost Pause Mode:
+ * When prodPaused=true, PROD listener rules are disabled to prevent
+ * routing to non-existent tasks, reducing costs while keeping infrastructure intact.
  */
 export interface Afu9RoutingStackProps extends cdk.StackProps {
   /**
@@ -54,6 +58,13 @@ export interface Afu9RoutingStackProps extends cdk.StackProps {
    * Required if hostedZone is provided
    */
   baseDomainName?: string;
+
+  /**
+   * Enable Low-Cost Pause Mode for PROD
+   * When true, PROD routing rules are disabled
+   * @default false
+   */
+  prodPaused?: boolean;
 }
 
 export class Afu9RoutingStack extends cdk.Stack {
@@ -68,6 +79,7 @@ export class Afu9RoutingStack extends cdk.Stack {
       prodTargetGroup,
       hostedZone,
       baseDomainName,
+      prodPaused = false,
     } = props;
 
     // Optional guard to skip DNS record creation when records already exist
@@ -96,17 +108,33 @@ export class Afu9RoutingStack extends cdk.Stack {
         action: elbv2.ListenerAction.forward([stageTargetGroup]),
       });
 
-      // Priority 20: prod.afu-9.com → prod target group
-      new elbv2.ApplicationListenerRule(this, 'ProdHttpsRule', {
-        listener: httpsListener,
-        priority: 20,
-        conditions: [
-          elbv2.ListenerCondition.hostHeaders([`prod.${baseDomainName}`]),
-        ],
-        action: elbv2.ListenerAction.forward([prodTargetGroup]),
-      });
+      // Priority 20: prod.afu-9.com → prod target group (only when not paused)
+      if (!prodPaused) {
+        new elbv2.ApplicationListenerRule(this, 'ProdHttpsRule', {
+          listener: httpsListener,
+          priority: 20,
+          conditions: [
+            elbv2.ListenerCondition.hostHeaders([`prod.${baseDomainName}`]),
+          ],
+          action: elbv2.ListenerAction.forward([prodTargetGroup]),
+        });
+      } else {
+        // When paused, return 503 Service Unavailable for prod
+        new elbv2.ApplicationListenerRule(this, 'ProdHttpsPausedRule', {
+          listener: httpsListener,
+          priority: 20,
+          conditions: [
+            elbv2.ListenerCondition.hostHeaders([`prod.${baseDomainName}`]),
+          ],
+          action: elbv2.ListenerAction.fixedResponse(503, {
+            contentType: 'text/plain',
+            messageBody: 'Production environment is currently paused (Low-Cost Mode). Please contact support.',
+          }),
+        });
+      }
 
       // Priority 100: afu-9.com → redirect to prod.afu-9.com (landing page)
+      // When prod is paused, still redirect but user will see 503 at prod subdomain
       new elbv2.ApplicationListenerRule(this, 'LandingHttpsRule', {
         listener: httpsListener,
         priority: 100,
@@ -144,6 +172,7 @@ export class Afu9RoutingStack extends cdk.Stack {
       });
 
       // Priority 20: Redirect prod.afu-9.com HTTP to HTTPS
+      // (Redirect happens regardless of pause state; 503 will be shown at HTTPS endpoint)
       new elbv2.ApplicationListenerRule(this, 'ProdHttpRedirectRule', {
         listener: httpListener,
         priority: 20,
@@ -181,14 +210,28 @@ export class Afu9RoutingStack extends cdk.Stack {
         action: elbv2.ListenerAction.forward([stageTargetGroup]),
       });
 
-      new elbv2.ApplicationListenerRule(this, 'ProdHttpRule', {
-        listener: httpListener,
-        priority: 20,
-        conditions: [
-          elbv2.ListenerCondition.hostHeaders([`prod.${baseDomainName}`]),
-        ],
-        action: elbv2.ListenerAction.forward([prodTargetGroup]),
-      });
+      if (!prodPaused) {
+        new elbv2.ApplicationListenerRule(this, 'ProdHttpRule', {
+          listener: httpListener,
+          priority: 20,
+          conditions: [
+            elbv2.ListenerCondition.hostHeaders([`prod.${baseDomainName}`]),
+          ],
+          action: elbv2.ListenerAction.forward([prodTargetGroup]),
+        });
+      } else {
+        new elbv2.ApplicationListenerRule(this, 'ProdHttpPausedRule', {
+          listener: httpListener,
+          priority: 20,
+          conditions: [
+            elbv2.ListenerCondition.hostHeaders([`prod.${baseDomainName}`]),
+          ],
+          action: elbv2.ListenerAction.fixedResponse(503, {
+            contentType: 'text/plain',
+            messageBody: 'Production environment is currently paused (Low-Cost Mode). Please contact support.',
+          }),
+        });
+      }
 
       // Redirect base domain to prod
       new elbv2.ApplicationListenerRule(this, 'LandingHttpRule', {
@@ -248,6 +291,11 @@ export class Afu9RoutingStack extends cdk.Stack {
     // Stack Outputs
     // ========================================
 
+    new cdk.CfnOutput(this, 'ProdPauseMode', {
+      value: prodPaused ? 'ENABLED' : 'DISABLED',
+      description: 'Low-Cost Pause Mode status for PROD environment',
+    });
+
     new cdk.CfnOutput(this, 'StageUrl', {
       value: baseDomainName
         ? `https://stage.${baseDomainName}`
@@ -259,7 +307,9 @@ export class Afu9RoutingStack extends cdk.Stack {
       value: baseDomainName
         ? `https://prod.${baseDomainName}`
         : `http://${loadBalancer.loadBalancerDnsName}`,
-      description: 'URL for Production environment',
+      description: prodPaused 
+        ? 'URL for Production environment (currently paused - returns 503)'
+        : 'URL for Production environment',
     });
 
     new cdk.CfnOutput(this, 'LandingUrl', {
