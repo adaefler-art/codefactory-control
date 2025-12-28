@@ -16,12 +16,26 @@ export interface ApiError {
   requestId?: string;
 }
 
-/**
- * Safely parse JSON from a response, handling errors gracefully
- * @param response - Fetch API response
- * @returns Parsed JSON data or throws ApiError
- */
-export async function safeFetch<T = unknown>(response: Response): Promise<T> {
+function isResponseLike(value: unknown): value is Response {
+  if (!value || typeof value !== 'object') return false;
+  const maybe = value as any;
+  return (
+    typeof maybe.ok === 'boolean' &&
+    typeof maybe.status === 'number' &&
+    typeof maybe.json === 'function' &&
+    (typeof maybe.text === 'function' || typeof maybe.text === 'undefined')
+  );
+}
+
+async function parseJsonResponse<T = unknown>(response: Response): Promise<T> {
+  const headerGet = (name: string): string | null => {
+    const headers: any = (response as any)?.headers;
+    if (headers && typeof headers.get === 'function') {
+      return headers.get(name);
+    }
+    return null;
+  };
+
   // Check if response is OK first
   if (!response.ok) {
     const statusText = typeof response.statusText === 'string' ? response.statusText.trim() : '';
@@ -30,14 +44,14 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
     let requestId: string | undefined = undefined;
 
     // Extract request-id from response headers
-    const headerRequestId = response.headers.get('x-request-id');
+    const headerRequestId = headerGet('x-request-id');
     if (headerRequestId) {
       requestId = headerRequestId;
     }
 
     // Try to parse error details from JSON
     try {
-      const contentType = response.headers.get('content-type');
+      const contentType = headerGet('content-type');
       if (contentType?.includes('application/json')) {
         const errorData = await response.json();
         if (errorData?.error) {
@@ -52,14 +66,15 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
         }
       } else {
         // Non-JSON response (e.g., HTML error page)
-        const text = await response.text();
-        if (text) {
-          errorDetails = text.substring(0, 200); // Limit error text length
+        if (typeof (response as any).text === 'function') {
+          const text = await (response as any).text();
+          if (text) {
+            errorDetails = String(text).substring(0, 200); // Limit error text length
+          }
         }
       }
     } catch {
-      // Ignore JSON parsing errors for error responses
-      // Fall back to basic error message
+      // Ignore parsing errors for error responses
     }
 
     const apiError: ApiError = {
@@ -84,6 +99,16 @@ export async function safeFetch<T = unknown>(response: Response): Promise<T> {
       details: error instanceof Error ? error.message : 'JSON parse error',
     } as ApiError;
   }
+}
+
+/**
+ * Safely parse JSON from a response, handling errors gracefully
+ * @param response - Fetch API response
+ * @returns Parsed JSON data or throws ApiError
+ */
+export async function safeFetch<T = unknown>(input: RequestInfo | URL | Response, init?: RequestInit): Promise<T> {
+  const response = isResponseLike(input) ? input : await fetch(input as RequestInfo | URL, init);
+  return parseJsonResponse<T>(response);
 }
 
 /**

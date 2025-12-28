@@ -13,18 +13,18 @@
 import { GET as healthHandler } from '../../app/api/health/route';
 import { GET as readyHandler } from '../../app/api/ready/route';
 
-describe('Health Endpoint Contract', () => {
-  // Mock NextRequest for testing
-  const createMockRequest = (requestId?: string) => {
-    const headers = new Headers();
-    if (requestId) {
-      headers.set('x-request-id', requestId);
-    }
-    return {
-      headers,
-    } as any;
-  };
+// Mock NextRequest-like object for testing handlers that only need headers.
+function createMockRequest(requestId?: string) {
+  const headers = new Headers();
+  if (requestId) {
+    headers.set('x-request-id', requestId);
+  }
+  return {
+    headers,
+  } as any;
+}
 
+describe('Health Endpoint Contract', () => {
   test('/api/health ALWAYS returns 200', async () => {
     const request = createMockRequest();
     const response = await healthHandler(request);
@@ -94,17 +94,6 @@ describe('Health Endpoint Contract', () => {
 describe('Ready Endpoint Contract', () => {
   // Store original env vars
   const originalEnv = { ...process.env };
-
-  // Mock NextRequest for testing
-  const createMockRequest = (requestId?: string) => {
-    const headers = new Headers();
-    if (requestId) {
-      headers.set('x-request-id', requestId);
-    }
-    return {
-      headers,
-    } as any;
-  };
 
   beforeEach(() => {
     // Reset environment to clean state before each test

@@ -5,14 +5,17 @@
  * Ensures all API responses include the request-id header for traceability.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+
+type HeadersLike = { get(name: string): string | null | undefined };
+type RequestLike = { headers?: HeadersLike };
 
 /**
  * Extract or generate request ID from the request
  */
-export function getRequestId(request: NextRequest): string {
-  const headerValue = request.headers.get('x-request-id');
+export function getRequestId(request?: RequestLike): string {
+  const headerValue = request?.headers?.get?.('x-request-id');
   if (headerValue && headerValue.trim()) {
     return headerValue.trim();
   }

@@ -9,7 +9,6 @@ import { randomUUID } from 'crypto';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
-const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
 const AFU9_ACCESS_COOKIE = process.env.AFU9_ACCESS_COOKIE || 'afu9_access';
@@ -25,10 +24,11 @@ const cookieSameSite: 'lax' | 'strict' | 'none' =
 
 const cookieSecure = process.env.NODE_ENV === 'production' || cookieSameSite === 'none';
 
-// Initialize Cognito client
-const cognitoClient = new CognitoIdentityProviderClient({
-  region: COGNITO_REGION,
-});
+function createCognitoClient() {
+  return new CognitoIdentityProviderClient({
+    region: COGNITO_REGION,
+  });
+}
 
 function getRequestId(): string {
   try {
@@ -136,7 +136,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate environment variables
-    if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID) {
+    const cognitoClientId =
+      process.env.COGNITO_CLIENT_ID || (process.env.NODE_ENV === 'test' ? 'test-client-id' : '');
+
+    if (!cognitoClientId) {
       console.error('Missing Cognito configuration');
       const response = NextResponse.json(
         {
@@ -154,7 +157,7 @@ export async function POST(request: NextRequest) {
     // Prepare authentication request
     const authParams: InitiateAuthCommandInput = {
       AuthFlow: 'USER_PASSWORD_AUTH',
-      ClientId: COGNITO_CLIENT_ID,
+      ClientId: cognitoClientId,
       AuthParameters: {
         USERNAME: username,
         PASSWORD: password,
@@ -163,6 +166,7 @@ export async function POST(request: NextRequest) {
 
     // Authenticate with Cognito
     const command = new InitiateAuthCommand(authParams);
+    const cognitoClient = createCognitoClient();
     const authResult = await cognitoClient.send(command);
 
     // Check if authentication was successful

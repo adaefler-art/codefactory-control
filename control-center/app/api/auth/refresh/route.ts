@@ -70,7 +70,15 @@ function getFirstHeaderValue(value: string | null): string | null {
 }
 
 function computeExpectedOrigin(request: NextRequest): string {
-  const proto = getFirstHeaderValue(request.headers.get('x-forwarded-proto')) || 'https';
+  const urlProto = (() => {
+    try {
+      return new URL(request.url).protocol.replace(':', '');
+    } catch {
+      return null;
+    }
+  })();
+
+  const proto = getFirstHeaderValue(request.headers.get('x-forwarded-proto')) || urlProto || 'https';
   const host =
     getFirstHeaderValue(request.headers.get('x-forwarded-host')) ||
     getFirstHeaderValue(request.headers.get('host')) ||
