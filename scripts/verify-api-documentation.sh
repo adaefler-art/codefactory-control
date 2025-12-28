@@ -11,9 +11,11 @@ echo ""
 ERRORS=0
 
 # Check that documented routes actually exist in the codebase
-echo "Checking documented routes exist..."
+echo "Checking sample of critical routes exist..."
 
-# Array of canonical routes from docs
+# Sample of important canonical routes to verify
+# Note: This is a representative sample. Full route validation could be
+# implemented by parsing the api-routes.ts file or scanning route.ts files.
 declare -a ROUTES=(
   "api/auth/login"
   "api/webhooks/github"
@@ -54,7 +56,7 @@ echo ""
 # Verify canonical route is marked
 echo "Checking canonical route annotations..."
 
-if grep -q "@canonical\|Canonical" control-center/app/api/webhooks/github/route.ts; then
+if grep -q "@canonical" control-center/app/api/webhooks/github/route.ts; then
   echo "  ✅ /api/webhooks/github is marked as canonical"
 else
   echo "  ❌ /api/webhooks/github is not marked as canonical"

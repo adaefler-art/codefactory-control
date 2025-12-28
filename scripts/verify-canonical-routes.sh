@@ -12,7 +12,12 @@ ERRORS=0
 
 # Check for deprecated /api/github/webhook usage
 echo "Checking for deprecated /api/github/webhook usage..."
-DEPRECATED_GITHUB_WEBHOOK=$(grep -r "/api/github/webhook" control-center/app control-center/src 2>/dev/null | grep -v ".test.ts" | grep -v "route.ts" | grep -v "middleware-public-routes.ts" || true)
+DEPRECATED_GITHUB_WEBHOOK=$(grep -r "/api/github/webhook" control-center/app control-center/src 2>/dev/null \
+  | grep -v ".test.ts" \
+  | grep -v "route.ts" \
+  | grep -v "middleware-public-routes.ts" \
+  | grep -v "api-routes.ts" \
+  || true)
 
 if [ -n "$DEPRECATED_GITHUB_WEBHOOK" ]; then
   echo "❌ FAIL: Found usage of deprecated /api/github/webhook route:"

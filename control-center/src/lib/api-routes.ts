@@ -259,7 +259,9 @@ export async function apiFetch<T = unknown>(
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.statusText}`);
+    throw new Error(
+      `API request to ${route} failed: ${response.status} ${response.statusText || 'Unknown error'}`
+    );
   }
 
   return response.json();
