@@ -5,7 +5,7 @@
  */
 
 import { Octokit } from 'octokit';
-import { getGitHubInstallationToken } from '../github-app-auth';
+import { getGitHubInstallationToken, GitHubAppConfigError } from '../github-app-auth';
 
 export interface FetchFileOptions {
   owner: string;
@@ -19,6 +19,7 @@ export interface FetchFileResult {
   content?: string;
   error?: string;
   sha?: string;
+  statusCode?: number;
 }
 
 /**
@@ -68,10 +69,19 @@ export async function fetchGitHubFile(
       timestamp: new Date().toISOString(),
     });
 
+    if (error instanceof GitHubAppConfigError) {
+      return {
+        success: false,
+        statusCode: 500,
+        error: error.message,
+      };
+    }
+
     // Handle specific error cases
     if (error.status === 404) {
       return {
         success: false,
+        statusCode: 404,
         error: `File not found: ${options.path}${options.ref ? ` (ref: ${options.ref})` : ''}`,
       };
     }
@@ -79,12 +89,22 @@ export async function fetchGitHubFile(
     if (error.status === 403) {
       return {
         success: false,
+        statusCode: 403,
         error: 'GitHub API access forbidden. Check GitHub App permissions.',
+      };
+    }
+
+    if (typeof error?.status === 'number') {
+      return {
+        success: false,
+        statusCode: error.status,
+        error: error instanceof Error ? error.message : 'Failed to fetch file from GitHub',
       };
     }
 
     return {
       success: false,
+      statusCode: 500,
       error: error instanceof Error ? error.message : 'Failed to fetch file from GitHub',
     };
   }

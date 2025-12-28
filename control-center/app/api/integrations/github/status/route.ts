@@ -1,86 +1,132 @@
-﻿import { NextResponse } from "next/server";
-import crypto from "node:crypto";
+﻿import { NextResponse } from 'next/server';
+import { createGitHubAppJwt, GitHubAppConfigError } from '@/lib/github-app-auth';
 
-const GH_API = "https://api.github.com";
-const API_VERSION = "2022-11-28";
+const GH_API = 'https://api.github.com';
+const API_VERSION = '2022-11-28';
 
-function b64url(buf: Buffer) {
-  return buf.toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-
-function appJwt(appId: string, privateKeyPem: string) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = b64url(Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })));
-  const payload = b64url(Buffer.from(JSON.stringify({ iss: appId, iat: now - 30, exp: now + 9 * 60 })));
-  const unsigned = `${header}.${payload}`;
-
-  const sign = crypto.createSign("RSA-SHA256");
-  sign.update(unsigned);
-  sign.end();
-  const sig = sign.sign(privateKeyPem);
-  return `${unsigned}.${b64url(sig)}`;
+function getEnvFirst(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim()) return value;
+  }
+  return undefined;
 }
 
 export async function GET() {
-  const appId = process.env.GH_APP_ID;
-  const key   = process.env.GH_APP_PRIVATE_KEY_PEM;
-  const owner = process.env.GH_OWNER;
-  const repo  = process.env.GH_REPO;
+  const owner = getEnvFirst(['GITHUB_OWNER', 'GH_OWNER']);
+  const repo = getEnvFirst(['GITHUB_REPO', 'GH_REPO']);
 
-  if (!appId || !key || !owner || !repo) {
-    return NextResponse.json({ status: "RED", reason: "missing_env" });
+  if (!owner || !repo) {
+    return NextResponse.json(
+      {
+        ok: false,
+        errorCode: 'MISSING_ENV',
+        details: {
+          missing: ['owner', 'repo'],
+          expectedEnv: {
+            owner: ['GITHUB_OWNER', 'GH_OWNER'],
+            repo: ['GITHUB_REPO', 'GH_REPO'],
+          },
+        },
+      },
+      { status: 200 }
+    );
   }
 
   try {
-    const jwt = appJwt(appId, key);
+    const { jwt, iat, exp, iss } = await createGitHubAppJwt();
 
-    // 1) installation id for this repo
-    const instRes = await fetch(`${GH_API}/repos/${owner}/${repo}/installation`, {
+    // READ-ONLY proof calls only (no token creation):
+    // A) Validate the app JWT works by calling GET /app
+    const appRes = await fetch(`${GH_API}/app`, {
+      method: 'GET',
       headers: {
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "AFU-9",
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': API_VERSION,
+        'User-Agent': 'AFU-9',
         Authorization: `Bearer ${jwt}`,
       },
-      cache: "no-store",
+      cache: 'no-store',
     });
-    if (!instRes.ok) return NextResponse.json({ status: "RED", reason: `installation_${instRes.status}` });
 
-    const inst = await instRes.json();
+    if (!appRes.ok) {
+      const text = await appRes.text().catch(() => '');
+      return NextResponse.json(
+        {
+          ok: false,
+          errorCode: 'GITHUB_APP_AUTH_FAILED',
+          details: {
+            endpoint: '/app',
+            status: appRes.status,
+            body: text.slice(0, 2000),
+          },
+        },
+        { status: 200 }
+      );
+    }
 
-    // 2) installation token
-    const tokRes = await fetch(`${GH_API}/app/installations/${inst.id}/access_tokens`, {
-      method: "POST",
+    // B) Validate the app is installed for the repo (GET /repos/{owner}/{repo}/installation)
+    const instRes = await fetch(`${GH_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/installation`, {
+      method: 'GET',
       headers: {
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "AFU-9",
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': API_VERSION,
+        'User-Agent': 'AFU-9',
         Authorization: `Bearer ${jwt}`,
-        "Content-Type": "application/json",
       },
-      body: "{}",
-      cache: "no-store",
-    });
-    if (!tokRes.ok) return NextResponse.json({ status: "RED", reason: `token_${tokRes.status}` });
-
-    const tok = await tokRes.json();
-
-    // 3) proof call: can we read the repo?
-    const repoRes = await fetch(`${GH_API}/repos/${owner}/${repo}`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "AFU-9",
-        Authorization: `token ${tok.token}`,
-      },
-      cache: "no-store",
+      cache: 'no-store',
     });
 
-    if (!repoRes.ok) return NextResponse.json({ status: "RED", reason: `repo_${repoRes.status}` });
+    if (!instRes.ok) {
+      const text = await instRes.text().catch(() => '');
+      return NextResponse.json(
+        {
+          ok: false,
+          errorCode: instRes.status === 404 ? 'GITHUB_APP_NOT_INSTALLED' : 'GITHUB_INSTALLATION_LOOKUP_FAILED',
+          details: {
+            endpoint: '/repos/{owner}/{repo}/installation',
+            owner,
+            repo,
+            status: instRes.status,
+            body: text.slice(0, 2000),
+          },
+        },
+        { status: 200 }
+      );
+    }
 
-    const r = await repoRes.json();
-    return NextResponse.json({ status: "GREEN", repo: r.full_name });
+    const inst = (await instRes.json()) as { id?: number; app_id?: number };
+
+    return NextResponse.json(
+      {
+        ok: true,
+        owner,
+        repo,
+        installationId: inst.id ?? null,
+        appId: inst.app_id ?? null,
+        jwt: { iss, iat, exp },
+      },
+      { status: 200 }
+    );
   } catch (e: any) {
-    return NextResponse.json({ status: "RED", reason: "exception", error: e?.message ?? String(e) });
+    if (e instanceof GitHubAppConfigError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          errorCode: 'GITHUB_APP_CONFIG',
+          details: { message: e.message },
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        errorCode: 'UNEXPECTED_ERROR',
+        details: { message: e?.message ?? String(e) },
+      },
+      { status: 200 }
+    );
   }
 }

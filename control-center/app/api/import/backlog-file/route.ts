@@ -174,10 +174,11 @@ export async function POST(request: NextRequest) {
           completed_at: new Date().toISOString(),
         });
 
+        const statusCode = fileResult.statusCode ?? 500;
         return errorResponse(fileResult.error || 'Failed to fetch file from GitHub', {
-          status: 404,
+          status: statusCode,
           requestId,
-          details: { runId },
+          details: JSON.stringify({ runId, statusCode }),
         });
       }
 

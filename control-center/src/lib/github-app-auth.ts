@@ -1,10 +1,25 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { createPrivateKey } from 'crypto';
 
 export type GitHubAppSecret = {
   appId: string | number;
   webhookSecret: string;
   privateKeyPem: string;
 };
+
+export class GitHubAppConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GitHubAppConfigError';
+  }
+}
+
+export class GitHubAppKeyFormatError extends GitHubAppConfigError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GitHubAppKeyFormatError';
+  }
+}
 
 type GitHubAppConfig = {
   appId: string;
@@ -41,17 +56,52 @@ function getAwsRegion(): string {
 }
 
 function getSecretId(): string {
-  return process.env.GITHUB_APP_SECRET_ID || 'afu9/github/app';
+  return (
+    process.env.GITHUB_APP_SECRET_ID ||
+    process.env.GH_APP_SECRET_ID ||
+    'afu9/github/app'
+  );
+}
+
+function getEnvFirst(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim()) return value;
+  }
+  return undefined;
 }
 
 function normalizePrivateKeyPem(maybePem: string): string {
-  return maybePem.includes('\\n') ? maybePem.replace(/\\n/g, '\n') : maybePem;
+  const withRealNewlines = maybePem.includes('\\n') ? maybePem.replace(/\\n/g, '\n') : maybePem;
+  const normalizedNewlines = withRealNewlines.replace(/\r\n/g, '\n').trim() + '\n';
+
+  if (normalizedNewlines.includes('-----BEGIN PRIVATE KEY-----')) {
+    return normalizedNewlines;
+  }
+
+  if (normalizedNewlines.includes('-----BEGIN RSA PRIVATE KEY-----')) {
+    try {
+      const keyObject = createPrivateKey(normalizedNewlines);
+      const pkcs8 = keyObject.export({ format: 'pem', type: 'pkcs8' });
+      return String(pkcs8).replace(/\r\n/g, '\n').trim() + '\n';
+    } catch (error) {
+      throw new GitHubAppKeyFormatError(
+        `GitHub App private key is not a valid RSA key (failed to convert PKCS#1 to PKCS#8): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  throw new GitHubAppKeyFormatError(
+    'GitHub App private key must be a PEM string (PKCS#8: "BEGIN PRIVATE KEY" or PKCS#1: "BEGIN RSA PRIVATE KEY")'
+  );
 }
 
 function toNumber(value: string | number, fieldName: string): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) {
-    throw new Error(`Invalid ${fieldName}`);
+    throw new GitHubAppConfigError(`Invalid ${fieldName}`);
   }
   return n;
 }
@@ -59,7 +109,7 @@ function toNumber(value: string | number, fieldName: string): number {
 function toNonEmptyString(value: string | number, fieldName: string): string {
   const s = String(value).trim();
   if (!s) {
-    throw new Error(`Missing ${fieldName}`);
+    throw new GitHubAppConfigError(`Missing ${fieldName}`);
   }
   return s;
 }
@@ -71,16 +121,16 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
     const region = getAwsRegion();
     const secretId = getSecretId();
 
-    // Local/dev override for easier testing
-    if (
-      process.env.GITHUB_APP_ID &&
-      process.env.GITHUB_APP_WEBHOOK_SECRET &&
-      process.env.GITHUB_APP_PRIVATE_KEY_PEM
-    ) {
+    // Local/dev override for easier testing (+ legacy env fallbacks)
+    const envAppId = getEnvFirst(['GITHUB_APP_ID', 'GH_APP_ID']);
+    const envWebhookSecret = getEnvFirst(['GITHUB_APP_WEBHOOK_SECRET', 'GH_APP_WEBHOOK_SECRET']);
+    const envPrivateKeyPem = getEnvFirst(['GITHUB_APP_PRIVATE_KEY_PEM', 'GH_APP_PRIVATE_KEY_PEM']);
+
+    if (envAppId && envWebhookSecret && envPrivateKeyPem) {
       return {
-        appId: toNonEmptyString(process.env.GITHUB_APP_ID, 'GITHUB_APP_ID'),
-        webhookSecret: toNonEmptyString(process.env.GITHUB_APP_WEBHOOK_SECRET, 'GITHUB_APP_WEBHOOK_SECRET'),
-        privateKeyPem: normalizePrivateKeyPem(process.env.GITHUB_APP_PRIVATE_KEY_PEM),
+        appId: toNonEmptyString(envAppId, 'GITHUB_APP_ID'),
+        webhookSecret: toNonEmptyString(envWebhookSecret, 'GITHUB_APP_WEBHOOK_SECRET'),
+        privateKeyPem: normalizePrivateKeyPem(envPrivateKeyPem),
       };
     }
 
@@ -92,14 +142,14 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
     );
 
     if (!response.SecretString) {
-      throw new Error('GitHub App secret is missing SecretString');
+      throw new GitHubAppConfigError('GitHub App secret is missing SecretString');
     }
 
     let parsed: GitHubAppSecret;
     try {
       parsed = JSON.parse(response.SecretString) as GitHubAppSecret;
     } catch {
-      throw new Error('GitHub App secret is not valid JSON');
+      throw new GitHubAppConfigError('GitHub App secret is not valid JSON');
     }
 
     return {
@@ -129,7 +179,16 @@ export async function createGitHubAppJwt(input?: {
   const exp = now + 9 * 60;
   const iss = config.appId;
 
-  const pkcs8 = await importPKCS8(config.privateKeyPem, 'RS256');
+  let pkcs8: unknown;
+  try {
+    pkcs8 = await importPKCS8(config.privateKeyPem, 'RS256');
+  } catch (error) {
+    throw new GitHubAppKeyFormatError(
+      `GitHub App private key could not be parsed as PKCS#8 for jose/importPKCS8: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 
   const jwt = await new SignJWT({ iat, exp, iss })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
