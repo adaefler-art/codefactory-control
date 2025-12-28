@@ -112,11 +112,13 @@ Includes:
 # 1. Get the analysis
 node scripts/analyze-workflow-failure.js --latest-failure --verbose
 
+DOCS_VERSION=$(cat docs/CURRENT_VERSION)
+
 # 2. Review the report
-cat workflow-failure-report.md
+cat "docs/$DOCS_VERSION/generated/workflow-failure-report.md"
 
 # 3. Check recommendations
-cat workflow-failure-analysis.json | jq '.recommendations'
+cat "docs/$DOCS_VERSION/generated/workflow-failure-analysis.json" | jq '.recommendations'
 
 # 4. Use AI for deeper analysis
 cat ai-debug-prompt.txt | pbcopy  # macOS
@@ -185,8 +187,8 @@ Found latest failed run: 1234567890
    ...
 
 ✅ Analysis saved to:
-   - workflow-failure-analysis.json
-   - workflow-failure-report.md
+  - docs/v06/generated/workflow-failure-analysis.json
+  - docs/v06/generated/workflow-failure-report.md
 ```
 
 ### GitHub Issue Created
@@ -204,8 +206,8 @@ Body includes:
 | File | Description | Use Case |
 |------|-------------|----------|
 | `debug-info.json` | Raw workflow data | Machine processing, scripting |
-| `workflow-failure-analysis.json` | Structured analysis | Programmatic access, trending |
-| `workflow-failure-report.md` | Human-readable report | Reading, sharing, documentation |
+| `docs/v06/generated/workflow-failure-analysis.json` | Structured analysis | Programmatic access, trending |
+| `docs/v06/generated/workflow-failure-report.md` | Human-readable report | Reading, sharing, documentation |
 | `ai-debug-prompt.txt` | AI assistant prompt | Copy-paste to AI tools |
 | `ecs-services.json` | ECS diagnostics | AWS debugging |
 | `ecs-stopped-tasks.json` | Task failures | Container debugging |
@@ -221,10 +223,8 @@ on:
   workflow_run:
     workflows: ["Deploy AFU-9 to ECS"]  # Monitored workflow
     types:
-      - completed  # Trigger on completion (check for failure in job)
+      - completed
 ```
-
-### Issue Labels
 
 Customize in the workflow:
 

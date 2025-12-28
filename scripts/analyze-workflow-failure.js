@@ -26,6 +26,9 @@
 
 const https = require('https');
 const fs = require('fs');
+const path = require('path');
+
+const { getDocsOutputDir } = require('./docs/get-docs-output-dir');
 
 // Configuration
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -328,14 +331,21 @@ async function main() {
     // Generate report
     const report = generateReport(analysis);
     
-    // Save analysis to files
-    fs.writeFileSync('workflow-failure-analysis.json', JSON.stringify(analysis, null, 2));
-    fs.writeFileSync('workflow-failure-report.md', report);
+    // Save analysis to versioned docs output dir
+    const repoRoot = path.resolve(__dirname, '..');
+    const outputDir = getDocsOutputDir(repoRoot);
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const analysisPath = path.join(outputDir, 'workflow-failure-analysis.json');
+    const reportPath = path.join(outputDir, 'workflow-failure-report.md');
+
+    fs.writeFileSync(analysisPath, JSON.stringify(analysis, null, 2));
+    fs.writeFileSync(reportPath, report);
     
     console.log('\n' + report);
     console.log('\n✅ Analysis saved to:');
-    console.log('   - workflow-failure-analysis.json');
-    console.log('   - workflow-failure-report.md');
+    console.log(`   - ${path.relative(repoRoot, analysisPath)}`);
+    console.log(`   - ${path.relative(repoRoot, reportPath)}`);
     
     // Create issue if requested
     if (createIssue) {

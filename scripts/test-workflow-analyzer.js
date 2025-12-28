@@ -6,6 +6,9 @@
  */
 
 const fs = require('fs');
+const path = require('path');
+
+const { getDocsOutputDir } = require('./docs/get-docs-output-dir');
 
 // Import analysis functions from the main script
 const analyzer = require('./analyze-workflow-failure.js');
@@ -57,8 +60,15 @@ console.log('2. Generating report...');
 const report = analyzer.generateReport(analysis);
 
 console.log('3. Saving test outputs...');
-fs.writeFileSync('test-analysis.json', JSON.stringify(analysis, null, 2));
-fs.writeFileSync('test-report.md', report);
+const repoRoot = path.resolve(__dirname, '..');
+const outputDir = getDocsOutputDir(repoRoot);
+fs.mkdirSync(outputDir, { recursive: true });
+
+const analysisPath = path.join(outputDir, 'test-analysis.json');
+const reportPath = path.join(outputDir, 'test-report.md');
+
+fs.writeFileSync(analysisPath, JSON.stringify(analysis, null, 2));
+fs.writeFileSync(reportPath, report);
 
 console.log('\n✅ Test completed successfully!\n');
 console.log('Analysis Summary:');
@@ -74,8 +84,8 @@ if (analysis.error_patterns.length > 0) {
 }
 
 console.log('\nGenerated Files:');
-console.log('  - test-analysis.json');
-console.log('  - test-report.md');
+console.log(`  - ${path.relative(repoRoot, analysisPath)}`);
+console.log(`  - ${path.relative(repoRoot, reportPath)}`);
 
 console.log('\n📄 Report Preview:\n');
 console.log(report);

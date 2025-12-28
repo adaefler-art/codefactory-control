@@ -59,8 +59,10 @@ export GITHUB_TOKEN="ghp_your_personal_access_token"
 # Analyze the latest failed deployment
 node scripts/analyze-workflow-failure.js --latest-failure --verbose
 
+DOCS_VERSION=$(cat docs/CURRENT_VERSION)
+
 # Review the generated report
-cat workflow-failure-report.md
+cat "docs/$DOCS_VERSION/generated/workflow-failure-report.md"
 
 # Copy AI prompt for detailed analysis
 cat ai-debug-prompt.txt | pbcopy  # macOS
@@ -284,7 +286,8 @@ jobs:
       - name: Apply common fixes
         run: |
           # Check error pattern and apply appropriate fix
-          ERROR_PATTERN=$(jq -r '.error_patterns[0].category' workflow-failure-analysis.json)
+          DOCS_VERSION=$(cat docs/CURRENT_VERSION)
+          ERROR_PATTERN=$(jq -r '.error_patterns[0].category' "docs/$DOCS_VERSION/generated/workflow-failure-analysis.json")
           
           case "$ERROR_PATTERN" in
             "Database Migration")

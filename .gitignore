@@ -4,6 +4,7 @@
 !jest.config.js
 !control-center/jest.setup.js
 !scripts/*.js
+!scripts/**/*.js
 !control-center/prebuild.js
 *.d.ts
 node_modules/
