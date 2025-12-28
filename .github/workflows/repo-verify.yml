@@ -49,19 +49,43 @@ jobs:
         id: repo_verify
         shell: bash
         run: |
+          set -o pipefail
           npm run repo:verify 2>&1 | tee verification_output.txt
-          EXIT_CODE=${PIPESTATUS[0]}
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          exit $EXIT_CODE
+          REPO_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$REPO_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Continue to routes verification even if repo:verify fails
+          exit 0
 
       - name: Run API Routes Verification
         id: routes_verify
         shell: bash
         run: |
+          set -o pipefail
           npm run routes:verify 2>&1 | tee routes_verification_output.txt
-          EXIT_CODE=${PIPESTATUS[0]}
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          exit $EXIT_CODE
+          ROUTES_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$ROUTES_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Continue to summary even if routes:verify fails
+          exit 0
+      
+      - name: Check Combined Results
+        shell: bash
+        run: |
+          REPO_EXIT=${{ steps.repo_verify.outputs.exit_code }}
+          ROUTES_EXIT=${{ steps.routes_verify.outputs.exit_code }}
+          
+          echo "Repository verification exit code: $REPO_EXIT"
+          echo "Routes verification exit code: $ROUTES_EXIT"
+          
+          # Fail if either check failed
+          if [ "$REPO_EXIT" != "0" ] || [ "$ROUTES_EXIT" != "0" ]; then
+            echo "One or more verifications failed"
+            exit 1
+          fi
+          
+          echo "All verifications passed"
+          exit 0
 
       - name: Verification Summary
         if: always()

@@ -10,14 +10,19 @@
  * Part of ISSUE 3 — API Route Canonicalization
  * 
  * Usage:
- *   npm run routes:verify
- *   node scripts/verify-routes.js (after compilation)
- *   pwsh -Command "npm run routes:verify"  # Windows/PowerShell
- *   ROUTES_STRICT_MODE=true npm run routes:verify  # Fail on hardcoded routes
+ *   npm run routes:verify                          # Baseline mode (default)
+ *   npm run routes:verify -- --write-baseline      # Generate/update baseline
+ *   ROUTES_STRICT_MODE=true npm run routes:verify  # Strict mode (no grandfathering)
+ *   pwsh -Command "npm run routes:verify"          # Windows/PowerShell
+ * 
+ * Modes:
+ *   Baseline Mode (default): Fails on NEW violations not in baseline
+ *   Strict Mode: Fails on ALL hardcoded routes (ROUTES_STRICT_MODE=true)
+ *   Write Baseline: Generates baseline from current findings (--write-baseline)
  * 
  * Environment Variables:
- *   ROUTES_STRICT_MODE - If set to 'true', fail on hardcoded /api/ strings
- *                        Default: false (warnings only for existing code)
+ *   ROUTES_STRICT_MODE - If set to 'true', fail on all hardcoded /api/ strings
+ *                        Default: false (baseline enforcement)
  * 
  * Exit Codes:
  *   0 - All checks passed
@@ -26,6 +31,10 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const WRITE_BASELINE = args.includes('--write-baseline');
 
 // Check if strict mode is enabled
 const STRICT_MODE = process.env.ROUTES_STRICT_MODE === 'true';
@@ -39,6 +48,7 @@ const CONTROL_CENTER_DIR = path.join(REPO_ROOT, 'control-center');
 const API_DIR = path.join(CONTROL_CENTER_DIR, 'app', 'api');
 const SRC_DIR = path.join(CONTROL_CENTER_DIR, 'src');
 const APP_DIR = path.join(CONTROL_CENTER_DIR, 'app');
+const BASELINE_FILE = path.join(REPO_ROOT, 'docs', 'route-baselines', 'hardcoded_api_routes_baseline.txt');
 
 // Files that are allowed to have hardcoded /api/ strings
 const ALLOWED_HARDCODED_FILES = [
@@ -78,6 +88,36 @@ const CRITICAL_ROUTES = [
 // Helper Functions
 // ============================================================================
 
+function loadBaseline() {
+  if (!fs.existsSync(BASELINE_FILE)) {
+    return new Set();
+  }
+  
+  const content = fs.readFileSync(BASELINE_FILE, 'utf-8');
+  const lines = content.split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'));
+  
+  return new Set(lines);
+}
+
+function writeBaseline(findings) {
+  const header = `# Baseline for hardcoded API route findings
+# This file tracks known hardcoded /api/ strings in the codebase
+# Format: file:line|endpoint
+# 
+# Generated with: npm run routes:verify -- --write-baseline
+# 
+# New violations (not in this baseline) will cause CI to fail.
+# To update: npm run routes:verify -- --write-baseline
+`;
+
+  const findingLines = findings.map(f => `${f.filePath}:${f.lineNumber}|${f.apiPath}`);
+  const content = header + '\n' + findingLines.join('\n') + '\n';
+  
+  fs.writeFileSync(BASELINE_FILE, content, 'utf-8');
+}
+
 function isAllowedFile(filePath) {
   return ALLOWED_HARDCODED_FILES.some(pattern => filePath.includes(pattern));
 }
@@ -101,15 +141,18 @@ function extractApiPath(line) {
 }
 
 // ============================================================================
-// Check 1: No Hardcoded /api/ Strings
+// Check 1: No Hardcoded /api/ Strings (with Baseline Enforcement)
 // ============================================================================
 
 function checkNoHardcodedApiStrings() {
   console.log('🔍 Checking for hardcoded /api/ strings...');
-  if (!STRICT_MODE) {
-    console.log('   (Warning mode - existing code grandfathered)\n');
-  } else {
+  
+  if (WRITE_BASELINE) {
+    console.log('   (Baseline write mode - will generate baseline file)\n');
+  } else if (STRICT_MODE) {
     console.log('   (Strict mode - all violations will fail)\n');
+  } else {
+    console.log('   (Baseline mode - new violations will fail)\n');
   }
 
   const errors = [];
@@ -169,28 +212,94 @@ function checkNoHardcodedApiStrings() {
     scanDirectory(SRC_DIR);
   }
 
-  if (violations.length > 0) {
-    if (STRICT_MODE) {
-      errors.push(`Found ${violations.length} hardcoded /api/ string(s):`);
-      violations.forEach(v => {
+  // Write baseline mode
+  if (WRITE_BASELINE) {
+    writeBaseline(violations);
+    console.log(`  ✅ Baseline written: ${violations.length} findings captured\n`);
+    console.log(`     Baseline file: ${path.relative(REPO_ROOT, BASELINE_FILE)}\n`);
+    return { passed: true, errors, warnings };
+  }
+
+  // Load baseline
+  const baseline = loadBaseline();
+  const baselineKeys = new Set(
+    violations.map(v => `${v.filePath}:${v.lineNumber}|${v.apiPath}`)
+  );
+  
+  // Find new violations (not in baseline)
+  const newViolations = violations.filter(v => {
+    const key = `${v.filePath}:${v.lineNumber}|${v.apiPath}`;
+    return !baseline.has(key);
+  });
+  
+  // Find removed violations (in baseline but not in current findings)
+  const removedViolations = [];
+  baseline.forEach(key => {
+    if (!baselineKeys.has(key)) {
+      removedViolations.push(key);
+    }
+  });
+
+  // Report results
+  if (STRICT_MODE) {
+    // Strict mode: fail on ANY violations
+    if (violations.length > 0) {
+      errors.push(`Found ${violations.length} hardcoded /api/ string(s) (STRICT MODE):`);
+      violations.slice(0, 10).forEach(v => {
         errors.push(`  ❌ ${v.filePath}:${v.lineNumber}`);
         errors.push(`     ${v.line}`);
         errors.push(`     Use: API_ROUTES constant instead of "${v.apiPath}"`);
         errors.push('');
       });
+      if (violations.length > 10) {
+        errors.push(`  ... and ${violations.length - 10} more violations`);
+      }
       errors.push('Migration: Import API_ROUTES from @/lib/api-routes');
       errors.push('Example: fetch(API_ROUTES.issues.list) instead of fetch("/api/issues")');
     } else {
-      warnings.push(`⚠️  Found ${violations.length} hardcoded /api/ string(s) (grandfathered)`);
-      warnings.push('   New code should use API_ROUTES constants');
-      warnings.push('   Set ROUTES_STRICT_MODE=true to enforce this check');
-      console.log(`  ⚠️  Found ${violations.length} hardcoded routes (allowed for now)\n`);
+      console.log('  ✅ PASS: No hardcoded /api/ strings found\n');
     }
   } else {
-    console.log('  ✅ PASS: No hardcoded /api/ strings found\n');
+    // Baseline mode: fail only on NEW violations
+    if (newViolations.length > 0) {
+      errors.push(`Found ${newViolations.length} NEW hardcoded /api/ string(s) (not in baseline):`);
+      newViolations.forEach(v => {
+        errors.push(`  ❌ ${v.filePath}:${v.lineNumber}`);
+        errors.push(`     ${v.line}`);
+        errors.push(`     Use: API_ROUTES constant instead of "${v.apiPath}"`);
+        errors.push('');
+      });
+      errors.push('');
+      errors.push('To update baseline with current findings:');
+      errors.push('  npm run routes:verify -- --write-baseline');
+      errors.push('');
+      errors.push('Migration: Import API_ROUTES from @/lib/api-routes');
+      errors.push('Example: fetch(API_ROUTES.issues.list) instead of fetch("/api/issues")');
+    } else if (violations.length > 0) {
+      console.log(`  ✅ PASS: ${violations.length} hardcoded routes (all in baseline)\n`);
+    } else {
+      console.log('  ✅ PASS: No hardcoded /api/ strings found\n');
+    }
+    
+    // Informational: report removed violations
+    if (removedViolations.length > 0) {
+      console.log(`  ℹ️  ${removedViolations.length} violation(s) removed since baseline:\n`);
+      removedViolations.slice(0, 5).forEach(key => {
+        console.log(`     ${key}`);
+      });
+      if (removedViolations.length > 5) {
+        console.log(`     ... and ${removedViolations.length - 5} more`);
+      }
+      console.log('');
+      console.log('  Consider updating baseline: npm run routes:verify -- --write-baseline\n');
+    }
   }
 
-  return { passed: STRICT_MODE ? violations.length === 0 : true, errors, warnings };
+  return { 
+    passed: STRICT_MODE ? violations.length === 0 : newViolations.length === 0, 
+    errors, 
+    warnings 
+  };
 }
 
 // ============================================================================
