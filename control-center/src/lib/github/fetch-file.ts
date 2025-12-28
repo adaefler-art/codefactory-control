@@ -5,7 +5,7 @@
  */
 
 import { Octokit } from 'octokit';
-import { getGitHubAppOctokit } from '../github-app-auth';
+import { getGitHubInstallationToken } from '../github-app-auth';
 
 export interface FetchFileOptions {
   owner: string;
@@ -31,7 +31,9 @@ export async function fetchGitHubFile(
   options: FetchFileOptions
 ): Promise<FetchFileResult> {
   try {
-    const octokit = await getGitHubAppOctokit();
+    // Get installation token from GitHub App
+    const { token } = await getGitHubInstallationToken();
+    const octokit = new Octokit({ auth: token });
     
     const response = await octokit.rest.repos.getContent({
       owner: options.owner,
