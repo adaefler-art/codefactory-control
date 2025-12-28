@@ -35,11 +35,16 @@ export default function ForgotPasswordPage() {
           "x-correlation-id": correlationId,
         },
         body: JSON.stringify({ username }),
+        cache: "no-store",
       });
 
       const data = await res.json();
 
       if (!res.ok) {
+        // Handle 501 (Not Implemented) separately
+        if (res.status === 501) {
+          throw new Error("Passwort-Reset ist in dieser Umgebung nicht verfügbar. Bitte kontaktiere den Administrator.");
+        }
         throw new Error(data.error || "Request failed");
       }
 

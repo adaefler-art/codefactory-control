@@ -4,11 +4,13 @@ import {
   ForgotPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import crypto from 'crypto';
+import { parseBooleanEnv } from '../../../../lib/env-utils';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
-const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
+const AFU9_DEBUG_AUTH = parseBooleanEnv(process.env.AFU9_DEBUG_AUTH);
+const DISABLE_PASSWORD_RESET = parseBooleanEnv(process.env.DISABLE_PASSWORD_RESET);
 
 function getCorrelationId(request: NextRequest): string {
   return (
@@ -72,6 +74,29 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { username } = body;
 
+    // Check if password reset is disabled
+    if (DISABLE_PASSWORD_RESET) {
+      console.log(JSON.stringify({
+        event: 'forgot_password',
+        result: 'disabled',
+        errorCode: 'PasswordResetDisabled',
+        correlationId,
+      }));
+
+      const response = NextResponse.json(
+        {
+          error: 'Password reset is not available in this environment',
+          requestId: correlationId,
+          timestamp: new Date().toISOString(),
+        },
+        { status: 501 }
+      );
+      response.headers.set('x-afu9-correlation-id', correlationId);
+      response.headers.set('cache-control', 'no-store, max-age=0');
+      response.headers.set('pragma', 'no-cache');
+      return response;
+    }
+
     // Validate input
     if (!username) {
       const response = NextResponse.json(
@@ -83,6 +108,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
       response.headers.set('x-afu9-correlation-id', correlationId);
+      response.headers.set('cache-control', 'no-store, max-age=0');
+      response.headers.set('pragma', 'no-cache');
       return response;
     }
 
@@ -107,6 +134,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
       response.headers.set('x-afu9-correlation-id', correlationId);
+      response.headers.set('cache-control', 'no-store, max-age=0');
+      response.headers.set('pragma', 'no-cache');
       return response;
     }
 
@@ -133,6 +162,8 @@ export async function POST(request: NextRequest) {
       message: 'If the email address exists, a password reset code has been sent.',
     });
     response.headers.set('x-afu9-correlation-id', correlationId);
+    response.headers.set('cache-control', 'no-store, max-age=0');
+    response.headers.set('pragma', 'no-cache');
     return response;
   } catch (error: unknown) {
     const errorCode = extractErrorCode(error);
@@ -158,9 +189,11 @@ export async function POST(request: NextRequest) {
       responseBody.details = `${errorCode}: ${errorMessage}`;
     }
 
-    // Non-200 on Cognito/service errors so staging failures are visible.
-    const response = NextResponse.json(responseBody, { status: 502 });
+    // Return 500 for service errors (not 502 which indicates bad gateway)
+    const response = NextResponse.json(responseBody, { status: 500 });
     response.headers.set('x-afu9-correlation-id', correlationId);
+    response.headers.set('cache-control', 'no-store, max-age=0');
+    response.headers.set('pragma', 'no-cache');
     return response;
   }
 }
