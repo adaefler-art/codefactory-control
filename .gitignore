@@ -85,3 +85,9 @@ actionlint
 
 # Generated build artifacts
 control-center/public/build-metadata.json
+
+# Local secrets / key material (DO NOT COMMIT)
+github-app-private-key.pem
+github-app-private-key.pkcs8.pem
+github-app-secret.json
+secret-updated.json
