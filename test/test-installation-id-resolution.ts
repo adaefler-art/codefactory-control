@@ -191,10 +191,11 @@ try {
   }
   
   if (!docsContent.includes('Installation ID Resolution') && !docsContent.includes('deterministically resolved')) {
-    console.error('⚠️  WARNING: Documentation may not fully explain the new resolution mechanism');
-  } else {
-    console.log('✅ Documentation updated correctly');
+    console.error('❌ FAILED: Documentation does not explain the new resolution mechanism');
+    process.exit(1);
   }
+  
+  console.log('✅ Documentation updated correctly');
 } catch (error) {
   console.error('❌ FAILED: Unable to verify documentation', error);
   process.exit(1);

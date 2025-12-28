@@ -173,7 +173,7 @@ export async function getInstallationIdForRepo(input: {
   }
 
   const json = (await res.json()) as { id?: number };
-  if (!json.id || typeof json.id !== 'number') {
+  if (json.id == null || typeof json.id !== 'number') {
     throw new Error(`Invalid installation response for ${input.owner}/${input.repo}: missing or invalid id`);
   }
 
@@ -190,6 +190,8 @@ export async function getGitHubInstallationToken(input: {
   const { jwt } = await createGitHubAppJwt({ nowSeconds: input.nowSeconds });
   
   // Lookup installation ID for this specific repository
+  // NOTE: We do NOT cache this to ensure deterministic, repo-based auth.
+  // This enforces governance rules: no hidden state, always repo-deterministic.
   const installationId = await getInstallationIdForRepo({
     owner: input.owner,
     repo: input.repo,
