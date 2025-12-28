@@ -46,11 +46,11 @@ describe('Login Route Configuration', () => {
 
     test('Should respect redirectTo query parameter', () => {
       const queryParam = 'redirectTo';
-      const expectedPath = '/features';
+      const expectedPath = '/workflows';
       
       // Simulate query param logic
       const redirectTo = expectedPath || '/dashboard';
-      expect(redirectTo).toBe('/features');
+      expect(redirectTo).toBe('/workflows');
     });
 
     test('Should redirect to AFU9_UNAUTH_REDIRECT when not authenticated', () => {

@@ -64,20 +64,6 @@ export default function Home() {
           />
 
           <FeatureCard
-            href="/new-feature"
-            title="Neues Feature erstellen"
-            description="Feature-Briefing eingeben und automatisch GitHub-Issue generieren"
-            bgColor="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
-          />
-
-          <FeatureCard
-            href="/features"
-            title="Features anzeigen"
-            description="Übersicht aller durch AFU-9 erstellten Features"
-            bgColor="bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-900/30"
-          />
-
-          <FeatureCard
             href="/ninefold"
             title="Ninefold Architecture"
             description="Übersicht der 9 Module des AFU-9 Systems"

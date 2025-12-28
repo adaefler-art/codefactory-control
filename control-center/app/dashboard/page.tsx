@@ -671,7 +671,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <Link
-                          href={`/workflow/execution/${execution.id}`}
+                          href={`/workflows/executions/${execution.id}`}
                           className="text-xs text-blue-400 hover:text-blue-300 shrink-0 ml-2"
                         >
                           View →
