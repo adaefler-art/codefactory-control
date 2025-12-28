@@ -70,6 +70,7 @@ export interface Afu9IssueInput {
   execution_started_at?: string | null;
   execution_completed_at?: string | null;
   execution_output?: Record<string, unknown> | null;
+  deleted_at?: string | null;
 }
 
 /**
@@ -96,6 +97,7 @@ export interface Afu9IssueRow {
   execution_started_at: string | null;
   execution_completed_at: string | null;
   execution_output: Record<string, unknown> | null;
+  deleted_at: string | null;
 }
 
 /**
