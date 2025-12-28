@@ -61,10 +61,7 @@ All pages that make API calls have been updated to use `safeFetch`:
    - Workflow listing and execution
    - Improved error handling for workflow operations
 
-6. **New Feature** (`app/new-feature/page.tsx`)
-   - Feature creation with better error feedback
-
-7. **Login** (`app/login/page.tsx`)
+6. **Login** (`app/login/page.tsx`)
    - Authentication errors now show meaningful messages
 
 ### Test Page

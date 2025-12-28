@@ -1,13 +1,14 @@
-# AFU-9 Control Center v0.1
+# AFU-9 Control Center
 
 Web-Interface für das AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture) System.
 
 ## Features
 
-- **Feature-Erstellung**: Eingabe von Feature-Briefings über ein Web-Formular
-- **Automatische Spezifikation**: LLM-basierte Generierung technischer Spezifikationen
-- **GitHub-Integration**: Automatische Erstellung von Issues im Zielrepository
-- **Status-Tracking**: Übersicht aller erstellten Features
+- **Workflow Management**: Workflow-Definitionen verwalten und Workflows auslösen
+- **Agent Monitoring**: LLM-basierte Agent Runs und Token-Statistiken überwachen
+- **Repository Management**: Verbundene GitHub-Repositories verwalten
+- **Dashboard**: Übersicht über Workflows, Agents, Repositories und System-Status
+- **GitHub-Integration**: Webhook-basierte Integration mit GitHub
 
 ## Setup
 
@@ -58,20 +59,15 @@ Die Anwendung läuft dann auf [http://localhost:3000](http://localhost:3000)
 
 ## Verwendung
 
-### Neues Feature erstellen
+### Workflows verwalten
 
-1. Navigiere zu `/new-feature`
-2. Gib einen Feature-Titel ein
-3. Schreibe ein detailliertes Briefing in das Textfeld
-4. Klicke auf "Feature erstellen"
-5. Das System generiert automatisch:
-   - Eine technische Spezifikation via LLM
-   - Ein GitHub-Issue im konfigurierten Repository
-   - Gibt die Issue-URL zurück
+1. Navigiere zu `/workflows`
+2. Zeige alle verfügbaren Workflow-Definitionen an
+3. Führe Workflows manuell aus oder überwache laufende Executions
 
-### Features anzeigen
+### Dashboard
 
-Navigiere zu `/features` um eine Liste aller durch AFU-9 erstellten Features zu sehen (v0.1: Platzhalter).
+Navigiere zum Dashboard um eine Übersicht über Workflows, Agents, Repositories und System-Status zu sehen.
 
 ## Architektur
 
@@ -87,36 +83,12 @@ Navigiere zu `/features` um eine Liste aller durch AFU-9 erstellten Features zu 
 ### Routen
 
 - `/` - Startseite mit Navigation
-- `/new-feature` - Formular für neue Features
-- `/features` - Liste aller Features (Platzhalter)
-- `/api/features` (POST) - API-Endpoint für Feature-Erstellung
-
-### API Route: `/api/features`
-
-**POST** Request Body:
-```json
-{
-  "title": "Feature-Titel",
-  "briefing": "Detailliertes Feature-Briefing..."
-}
-```
-
-**Response** (Success):
-```json
-{
-  "success": true,
-  "url": "https://github.com/org/repo/issues/123",
-  "issueNumber": 123,
-  "specification": "Generierte Spezifikation..."
-}
-```
-
-**Response** (Error):
-```json
-{
-  "error": "Fehlermeldung"
-}
-```
+- `/dashboard` - Dashboard mit System-Übersicht
+- `/workflows` - Workflow-Management
+- `/workflows/[id]` - Workflow-Details
+- `/workflows/executions/[id]` - Execution-Details
+- `/agents` - Agent Monitoring
+- `/repositories` - Repository Management
 
 ## Sicherheit
 

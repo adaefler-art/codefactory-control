@@ -214,7 +214,7 @@ export default function WebhooksPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         {event.workflow_execution_id ? (
                           <Link
-                            href={`/workflow/execution/${event.workflow_execution_id}`}
+                            href={`/workflows/executions/${event.workflow_execution_id}`}
                             className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -305,7 +305,7 @@ export default function WebhooksPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Workflow Execution</label>
                       <Link
-                        href={`/workflow/execution/${selectedEvent.workflow_execution_id}`}
+                        href={`/workflows/executions/${selectedEvent.workflow_execution_id}`}
                         className="mt-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
                       >
                         {selectedEvent.workflow_execution_id}

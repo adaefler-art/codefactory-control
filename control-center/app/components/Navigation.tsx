@@ -12,8 +12,6 @@ export default function Navigation() {
     { href: "/agents", label: "Agents" },
     { href: "/issues", label: "Issues" },
     { href: "/lawbook", label: "Lawbook" },
-    { href: "/features", label: "Features" },
-    { href: "/new-feature", label: "New Feature" },
     { href: "/ninefold", label: "Ninefold" },
     { href: "/settings", label: "Settings" },
   ];

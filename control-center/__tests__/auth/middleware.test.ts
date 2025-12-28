@@ -41,7 +41,7 @@ describe('Middleware Authentication Logic', () => {
 
   test('API routes are identified by /api/ prefix', () => {
     const apiPaths = ['/api/workflows', '/api/users', '/api/auth/logout'];
-    const uiPaths = ['/dashboard', '/features', '/settings'];
+    const uiPaths = ['/dashboard', '/workflows', '/settings'];
 
     apiPaths.forEach(path => {
       expect(path.startsWith('/api/')).toBe(true);
