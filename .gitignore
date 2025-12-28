@@ -75,6 +75,9 @@ ecs-stopped-tasks.json
 test-analysis.json
 test-report.md
 
+# Temporary log files
+tmp-log*.json
+
 # Local purge / maintenance artifacts (may contain sensitive data)
 artifacts/
 **/artifacts/
