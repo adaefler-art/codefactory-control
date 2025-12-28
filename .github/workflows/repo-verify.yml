@@ -46,10 +46,43 @@ jobs:
         id: repo_verify
         shell: bash
         run: |
+          set -o pipefail
           npm run repo:verify 2>&1 | tee verification_output.txt
-          EXIT_CODE=${PIPESTATUS[0]}
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          exit $EXIT_CODE
+          REPO_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$REPO_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Continue to routes verification even if repo:verify fails
+          exit 0
+
+      - name: Run API Routes Verification
+        id: routes_verify
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run routes:verify 2>&1 | tee routes_verification_output.txt
+          ROUTES_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$ROUTES_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          # Continue to summary even if routes:verify fails
+          exit 0
+      
+      - name: Check Combined Results
+        shell: bash
+        run: |
+          REPO_EXIT=${{ steps.repo_verify.outputs.exit_code }}
+          ROUTES_EXIT=${{ steps.routes_verify.outputs.exit_code }}
+          
+          echo "Repository verification exit code: $REPO_EXIT"
+          echo "Routes verification exit code: $ROUTES_EXIT"
+          
+          # Fail if either check failed
+          if [ "$REPO_EXIT" != "0" ] || [ "$ROUTES_EXIT" != "0" ]; then
+            echo "One or more verifications failed"
+            exit 1
+          fi
+          
+          echo "All verifications passed"
+          exit 0
 
       - name: Verification Summary
         if: always()
@@ -69,7 +102,25 @@ jobs:
           echo "- ✓ **Forbidden Paths Check:** No build artifacts (.next/, .worktrees/, standalone/) committed" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Mixed-Scope Check:** Frontend and infrastructure changes are properly separated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## 🛣️  API Route Canonicalization Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.routes_verify.outputs.exit_code }}" == "0" ]; then
+            echo "✅ **All API route checks PASSED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **API route verification FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### API Route Checks:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **No Hardcoded Routes:** All API calls use API_ROUTES constants" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **No Deprecated Routes:** No usage of deprecated route aliases" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Documentation Consistency:** Route docs match implementation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "📖 See [Repository Canon Documentation](https://github.com/${{ github.repository }}/blob/main/docs/lawbook/repo-canon.md) for details" >> $GITHUB_STEP_SUMMARY
+          echo "📖 See [API Routes Documentation](https://github.com/${{ github.repository }}/blob/main/docs/API_ROUTES.md) for API route details" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📋 Full verification output available in workflow logs" >> $GITHUB_STEP_SUMMARY
 
@@ -78,7 +129,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: repo-verification-output
-          path: verification_output.txt
+          path: |
+            verification_output.txt
+            routes_verification_output.txt
           retention-days: 7
 
   scope-review:

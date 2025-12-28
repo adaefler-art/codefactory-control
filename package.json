@@ -20,6 +20,7 @@
     "validate:diff": "ts-node scripts/validate-cdk-diff.ts",
     "security:check": "npm run validate-iam",
     "repo:verify": "ts-node scripts/repo-verify.ts",
+    "routes:verify": "node scripts/verify-routes.js",
     "ecs:diagnose": "pwsh -File scripts/ecs_diagnose.ps1",
     "smoke:epic4": "pwsh -File scripts/smoke_epic4.ps1",
     "ecs:debug": "pwsh -File scripts/ecs_debug.ps1",
