@@ -300,7 +300,8 @@ function checkForbiddenPaths(): ValidationResult {
         `Error: Build artifacts must not be committed to repository\n` +
         `\n` +
         `Remedy:\n` +
-        `  - Remove directory: rm -rf ${forbiddenName}/\n` +
+        `  - Bash:       rm -rf ${forbiddenName}/\n` +
+        `  - PowerShell: Remove-Item -Recurse -Force ${forbiddenName}\n` +
         `  - Verify .gitignore includes: ${forbiddenName}/`
       );
     }
@@ -349,6 +350,8 @@ function checkEmptyFolders(): ValidationResult {
     'coverage',
     '.husky',
     '.worktrees',
+    '.turbo',      // Turborepo cache
+    'cdk.out',     // CDK synthesis output
   ];
 
   function isDirectoryEmpty(dirPath: string): boolean {
@@ -426,8 +429,9 @@ function checkEmptyFolders(): ValidationResult {
       `Error: Empty folders should be removed to keep repository clean\n` +
       `\n` +
       `Remedy:\n` +
-      `  - Remove empty folders: rm -rf <folder>\n` +
-      `  - If folder is needed for structure, add a .gitkeep file`
+      `  - Bash:       rm -rf <folder>\n` +
+      `  - PowerShell: Remove-Item -Recurse -Force <folder>\n` +
+      `  - Or: Add .gitkeep file if folder structure is needed`
     );
 
     console.log(`   ❌ Empty Folders Check FAILED (${emptyFolders.length} empty folders)`);
@@ -454,12 +458,18 @@ function checkUnreferencedRoutes(): ValidationResult {
   const errors: string[] = [];
   const unreferencedRoutes: RouteInfo[] = [];
 
-  // Routes that are called externally (webhooks, etc.) and may not have internal references
+  // Routes that are called externally (webhooks, callbacks, health checks, etc.) 
+  // and may not have internal client references
   const EXTERNALLY_CALLED_ROUTES = [
-    '/api/webhooks/github',
-    '/api/webhooks/slack',
-    '/api/auth/callback',
-    '/api/auth/github/callback',
+    '/api/webhooks/github',           // GitHub webhook receiver
+    '/api/webhooks/slack',            // Slack webhook receiver
+    '/api/auth/callback',             // OAuth callback endpoint
+    '/api/auth/github/callback',      // GitHub OAuth callback
+    '/api/health',                    // Health check endpoint (monitoring)
+    '/api/ready',                     // Readiness probe (K8s/ECS)
+    '/api/build-info',                // Build metadata endpoint
+    '/api/metrics',                   // Prometheus/monitoring metrics
+    '/api/webhooks/events/[id]',      // Webhook event retrieval (external polling)
   ];
 
   for (const route of routes) {

@@ -103,10 +103,11 @@ ALLOW_MIXED_CHANGES=true git commit -m "message"
 4. **FAIL** if empty folders are found without `.gitkeep`
 
 #### Remedy
-- **Remove:** `rm -rf <empty-folder>`
+- **Bash:** `rm -rf <empty-folder>`
+- **PowerShell:** `Remove-Item -Recurse -Force <empty-folder>`
 - **Preserve:** `touch <folder>/.gitkeep` (if folder structure is needed)
 
-**Note:** Excluded directories: `node_modules`, `.git`, `.next`, `dist`, `build`, `coverage`, `.husky`, `.worktrees`
+**Note:** Excluded directories: `node_modules`, `.git`, `.next`, `dist`, `build`, `coverage`, `.husky`, `.worktrees`, `.turbo`, `cdk.out`
 
 ---
 
@@ -121,11 +122,16 @@ ALLOW_MIXED_CHANGES=true git commit -m "message"
 4. **WARNING** (non-blocking) if unreferenced routes are found
 
 #### Exemptions
-Routes that are called externally (webhooks, callbacks) are exempt:
-- `/api/webhooks/github`
-- `/api/webhooks/slack`
-- `/api/auth/callback`
-- `/api/auth/github/callback`
+Routes that are called externally (webhooks, callbacks, health checks, etc.) are exempt:
+- `/api/webhooks/github` — GitHub webhook receiver
+- `/api/webhooks/slack` — Slack webhook receiver  
+- `/api/webhooks/events/[id]` — Webhook event retrieval (external polling)
+- `/api/auth/callback` — OAuth callback endpoint
+- `/api/auth/github/callback` — GitHub OAuth callback
+- `/api/health` — Health check endpoint (monitoring)
+- `/api/ready` — Readiness probe (K8s/ECS)
+- `/api/build-info` — Build metadata endpoint
+- `/api/metrics` — Prometheus/monitoring metrics
 
 To add more exemptions, edit `EXTERNALLY_CALLED_ROUTES` in `scripts/repo-verify.ts`
 
@@ -207,7 +213,8 @@ Found forbidden directory:
 Error: Build artifacts must not be committed to repository
 
 Remedy:
-  - Remove directory: rm -rf .next/
+  - Bash:       rm -rf .next/
+  - PowerShell: Remove-Item -Recurse -Force .next
   - Verify .gitignore includes: .next/
 ```
 
@@ -222,8 +229,9 @@ Found 2 empty folder(s):
 Error: Empty folders should be removed to keep repository clean
 
 Remedy:
-  - Remove empty folders: rm -rf <folder>
-  - If folder is needed for structure, add a .gitkeep file
+  - Bash:       rm -rf <folder>
+  - PowerShell: Remove-Item -Recurse -Force <folder>
+  - Or: Add .gitkeep file if folder structure is needed
 ```
 
 **Unreferenced Routes Warning:**
