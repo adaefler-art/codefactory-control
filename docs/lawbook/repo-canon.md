@@ -176,7 +176,12 @@ AFU9_ALLOW_MIXED_SCOPE=true npm run repo:verify
 1. ✅ PR with wrong API path fails deterministically
 2. ✅ Error messages name specific file + cause
 3. ✅ No false positives on clean repo
-4. ✅ Mixed-scope detection works for all AFU-9 stack files
+4. ✅ Mixed-scope detection works for all AFU-9 stack files (in CI/GitHub Actions)
+
+### Testing Notes
+- **Route-Map Check:** Validates all client fetch calls have corresponding API routes
+- **Forbidden Paths Check:** Ensures build artifacts (.next/, etc.) are not committed
+- **Mixed-Scope Check:** Only runs in git environments with proper base branch reference (e.g., GitHub Actions with GITHUB_BASE_REF). Locally, it may skip if the base branch cannot be determined.
 
 ---
 
