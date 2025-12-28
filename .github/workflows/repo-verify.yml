@@ -24,7 +24,7 @@ on:
 
 jobs:
   repo-verify:
-    name: Verify Repository Canon
+    name: repo-verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
