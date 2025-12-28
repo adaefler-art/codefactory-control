@@ -27,6 +27,7 @@ import {
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../_shared';
 import { withApi, apiError } from '../../../../src/lib/http/withApi';
+import { normalizeLabels } from '../../../../src/lib/label-utils';
 
 /**
  * GET /api/issues/[id]
@@ -122,7 +123,8 @@ export const PATCH = withApi(async (
     if (!body.labels.every((label: any) => typeof label === 'string')) {
       return apiError('all labels must be strings', 400);
     }
-    updates.labels = body.labels;
+    // Normalize labels (handles comma-separated input, removes duplicates, etc.)
+    updates.labels = normalizeLabels(body.labels);
   }
 
   if (body.status !== undefined) {
