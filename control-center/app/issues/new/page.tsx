@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { parseLabelsInput } from "@/lib/label-utils";
 
 interface Issue {
   id: string;
@@ -122,8 +123,8 @@ export default function NewIssuePage() {
       return;
     }
     
-    // Support comma-separated input
-    const newLabels = trimmedLabel.split(',').map(l => l.trim()).filter(l => l.length > 0);
+    // Use centralized parsing function to support comma-separated input
+    const newLabels = parseLabelsInput(trimmedLabel);
     
     // Add new labels, avoiding duplicates
     const uniqueNewLabels = newLabels.filter(label => !editedLabels.includes(label));

@@ -56,6 +56,17 @@ export function normalizeLabel(label: string): string {
  * Parses label input that may contain comma-separated, whitespace-separated,
  * or newline-separated labels into an array
  * 
+ * Behavior:
+ * - If input contains commas: splits by comma (preserves spaces within labels like "bug fix")
+ * - If input contains newlines: splits by newline
+ * - Otherwise: input is returned as single label
+ * 
+ * Examples:
+ * - "bug, feature" → ["bug", "feature"]
+ * - "bug\nfeature" → ["bug", "feature"]
+ * - "bug fix" → ["bug fix"] (single multi-word label)
+ * - "bug, feature request" → ["bug", "feature request"]
+ * 
  * @param input - Raw input string or array
  * @returns Array of raw label strings
  */
@@ -69,30 +80,27 @@ export function parseLabelsInput(input: string | string[]): string[] {
     return [];
   }
   
-  // Split by comma, newline, or multiple spaces
-  // This handles: "tag1, tag2", "tag1\ntag2", "tag1  tag2"
+  // Split by comma or newline, trim each part
   const labels: string[] = [];
   
-  // First split by newlines
-  const lines = input.split(/\n/);
+  // Check if input contains commas or newlines
+  const hasComma = input.includes(',');
+  const hasNewline = input.includes('\n');
   
-  for (const line of lines) {
-    // Then split by comma
-    const parts = line.split(',');
-    
+  if (hasComma || hasNewline) {
+    // Split by both comma and newline
+    const parts = input.split(/[,\n]/);
     for (const part of parts) {
-      // For each part, if it contains multiple spaces, it might be space-separated
       const trimmed = part.trim();
       if (trimmed) {
-        // Only split by space if there's no comma in original (to preserve "my label" as one label)
-        if (!line.includes(',') && trimmed.includes(' ') && trimmed.split(/\s+/).length > 1) {
-          // Might be space-separated
-          const spaceParts = trimmed.split(/\s+/);
-          labels.push(...spaceParts);
-        } else {
-          labels.push(trimmed);
-        }
+        labels.push(trimmed);
       }
+    }
+  } else {
+    // No separators found - treat as single label
+    const trimmed = input.trim();
+    if (trimmed) {
+      labels.push(trimmed);
     }
   }
   
