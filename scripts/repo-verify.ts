@@ -38,6 +38,9 @@ const FORBIDDEN_PATHS = [
   'standalone',
 ];
 
+// Maximum depth to scan directories (prevents excessive recursion)
+const MAX_SCAN_DEPTH = 10;
+
 // Test files that intentionally call non-existent endpoints
 const EXCLUDED_TEST_PATTERNS = [
   'test-error',
@@ -297,7 +300,8 @@ function checkForbiddenPaths(): ValidationResult {
         `Error: Build artifacts must not be committed to repository\n` +
         `\n` +
         `Remedy:\n` +
-        `  - Remove directory: rm -rf ${forbiddenName}/\n` +
+        `  - Bash:       rm -rf ${forbiddenName}/\n` +
+        `  - PowerShell: Remove-Item -Recurse -Force ${forbiddenName}\n` +
         `  - Verify .gitignore includes: ${forbiddenName}/`
       );
     }
@@ -319,6 +323,195 @@ function checkForbiddenPaths(): ValidationResult {
   }
 
   console.log('   ✅ Forbidden Paths Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
+// Empty Folders Check
+// ============================================================================
+
+/**
+ * Check for empty directories that shouldn't exist in the repository
+ * Empty folders can indicate incomplete cleanup or structural issues
+ */
+function checkEmptyFolders(): ValidationResult {
+  console.log('🔍 Running Empty Folders Check...');
+
+  const errors: string[] = [];
+  const emptyFolders: string[] = [];
+
+  // Directories to exclude from empty folder check
+  const EXCLUDED_DIRS = [
+    'node_modules',
+    '.git',
+    '.next',
+    'dist',
+    'build',
+    'coverage',
+    '.husky',
+    '.worktrees',
+    '.turbo',      // Turborepo cache
+    'cdk.out',     // CDK synthesis output
+  ];
+
+  function isDirectoryEmpty(dirPath: string): boolean {
+    try {
+      const entries = fs.readdirSync(dirPath);
+      // A directory with only .gitkeep is considered intentionally empty (not a violation)
+      if (entries.length === 1 && entries[0] === '.gitkeep') {
+        return false; // Has .gitkeep, so it's intentionally preserved
+      }
+      // Filter out all hidden files (starting with .)
+      const visibleEntries = entries.filter(entry => !entry.startsWith('.'));
+      // Directory is empty if it has no visible files (even if it has hidden files)
+      // This means a directory with only .DS_Store or other hidden files is considered empty
+      return visibleEntries.length === 0;
+    } catch {
+      return false;
+    }
+  }
+
+  function scanForEmptyDirectories(dir: string, depth: number = 0): void {
+    // Limit recursion depth to avoid performance issues
+    if (depth > MAX_SCAN_DEPTH) return;
+    if (!fs.existsSync(dir)) return;
+
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        // Skip excluded directories
+        if (EXCLUDED_DIRS.includes(entry.name)) continue;
+
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          if (isDirectoryEmpty(fullPath)) {
+            const relativePath = path.relative(REPO_ROOT, fullPath);
+            emptyFolders.push(relativePath);
+          } else {
+            // Recurse into non-empty directories
+            scanForEmptyDirectories(fullPath, depth + 1);
+          }
+        }
+      }
+    } catch (error) {
+      // Log unexpected errors for debugging but don't fail the check
+      if (error instanceof Error && error.message?.includes('EACCES')) {
+        // Permission errors are expected in some environments, skip silently
+      } else if (error instanceof Error) {
+        console.warn(`  ⚠️  Could not scan directory: ${dir}`, error.message);
+      } else {
+        console.warn(`  ⚠️  Could not scan directory: ${dir}`);
+      }
+    }
+  }
+
+  // Scan key directories
+  const dirsToScan = [
+    CONTROL_CENTER_DIR,
+    LIB_DIR,
+    path.join(REPO_ROOT, 'scripts'),
+    path.join(REPO_ROOT, 'docs'),
+  ];
+
+  for (const dir of dirsToScan) {
+    if (fs.existsSync(dir)) {
+      scanForEmptyDirectories(dir);
+    }
+  }
+
+  if (emptyFolders.length > 0) {
+    errors.push(
+      `\nFound ${emptyFolders.length} empty folder(s):\n` +
+      emptyFolders.map((f) => `  - ${f}`).join('\n') +
+      `\n\n` +
+      `Error: Empty folders should be removed to keep repository clean\n` +
+      `\n` +
+      `Remedy:\n` +
+      `  - Bash:       rm -rf <folder>\n` +
+      `  - PowerShell: Remove-Item -Recurse -Force <folder>\n` +
+      `  - Or: Add .gitkeep file if folder structure is needed`
+    );
+
+    console.log(`   ❌ Empty Folders Check FAILED (${emptyFolders.length} empty folders)`);
+    return { passed: false, errors };
+  }
+
+  console.log('   ✅ Empty Folders Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
+// Unreferenced API Routes Check
+// ============================================================================
+
+/**
+ * Check for API routes that are defined but never called
+ * Helps identify dead code and maintain a clean API surface
+ */
+function checkUnreferencedRoutes(): ValidationResult {
+  console.log('🔍 Running Unreferenced API Routes Check...');
+
+  const routes = discoverApiRoutes();
+  const calls = discoverFetchCalls();
+  const errors: string[] = [];
+  const unreferencedRoutes: RouteInfo[] = [];
+
+  // Routes that are called externally (webhooks, callbacks, health checks, etc.) 
+  // and may not have internal client references
+  const EXTERNALLY_CALLED_ROUTES = [
+    '/api/webhooks/github',           // GitHub webhook receiver
+    '/api/webhooks/slack',            // Slack webhook receiver
+    '/api/auth/callback',             // OAuth callback endpoint
+    '/api/auth/github/callback',      // GitHub OAuth callback
+    '/api/health',                    // Health check endpoint (monitoring)
+    '/api/ready',                     // Readiness probe (K8s/ECS)
+    '/api/build-info',                // Build metadata endpoint
+    '/api/metrics',                   // Prometheus/monitoring metrics
+    '/api/webhooks/events/[id]',      // Webhook event retrieval (external polling)
+  ];
+
+  for (const route of routes) {
+    // Skip externally called routes
+    if (EXTERNALLY_CALLED_ROUTES.includes(route.apiPath)) {
+      continue;
+    }
+
+    // Check if route is referenced by any client call
+    const isReferenced = calls.some((call) => matchesRoute(call.apiPath, route.apiPath));
+
+    if (!isReferenced) {
+      unreferencedRoutes.push(route);
+    }
+  }
+
+  console.log(`   Found ${routes.length} API routes`);
+  console.log(`   Found ${calls.length} client fetch calls`);
+  console.log(`   Found ${unreferencedRoutes.length} unreferenced routes`);
+
+  if (unreferencedRoutes.length > 0) {
+    errors.push(
+      `\nFound ${unreferencedRoutes.length} unreferenced API route(s):\n` +
+      unreferencedRoutes.map((r) => {
+        const relativePath = path.relative(REPO_ROOT, r.filePath);
+        return `  - ${r.apiPath}\n    File: ${relativePath}`;
+      }).join('\n') +
+      `\n\n` +
+      `Warning: These routes are defined but not called by any client code\n` +
+      `\n` +
+      `Remedy:\n` +
+      `  - Remove unused routes to reduce code surface\n` +
+      `  - OR verify routes are called externally (webhooks, etc.)\n` +
+      `  - OR add to EXTERNALLY_CALLED_ROUTES if intentionally external`
+    );
+
+    console.log(`   ⚠️  Unreferenced Routes Check WARNING (${unreferencedRoutes.length} routes)`);
+    // Return as warning (passed: true) but with errors for logging
+    return { passed: true, errors };
+  }
+
+  console.log('   ✅ Unreferenced Routes Check PASSED');
   return { passed: true, errors: [] };
 }
 
@@ -425,6 +618,8 @@ async function main() {
   const results = [
     checkRouteMap(),
     checkForbiddenPaths(),
+    checkEmptyFolders(),
+    checkUnreferencedRoutes(),
     checkMixedScope(),
   ];
 
@@ -434,10 +629,26 @@ async function main() {
 
   const passed = results.filter((r) => r.passed).length;
   const failed = results.filter((r) => !r.passed).length;
+  // Warnings are checks that passed but have informational messages (non-blocking)
+  const warnings = results.filter((r) => r.passed && r.errors.length > 0);
 
   console.log(`✓ Passed: ${passed}`);
   console.log(`✗ Failed: ${failed}`);
+  if (warnings.length > 0) {
+    console.log(`⚠  Warnings: ${warnings.length}`);
+  }
   console.log(`Total: ${results.length}\n`);
+
+  // Show warnings first (if any)
+  if (warnings.length > 0) {
+    console.log('⚠️  Warnings (non-blocking):\n');
+    for (const result of warnings) {
+      for (const error of result.errors) {
+        console.log(error);
+        console.log('\n' + '─'.repeat(60) + '\n');
+      }
+    }
+  }
 
   if (failed === 0) {
     console.log('✅ All repository canon checks passed!');

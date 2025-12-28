@@ -1,7 +1,7 @@
 name: repo-verify
 
-# ISSUE 1 — Repo Canon & Guardrails
-# Enforces structural consistency across the repository
+# ISSUE 1 & 4 — Repo Canon & Guardrails + Repo Hygiene Automation
+# Enforces structural consistency and hygiene across the repository
 
 on:
   pull_request:
@@ -100,6 +100,8 @@ jobs:
           echo "### Verified Checks:" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Route-Map Check:** All client API calls have corresponding route definitions" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Forbidden Paths Check:** No build artifacts (.next/, .worktrees/, standalone/) committed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Empty Folders Check:** No unnecessary empty directories in the repository" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Unreferenced Routes Check:** API routes that may be unused (warning only)" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Mixed-Scope Check:** Frontend and infrastructure changes are properly separated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
