@@ -52,7 +52,7 @@ runTest('Clean repo passes all checks', () => {
 
 // Test 2: Invalid API call should fail
 runTest('Invalid API call is detected', () => {
-  const testFile = path.join(REPO_ROOT, 'control-center/app/__test-bad-api.tsx');
+  const testFile = path.join(REPO_ROOT, 'control-center/app/bad-api-call-temp.tsx');
   
   try {
     // Create test file with invalid API call
@@ -73,12 +73,9 @@ runTest('Invalid API call is detected', () => {
       throw new Error('Should have failed but passed');
     } catch (error: any) {
       // Should fail - check that error message is informative
-      const stderr = error.stderr || error.stdout || '';
-      if (!stderr.includes('does not exist') && !stderr.includes('invalid-route-test-123')) {
-        // If it doesn't fail on API route, check if it caught it another way
-        if (!error.message.includes('Command failed')) {
-          throw new Error('Expected failure but got different error');
-        }
+      const output = error.stderr || error.stdout || '';
+      if (!output.includes('invalid-route-test-123')) {
+        throw new Error('Should detect invalid API route call');
       }
     }
   } finally {

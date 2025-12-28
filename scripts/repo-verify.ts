@@ -38,6 +38,13 @@ const FORBIDDEN_PATHS = [
   'standalone',
 ];
 
+// Test files that intentionally call non-existent endpoints
+const EXCLUDED_TEST_PATTERNS = [
+  'test-error',
+  'test-errors',
+  '__test',
+];
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -82,7 +89,10 @@ function discoverApiRoutes(): RouteInfo[] {
       } else if (entry.isFile() && entry.name === 'route.ts') {
         // Derive API path from file system path
         const relativePath = path.relative(API_ROUTES_DIR, path.dirname(fullPath));
-        const apiPath = '/api/' + relativePath.replace(/\\/g, '/');
+        // Handle root api directory case
+        const apiPath = relativePath 
+          ? '/api/' + relativePath.replace(/\\/g, '/')
+          : '/api';
         
         routes.push({
           filePath: fullPath,
@@ -102,14 +112,13 @@ function discoverApiRoutes(): RouteInfo[] {
 function discoverFetchCalls(): FetchCall[] {
   const calls: FetchCall[] = [];
 
-  // Patterns to match:
-  // - fetch(`/api/...`)
-  // - fetch('/api/...')
-  // - fetch("/api/...")
+  // Patterns to match fetch calls with /api/ paths
+  // Handles: fetch(`/api/...`), fetch('/api/...'), fetch("/api/...")
+  // Also handles fetch calls with additional parameters
   const fetchPatterns = [
-    /fetch\s*\(\s*`(\/api\/[^`]+)`/g,
-    /fetch\s*\(\s*'(\/api\/[^']+)'/g,
-    /fetch\s*\(\s*"(\/api\/[^"]+)"/g,
+    /fetch\s*\(\s*`(\/api\/[^`]*)`/g,           // Template literals
+    /fetch\s*\(\s*'(\/api\/[^']*)'[,\s)]/g,     // Single quotes with params
+    /fetch\s*\(\s*"(\/api\/[^"]*)"[,\s)]/g,     // Double quotes with params
   ];
 
   function scanFile(filePath: string): void {
@@ -169,7 +178,7 @@ function discoverFetchCalls(): FetchCall[] {
       if (entry.name === 'node_modules' || entry.name === '.next') continue;
       
       // Skip test files that intentionally call non-existent endpoints
-      if (entry.name.includes('test-errors') || entry.name.includes('test-error')) continue;
+      if (EXCLUDED_TEST_PATTERNS.some(pattern => entry.name.includes(pattern))) continue;
 
       if (entry.isDirectory()) {
         scanDirectory(fullPath);
