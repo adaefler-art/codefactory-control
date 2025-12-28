@@ -8,9 +8,12 @@
 
 import { NextResponse } from 'next/server';
 import { isDebugModeEnabled } from '@/lib/debug-mode';
+import { getBuildInfo } from '@/lib/build/build-info';
 
 export async function GET() {
   try {
+    const buildInfo = getBuildInfo();
+    
     // Check which integrations are configured without exposing secrets
     const githubConfigured = !!process.env.GITHUB_TOKEN;
     const githubOwner = process.env.GITHUB_OWNER || process.env.NEXT_PUBLIC_GITHUB_OWNER || null;
@@ -47,7 +50,9 @@ export async function GET() {
         },
       },
       system: {
-        version: 'v0.2 (ECS)',
+        version: buildInfo.appVersion,
+        git_sha: buildInfo.gitSha,
+        build_time: buildInfo.buildTime,
         architecture: 'AFU-9 (Ninefold)',
         environment: process.env.NODE_ENV || 'development',
         database: process.env.DATABASE_NAME || 'afu9',

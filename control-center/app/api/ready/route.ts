@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
-
-// Version should match control-center package.json
-// In a production system, this could be read from process.env.APP_VERSION
-const VERSION = '0.2.5';
+import { getBuildInfo } from '@/lib/build/build-info';
 
 // MCP Server configuration - single source of truth
 const MCP_SERVERS = [
@@ -66,6 +63,7 @@ function getRequiredDependencies(): string[] {
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
+  const buildInfo = getBuildInfo();
   
   try {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
@@ -205,7 +203,7 @@ export async function GET(request: NextRequest) {
     const response = {
       ready,
       service: 'afu9-control-center',
-      version: VERSION,
+      version: buildInfo.appVersion,
       timestamp: new Date().toISOString(),
       checks,
       dependencies: {
@@ -223,12 +221,13 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('Readiness check failed:', error);
+    const buildInfo = getBuildInfo();
     
     return jsonResponse(
       {
         ready: false,
         service: 'afu9-control-center',
-        version: VERSION,
+        version: buildInfo.appVersion,
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
         checks: {
