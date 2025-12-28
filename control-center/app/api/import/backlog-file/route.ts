@@ -70,7 +70,7 @@ async function upsertIssueWithEpic(
       const newLabels = new Set(issueData.labels || []);
       const labelsChanged = 
         existingLabels.size !== newLabels.size ||
-        [...existingLabels].some(label => !newLabels.has(label));
+        Array.from(existingLabels).some(label => !newLabels.has(label));
       
       const epicChanged = existing.epic_id !== issueData.epic_id;
       

@@ -14,6 +14,8 @@
  * ```
  */
 
+const MAX_ERROR_MESSAGE_LENGTH = 50;
+
 export interface ParsedEpic {
   externalId: string;
   title: string;
@@ -107,12 +109,12 @@ export function parseBacklogFile(content: string): ParseResult {
       if (trimmedLine.startsWith('##')) {
         errors.push({
           line: lineNumber,
-          message: `Epic line doesn't match expected format. Expected: "## EPIC <ID> — <Title>". Got: "${trimmedLine.substring(0, 50)}..."`,
+          message: `Epic line doesn't match expected format. Expected: "## EPIC <ID> — <Title>". Got: "${trimmedLine.substring(0, MAX_ERROR_MESSAGE_LENGTH)}..."`,
         });
       } else if (trimmedLine.startsWith('-')) {
         errors.push({
           line: lineNumber,
-          message: `Issue line doesn't match expected format. Expected: "- <ID> (<DisplayID>): <Title>". Got: "${trimmedLine.substring(0, 50)}..."`,
+          message: `Issue line doesn't match expected format. Expected: "- <ID> (<DisplayID>): <Title>". Got: "${trimmedLine.substring(0, MAX_ERROR_MESSAGE_LENGTH)}..."`,
         });
       }
     }
