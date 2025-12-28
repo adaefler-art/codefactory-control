@@ -241,6 +241,11 @@ export function buildQueryString(params: Record<string, string | number | boolea
 }
 
 /**
+ * Maximum length for error message response body to prevent overly long error messages
+ */
+const ERROR_BODY_MAX_LENGTH = 200;
+
+/**
  * Type-safe fetch wrapper that enforces canonical routes
  * 
  * Note: While this function accepts any string for flexibility with dynamic routes,
@@ -270,8 +275,8 @@ export async function apiFetch<T = unknown>(
     try {
       const errorBody = await response.text();
       if (errorBody) {
-        errorDetails = errorBody.length > 200 
-          ? errorBody.substring(0, 200) + '...' 
+        errorDetails = errorBody.length > ERROR_BODY_MAX_LENGTH
+          ? errorBody.substring(0, ERROR_BODY_MAX_LENGTH) + '...' 
           : errorBody;
       }
     } catch {

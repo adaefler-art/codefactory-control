@@ -12,9 +12,17 @@ ERRORS=0
 
 # Check for deprecated /api/github/webhook usage
 echo "Checking for deprecated /api/github/webhook usage..."
+
+# Exclude specific files from the check:
+# - Test files (.test.ts) - tests may reference deprecated routes
+# - The deprecated route file itself (api/github/webhook/route.ts)
+# - The canonical route file (webhooks/github/route.ts)
+# - Middleware public routes config (middleware-public-routes.ts)
+# - Route constants definition (src/lib/api-routes.ts)
 DEPRECATED_GITHUB_WEBHOOK=$(grep -r "/api/github/webhook" control-center/app control-center/src 2>/dev/null \
   | grep -v ".test.ts" \
-  | grep -v "route.ts" \
+  | grep -v "api/github/webhook/route.ts" \
+  | grep -v "webhooks/github/route.ts" \
   | grep -v "middleware-public-routes.ts" \
   | grep -v "src/lib/api-routes.ts" \
   || true)
@@ -36,13 +44,29 @@ echo ""
 echo "Checking for routes without tests..."
 ROUTES_WITHOUT_TESTS=0
 
+# Routes that are exempt from test coverage requirements
+# (typically internal/utility routes that don't need explicit API tests)
+SKIP_TEST_CHECK=(
+  "deps/ready"
+  "build-info"
+  "build-metadata"
+)
+
 # Get all route files
 for route_file in $(find control-center/app/api -name "route.ts" | sort); do
   route_path=$(echo "$route_file" | sed 's|control-center/app/api/||' | sed 's|/route.ts$||')
   route_test_pattern=$(echo "$route_path" | sed 's|\[id\]|\\[id\\]|g')
   
-  # Skip internal routes that may not need tests
-  if [[ "$route_path" == "deps/ready" ]] || [[ "$route_path" == "build-info" ]] || [[ "$route_path" == "build-metadata" ]]; then
+  # Skip routes that are exempt from testing
+  skip=false
+  for skip_route in "${SKIP_TEST_CHECK[@]}"; do
+    if [[ "$route_path" == "$skip_route" ]]; then
+      skip=true
+      break
+    fi
+  done
+  
+  if [ "$skip" = true ]; then
     continue
   fi
   
