@@ -47,7 +47,6 @@ describe('createGitHubAppJwt', () => {
     const privateKeyPem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
 
     process.env.GITHUB_APP_ID = '1234';
-    process.env.GITHUB_APP_INSTALLATION_ID = '5678';
     process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
     process.env.GITHUB_APP_PRIVATE_KEY_PEM = privateKeyPem;
 
