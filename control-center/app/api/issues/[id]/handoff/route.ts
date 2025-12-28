@@ -16,6 +16,7 @@ import {
 } from '../../../../../src/lib/db/afu9Issues';
 import {
   Afu9HandoffState,
+  Afu9IssueStatus,
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { createIssue } from '../../../../../src/lib/github';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
@@ -50,6 +51,28 @@ export async function POST(
 
     const issue = resolved.row as any;
     const internalId = String(issue.id);
+
+    // Invariant: Require title for handoff
+    if (!issue.title || issue.title.trim().length === 0) {
+      return NextResponse.json(
+        { 
+          error: 'Cannot handoff issue without a title',
+          details: 'Handoff requires a non-empty title. Please set a title before handing off to GitHub.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Invariant: SYNCED handoff_state cannot occur with CREATED status
+    if (issue.status === Afu9IssueStatus.CREATED && issue.handoff_state === Afu9HandoffState.SYNCED) {
+      return NextResponse.json(
+        {
+          error: 'Invalid state combination',
+          details: 'Issue with status CREATED cannot have handoff_state SYNCED. This violates lifecycle invariants.',
+        },
+        { status: 400 }
+      );
+    }
 
     // Check if already handed off successfully
     if (issue.handoff_state === Afu9HandoffState.SYNCED) {

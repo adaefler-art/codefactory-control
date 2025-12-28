@@ -228,6 +228,12 @@ export default function IssueDetailPage({
   const handleActivate = async () => {
     if (!issue) return;
 
+    // Client-side validation: Check if title is empty
+    if (!issue.title || issue.title.trim().length === 0) {
+      setSaveError('Cannot activate issue without a title. Please set a title first.');
+      return;
+    }
+
     // Check if another issue is active
     const activeIssue = await checkActiveIssue();
     if (activeIssue) {
@@ -274,6 +280,12 @@ export default function IssueDetailPage({
 
   const handleHandoff = async () => {
     if (!issue) return;
+
+    // Client-side validation: Check if title is empty
+    if (!issue.title || issue.title.trim().length === 0) {
+      setSaveError('Cannot handoff issue without a title. Please set a title first.');
+      return;
+    }
 
     setIsHandingOff(true);
     setActionMessage(null);
@@ -721,7 +733,7 @@ export default function IssueDetailPage({
             </label>
             <div className="flex flex-wrap gap-2 mb-3">
               {editedLabels.length === 0 ? (
-                <span className="text-sm text-gray-500">No labels</span>
+                <span className="text-sm text-gray-600 italic">—</span>
               ) : (
                 editedLabels.map((label) => (
                   <span

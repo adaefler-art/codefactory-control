@@ -20,6 +20,7 @@ import {
 import {
   Afu9IssueStatus,
   Afu9IssuePriority,
+  Afu9HandoffState,
   isValidStatus,
   isValidPriority,
 } from '../../../../src/lib/contracts/afu9Issue';
@@ -156,6 +157,21 @@ export const PATCH = withApi(async (
   // Check if there are any updates
   if (Object.keys(updates).length === 0) {
     return apiError('No fields to update', 400);
+  }
+
+  // Get current issue state for invariant checking
+  const currentIssue = resolved.row as any;
+
+  // Invariant: SYNCED handoff_state cannot occur with CREATED status
+  const finalStatus = updates.status ?? currentIssue.status;
+  const finalHandoffState = updates.handoff_state ?? currentIssue.handoff_state;
+  
+  if (finalStatus === Afu9IssueStatus.CREATED && finalHandoffState === Afu9HandoffState.SYNCED) {
+    return apiError(
+      'Invalid state combination',
+      400,
+      'Issue with status CREATED cannot have handoff_state SYNCED. This violates lifecycle invariants.'
+    );
   }
 
   // Update issue
