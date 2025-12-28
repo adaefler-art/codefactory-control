@@ -62,9 +62,13 @@ jobs:
       - name: Publish event to AFU-9 SQS event bus
         shell: bash
         run: |
+          # Provide a deterministic idempotency key.
+          # The Control Center consumer uses this as delivery_id (unique) to avoid double-processing.
+          delivery_id="gha:${{ github.run_id }}:${{ github.run_attempt }}"
+
           aws sqs send-message \
             --queue-url "${{ secrets.AFU9_GITHUB_EVENTS_QUEUE_URL }}" \
-            --message-body '${{ toJson(github) }}'
+            --message-body "$(jq -cn --arg delivery_id "$delivery_id" --argjson github '${{ toJson(github) }}' '{delivery_id:$delivery_id} + $github')"
 ```
 
 ## Message Format
@@ -72,5 +76,9 @@ jobs:
 AFU-9 does not require a strict schema for the event bus message, but a practical default is:
 
 - `message-body`: `toJson(github)` (includes `event_name`, `repository`, `actor`, and the event payload)
+
+Recommended addition:
+
+- Include a top-level `delivery_id` string. The consumer stores it with a unique constraint for idempotency.
 
 If you need routing/dispatch later, add a `--message-attributes` block (e.g. `event_name`, `repo_full_name`) and keep it stable.
