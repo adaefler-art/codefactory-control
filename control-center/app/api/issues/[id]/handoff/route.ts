@@ -116,11 +116,17 @@ export async function POST(
         `<!-- ${idempotencyKey} -->`,
       ].join('\n');
 
+      // Build labels array including priority if set
+      const githubLabels = [...issue.labels];
+      if (issue.priority) {
+        githubLabels.push(`priority:${issue.priority}`);
+      }
+
       // Create GitHub issue
       const githubIssue = await createIssue({
         title: issue.title,
         body: githubBody,
-        labels: issue.labels,
+        labels: githubLabels,
       });
 
       // Update AFU9 issue with GitHub details
