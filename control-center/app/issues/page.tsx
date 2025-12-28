@@ -26,6 +26,30 @@ interface Issue {
   deletedAt: string | null;
 }
 
+interface ImportError {
+  line?: number;
+  message: string;
+}
+
+interface ImportResult {
+  success: boolean;
+  runId?: string;
+  status?: string;
+  epics?: {
+    created: number;
+    updated: number;
+    skipped: number;
+    total: number;
+  };
+  issues?: {
+    created: number;
+    updated: number;
+    skipped: number;
+    total: number;
+  };
+  errors?: ImportError[];
+}
+
 export default function IssuesPage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,10 +62,14 @@ export default function IssuesPage() {
 
   // Import modal states
   const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState<"text" | "repo">("text");
   const [importContent, setImportContent] = useState("");
+  const [repoPath, setRepoPath] = useState("docs/roadmaps/afu9_v0_6_backlog.md");
+  const [repoRef, setRepoRef] = useState("main");
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   // Delete modal states
   const [deleteConfirmIssue, setDeleteConfirmIssue] = useState<Issue | null>(null);
@@ -77,39 +105,85 @@ export default function IssuesPage() {
   }, [fetchIssues]);
 
   const handleImport = useCallback(async () => {
-    if (!importContent.trim()) {
-      setImportError("Please enter content to import");
-      return;
-    }
-
     setIsImporting(true);
     setImportError(null);
     setImportSuccess(null);
+    setImportResult(null);
 
     try {
-      const response = await fetch("/api/issues/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ content: importContent }),
-      });
+      if (importMode === "text") {
+        if (!importContent.trim()) {
+          setImportError("Please enter content to import");
+          setIsImporting(false);
+          return;
+        }
 
-      const data = await safeFetch(response);
-      
-      if (data.success) {
-        setImportSuccess(`Successfully imported ${data.imported} of ${data.total} issues`);
-        setImportContent("");
+        const response = await fetch("/api/issues/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ content: importContent }),
+        });
+
+        const data = await safeFetch(response);
         
-        // Refresh issues list
-        await fetchIssues();
-        
-        // Close modal after 2 seconds
-        setTimeout(() => {
-          setShowImportModal(false);
-          setImportSuccess(null);
-        }, 2000);
+        if (data.success) {
+          setImportSuccess(`Successfully imported ${data.imported} of ${data.total} issues`);
+          setImportContent("");
+          
+          // Refresh issues list
+          await fetchIssues();
+          
+          // Close modal after 2 seconds
+          setTimeout(() => {
+            setShowImportModal(false);
+            setImportSuccess(null);
+          }, 2000);
+        } else {
+          setImportError(data.error || "Failed to import issues");
+        }
       } else {
-        setImportError(data.error || "Failed to import issues");
+        // Repo file import
+        if (!repoPath.trim()) {
+          setImportError("Please enter a file path");
+          setIsImporting(false);
+          return;
+        }
+
+        const response = await fetch("/api/import/backlog-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ 
+            path: repoPath,
+            ref: repoRef || "main",
+          }),
+        });
+
+        const data = await safeFetch(response);
+        
+        if (data.success) {
+          setImportResult(data);
+          setImportSuccess(
+            `Import completed! Epics: ${data.epics.created} created, ${data.epics.updated} updated, ${data.epics.skipped} skipped. ` +
+            `Issues: ${data.issues.created} created, ${data.issues.updated} updated, ${data.issues.skipped} skipped.`
+          );
+          
+          // Refresh issues list
+          await fetchIssues();
+          
+          // Close modal after 3 seconds
+          setTimeout(() => {
+            setShowImportModal(false);
+            setImportSuccess(null);
+            setImportResult(null);
+          }, 3000);
+        } else {
+          setImportError(data.error || data.errors?.[0]?.message || "Failed to import from repository file");
+          if (data.errors && data.errors.length > 0) {
+            setImportResult(data);
+          }
+        }
       }
     } catch (err) {
       console.error("Error importing issues:", err);
@@ -117,7 +191,7 @@ export default function IssuesPage() {
     } finally {
       setIsImporting(false);
     }
-  }, [importContent, fetchIssues]);
+  }, [importMode, importContent, repoPath, repoRef, fetchIssues]);
 
   const handleDeleteClick = useCallback((issue: Issue) => {
     setDeleteConfirmIssue(issue);
@@ -451,8 +525,12 @@ export default function IssuesPage() {
                   onClick={() => {
                     setShowImportModal(false);
                     setImportContent("");
+                    setRepoPath("docs/roadmaps/afu9_v0_6_backlog.md");
+                    setRepoRef("main");
                     setImportError(null);
                     setImportSuccess(null);
+                    setImportResult(null);
+                    setImportMode("text");
                   }}
                   className="text-gray-400 hover:text-gray-300"
                 >
@@ -460,18 +538,45 @@ export default function IssuesPage() {
                 </button>
               </div>
 
+              {/* Import Mode Selector */}
               <div className="mb-4">
-                <p className="text-sm text-gray-400 mb-2">
-                  Paste or type issues below. Separate multiple issues with <code className="bg-gray-800 px-1 py-0.5 rounded">---</code>
-                </p>
-                <p className="text-xs text-gray-500 mb-4">
-                  Format: First line = title, rest = body. Optional meta-lines: <code className="bg-gray-800 px-1 py-0.5 rounded">Labels: tag1, tag2</code> or <code className="bg-gray-800 px-1 py-0.5 rounded">Status: CREATED</code>
-                </p>
+                <div className="flex gap-2 border-b border-gray-800">
+                  <button
+                    onClick={() => setImportMode("text")}
+                    className={`px-4 py-2 font-medium transition-colors ${
+                      importMode === "text"
+                        ? "text-purple-400 border-b-2 border-purple-400"
+                        : "text-gray-400 hover:text-gray-300"
+                    }`}
+                  >
+                    Text Import
+                  </button>
+                  <button
+                    onClick={() => setImportMode("repo")}
+                    className={`px-4 py-2 font-medium transition-colors ${
+                      importMode === "repo"
+                        ? "text-purple-400 border-b-2 border-purple-400"
+                        : "text-gray-400 hover:text-gray-300"
+                    }`}
+                  >
+                    Import from Repo File
+                  </button>
+                </div>
+              </div>
 
-                <textarea
-                  value={importContent}
-                  onChange={(e) => setImportContent(e.target.value)}
-                  placeholder="Example:
+              {importMode === "text" ? (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-400 mb-2">
+                    Paste or type issues below. Separate multiple issues with <code className="bg-gray-800 px-1 py-0.5 rounded">---</code>
+                  </p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Format: First line = title, rest = body. Optional meta-lines: <code className="bg-gray-800 px-1 py-0.5 rounded">Labels: tag1, tag2</code> or <code className="bg-gray-800 px-1 py-0.5 rounded">Status: CREATED</code>
+                  </p>
+
+                  <textarea
+                    value={importContent}
+                    onChange={(e) => setImportContent(e.target.value)}
+                    placeholder="Example:
 Fix login bug
 Labels: bug, urgent
 Status: CREATED
@@ -482,19 +587,91 @@ User cannot login with valid credentials
 Add dark mode
 Labels: feature
 Implement dark mode theme toggle"
-                  className="w-full h-64 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
-                />
-              </div>
+                    className="w-full h-64 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                  />
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-400 mb-4">
+                    Import epics and issues from a backlog file in the repository.
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Repository File Path
+                      </label>
+                      <input
+                        type="text"
+                        value={repoPath}
+                        onChange={(e) => setRepoPath(e.target.value)}
+                        placeholder="docs/roadmaps/afu9_v0_6_backlog.md"
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Path to the backlog file in the repository
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Git Ref (Branch/Tag)
+                      </label>
+                      <input
+                        type="text"
+                        value={repoRef}
+                        onChange={(e) => setRepoRef(e.target.value)}
+                        placeholder="main"
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Branch or tag to fetch the file from (default: main)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {importError && (
                 <div className="mb-4 bg-red-900/20 border border-red-700 rounded-lg p-3">
-                  <p className="text-red-300 text-sm">{importError}</p>
+                  <p className="text-red-300 text-sm font-medium mb-2">{importError}</p>
+                  {importResult && importResult.errors && importResult.errors.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-red-400 font-medium">Errors:</p>
+                      {importResult.errors.slice(0, 5).map((err: ImportError, idx: number) => (
+                        <p key={idx} className="text-xs text-red-300">
+                          {err.line ? `Line ${err.line}: ` : ''}{err.message}
+                        </p>
+                      ))}
+                      {importResult.errors.length > 5 && (
+                        <p className="text-xs text-red-400">
+                          ...and {importResult.errors.length - 5} more errors
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {importSuccess && (
                 <div className="mb-4 bg-green-900/20 border border-green-700 rounded-lg p-3">
-                  <p className="text-green-300 text-sm">{importSuccess}</p>
+                  <p className="text-green-300 text-sm font-medium">{importSuccess}</p>
+                  {importResult && importMode === "repo" && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-green-900/20 p-2 rounded">
+                        <p className="text-green-400 font-medium">Epics</p>
+                        <p className="text-green-300">Created: {importResult.epics.created}</p>
+                        <p className="text-green-300">Updated: {importResult.epics.updated}</p>
+                        <p className="text-green-300">Skipped: {importResult.epics.skipped}</p>
+                      </div>
+                      <div className="bg-green-900/20 p-2 rounded">
+                        <p className="text-green-400 font-medium">Issues</p>
+                        <p className="text-green-300">Created: {importResult.issues.created}</p>
+                        <p className="text-green-300">Updated: {importResult.issues.updated}</p>
+                        <p className="text-green-300">Skipped: {importResult.issues.skipped}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -503,8 +680,12 @@ Implement dark mode theme toggle"
                   onClick={() => {
                     setShowImportModal(false);
                     setImportContent("");
+                    setRepoPath("docs/roadmaps/afu9_v0_6_backlog.md");
+                    setRepoRef("main");
                     setImportError(null);
                     setImportSuccess(null);
+                    setImportResult(null);
+                    setImportMode("text");
                   }}
                   className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-md transition-colors"
                   disabled={isImporting}
@@ -514,7 +695,7 @@ Implement dark mode theme toggle"
                 <button
                   onClick={handleImport}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50"
-                  disabled={isImporting || !importContent.trim()}
+                  disabled={isImporting || (importMode === "text" && !importContent.trim()) || (importMode === "repo" && !repoPath.trim())}
                 >
                   {isImporting ? "Importing..." : "Import"}
                 </button>
