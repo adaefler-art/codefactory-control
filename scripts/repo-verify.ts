@@ -38,6 +38,9 @@ const FORBIDDEN_PATHS = [
   'standalone',
 ];
 
+// Maximum depth to scan directories (prevents excessive recursion)
+const MAX_SCAN_DEPTH = 10;
+
 // Test files that intentionally call non-existent endpoints
 const EXCLUDED_TEST_PATTERNS = [
   'test-error',
@@ -348,9 +351,6 @@ function checkEmptyFolders(): ValidationResult {
     '.worktrees',
   ];
 
-  // Maximum depth to prevent excessive recursion
-  const MAX_SCAN_DEPTH = 10;
-
   function isDirectoryEmpty(dirPath: string): boolean {
     try {
       const entries = fs.readdirSync(dirPath);
@@ -358,9 +358,10 @@ function checkEmptyFolders(): ValidationResult {
       if (entries.length === 1 && entries[0] === '.gitkeep') {
         return false; // Has .gitkeep, so it's intentionally preserved
       }
-      // Check if there are any visible (non-hidden) files
+      // Filter out all hidden files (starting with .)
       const visibleEntries = entries.filter(entry => !entry.startsWith('.'));
-      // Directory is empty if it has no visible files
+      // Directory is empty if it has no visible files (even if it has hidden files)
+      // This means a directory with only .DS_Store or other hidden files is considered empty
       return visibleEntries.length === 0;
     } catch {
       return false;
@@ -393,10 +394,12 @@ function checkEmptyFolders(): ValidationResult {
       }
     } catch (error) {
       // Log unexpected errors for debugging but don't fail the check
-      if (error instanceof Error && error.message.includes('EACCES')) {
+      if (error instanceof Error && error.message?.includes('EACCES')) {
         // Permission errors are expected in some environments, skip silently
+      } else if (error instanceof Error) {
+        console.warn(`  ⚠️  Could not scan directory: ${dir}`, error.message);
       } else {
-        console.warn(`  ⚠️  Could not scan directory: ${dir}`, error);
+        console.warn(`  ⚠️  Could not scan directory: ${dir}`);
       }
     }
   }
@@ -616,6 +619,7 @@ async function main() {
 
   const passed = results.filter((r) => r.passed).length;
   const failed = results.filter((r) => !r.passed).length;
+  // Warnings are checks that passed but have informational messages (non-blocking)
   const warnings = results.filter((r) => r.passed && r.errors.length > 0);
 
   console.log(`✓ Passed: ${passed}`);
