@@ -498,6 +498,7 @@ export interface Afu9IssueOutput {
   execution_started_at: string | null;
   execution_completed_at: string | null;
   execution_output: Record<string, unknown> | null;
+  deleted_at: string | null;
 }
 
 /**
@@ -528,7 +529,8 @@ export function isAfu9IssueOutput(row: unknown): row is Afu9IssueOutput {
     typeof r.execution_state === 'string' &&
     (r.execution_started_at === null || typeof r.execution_started_at === 'string') &&
     (r.execution_completed_at === null || typeof r.execution_completed_at === 'string') &&
-    (r.execution_output === null || (typeof r.execution_output === 'object' && !Array.isArray(r.execution_output)))
+    (r.execution_output === null || (typeof r.execution_output === 'object' && !Array.isArray(r.execution_output))) &&
+    (r.deleted_at === null || typeof r.deleted_at === 'string')
   );
 }
 

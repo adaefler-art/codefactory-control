@@ -22,6 +22,8 @@ interface Issue {
   updated_at: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  deleted_at: string | null;
+  deletedAt: string | null;
 }
 
 export default function IssuesPage() {
@@ -33,6 +35,17 @@ export default function IssuesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [labelFilter, setLabelFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Import modal states
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importContent, setImportContent] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  // Delete modal states
+  const [deleteConfirmIssue, setDeleteConfirmIssue] = useState<Issue | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchIssues = useCallback(async () => {
     setIsLoading(true);
@@ -62,6 +75,84 @@ export default function IssuesPage() {
   useEffect(() => {
     fetchIssues();
   }, [fetchIssues]);
+
+  const handleImport = useCallback(async () => {
+    if (!importContent.trim()) {
+      setImportError("Please enter content to import");
+      return;
+    }
+
+    setIsImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+
+    try {
+      const response = await fetch("/api/issues/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: importContent }),
+      });
+
+      const data = await safeFetch(response);
+      
+      if (data.success) {
+        setImportSuccess(`Successfully imported ${data.imported} of ${data.total} issues`);
+        setImportContent("");
+        
+        // Refresh issues list
+        await fetchIssues();
+        
+        // Close modal after 2 seconds
+        setTimeout(() => {
+          setShowImportModal(false);
+          setImportSuccess(null);
+        }, 2000);
+      } else {
+        setImportError(data.error || "Failed to import issues");
+      }
+    } catch (err) {
+      console.error("Error importing issues:", err);
+      setImportError(formatErrorMessage(err));
+    } finally {
+      setIsImporting(false);
+    }
+  }, [importContent, fetchIssues]);
+
+  const handleDeleteClick = useCallback((issue: Issue) => {
+    setDeleteConfirmIssue(issue);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteConfirmIssue) return;
+
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/issues/${deleteConfirmIssue.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete issue");
+      }
+
+      // Refresh issues list
+      await fetchIssues();
+      setDeleteConfirmIssue(null);
+    } catch (err) {
+      console.error("Error deleting issue:", err);
+      alert(formatErrorMessage(err));
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteConfirmIssue, fetchIssues]);
+
+  const canDeleteIssue = (issue: Issue) => {
+    return issue.status === "CREATED" && issue.handoff_state === "NOT_SENT";
+  };
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
@@ -125,12 +216,20 @@ export default function IssuesPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-3xl font-bold text-purple-400">AFU9 Issues</h1>
-            <Link
-              href="/issues/new"
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md font-medium transition-colors"
-            >
-              New Issue
-            </Link>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors"
+              >
+                Import Issues
+              </button>
+              <Link
+                href="/issues/new"
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md font-medium transition-colors"
+              >
+                New Issue
+              </Link>
+            </div>
           </div>
           
           {/* Filters */}
@@ -238,6 +337,9 @@ export default function IssuesPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         Updated
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-gray-900 divide-y divide-gray-800">
@@ -312,6 +414,17 @@ export default function IssuesPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                           {formatDate(issue.updatedAt ?? issue.updated_at)}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {canDeleteIssue(issue) && (
+                            <button
+                              onClick={() => handleDeleteClick(issue)}
+                              className="text-red-400 hover:text-red-300 transition-colors"
+                              title="Delete issue (only for CREATED + NOT_SENT)"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -325,6 +438,124 @@ export default function IssuesPage() {
         {!isLoading && !error && issues.length > 0 && (
           <div className="mt-4 text-sm text-gray-500">
             Showing {issues.length} issue{issues.length !== 1 ? "s" : ""}
+          </div>
+        )}
+
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-purple-400">Import Issues</h2>
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportContent("");
+                    setImportError(null);
+                    setImportSuccess(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm text-gray-400 mb-2">
+                  Paste or type issues below. Separate multiple issues with <code className="bg-gray-800 px-1 py-0.5 rounded">---</code>
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  Format: First line = title, rest = body. Optional meta-lines: <code className="bg-gray-800 px-1 py-0.5 rounded">Labels: tag1, tag2</code> or <code className="bg-gray-800 px-1 py-0.5 rounded">Status: CREATED</code>
+                </p>
+
+                <textarea
+                  value={importContent}
+                  onChange={(e) => setImportContent(e.target.value)}
+                  placeholder="Example:
+Fix login bug
+Labels: bug, urgent
+Status: CREATED
+User cannot login with valid credentials
+
+---
+
+Add dark mode
+Labels: feature
+Implement dark mode theme toggle"
+                  className="w-full h-64 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                />
+              </div>
+
+              {importError && (
+                <div className="mb-4 bg-red-900/20 border border-red-700 rounded-lg p-3">
+                  <p className="text-red-300 text-sm">{importError}</p>
+                </div>
+              )}
+
+              {importSuccess && (
+                <div className="mb-4 bg-green-900/20 border border-green-700 rounded-lg p-3">
+                  <p className="text-green-300 text-sm">{importSuccess}</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportContent("");
+                    setImportError(null);
+                    setImportSuccess(null);
+                  }}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-md transition-colors"
+                  disabled={isImporting}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImport}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50"
+                  disabled={isImporting || !importContent.trim()}
+                >
+                  {isImporting ? "Importing..." : "Import"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deleteConfirmIssue && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+              <h2 className="text-xl font-bold text-red-400 mb-4">Confirm Delete</h2>
+              
+              <p className="text-gray-300 mb-2">
+                Are you sure you want to delete this issue?
+              </p>
+              <p className="text-sm text-gray-400 mb-4 bg-gray-800 p-3 rounded">
+                <strong>{deleteConfirmIssue.title}</strong>
+              </p>
+              <p className="text-xs text-gray-500 mb-4">
+                This action cannot be undone. The issue will be soft-deleted.
+              </p>
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setDeleteConfirmIssue(null)}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-md transition-colors"
+                  disabled={isDeleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors disabled:opacity-50"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

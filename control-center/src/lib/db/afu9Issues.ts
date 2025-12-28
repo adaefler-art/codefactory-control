@@ -255,7 +255,7 @@ export async function listAfu9Issues(
   const { status, handoff_state, limit = 100, offset = 0 } = options;
 
   try {
-    let query = 'SELECT * FROM afu9_issues WHERE 1=1';
+    let query = 'SELECT * FROM afu9_issues WHERE deleted_at IS NULL';
     const params: (string | number)[] = [];
     let paramIndex = 1;
 
@@ -462,11 +462,78 @@ export async function updateAfu9Issue(
 }
 
 /**
- * Delete an AFU9 issue
+ * Soft delete an AFU9 issue
+ * Only allowed for issues with status=CREATED and handoff_state=NOT_SENT
  * 
  * @param pool - PostgreSQL connection pool
  * @param id - Issue UUID
  * @returns Operation result with success or error
+ */
+export async function softDeleteAfu9Issue(
+  pool: Pool,
+  id: string
+): Promise<OperationResult<void>> {
+  try {
+    // First, check if the issue can be deleted
+    const issueResult = await pool.query<Afu9IssueRow>(
+      'SELECT status, handoff_state FROM afu9_issues WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+
+    if (issueResult.rows.length === 0) {
+      return {
+        success: false,
+        error: `Issue not found or already deleted: ${id}`,
+      };
+    }
+
+    const issue = issueResult.rows[0];
+
+    // Enforce guardrails: only allow deletion for CREATED + NOT_SENT
+    if (issue.status !== Afu9IssueStatus.CREATED || issue.handoff_state !== Afu9HandoffState.NOT_SENT) {
+      return {
+        success: false,
+        error: `Cannot delete issue: deletion only allowed for status=CREATED and handoff_state=NOT_SENT. Current status=${issue.status}, handoff_state=${issue.handoff_state}`,
+      };
+    }
+
+    // Perform soft delete by setting deleted_at timestamp
+    const result = await pool.query(
+      'UPDATE afu9_issues SET deleted_at = NOW() WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: `Failed to delete issue: ${id}`,
+      };
+    }
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Soft delete failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      id,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
+ * Delete an AFU9 issue (hard delete - use with caution)
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param id - Issue UUID
+ * @returns Operation result with success or error
+ * @deprecated Use softDeleteAfu9Issue instead for safety
  */
 export async function deleteAfu9Issue(
   pool: Pool,

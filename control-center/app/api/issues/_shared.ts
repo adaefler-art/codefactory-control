@@ -168,6 +168,7 @@ export function normalizeIssueForApi(input: unknown): any {
   const activatedAt = toIsoOrNull(normalized?.activatedAt ?? normalized?.activated_at);
   const executionStartedAt = toIsoOrNull(normalized?.executionStartedAt ?? normalized?.execution_started_at);
   const executionCompletedAt = toIsoOrNull(normalized?.executionCompletedAt ?? normalized?.execution_completed_at);
+  const deletedAt = toIsoOrNull(normalized?.deletedAt ?? normalized?.deleted_at);
 
   // Build the core contract fields (snake_case for contract validation)
   const contractData: any = {
@@ -190,6 +191,7 @@ export function normalizeIssueForApi(input: unknown): any {
     execution_started_at: executionStartedAt,
     execution_completed_at: executionCompletedAt,
     execution_output: normalized?.executionOutput ?? normalized?.execution_output ?? null,
+    deleted_at: deletedAt,
   };
 
   // Step 2: Validate against output contract
@@ -241,6 +243,7 @@ export function normalizeIssueForApi(input: unknown): any {
     executionStartedAt,
     executionCompletedAt,
     executionOutput: contractData.execution_output,
+    deletedAt,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
@@ -255,6 +258,7 @@ export function normalizeIssueForApi(input: unknown): any {
   api.execution_started_at = executionStartedAt;
   api.execution_completed_at = executionCompletedAt;
   api.execution_output = api.executionOutput;
+  api.deleted_at = deletedAt;
 
   return api;
 }
