@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
+import { getBuildInfo } from '@/lib/build/build-info';
 
 /**
  * Health check endpoint for ALB health checks and ECS container health checks
@@ -27,11 +28,15 @@ export async function GET(request: NextRequest) {
   
   try {
     // Simple liveness check - if we can execute this code, the process is alive
+    const buildInfo = getBuildInfo();
+    
     return jsonResponse(
       {
         status: 'ok',
         service: 'afu9-control-center',
-        version: '0.2.5',
+        version: buildInfo.appVersion,
+        git_sha: buildInfo.gitSha,
+        build_time: buildInfo.buildTime,
         database_enabled: process.env.DATABASE_ENABLED === 'true',
         timestamp: new Date().toISOString(),
       },
@@ -41,11 +46,15 @@ export async function GET(request: NextRequest) {
     // Even in case of unexpected errors, return 200 to prevent deployment blocking
     // Log the error but keep the service running
     console.error('Health check encountered error (still returning 200):', error);
+    const buildInfo = getBuildInfo();
+    
     return jsonResponse(
       {
         status: 'ok',
         service: 'afu9-control-center',
-        version: '0.2.5',
+        version: buildInfo.appVersion,
+        git_sha: buildInfo.gitSha,
+        build_time: buildInfo.buildTime,
         database_enabled: process.env.DATABASE_ENABLED === 'true',
         timestamp: new Date().toISOString(),
         warning: 'Health check executed with degraded performance',
