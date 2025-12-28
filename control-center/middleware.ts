@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT } from './lib/auth/jwt-verify';
 import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/auth/stage-enforcement';
+import { isPublicRoute } from './lib/auth/middleware-public-routes';
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -80,29 +81,7 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
-  // Public routes that don't require authentication
-  const publicRoutes = [
-    '/api/internal/deploy-events',
-    '/api/auth/login',
-    '/api/auth/refresh',
-    '/api/auth/forgot-password',
-    '/api/auth/reset-password',
-    '/api/build-metadata',
-    '/api/health',
-    '/api/ready',
-    '/auth/refresh',
-    '/login',
-    '/forgot-password',
-    '/reset-password',
-    '/favicon.ico',
-    '/_next',
-    '/public',
-  ];
-
-  // Check if this is a public route
-  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
-  
-  if (isPublicRoute) {
+  if (isPublicRoute(pathname)) {
     return nextWithRequestId();
   }
 

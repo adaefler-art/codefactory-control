@@ -7,6 +7,7 @@
 
 import * as jwtVerify from '../../lib/auth/jwt-verify';
 import * as stageEnforcement from '../../lib/auth/stage-enforcement';
+import { PUBLIC_ROUTES, isPublicRoute } from '../../lib/auth/middleware-public-routes';
 
 describe('Middleware Authentication Logic', () => {
   beforeEach(() => {
@@ -25,18 +26,14 @@ describe('Middleware Authentication Logic', () => {
   });
 
   test('Public routes list includes expected paths', () => {
-    const publicRoutes = [
-      '/api/auth/login',
-      '/api/health',
-      '/api/ready',
-      '/favicon.ico',
-      '/_next',
-      '/public',
-    ];
+    expect(PUBLIC_ROUTES).toContain('/api/auth/login');
+    expect(PUBLIC_ROUTES).toContain('/api/github/webhook');
+    expect(PUBLIC_ROUTES).toContain('/api/health');
+    expect(PUBLIC_ROUTES).toContain('/favicon.ico');
+  });
 
-    expect(publicRoutes).toContain('/api/auth/login');
-    expect(publicRoutes).toContain('/api/health');
-    expect(publicRoutes).toContain('/favicon.ico');
+  test('Webhook route is treated as public', () => {
+    expect(isPublicRoute('/api/github/webhook')).toBe(true);
   });
 
   test('API routes are identified by /api/ prefix', () => {
