@@ -355,9 +355,9 @@ function checkEmptyFolders(): ValidationResult {
       if (entries.length === 1 && entries[0] === '.gitkeep') {
         return false; // Has .gitkeep, so it's intentionally preserved
       }
-      // Filter out ALL hidden files (starting with .)
+      // Directory is empty if it has no entries or only hidden files
       const visibleEntries = entries.filter(entry => !entry.startsWith('.'));
-      return visibleEntries.length === 0 && entries.length > 0; // Empty if only hidden files
+      return visibleEntries.length === 0;
     } catch {
       return false;
     }
