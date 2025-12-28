@@ -1,0 +1,175 @@
+name: Repository Canon Verification
+
+# ISSUE 1 — Repo Canon & Guardrails
+# Enforces structural consistency across the repository
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'control-center/**'
+      - 'lib/**/*.ts'
+      - 'scripts/repo-verify.ts'
+      - 'docs/lawbook/repo-canon.md'
+      - '.github/workflows/repo-verify.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'control-center/**'
+      - 'lib/**/*.ts'
+  workflow_dispatch:
+
+jobs:
+  repo-verify:
+    name: Verify Repository Canon
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for mixed-scope check
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Repository Canon Verification
+        id: repo_verify
+        shell: bash
+        run: |
+          npm run repo:verify 2>&1 | tee verification_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE
+
+      - name: Verification Summary
+        if: always()
+        run: |
+          echo "## 📋 Repository Canon Verification Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.repo_verify.outputs.exit_code }}" == "0" ]; then
+            echo "✅ **All repository canon checks PASSED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Repository canon verification FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verified Checks:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Route-Map Check:** All client API calls have corresponding route definitions" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Forbidden Paths Check:** No build artifacts (.next/, .worktrees/, standalone/) committed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Mixed-Scope Check:** Frontend and infrastructure changes are properly separated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📖 See [Repository Canon Documentation](https://github.com/${{ github.repository }}/blob/main/docs/lawbook/repo-canon.md) for details" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 Full verification output available in workflow logs" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload verification output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-verification-output
+          path: verification_output.txt
+          retention-days: 7
+
+  scope-review:
+    name: PR Scope Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for mixed scope
+        id: check_scope
+        run: |
+          # Check if PR mixes control-center and infrastructure changes
+          FRONTEND_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^control-center/' || true)
+          INFRA_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^lib/afu9-.*-stack\.ts$' || true)
+          
+          if [ -n "$FRONTEND_FILES" ] && [ -n "$INFRA_FILES" ]; then
+            echo "mixed_scope=true" >> $GITHUB_OUTPUT
+            
+            echo "## ⚠️ Mixed-Scope PR Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This PR contains both frontend and infrastructure changes:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            echo "### Frontend Files" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$FRONTEND_FILES" | head -20 >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            echo "### Infrastructure Files" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$INFRA_FILES" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            echo "### Required Action" >> $GITHUB_STEP_SUMMARY
+            echo "Mixed-scope PRs require explicit justification. To proceed:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Add \`[MIXED-SCOPE-OK]\` to PR description with justification, OR" >> $GITHUB_STEP_SUMMARY
+            echo "2. Split into separate PRs (recommended)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "mixed_scope=false" >> $GITHUB_OUTPUT
+            echo "✅ Single-scope PR (clean separation)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: steps.check_scope.outputs.mixed_scope == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `## ⚠️ Mixed-Scope PR Detected
+            
+            This PR contains both **frontend** (\`control-center/**\`) and **infrastructure** (\`lib/afu9-*stack.ts\`) changes.
+            
+            ### Repository Canon Requirement
+            
+            According to [Repository Canon](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/lawbook/repo-canon.md), mixing frontend and infrastructure changes requires explicit justification.
+            
+            ### Options to Proceed
+            
+            1. **Recommended:** Split into separate PRs
+               - Frontend PR: UI/API changes
+               - Infrastructure PR: Stack/Lambda changes
+            
+            2. **If justified:** Add \`[MIXED-SCOPE-OK]\` to PR description
+               - Example: "[MIXED-SCOPE-OK] Deploying new API endpoint requires both route definition and Lambda handler"
+            
+            3. **Override in CI:** Set \`AFU9_ALLOW_MIXED_SCOPE=true\` environment variable (requires maintainer approval)
+            
+            ### Why This Matters
+            
+            - Separating concerns improves review quality
+            - Reduces deployment risk (frontend vs infrastructure)
+            - Enables independent rollback if needed
+            - Clarifies PR intent and scope
+            
+            **Note:** This is a structural guideline, not a hard blocker. Use your judgment, but please document justification.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
