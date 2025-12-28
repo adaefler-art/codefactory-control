@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { Construct } from 'constructs';
 
 /**
@@ -27,6 +28,8 @@ export interface Afu9IamStackProps extends cdk.StackProps {
 
 export class Afu9IamStack extends cdk.Stack {
   public readonly deployRole: iam.Role;
+  public readonly githubEventsQueue: sqs.Queue;
+  public readonly githubActionsEventBusRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: Afu9IamStackProps) {
     super(scope, id, props);
@@ -55,6 +58,62 @@ export class Afu9IamStack extends cdk.Stack {
         '1c58a3a8518e8759bf075b76b750d4f2df264fcd',
       ],
     });
+
+    // ========================================
+    // GitHub Actions Event Bus (SQS)
+    // ========================================
+    // Option 2 “GitHub Actions Event Bus”: GitHub Actions publishes events to an SQS queue.
+    // No inbound webhook endpoints are required.
+
+    const githubEventsDlq = new sqs.Queue(this, 'Afu9GithubEventsDlq', {
+      queueName: 'afu9-github-events-dlq',
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
+    this.githubEventsQueue = new sqs.Queue(this, 'Afu9GithubEventsQueue', {
+      queueName: 'afu9-github-events',
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      visibilityTimeout: cdk.Duration.seconds(30),
+      retentionPeriod: cdk.Duration.days(4),
+      deadLetterQueue: {
+        queue: githubEventsDlq,
+        maxReceiveCount: 5,
+      },
+    });
+
+    // ========================================
+    // GitHub Actions Event Bus Role
+    // ========================================
+    // Least privilege: only allow sqs:SendMessage to the single AFU-9 queue.
+    // Trust is restricted to a single repository via OIDC sub condition.
+
+    this.githubActionsEventBusRole = new iam.Role(this, 'GithubActionsEventBusRole', {
+      roleName: 'afu9-github-actions-eventbus-role',
+      description: 'Role for GitHub Actions to publish GitHub events to AFU-9 SQS event bus',
+      assumedBy: new iam.FederatedPrincipal(
+        githubProvider.openIdConnectProviderArn,
+        {
+          StringEquals: {
+            'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+          },
+          StringLike: {
+            'token.actions.githubusercontent.com:sub': `repo:${githubOrg}/${githubRepo}:*`,
+          },
+        },
+        'sts:AssumeRoleWithWebIdentity'
+      ),
+      maxSessionDuration: cdk.Duration.hours(1),
+    });
+
+    this.githubActionsEventBusRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'SqsSendMessageAfu9GithubEvents',
+        effect: iam.Effect.ALLOW,
+        actions: ['sqs:SendMessage'],
+        resources: [this.githubEventsQueue.queueArn],
+      })
+    );
 
     // ========================================
     // GitHub Actions Deployment Role
@@ -445,6 +504,18 @@ export class Afu9IamStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'GitHubSecretsInstructions', {
       value: `Add this to your GitHub repository secrets as 'AWS_DEPLOY_ROLE_ARN': ${this.deployRole.roleArn}`,
       description: 'Instructions for GitHub Actions configuration',
+    });
+
+    new cdk.CfnOutput(this, 'GithubEventsQueueUrl', {
+      value: this.githubEventsQueue.queueUrl,
+      description: 'URL of the AFU-9 GitHub Actions Event Bus SQS queue',
+      exportName: 'Afu9GithubEventsQueueUrl',
+    });
+
+    new cdk.CfnOutput(this, 'GithubActionsEventBusRoleArn', {
+      value: this.githubActionsEventBusRole.roleArn,
+      description: 'ARN of the GitHub Actions Event Bus role (sqs:SendMessage only)',
+      exportName: 'Afu9GithubActionsEventBusRoleArn',
     });
   }
 }
