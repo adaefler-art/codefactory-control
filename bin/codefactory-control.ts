@@ -57,6 +57,13 @@ const createStagingServiceFlag = (() => {
   return v === undefined ? true : v === true || v === 'true';
 })();
 
+// Check if PROD pause mode is enabled (Low-Cost Mode)
+// Use context: -c afu9-prod-paused=true to enable pause mode
+const prodPausedFlag = (() => {
+  const v = getValidatedContext<boolean | string>(app, 'afu9-prod-paused');
+  return v === true || v === 'true';
+})();
+
 // DNS and Certificate stack (optional, for HTTPS)
 const enableHttps = (() => {
   const value = getValidatedContext<boolean | string>(app, 'afu9-enable-https');
@@ -167,7 +174,8 @@ if (multiEnvEnabled) {
     dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
     environment: 'prod',
     imageTag: 'prod-latest',
-    desiredCount: 2,
+    // Low-Cost Pause Mode: Set desiredCount=0 when prodPaused=true
+    desiredCount: prodPausedFlag ? 0 : 2,
     cpu: 2048,
     memoryLimitMiB: 4096,
   });
@@ -184,9 +192,9 @@ if (multiEnvEnabled) {
       prodTargetGroup,
       hostedZone: dnsStack.hostedZone,
       baseDomainName: dnsStack.domainName,
+      prodPaused: prodPausedFlag,
     });
-    routingStack.addDependency(ecsStageStack);
-    routingStack.addDependency(ecsProdStack);
+    // Note: No explicit dependencies needed - CDK handles them implicitly via target groups
     routingStack.addDependency(dnsStack);
   }
 
