@@ -348,6 +348,9 @@ function checkEmptyFolders(): ValidationResult {
     '.worktrees',
   ];
 
+  // Maximum depth to prevent excessive recursion
+  const MAX_SCAN_DEPTH = 10;
+
   function isDirectoryEmpty(dirPath: string): boolean {
     try {
       const entries = fs.readdirSync(dirPath);
@@ -355,8 +358,9 @@ function checkEmptyFolders(): ValidationResult {
       if (entries.length === 1 && entries[0] === '.gitkeep') {
         return false; // Has .gitkeep, so it's intentionally preserved
       }
-      // Directory is empty if it has no entries or only hidden files
+      // Check if there are any visible (non-hidden) files
       const visibleEntries = entries.filter(entry => !entry.startsWith('.'));
+      // Directory is empty if it has no visible files
       return visibleEntries.length === 0;
     } catch {
       return false;
@@ -365,7 +369,7 @@ function checkEmptyFolders(): ValidationResult {
 
   function scanForEmptyDirectories(dir: string, depth: number = 0): void {
     // Limit recursion depth to avoid performance issues
-    if (depth > 10) return;
+    if (depth > MAX_SCAN_DEPTH) return;
     if (!fs.existsSync(dir)) return;
 
     try {
@@ -388,7 +392,12 @@ function checkEmptyFolders(): ValidationResult {
         }
       }
     } catch (error) {
-      // Silently skip directories we can't read
+      // Log unexpected errors for debugging but don't fail the check
+      if (error instanceof Error && error.message.includes('EACCES')) {
+        // Permission errors are expected in some environments, skip silently
+      } else {
+        console.warn(`  ⚠️  Could not scan directory: ${dir}`, error);
+      }
     }
   }
 
