@@ -13,6 +13,24 @@ Flow (happy path):
 
 No OAuth Client ID/Client Secret is used.
 
+## Installation ID Resolution
+
+**Important**: The `installationId` is **never** hardcoded or cached. Instead, it is **deterministically resolved** from the repository context for every API call.
+
+The resolution flow:
+
+1. When making a GitHub API call, the code provides `owner` and `repo` parameters
+2. `getGitHubInstallationToken({ owner, repo })` is called
+3. It uses `GET /repos/{owner}/{repo}/installation` to look up the installation ID
+4. The installation ID is then used to generate an access token
+5. Logs are emitted: `owner/repo → installationId`
+
+This ensures:
+- **Governance**: No hidden state or implicit configuration
+- **Deterministic auth**: Each repository gets the correct installation
+- **GREEN Verdict**: Only repositories with valid installations succeed
+- **Idempotency**: Re-installations work automatically without reconfiguration
+
 ## Secrets
 
 The integration loads a single AWS Secrets Manager secret (default name):
@@ -24,18 +42,17 @@ Expected JSON shape:
 ```json
 {
   "appId": "123456",
-  "installationId": "12345678",
   "webhookSecret": "<github webhook secret>",
   "privateKeyPem": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 }
 ```
 
 Notes:
+- `installationId` is **NOT** stored in the secret. It is dynamically looked up per repository.
 - `privateKeyPem` must be **PKCS#8**. Newlines may be stored as `\n` and are normalized at runtime.
 - Region is taken from `AWS_REGION` / `AWS_DEFAULT_REGION` (fallback `eu-central-1`).
 - Override for local dev/testing (bypasses Secrets Manager):
   - `GITHUB_APP_ID`
-  - `GITHUB_APP_INSTALLATION_ID`
   - `GITHUB_APP_WEBHOOK_SECRET`
   - `GITHUB_APP_PRIVATE_KEY_PEM`
 
@@ -83,7 +100,8 @@ curl -X POST "http://localhost:3000/api/github/webhook" `
 
 - `401 invalid_signature`: secret mismatch or body not read as raw text.
 - `200 duplicate:true`: GitHub redelivery or retry; delivery ID already recorded.
-- `Failed to create installation token`: check `appId`, `installationId`, and `privateKeyPem` correctness and IAM permissions to read the secret.
+- `Failed to get installation for owner/repo`: The GitHub App is not installed on this repository, or the app lacks permissions.
+- `Failed to create installation token`: check `appId` and `privateKeyPem` correctness and IAM permissions to read the secret.
 
 ## Files
 

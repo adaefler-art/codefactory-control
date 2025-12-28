@@ -2,14 +2,12 @@ import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-sec
 
 export type GitHubAppSecret = {
   appId: string | number;
-  installationId: string | number;
   webhookSecret: string;
   privateKeyPem: string;
 };
 
 type GitHubAppConfig = {
   appId: string;
-  installationId: number;
   webhookSecret: string;
   privateKeyPem: string;
 };
@@ -76,13 +74,11 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
     // Local/dev override for easier testing
     if (
       process.env.GITHUB_APP_ID &&
-      process.env.GITHUB_APP_INSTALLATION_ID &&
       process.env.GITHUB_APP_WEBHOOK_SECRET &&
       process.env.GITHUB_APP_PRIVATE_KEY_PEM
     ) {
       return {
         appId: toNonEmptyString(process.env.GITHUB_APP_ID, 'GITHUB_APP_ID'),
-        installationId: toNumber(process.env.GITHUB_APP_INSTALLATION_ID, 'GITHUB_APP_INSTALLATION_ID'),
         webhookSecret: toNonEmptyString(process.env.GITHUB_APP_WEBHOOK_SECRET, 'GITHUB_APP_WEBHOOK_SECRET'),
         privateKeyPem: normalizePrivateKeyPem(process.env.GITHUB_APP_PRIVATE_KEY_PEM),
       };
@@ -108,7 +104,6 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
 
     return {
       appId: toNonEmptyString(parsed.appId, 'appId'),
-      installationId: toNumber(parsed.installationId, 'installationId'),
       webhookSecret: toNonEmptyString(parsed.webhookSecret, 'webhookSecret'),
       privateKeyPem: normalizePrivateKeyPem(toNonEmptyString(parsed.privateKeyPem, 'privateKeyPem')),
     };
@@ -143,14 +138,65 @@ export async function createGitHubAppJwt(input?: {
   return { jwt, iat, exp, iss };
 }
 
-export async function getGitHubInstallationToken(input?: {
-  nowSeconds?: number;
-}): Promise<{ token: string; expiresAt?: string } > {
-  const config = await loadGitHubAppConfig();
-  const { jwt } = await createGitHubAppJwt({ nowSeconds: input?.nowSeconds });
+/**
+ * Get the installation ID for a specific repository
+ * Uses GitHub API: GET /repos/{owner}/{repo}/installation
+ * 
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @returns Installation ID for the repository
+ */
+export async function getInstallationIdForRepo(input: {
+  owner: string;
+  repo: string;
+}): Promise<number> {
+  const { jwt } = await createGitHubAppJwt();
+
+  console.log(`[getInstallationIdForRepo] Looking up installation for ${input.owner}/${input.repo}`);
 
   const res = await fetch(
-    `https://api.github.com/app/installations/${config.installationId}/access_tokens`,
+    `https://api.github.com/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/installation`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'codefactory-control-center',
+      },
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to get installation for ${input.owner}/${input.repo} (${res.status}): ${text}`);
+  }
+
+  const json = (await res.json()) as { id?: number };
+  if (!json.id || typeof json.id !== 'number') {
+    throw new Error(`Invalid installation response for ${input.owner}/${input.repo}: missing or invalid id`);
+  }
+
+  console.log(`[getInstallationIdForRepo] Found installationId ${json.id} for ${input.owner}/${input.repo}`);
+
+  return json.id;
+}
+
+export async function getGitHubInstallationToken(input: {
+  owner: string;
+  repo: string;
+  nowSeconds?: number;
+}): Promise<{ token: string; expiresAt?: string } > {
+  const { jwt } = await createGitHubAppJwt({ nowSeconds: input.nowSeconds });
+  
+  // Lookup installation ID for this specific repository
+  const installationId = await getInstallationIdForRepo({
+    owner: input.owner,
+    repo: input.repo,
+  });
+
+  const res = await fetch(
+    `https://api.github.com/app/installations/${installationId}/access_tokens`,
     {
       method: 'POST',
       headers: {
@@ -181,7 +227,10 @@ export async function postGitHubIssueComment(input: {
   issue_number: number;
   body: string;
 }): Promise<void> {
-  const { token } = await getGitHubInstallationToken();
+  const { token } = await getGitHubInstallationToken({
+    owner: input.owner,
+    repo: input.repo,
+  });
 
   const res = await fetch(
     `https://api.github.com/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/issues/${input.issue_number}/comments`,

@@ -31,8 +31,11 @@ export async function fetchGitHubFile(
   options: FetchFileOptions
 ): Promise<FetchFileResult> {
   try {
-    // Get installation token from GitHub App
-    const { token } = await getGitHubInstallationToken();
+    // Get installation token from GitHub App for this specific repository
+    const { token } = await getGitHubInstallationToken({
+      owner: options.owner,
+      repo: options.repo,
+    });
     const octokit = new Octokit({ auth: token });
     
     const response = await octokit.rest.repos.getContent({
