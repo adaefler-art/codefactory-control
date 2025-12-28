@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
@@ -46,9 +46,9 @@ interface ActivityEvent {
 export default function IssueDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }) {
-  const { id } = use(params);
+  const { id } = params;
   
   const router = useRouter();
   const [issue, setIssue] = useState<Issue | null>(null);
