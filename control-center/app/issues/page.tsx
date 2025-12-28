@@ -26,6 +26,30 @@ interface Issue {
   deletedAt: string | null;
 }
 
+interface ImportError {
+  line?: number;
+  message: string;
+}
+
+interface ImportResult {
+  success: boolean;
+  runId?: string;
+  status?: string;
+  epics?: {
+    created: number;
+    updated: number;
+    skipped: number;
+    total: number;
+  };
+  issues?: {
+    created: number;
+    updated: number;
+    skipped: number;
+    total: number;
+  };
+  errors?: ImportError[];
+}
+
 export default function IssuesPage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,7 +69,7 @@ export default function IssuesPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<any>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   // Delete modal states
   const [deleteConfirmIssue, setDeleteConfirmIssue] = useState<Issue | null>(null);
@@ -614,7 +638,7 @@ Implement dark mode theme toggle"
                   {importResult && importResult.errors && importResult.errors.length > 0 && (
                     <div className="mt-2 space-y-1">
                       <p className="text-xs text-red-400 font-medium">Errors:</p>
-                      {importResult.errors.slice(0, 5).map((err: any, idx: number) => (
+                      {importResult.errors.slice(0, 5).map((err: ImportError, idx: number) => (
                         <p key={idx} className="text-xs text-red-300">
                           {err.line ? `Line ${err.line}: ` : ''}{err.message}
                         </p>

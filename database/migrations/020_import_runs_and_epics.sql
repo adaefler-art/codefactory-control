@@ -100,9 +100,11 @@ CREATE INDEX idx_import_runs_source_path ON import_runs(source_path);
 -- ========================================
 
 -- Add epic_id column to afu9_issues (nullable for backward compatibility)
+-- Existing issues without an epic will have NULL epic_id
 ALTER TABLE afu9_issues ADD COLUMN IF NOT EXISTS epic_id UUID;
 
 -- Add external_id column to afu9_issues for stable upsert
+-- Existing issues will have NULL external_id (can be populated later if needed)
 ALTER TABLE afu9_issues ADD COLUMN IF NOT EXISTS external_id VARCHAR(100);
 
 -- Add foreign key constraint

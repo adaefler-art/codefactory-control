@@ -33,6 +33,11 @@ interface ImportRequestBody {
   repo?: string;
 }
 
+interface ImportError {
+  line?: number;
+  message: string;
+}
+
 /**
  * Upsert an issue with epic reference
  */
@@ -59,7 +64,14 @@ async function upsertIssueWithEpic(
       // Check if anything changed
       const titleChanged = existing.title !== issueData.title;
       const bodyChanged = existing.body !== issueData.body;
-      const labelsChanged = JSON.stringify(existing.labels) !== JSON.stringify(issueData.labels);
+      
+      // Compare labels arrays properly (order-independent)
+      const existingLabels = new Set(existing.labels || []);
+      const newLabels = new Set(issueData.labels || []);
+      const labelsChanged = 
+        existingLabels.size !== newLabels.size ||
+        [...existingLabels].some(label => !newLabels.has(label));
+      
       const epicChanged = existing.epic_id !== issueData.epic_id;
       
       if (!titleChanged && !bodyChanged && !labelsChanged && !epicChanged) {
@@ -206,12 +218,11 @@ export async function POST(request: NextRequest) {
         if (result.success && result.data) {
           epicIdMap.set(epic.externalId, result.data.id);
           
-          // Check if it was created or updated
-          const wasUpdated = result.data.created_at !== result.data.updated_at;
-          if (wasUpdated) {
-            epicsUpdated++;
-          } else {
+          // Use explicit wasCreated flag instead of timestamp comparison
+          if (result.wasCreated) {
             epicsCreated++;
+          } else {
+            epicsUpdated++;
           }
         }
       }
@@ -220,7 +231,7 @@ export async function POST(request: NextRequest) {
       let issuesCreated = 0;
       let issuesUpdated = 0;
       let issuesSkipped = 0;
-      const issueErrors: Array<{ line?: number; message: string }> = [];
+      const issueErrors: ImportError[] = [];
 
       for (const issue of parseResult.issues) {
         const epicId = epicIdMap.get(issue.epicExternalId);

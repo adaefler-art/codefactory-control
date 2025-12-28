@@ -44,13 +44,20 @@ export interface OperationResult<T = Afu9EpicRow> {
  * 
  * @param pool - PostgreSQL connection pool
  * @param input - Epic data
- * @returns Operation result with epic or error
+ * @returns Operation result with epic and wasCreated flag
  */
 export async function upsertAfu9Epic(
   pool: Pool,
   input: Afu9EpicInput
-): Promise<OperationResult> {
+): Promise<OperationResult & { wasCreated?: boolean }> {
   try {
+    // First check if record exists
+    const existingResult = await pool.query<Afu9EpicRow>(
+      'SELECT id FROM afu9_epics WHERE external_id = $1',
+      [input.external_id]
+    );
+    const wasCreated = existingResult.rows.length === 0;
+
     const result = await pool.query<Afu9EpicRow>(
       `INSERT INTO afu9_epics (external_id, title, description, labels)
        VALUES ($1, $2, $3, $4)
@@ -79,6 +86,7 @@ export async function upsertAfu9Epic(
     return {
       success: true,
       data: result.rows[0],
+      wasCreated,
     };
   } catch (error) {
     console.error('[afu9Epics] Upsert failed:', {

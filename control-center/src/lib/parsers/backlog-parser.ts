@@ -103,11 +103,16 @@ export function parseBacklogFile(content: string): ParseResult {
     
     // If line doesn't match any pattern and is not empty, log as potential error
     if (trimmedLine && !trimmedLine.startsWith('#')) {
-      // Only report as error if it looks like it should be parsed
-      if (trimmedLine.startsWith('-') || trimmedLine.startsWith('##')) {
+      // Provide specific error messages based on what the line starts with
+      if (trimmedLine.startsWith('##')) {
         errors.push({
           line: lineNumber,
-          message: `Could not parse line: "${trimmedLine.substring(0, 50)}..."`,
+          message: `Epic line doesn't match expected format. Expected: "## EPIC <ID> — <Title>". Got: "${trimmedLine.substring(0, 50)}..."`,
+        });
+      } else if (trimmedLine.startsWith('-')) {
+        errors.push({
+          line: lineNumber,
+          message: `Issue line doesn't match expected format. Expected: "- <ID> (<DisplayID>): <Title>". Got: "${trimmedLine.substring(0, 50)}..."`,
         });
       }
     }
