@@ -605,7 +605,11 @@ export default function IssueDetailPage({
                   value={editedPriority || ""}
                   onChange={(e) => {
                     const value = e.target.value;
-                    setEditedPriority(value === "" ? null : value as Issue["priority"]);
+                    if (value === "") {
+                      setEditedPriority(null);
+                    } else if (value === "P0" || value === "P1" || value === "P2") {
+                      setEditedPriority(value);
+                    }
                   }}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
