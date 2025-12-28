@@ -21,6 +21,7 @@ import {
 import { createIssue } from '../../../../../src/lib/github';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
+import { validateAndNormalizeLabelsForHandoff } from '../../../../../src/lib/label-utils';
 
 /**
  * POST /api/issues/[id]/handoff
@@ -116,8 +117,24 @@ export async function POST(
         `<!-- ${idempotencyKey} -->`,
       ].join('\n');
 
+      // Normalize and validate labels before sending to GitHub
+      let normalizedLabels: string[];
+      try {
+        normalizedLabels = validateAndNormalizeLabelsForHandoff(issue.labels || []);
+      } catch (labelError) {
+        // Label validation failed - return error before attempting GitHub creation
+        return NextResponse.json(
+          {
+            error: 'Invalid labels for GitHub handoff',
+            details: labelError instanceof Error ? labelError.message : String(labelError),
+            invalidLabels: issue.labels,
+          },
+          { status: 400 }
+        );
+      }
+
       // Build labels array including priority if set
-      const githubLabels = [...issue.labels];
+      const githubLabels = [...normalizedLabels];
       if (issue.priority) {
         githubLabels.push(`priority:${issue.priority}`);
       }

@@ -23,6 +23,7 @@ import {
 } from '../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { normalizeIssueForApi, toPublicIdFromUuid } from '../_shared';
+import { normalizeLabels } from '../../../../src/lib/label-utils';
 
 type DraftIssue = {
   id: string;
@@ -307,10 +308,13 @@ export async function PATCH(request: NextRequest) {
     const status =
       (rawStatus as Afu9IssueStatus | undefined) ?? Afu9IssueStatus.CREATED;
 
+    // Normalize labels (handles comma-separated input, removes duplicates, etc.)
+    const normalizedLabels = normalizeLabels(rawLabels || []);
+
     const result = await createAfu9Issue(pool, {
       title,
       body: description || null,
-      labels: rawLabels || [],
+      labels: normalizedLabels,
       priority: (rawPriority as Afu9IssuePriority | null | undefined) ?? null,
       assignee: null,
       status,
