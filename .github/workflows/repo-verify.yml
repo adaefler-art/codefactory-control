@@ -1,4 +1,4 @@
-name: Repository Canon Verification
+name: repo-verify
 
 # ISSUE 1 — Repo Canon & Guardrails
 # Enforces structural consistency across the repository
@@ -16,15 +16,12 @@ on:
       - '.github/workflows/repo-verify.yml'
   push:
     branches:
-      - main
-    paths:
-      - 'control-center/**'
-      - 'lib/**/*.ts'
+      - '**'
   workflow_dispatch:
 
 jobs:
   repo-verify:
-    name: Verify Repository Canon
+    name: repo-verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
