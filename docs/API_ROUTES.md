@@ -211,6 +211,46 @@ These are **NOT** duplicates.
 |-------|---------|--------|-------------|
 | `/api/integrations/github/status` | GET | **Canonical** | GitHub integration status |
 
+## Verification
+
+### Running Verification
+
+```bash
+# Run verification (cross-platform)
+npm run routes:verify
+
+# PowerShell (Windows)
+pwsh -File scripts/verify-routes.ps1
+
+# Strict mode (fail on hardcoded routes)
+ROUTES_STRICT_MODE=true npm run routes:verify
+```
+
+### What's Checked
+
+1. **No Deprecated Routes**: Ensures no client code uses deprecated route aliases
+2. **Documentation Consistency**: Verifies documented routes exist in implementation
+3. **No Hardcoded Routes** (warning mode): Detects hardcoded `/api/` strings
+   - Currently in warning-only mode for existing code
+   - Set `ROUTES_STRICT_MODE=true` to enforce for new code
+
+### CI Integration
+
+The verification runs automatically on all pull requests via the `repo-verify` workflow:
+- `.github/workflows/repo-verify.yml`
+- Required check for merging to `main` or `develop`
+
+### PowerShell Support
+
+Full Windows/PowerShell support:
+```powershell
+# Run locally
+.\scripts\verify-routes.ps1
+
+# Or via npm
+npm run routes:verify
+```
+
 ## Route Naming Conventions
 
 ### Established Patterns

@@ -127,22 +127,31 @@ await fetch('/api/issues');
 
 ### 5. Verification Scripts
 
-**Route Canonicalization Verification:**
-```bash
-scripts/verify-canonical-routes.sh
-```
-- Checks for deprecated route usage in client code
-- Reports routes without tests (informational)
-- Currently passes ✅
+**Cross-Platform Verification:**
+- `scripts/verify-routes.js` - Node.js verification script (Windows/Linux/Mac)
+- `scripts/verify-routes.ps1` - PowerShell wrapper for Windows-first approach
+- Integrated into `npm scripts` as `routes:verify`
 
-**Documentation Verification:**
+**Verification Modes:**
+- **Warning Mode** (default): Existing code grandfathered, new violations warned
+- **Strict Mode**: Set `ROUTES_STRICT_MODE=true` to fail on any hardcoded routes
+
+**npm Scripts:**
 ```bash
-scripts/verify-api-documentation.sh
+npm run routes:verify              # Run with warnings
+ROUTES_STRICT_MODE=true npm run routes:verify  # Strict mode
 ```
-- Verifies documented routes exist in codebase
-- Checks deprecation and canonical annotations
-- Validates documentation files exist
-- Currently passes ✅
+
+**PowerShell:**
+```powershell
+pwsh -File scripts/verify-routes.ps1
+.\scripts\verify-routes.ps1
+```
+
+**Checks Performed:**
+1. No hardcoded `/api/` strings (warning/strict mode)
+2. No deprecated route usage (always enforced)
+3. Documentation consistency (always enforced)
 
 ### 6. Updated Documentation
 
@@ -255,23 +264,31 @@ POST https://your-domain.com/api/webhooks/github
 
 **Created:**
 - `docs/API_ROUTES.md` - Comprehensive API documentation
+- `docs/issues/IMPLEMENTATION_SUMMARY_ISSUE_3.md` - Implementation summary
 - `control-center/src/lib/api-routes.ts` - Type-safe route constants
-- `scripts/verify-canonical-routes.sh` - Canonicalization verification
-- `scripts/verify-api-documentation.sh` - Documentation verification
+- `scripts/verify-routes.js` - Cross-platform verification script (Node.js)
+- `scripts/verify-routes.ps1` - PowerShell wrapper for Windows
 - `control-center/__tests__/api/route-canonicalization.test.ts` - Route tests
 
 **Modified:**
-- `control-center/app/api/github/webhook/route.ts` - Added deprecation warning
-- `control-center/app/api/webhooks/github/route.ts` - Added canonical marker
-- `control-center/README.md` - Added API routes section
+- `control-center/app/api/github/webhook/route.ts` - Deprecation warning
+- `control-center/app/api/webhooks/github/route.ts` - Canonical marker
+- `control-center/README.md` - API routes reference
+- `package.json` - Added `routes:verify` npm script
+- `.github/workflows/repo-verify.yml` - Integrated routes verification into CI
+
+**Removed:**
+- `scripts/verify-canonical-routes.sh` - Replaced by verify-routes.js
+- `scripts/verify-api-documentation.sh` - Replaced by verify-routes.js
 
 ## Conclusion
 
 Issue #3 has been successfully completed. All API routes are now:
 - ✅ Fully documented with canonical paths
 - ✅ Properly annotated in code
-- ✅ Verified through automated scripts
+- ✅ Verified through cross-platform automated scripts (Windows/PowerShell-first)
+- ✅ Integrated into CI/CD pipeline
 - ✅ Following consistent naming conventions
 - ✅ Providing clear migration paths for deprecated routes
 
-The system now has a single source of truth for API routes with no implicit aliases and up-to-date documentation.
+The system now has a single source of truth for API routes with no implicit aliases, up-to-date documentation, and guardrails enforced via CI.
