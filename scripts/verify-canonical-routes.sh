@@ -16,7 +16,7 @@ DEPRECATED_GITHUB_WEBHOOK=$(grep -r "/api/github/webhook" control-center/app con
   | grep -v ".test.ts" \
   | grep -v "route.ts" \
   | grep -v "middleware-public-routes.ts" \
-  | grep -v "api-routes.ts" \
+  | grep -v "src/lib/api-routes.ts" \
   || true)
 
 if [ -n "$DEPRECATED_GITHUB_WEBHOOK" ]; then

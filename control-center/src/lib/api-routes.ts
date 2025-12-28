@@ -243,6 +243,11 @@ export function buildQueryString(params: Record<string, string | number | boolea
 /**
  * Type-safe fetch wrapper that enforces canonical routes
  * 
+ * Note: While this function accepts any string for flexibility with dynamic routes,
+ * it's strongly recommended to only use values from API_ROUTES to ensure canonical
+ * route usage. For stricter type safety, consider creating a union type of all
+ * possible route values in future versions.
+ * 
  * @example
  * ```typescript
  * const issues = await apiFetch(API_ROUTES.issues.list);
@@ -259,8 +264,22 @@ export async function apiFetch<T = unknown>(
   });
 
   if (!response.ok) {
+    let errorDetails = response.statusText || 'Unknown error';
+    
+    // Try to get more detailed error info from response body
+    try {
+      const errorBody = await response.text();
+      if (errorBody) {
+        errorDetails = errorBody.length > 200 
+          ? errorBody.substring(0, 200) + '...' 
+          : errorBody;
+      }
+    } catch {
+      // If we can't read the body, use statusText
+    }
+
     throw new Error(
-      `API request to ${route} failed: ${response.status} ${response.statusText || 'Unknown error'}`
+      `API request to ${route} failed: ${response.status} ${errorDetails}`
     );
   }
 

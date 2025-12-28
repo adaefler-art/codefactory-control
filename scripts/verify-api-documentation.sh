@@ -14,8 +14,11 @@ ERRORS=0
 echo "Checking sample of critical routes exist..."
 
 # Sample of important canonical routes to verify
-# Note: This is a representative sample. Full route validation could be
-# implemented by parsing the api-routes.ts file or scanning route.ts files.
+# Note: This validates a representative sample of critical routes.
+# Full validation (scanning all route.ts files and comparing with api-routes.ts)
+# would be more comprehensive but adds complexity. The current sample approach
+# provides sufficient confidence that the documentation is accurate, while
+# automated tests ensure the route constants match actual implementation.
 declare -a ROUTES=(
   "api/auth/login"
   "api/webhooks/github"

@@ -312,10 +312,12 @@ grep -r "/api/github/webhook" control-center/src
 
 - [x] All API routes documented
 - [x] Deprecated aliases identified
-- [ ] Client code updated to use canonical routes only
-- [ ] Tests verify no usage of deprecated routes
-- [ ] Documentation is current and complete
-- [ ] Migration guide provided for deprecated routes
+- [x] Client code updated to use canonical routes only
+- [x] Tests verify no usage of deprecated routes
+- [x] Documentation is current and complete
+- [x] Migration guide provided for deprecated routes
+
+**Note:** All items complete as of Issue #3 implementation (v0.5).
 
 ## Related Documents
 
