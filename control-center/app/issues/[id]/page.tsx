@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
 import { parseLabelsInput } from "@/lib/label-utils";
 
@@ -46,9 +46,21 @@ interface ActivityEvent {
 export default function IssueDetailPage({
   params,
 }: {
-  params: { id: string };
+  // Note: In newer Next.js versions, `params` may not be a plain object in Client Components.
+  // We prefer `useParams()` and keep this optional prop only as a safe fallback for tests.
+  params?: { id?: string };
 }) {
-  const { id } = params;
+  const routeParams = useParams();
+  const routeId = (routeParams as any)?.id as string | string[] | undefined;
+
+  const id = useMemo(() => {
+    const fromRoute = Array.isArray(routeId) ? routeId[0] : routeId;
+    const fromProps = typeof params?.id === "string" ? params.id : undefined;
+    const candidate = fromRoute ?? fromProps;
+    return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : "";
+  }, [routeId, params?.id]);
+
+  const hasId = id.length > 0;
   
   const router = useRouter();
   const [issue, setIssue] = useState<Issue | null>(null);
@@ -82,7 +94,9 @@ export default function IssueDetailPage({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchIssue();
+    // Fetch gate: never fetch if the route param is missing/undefined.
+    if (!hasId) return;
+    fetchIssue(id);
   }, [id]);
 
   useEffect(() => {
@@ -95,12 +109,25 @@ export default function IssueDetailPage({
     }
   }, [issue]);
 
-  const fetchIssue = async () => {
+  if (!hasId) {
+    return (
+      <div className="p-6">
+        <div className="text-red-600">Issue not found (missing id)</div>
+        <div className="mt-4">
+          <Link href="/issues" className="text-blue-600 hover:underline">
+            Back to issues
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const fetchIssue = async (issueId: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/issues/${id}`, {
+      const response = await fetch(`/api/issues/${issueId}`, {
         credentials: "include",
         cache: "no-store",
       });
@@ -112,7 +139,7 @@ export default function IssueDetailPage({
 
       if (isApiError(err)) {
         if (err.status === 400 || err.status === 404) {
-          setError(`Issue not found (${id})`);
+          setError(`Issue not found (${issueId})`);
         } else {
           setError(`Failed to load issue (HTTP ${err.status})`);
         }
@@ -315,7 +342,7 @@ export default function IssueDetailPage({
       console.error("Error handing off issue:", err);
       setSaveError(formatErrorMessage(err));
       // Refresh issue to get updated error state
-      fetchIssue();
+      fetchIssue(id);
     } finally {
       setIsHandingOff(false);
     }

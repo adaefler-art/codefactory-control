@@ -10,6 +10,8 @@ import React from 'react';
 import IssueDetailPage from '../../app/issues/[id]/page';
 
 jest.mock('next/navigation', () => ({
+  // In these tests we pass `params` directly; keep useParams() empty so the component falls back to props.
+  useParams: () => ({}),
   useRouter: () => ({
     push: jest.fn(),
     replace: jest.fn(),

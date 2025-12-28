@@ -14,11 +14,13 @@ import IssueDetailPage from '../../../app/issues/[id]/page';
 // Mock Next.js navigation
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockUseParams = jest.fn();
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
     replace: mockReplace,
   }),
+  useParams: () => mockUseParams(),
 }));
 
 // Mock fetch for API calls
@@ -27,6 +29,16 @@ global.fetch = jest.fn();
 describe('Issue [id] Routing - Error Handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseParams.mockReset();
+  });
+
+  test('should not fetch when id is missing', async () => {
+    mockUseParams.mockReturnValue({});
+
+    render(<IssueDetailPage />);
+
+    expect(screen.getByText(/Issue not found \(missing id\)/i)).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('should show AFU-9 error banner for invalid UUID (non-UUID string)', async () => {
@@ -37,7 +49,8 @@ describe('Issue [id] Routing - Error Handling', () => {
       json: async () => ({ error: 'Not found' }),
     });
 
-    render(<IssueDetailPage params={{ id: 'new' }} />);
+    mockUseParams.mockReturnValue({ id: 'new' });
+    render(<IssueDetailPage />);
     
     // Should show error banner with "Issue not found"
     await waitFor(() => {
@@ -53,7 +66,8 @@ describe('Issue [id] Routing - Error Handling', () => {
       json: async () => ({ error: 'Not found' }),
     });
 
-    render(<IssueDetailPage params={{ id: 'invalid-id' }} />);
+    mockUseParams.mockReturnValue({ id: 'invalid-id' });
+    render(<IssueDetailPage />);
     
     // Should show error banner
     await waitFor(() => {
@@ -69,7 +83,8 @@ describe('Issue [id] Routing - Error Handling', () => {
       json: async () => ({ error: 'Invalid ID format' }),
     });
 
-    render(<IssueDetailPage params={{ id: '123e4567' }} />);
+    mockUseParams.mockReturnValue({ id: '123e4567' });
+    render(<IssueDetailPage />);
     
     // Should show error banner
     await waitFor(() => {
@@ -106,7 +121,8 @@ describe('Issue [id] Routing - Error Handling', () => {
       }),
     });
 
-    render(<IssueDetailPage params={{ id: validUUID }} />);
+    mockUseParams.mockReturnValue({ id: validUUID });
+    render(<IssueDetailPage />);
     
     // Should display issue title
     await waitFor(() => {
@@ -143,7 +159,8 @@ describe('Issue [id] Routing - Error Handling', () => {
       }),
     });
 
-    render(<IssueDetailPage params={{ id: validUUID }} />);
+    mockUseParams.mockReturnValue({ id: validUUID });
+    render(<IssueDetailPage />);
     
     // Should display issue
     await waitFor(() => {
