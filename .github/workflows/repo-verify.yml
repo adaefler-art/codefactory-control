@@ -1,4 +1,4 @@
-name: Repository Canon Verification
+name: repo-verify
 
 # ISSUE 1 — Repo Canon & Guardrails
 # Enforces structural consistency across the repository
