@@ -391,6 +391,13 @@ export class Afu9EcsStack extends cdk.Stack {
       'afu9/github'
     );
 
+    // Import GitHub App credentials secret (server-to-server JWT)
+    const githubAppSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'GithubAppSecret',
+      'afu9/github/app'
+    );
+
     // Import LLM API keys secret (shared across environments)
     const llmSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
@@ -501,6 +508,7 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Grant task role access to secrets (database omitted; injected by execution role only)
     githubSecret.grantRead(taskRole);
+    githubAppSecret.grantRead(taskRole);
     llmSecret.grantRead(taskRole);
 
     // Store region and account for ARN construction (reduces repetition)
