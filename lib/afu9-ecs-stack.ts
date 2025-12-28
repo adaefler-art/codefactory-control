@@ -727,6 +727,7 @@ export class Afu9EcsStack extends cdk.Stack {
           GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
           GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
           GITHUB_APP_ID: ecs.Secret.fromSecretsManager(githubAppSecret, 'appId'),
+          GITHUB_APP_PRIVATE_KEY: ecs.Secret.fromSecretsManager(githubAppSecret, 'pkcs8'),
           GITHUB_APP_PRIVATE_KEY_PEM: ecs.Secret.fromSecretsManager(githubAppSecret, 'pkcs8'),
           OPENAI_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'openai_api_key'),
           ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(llmSecret, 'anthropic_api_key'),
