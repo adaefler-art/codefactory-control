@@ -669,6 +669,12 @@ export class Afu9EcsStack extends cdk.Stack {
         taskRole: taskRole,
       });
 
+      // Build identity for deployment tracking
+      // These values should be injected at deployment time by GitHub Actions or CDK context
+      const appVersion = this.node.tryGetContext('app-version') || process.env.APP_VERSION || 'unknown';
+      const gitSha = this.node.tryGetContext('git-sha') || process.env.GIT_SHA || 'unknown';
+      const buildTime = this.node.tryGetContext('build-time') || process.env.BUILD_TIME || new Date().toISOString();
+
       // Control Center container
       const cc = td.addContainer('control-center', {
         image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, tag),
@@ -682,6 +688,9 @@ export class Afu9EcsStack extends cdk.Stack {
           DEPLOY_ENV: deployEnvValue,
           PORT: '3000',
           ENVIRONMENT: environmentLabel,
+          APP_VERSION: appVersion,
+          GIT_SHA: gitSha,
+          BUILD_TIME: buildTime,
           PGSSLMODE: 'require',
           COGNITO_REGION: cdk.Fn.importValue('Afu9CognitoRegion'),
           COGNITO_USER_POOL_ID: cdk.Fn.importValue('Afu9UserPoolId'),
