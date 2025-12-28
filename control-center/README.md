@@ -90,6 +90,20 @@ Navigiere zum Dashboard um eine Übersicht über Workflows, Agents, Repositories
 - `/agents` - Agent Monitoring
 - `/repositories` - Repository Management
 
+### API Routes
+
+Alle API-Routen sind dokumentiert in [`docs/API_ROUTES.md`](../docs/API_ROUTES.md).
+
+**Wichtige API-Kategorien:**
+- `/api/auth/*` - Authentifizierung
+- `/api/issues/*` - AFU-9 Issue-Management
+- `/api/workflows/*` - Workflow-Management (persistent)
+- `/api/workflow/*` - Workflow-Execution (ad-hoc)
+- `/api/webhooks/*` - Webhook-Handler
+- `/api/v1/*` - Versionierte APIs (KPIs, Costs, Factory Status)
+
+**Hinweis:** Verwende immer die kanonischen Routen aus der Dokumentation. Deprecated Aliases werden in zukünftigen Versionen entfernt.
+
 ## Sicherheit
 
 - **`.env.local`** wird automatisch durch `.gitignore` ausgeschlossen und niemals committed
