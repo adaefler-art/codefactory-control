@@ -114,6 +114,8 @@ const KNOWN_SCOPED_VARIABLES = [
   'dbSecretArn',        // Database secret ARN from props
   'githubSecret',       // GitHub secret ARN (afu9/github)
   'llmSecret',          // LLM secret ARN (afu9/llm)
+  'clusterName',        // Stack-defined cluster name (expected to be 'afu9-cluster')
+  'cdkAssetsRepoName',  // CDK bootstrap ECR repository name (account/region-scoped)
 ];
 
 function parseTypeScriptFile(filePath: string): ts.SourceFile {

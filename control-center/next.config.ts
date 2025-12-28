@@ -22,10 +22,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   // Ensure lawbook JSON files are available in standalone build
-  experimental: {
-    outputFileTracingIncludes: {
-      '/api/lawbook/*': ['./src/lawbook/*.json'],
-    },
+  outputFileTracingIncludes: {
+    '/api/lawbook/*': ['./src/lawbook/*.json'],
   },
 };
 
