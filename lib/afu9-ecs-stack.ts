@@ -673,7 +673,7 @@ export class Afu9EcsStack extends cdk.Stack {
       // These values should be injected at deployment time by GitHub Actions or CDK context
       const appVersion = this.node.tryGetContext('app-version') || process.env.APP_VERSION || 'unknown';
       const gitSha = this.node.tryGetContext('git-sha') || process.env.GIT_SHA || 'unknown';
-      const buildTime = this.node.tryGetContext('build-time') || process.env.BUILD_TIME || new Date().toISOString();
+      const buildTime = this.node.tryGetContext('build-time') || process.env.BUILD_TIME || 'unknown';
 
       // Control Center container
       const cc = td.addContainer('control-center', {

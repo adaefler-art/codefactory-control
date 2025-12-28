@@ -221,7 +221,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('Readiness check failed:', error);
-    const buildInfo = getBuildInfo();
     
     return jsonResponse(
       {
