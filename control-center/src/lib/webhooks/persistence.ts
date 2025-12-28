@@ -7,6 +7,43 @@
 import { Pool } from 'pg';
 import { WebhookEvent, WebhookConfig } from './types';
 
+export type GitHubWebhookDeliveryRecordResult =
+  | { inserted: true }
+  | { inserted: false; duplicate: true };
+
+/**
+ * Record a GitHub webhook delivery for idempotency.
+ *
+ * Returns { inserted: false, duplicate: true } if the delivery_id was already seen.
+ */
+export async function recordGitHubWebhookDelivery(
+  pool: Pool,
+  input: {
+    delivery_id: string;
+    event_type: string;
+    repository_full_name?: string;
+  }
+): Promise<GitHubWebhookDeliveryRecordResult> {
+  const query = `
+    INSERT INTO github_webhook_deliveries (delivery_id, event_type, repository_full_name)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (delivery_id) DO NOTHING
+    RETURNING delivery_id
+  `;
+
+  const result = await pool.query(query, [
+    input.delivery_id,
+    input.event_type,
+    input.repository_full_name ?? null,
+  ]);
+
+  if (result.rowCount && result.rowCount > 0) {
+    return { inserted: true };
+  }
+
+  return { inserted: false, duplicate: true };
+}
+
 /**
  * Store a webhook event in the database
  */

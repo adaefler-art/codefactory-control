@@ -39,7 +39,7 @@ describe('GET /api/deploy-events normalization', () => {
           created_at: new Date('2025-12-23T15:01:34.136Z'),
           env: 'staging',
           service: 'control-center',
-          version: '0.4.0',
+          version: '0.5.0',
           commit_hash: 'deadbeef',
           status: 'success',
           message: 'ok',

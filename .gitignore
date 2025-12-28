@@ -82,3 +82,6 @@ artifacts/
 actionlint
 /LICENSE.txt
 /man/
+
+# Generated build artifacts
+control-center/public/build-metadata.json

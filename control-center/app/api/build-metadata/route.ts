@@ -9,7 +9,7 @@ import path from 'path';
  * 
  * Response:
  * {
- *   "version": "0.4.0",
+ *   "version": "0.5.0",
  *   "timestamp": "2025-12-20T10:42:00.000Z",
  *   "commitHash": "a1b2c3d",
  *   "environment": "production"

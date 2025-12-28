@@ -1,6 +1,6 @@
 {
   "name": "@codefactory/verdict-engine",
-  "version": "1.1.0",
+  "version": "0.5.0",
   "description": "AFU-9 Verdict Engine v1.1: Governance & Auditability for deployment verdicts",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
