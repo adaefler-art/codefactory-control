@@ -50,6 +50,8 @@ function logAuthRoute(params: { requestId: string; route: string; method: string
 
 function attachRequestId(response: NextResponse, requestId: string): NextResponse {
   response.headers.set('x-request-id', requestId);
+  response.headers.set('cache-control', 'no-store, max-age=0');
+  response.headers.set('pragma', 'no-cache');
   return response;
 }
 

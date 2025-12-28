@@ -22,7 +22,7 @@ export default function LoginPage() {
 
   // Fetch build metadata on component mount
   useEffect(() => {
-    fetch('/api/build-metadata', { credentials: 'include' })
+    fetch('/api/build-metadata', { credentials: 'include', cache: 'no-store' })
       .then(res => safeFetch(res))
       .then(data => setBuildMetadata(data))
       .catch(err => console.error('Failed to load build metadata:', err));
@@ -38,9 +38,11 @@ export default function LoginPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ username, password }),
+        cache: "no-store",
       });
       await safeFetch(res);
       router.push("/dashboard");
+      router.refresh(); // Force refresh to clear any stale cache
     } catch (err: unknown) {
       setError(formatErrorMessage(err));
     } finally {

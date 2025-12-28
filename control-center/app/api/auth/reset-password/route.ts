@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
+const DISABLE_PASSWORD_RESET = (process.env.DISABLE_PASSWORD_RESET || 'false').toLowerCase() === 'true' || process.env.DISABLE_PASSWORD_RESET === '1';
 
 // Initialize Cognito client
 const cognitoClient = new CognitoIdentityProviderClient({
@@ -20,6 +21,12 @@ function getRequestId(): string {
   } catch {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
+}
+
+function applyNoStoreHeaders(response: NextResponse): NextResponse {
+  response.headers.set('cache-control', 'no-store, max-age=0');
+  response.headers.set('pragma', 'no-cache');
+  return response;
 }
 
 /**
@@ -44,29 +51,41 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { username, code, newPassword } = body;
 
+    // Check if password reset is disabled
+    if (DISABLE_PASSWORD_RESET) {
+      return applyNoStoreHeaders(NextResponse.json(
+        {
+          error: 'Password reset is not available in this environment',
+          requestId: getRequestId(),
+          timestamp: new Date().toISOString(),
+        },
+        { status: 501 }
+      ));
+    }
+
     // Validate input
     if (!username || !code || !newPassword) {
-      return NextResponse.json(
+      return applyNoStoreHeaders(NextResponse.json(
         {
           error: 'Username, code, and new password are required',
           requestId: getRequestId(),
           timestamp: new Date().toISOString(),
         },
         { status: 400 }
-      );
+      ));
     }
 
     // Validate environment variables
     if (!COGNITO_CLIENT_ID) {
       console.error('Missing Cognito configuration');
-      return NextResponse.json(
+      return applyNoStoreHeaders(NextResponse.json(
         {
           error: 'Password reset service not configured',
           requestId: getRequestId(),
           timestamp: new Date().toISOString(),
         },
         { status: 500 }
-      );
+      ));
     }
 
     // Confirm forgot password with code
@@ -79,67 +98,67 @@ export async function POST(request: NextRequest) {
 
     await cognitoClient.send(command);
 
-    return NextResponse.json({
+    return applyNoStoreHeaders(NextResponse.json({
       message: 'Password reset successful',
-    });
+    }));
   } catch (error: unknown) {
     console.error('Reset password error:', error);
 
     // Handle specific Cognito errors
     if (error instanceof Error) {
       if (error.name === 'CodeMismatchException') {
-        return NextResponse.json(
+        return applyNoStoreHeaders(NextResponse.json(
           {
             error: 'Invalid verification code',
             requestId: getRequestId(),
             timestamp: new Date().toISOString(),
           },
           { status: 400 }
-        );
+        ));
       }
 
       if (error.name === 'ExpiredCodeException') {
-        return NextResponse.json(
+        return applyNoStoreHeaders(NextResponse.json(
           {
             error: 'Verification code has expired',
             requestId: getRequestId(),
             timestamp: new Date().toISOString(),
           },
           { status: 400 }
-        );
+        ));
       }
 
       if (error.name === 'InvalidPasswordException') {
-        return NextResponse.json(
+        return applyNoStoreHeaders(NextResponse.json(
           {
             error: 'Password does not meet requirements',
             requestId: getRequestId(),
             timestamp: new Date().toISOString(),
           },
           { status: 400 }
-        );
+        ));
       }
 
       if (error.name === 'LimitExceededException') {
-        return NextResponse.json(
+        return applyNoStoreHeaders(NextResponse.json(
           {
             error: 'Too many attempts. Please try again later.',
             requestId: getRequestId(),
             timestamp: new Date().toISOString(),
           },
           { status: 429 }
-        );
+        ));
       }
     }
 
     // Generic error response
-    return NextResponse.json(
+    return applyNoStoreHeaders(NextResponse.json(
       {
         error: 'Password reset failed',
         requestId: getRequestId(),
         timestamp: new Date().toISOString(),
       },
       { status: 500 }
-    );
+    ));
   }
 }
