@@ -23,7 +23,6 @@ import {
   Afu9HandoffState,
   isValidStatus,
   isValidPriority,
-  isValidHandoffState,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../_shared';

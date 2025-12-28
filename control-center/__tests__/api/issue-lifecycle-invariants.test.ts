@@ -43,6 +43,7 @@ jest.mock('../../app/api/issues/_shared', () => ({
 
 describe('Issue Lifecycle Invariants', () => {
   const mockIssueId = '123e4567-e89b-12d3-a456-426614174000';
+  const mockPublicId = '123e4567'; // First 8 chars of UUID
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -64,11 +65,11 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567/activate', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}/activate`, {
         method: 'POST',
       });
       const response = await activateIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
       const body = await response.json();
 
@@ -92,11 +93,11 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567/activate', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}/activate`, {
         method: 'POST',
       });
       const response = await activateIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
       const body = await response.json();
 
@@ -134,11 +135,11 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567/activate', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}/activate`, {
         method: 'POST',
       });
       const response = await activateIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
 
       expect(response.status).toBe(200);
@@ -161,11 +162,11 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567/handoff', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}/handoff`, {
         method: 'POST',
       });
       const response = await handoffIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
       const body = await response.json();
 
@@ -189,11 +190,11 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567/handoff', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}/handoff`, {
         method: 'POST',
       });
       const response = await handoffIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
       const body = await response.json();
 
@@ -243,11 +244,11 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567/handoff', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}/handoff`, {
         method: 'POST',
       });
       const response = await handoffIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
 
       expect(response.status).toBe(200);
@@ -269,7 +270,7 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -280,7 +281,7 @@ describe('Issue Lifecycle Invariants', () => {
       });
 
       const response = await updateIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
       const body = await response.json();
 
@@ -313,7 +314,7 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      const request = new NextRequest('http://localhost/api/issues/123e4567', {
+      const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -324,7 +325,7 @@ describe('Issue Lifecycle Invariants', () => {
       });
 
       const response = await updateIssue(request, {
-        params: Promise.resolve({ id: '123e4567' }),
+        params: Promise.resolve({ id: mockPublicId }),
       });
 
       expect(response.status).toBe(200);
