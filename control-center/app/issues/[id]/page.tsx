@@ -68,6 +68,7 @@ export default function IssueDetailPage({
   const [editedTitle, setEditedTitle] = useState("");
   const [editedBody, setEditedBody] = useState("");
   const [editedStatus, setEditedStatus] = useState<Issue["status"]>("CREATED");
+  const [editedPriority, setEditedPriority] = useState<Issue["priority"]>(null);
   const [editedLabels, setEditedLabels] = useState<string[]>([]);
   const [newLabel, setNewLabel] = useState("");
   const [showPreview, setShowPreview] = useState(false);
@@ -88,6 +89,7 @@ export default function IssueDetailPage({
       setEditedTitle(issue.title);
       setEditedBody(issue.body || "");
       setEditedStatus(issue.status);
+      setEditedPriority(issue.priority);
       setEditedLabels(issue.labels);
     }
   }, [issue]);
@@ -182,7 +184,7 @@ export default function IssueDetailPage({
     setActionMessage(null);
 
     try {
-      const updates: Partial<Pick<Issue, 'title' | 'body' | 'status' | 'labels'>> = {};
+      const updates: Partial<Pick<Issue, 'title' | 'body' | 'status' | 'priority' | 'labels'>> = {};
 
       if (editedTitle !== issue.title) {
         updates.title = editedTitle;
@@ -192,6 +194,9 @@ export default function IssueDetailPage({
       }
       if (editedStatus !== issue.status) {
         updates.status = editedStatus;
+      }
+      if (editedPriority !== issue.priority) {
+        updates.priority = editedPriority;
       }
       if (JSON.stringify(editedLabels) !== JSON.stringify(issue.labels)) {
         updates.labels = editedLabels;
@@ -596,9 +601,18 @@ export default function IssueDetailPage({
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Priority
                 </label>
-                <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-400">
-                  {issue.priority || "No priority set"}
-                </div>
+                <select
+                  value={editedPriority || ""}
+                  onChange={(e) =>
+                    setEditedPriority((e.target.value as Issue["priority"]) || null)
+                  }
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">No priority set</option>
+                  <option value="P0">P0</option>
+                  <option value="P1">P1</option>
+                  <option value="P2">P2</option>
+                </select>
               </div>
 
               {/* Handoff State */}
