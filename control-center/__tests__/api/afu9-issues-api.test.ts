@@ -699,6 +699,7 @@ describe('AFU9 Issues API', () => {
 
       const syncedIssue = {
         ...mockIssue,
+        status: Afu9IssueStatus.SPEC_READY, // Changed from CREATED to avoid lifecycle invariant violation
         handoff_state: Afu9HandoffState.SYNCED,
         github_issue_number: 123,
         github_url: 'https://github.com/owner/repo/issues/123',
