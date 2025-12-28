@@ -23,8 +23,10 @@
     "ecs:diagnose": "pwsh -File scripts/ecs_diagnose.ps1",
     "smoke:epic4": "pwsh -File scripts/smoke_epic4.ps1",
     "ecs:debug": "pwsh -File scripts/ecs_debug.ps1",
+    "precommit:gate": "node scripts/precommit-gate.mjs",
     "import-v04-issues": "ts-node scripts/import-afu9-v04-issues.ts",
-    "test": "jest"
+    "test": "jest",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@octokit/rest": "^22.0.1",
@@ -36,6 +38,7 @@
     "aws-cdk-lib": "2.162.1",
     "constructs": "^10.0.0",
     "esbuild": "^0.27.1",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "source-map-support": "^0.5.21",
     "ts-jest": "^29.2.5",
@@ -54,4 +57,6 @@
     "minimist": "^1.2.8",
     "octokit": "^4.0.0"
   }
+
+
 }

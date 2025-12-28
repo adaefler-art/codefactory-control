@@ -16,10 +16,7 @@ on:
       - '.github/workflows/repo-verify.yml'
   push:
     branches:
-      - main
-    paths:
-      - 'control-center/**'
-      - 'lib/**/*.ts'
+      - '**'
   workflow_dispatch:
 
 jobs:

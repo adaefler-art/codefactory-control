@@ -96,3 +96,7 @@ github-app-private-key.pkcs8.pem
 github-app-secret.json
 secret-updated.json
 secret-final.json
+
+# Next.js build output
+.next/
+control-center/.next/
