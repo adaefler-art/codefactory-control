@@ -228,6 +228,12 @@ export default function IssueDetailPage({
   const handleActivate = async () => {
     if (!issue) return;
 
+    // Client-side validation: Check if title is empty
+    if (!issue.title || issue.title.trim().length === 0) {
+      setSaveError('Cannot activate issue without a title. Please set a title first.');
+      return;
+    }
+
     // Check if another issue is active
     const activeIssue = await checkActiveIssue();
     if (activeIssue) {
@@ -274,6 +280,12 @@ export default function IssueDetailPage({
 
   const handleHandoff = async () => {
     if (!issue) return;
+
+    // Client-side validation: Check if title is empty
+    if (!issue.title || issue.title.trim().length === 0) {
+      setSaveError('Cannot handoff issue without a title. Please set a title first.');
+      return;
+    }
 
     setIsHandingOff(true);
     setActionMessage(null);

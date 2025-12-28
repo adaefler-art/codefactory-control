@@ -21,6 +21,11 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueByPublicId: jest.fn(),
 }));
 
+jest.mock('../../app/api/issues/_shared', () => ({
+  fetchIssueRowByIdentifier: jest.fn(),
+  normalizeIssueForApi: jest.fn((row) => row),
+}));
+
 describe('DELETE /api/issues/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -50,9 +55,13 @@ describe('DELETE /api/issues/[id]', () => {
   };
 
   test('successfully soft deletes issue with CREATED status and NOT_SENT handoff state', async () => {
-    const { getAfu9IssueById, softDeleteAfu9Issue } = require('../../src/lib/db/afu9Issues');
+    const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+    const { softDeleteAfu9Issue } = require('../../src/lib/db/afu9Issues');
     
-    getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
+    fetchIssueRowByIdentifier.mockResolvedValue({
+      ok: true,
+      row: mockIssue,
+    });
     softDeleteAfu9Issue.mockResolvedValue({ success: true });
 
     const request = new NextRequest('http://localhost/api/issues/test-uuid-1');
@@ -72,10 +81,14 @@ describe('DELETE /api/issues/[id]', () => {
   });
 
   test('returns 403 when trying to delete issue not in CREATED/NOT_SENT state', async () => {
-    const { getAfu9IssueById, softDeleteAfu9Issue } = require('../../src/lib/db/afu9Issues');
+    const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+    const { softDeleteAfu9Issue } = require('../../src/lib/db/afu9Issues');
     
     const activeIssue = { ...mockIssue, id: 'test-uuid-2', status: 'ACTIVE', handoff_state: 'SYNCED' };
-    getAfu9IssueById.mockResolvedValue({ success: true, data: activeIssue });
+    fetchIssueRowByIdentifier.mockResolvedValue({
+      ok: true,
+      row: activeIssue,
+    });
     softDeleteAfu9Issue.mockResolvedValue({
       success: false,
       error: 'Cannot delete issue: deletion only allowed for status=CREATED and handoff_state=NOT_SENT. Current status=ACTIVE, handoff_state=SYNCED',
@@ -94,11 +107,12 @@ describe('DELETE /api/issues/[id]', () => {
   });
 
   test('returns 404 when issue does not exist', async () => {
-    const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+    const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
     
-    getAfu9IssueById.mockResolvedValue({
-      success: false,
-      error: 'Issue not found: test-uuid-3',
+    fetchIssueRowByIdentifier.mockResolvedValue({
+      ok: false,
+      status: 404,
+      body: { error: 'Issue not found: test-uuid-3' },
     });
 
     const request = new NextRequest('http://localhost/api/issues/test-uuid-3');
