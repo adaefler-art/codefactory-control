@@ -47,10 +47,12 @@ if (-not (Test-Path "bin/codefactory-control.ts")) {
 
 # Check if CDK is available
 try {
+    $null = Get-Command cdk -ErrorAction Stop
     $cdkVersion = cdk --version 2>&1 | Out-String
     Write-Host "✓ CDK is available: $($cdkVersion.Trim())" -ForegroundColor Green
 } catch {
     Write-Host "❌ Error: AWS CDK not found. Please install it first." -ForegroundColor Red
+    Write-Host "   Install with: npm install -g aws-cdk" -ForegroundColor Gray
     exit 1
 }
 
