@@ -71,7 +71,8 @@ function clearCookie(response: NextResponse, name: string) {
  */
 export async function middleware(request: NextRequest) {
   const requestId = getRequestId();
-  const { pathname, hostname } = request.nextUrl;
+  const { pathname: rawPathname, hostname } = request.nextUrl;
+  const pathname = rawPathname === '/' ? rawPathname : rawPathname.replace(/\/+$/, '');
 
   const nextWithRequestId = () => {
     const requestHeaders = new Headers(request.headers);

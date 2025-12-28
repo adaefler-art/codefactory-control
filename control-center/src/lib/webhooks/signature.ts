@@ -16,7 +16,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
  * @returns True if signature is valid
  */
 export function verifyGitHubSignature(
-  payload: string,
+  payload: string | Buffer,
   signature: string,
   secret: string
 ): boolean {
@@ -28,7 +28,11 @@ export function verifyGitHubSignature(
   try {
     // Calculate expected signature
     const hmac = createHmac('sha256', secret);
-    hmac.update(payload, 'utf8');
+    if (Buffer.isBuffer(payload)) {
+      hmac.update(payload);
+    } else {
+      hmac.update(payload, 'utf8');
+    }
     const expectedSignature = `sha256=${hmac.digest('hex')}`;
 
     // Use timing-safe comparison to prevent timing attacks

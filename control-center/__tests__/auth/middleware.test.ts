@@ -28,12 +28,14 @@ describe('Middleware Authentication Logic', () => {
   test('Public routes list includes expected paths', () => {
     expect(PUBLIC_ROUTES).toContain('/api/auth/login');
     expect(PUBLIC_ROUTES).toContain('/api/github/webhook');
+    expect(PUBLIC_ROUTES).toContain('/api/webhooks/github');
     expect(PUBLIC_ROUTES).toContain('/api/health');
     expect(PUBLIC_ROUTES).toContain('/favicon.ico');
   });
 
   test('Webhook route is treated as public', () => {
     expect(isPublicRoute('/api/github/webhook')).toBe(true);
+    expect(isPublicRoute('/api/webhooks/github')).toBe(true);
   });
 
   test('API routes are identified by /api/ prefix', () => {
