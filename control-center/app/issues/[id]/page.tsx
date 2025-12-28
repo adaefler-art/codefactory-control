@@ -721,7 +721,7 @@ export default function IssueDetailPage({
             </label>
             <div className="flex flex-wrap gap-2 mb-3">
               {editedLabels.length === 0 ? (
-                <span className="text-sm text-gray-500">No labels</span>
+                <span className="text-sm text-gray-600 italic">—</span>
               ) : (
                 editedLabels.map((label) => (
                   <span

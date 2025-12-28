@@ -50,6 +50,17 @@ export async function POST(
     const issue = resolved.row as any;
     const internalId = String(issue.id);
 
+    // Invariant: Require title for activation
+    if (!issue.title || issue.title.trim().length === 0) {
+      return NextResponse.json(
+        { 
+          error: 'Cannot activate issue without a title',
+          details: 'Activation requires a non-empty title. Please set a title before activating.',
+        },
+        { status: 400 }
+      );
+    }
+
     // Check if already IMPLEMENTING
     if (issue?.status === Afu9IssueStatus.IMPLEMENTING) {
       const responseBody: any = {
