@@ -4,11 +4,12 @@ import {
   ConfirmForgotPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { randomUUID } from 'crypto';
+import { parseBooleanEnv } from '../../../../lib/env-utils';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
-const DISABLE_PASSWORD_RESET = (process.env.DISABLE_PASSWORD_RESET || 'false').toLowerCase() === 'true' || process.env.DISABLE_PASSWORD_RESET === '1';
+const DISABLE_PASSWORD_RESET = parseBooleanEnv(process.env.DISABLE_PASSWORD_RESET);
 
 // Initialize Cognito client
 const cognitoClient = new CognitoIdentityProviderClient({

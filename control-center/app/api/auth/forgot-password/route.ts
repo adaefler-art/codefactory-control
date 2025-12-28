@@ -4,12 +4,13 @@ import {
   ForgotPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import crypto from 'crypto';
+import { parseBooleanEnv } from '../../../../lib/env-utils';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || '';
-const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
-const DISABLE_PASSWORD_RESET = (process.env.DISABLE_PASSWORD_RESET || 'false').toLowerCase() === 'true' || process.env.DISABLE_PASSWORD_RESET === '1';
+const AFU9_DEBUG_AUTH = parseBooleanEnv(process.env.AFU9_DEBUG_AUTH);
+const DISABLE_PASSWORD_RESET = parseBooleanEnv(process.env.DISABLE_PASSWORD_RESET);
 
 function getCorrelationId(request: NextRequest): string {
   return (
