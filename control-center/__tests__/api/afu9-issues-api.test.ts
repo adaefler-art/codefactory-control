@@ -459,6 +459,88 @@ describe('AFU9 Issues API', () => {
       expect(response.status).toBe(200);
       expect(body.status).toBe('FAILED');
     });
+
+    test('updates issue priority', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      // Test updating from P1 to P0
+      const updatedIssue = { ...mockIssue, priority: Afu9IssuePriority.P0 };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: updatedIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          priority: 'P0',
+        }),
+      });
+
+      const response = await updateIssue(request, {
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.priority).toBe('P0');
+    });
+
+    test('allows setting priority to null', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const updatedIssue = { ...mockIssue, priority: null };
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: updatedIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          priority: null,
+        }),
+      });
+
+      const response = await updateIssue(request, {
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.priority).toBe(null);
+    });
+
+    test('returns 400 for invalid priority', async () => {
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockIssue,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          priority: 'INVALID_PRIORITY',
+        }),
+      });
+
+      const response = await updateIssue(request, {
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain('Invalid priority');
+    });
   });
 
   describe('POST /api/issues/[id]/activate', () => {
@@ -700,6 +782,86 @@ describe('AFU9 Issues API', () => {
       expect(createGithubIssue).toHaveBeenCalledWith(
         expect.objectContaining({
           body: expect.stringContaining('AFU9-ISSUE:123e4567-e89b-12d3-a456-426614174000'),
+        })
+      );
+    });
+
+    test('includes priority as GitHub label when priority is set', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../src/lib/github');
+
+      const issueWithPriority = {
+        ...mockIssue,
+        priority: Afu9IssuePriority.P0,
+        labels: ['bug', 'feature'],
+      };
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: issueWithPriority,
+      });
+
+      createGithubIssue.mockResolvedValue({
+        html_url: 'https://github.com/owner/repo/issues/123',
+        number: 123,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: issueWithPriority,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
+        method: 'POST',
+      });
+
+      await handoffIssue(request, {
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+      });
+
+      expect(createGithubIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          labels: expect.arrayContaining(['bug', 'feature', 'priority:P0']),
+        })
+      );
+    });
+
+    test('does not include priority label when priority is null', async () => {
+      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { createIssue: createGithubIssue } = require('../../src/lib/github');
+
+      const issueWithoutPriority = {
+        ...mockIssue,
+        priority: null,
+        labels: ['bug'],
+      };
+
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: issueWithoutPriority,
+      });
+
+      createGithubIssue.mockResolvedValue({
+        html_url: 'https://github.com/owner/repo/issues/123',
+        number: 123,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
+        success: true,
+        data: issueWithoutPriority,
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
+        method: 'POST',
+      });
+
+      await handoffIssue(request, {
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+      });
+
+      expect(createGithubIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          labels: ['bug'], // No priority label
         })
       );
     });
