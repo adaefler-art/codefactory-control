@@ -459,9 +459,9 @@ export default function IssueDetailPage({
   };
 
   const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return "—";
+    if (!dateString) return "-";
     const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) return "-";
     return date.toLocaleDateString("de-DE", {
       year: "numeric",
       month: "short",
@@ -831,7 +831,7 @@ export default function IssueDetailPage({
             </label>
             <div className="flex flex-wrap gap-2 mb-3">
               {editedLabels.length === 0 ? (
-                <span className="text-sm text-gray-600 italic">—</span>
+                <span className="text-sm text-gray-600 italic">-</span>
               ) : (
                 editedLabels.map((label) => (
                   <span
@@ -1005,7 +1005,7 @@ export default function IssueDetailPage({
                         </div>
                         <div className="mt-1 text-xs text-gray-500">
                           {formatDate(event.created_at)}
-                          {event.created_by && ` • by ${event.created_by}`}
+                          {event.created_by && ` - by ${event.created_by}`}
                         </div>
                       </div>
                     </div>

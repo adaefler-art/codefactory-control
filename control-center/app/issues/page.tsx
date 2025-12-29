@@ -332,9 +332,9 @@ export default function IssuesPage() {
   };
 
   const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return "—";
+    if (!dateString) return "-";
     const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) return "-";
     return date.toLocaleDateString("de-DE", {
       year: "numeric",
       month: "short",
@@ -601,7 +601,7 @@ export default function IssuesPage() {
                                 {issue.priority}
                               </span>
                             ) : (
-                              <span className="text-xs text-gray-500">—</span>
+                              <span className="text-xs text-gray-500">-</span>
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
