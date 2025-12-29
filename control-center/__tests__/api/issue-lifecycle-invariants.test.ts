@@ -108,7 +108,7 @@ describe('Issue Lifecycle Invariants', () => {
 
     test('allows activation of issue with valid title', async () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
-      const { updateAfu9Issue, getActiveIssue } = require('../../src/lib/db/afu9Issues');
+      const { updateAfu9Issue, getActiveIssue, transitionIssue } = require('../../src/lib/db/afu9Issues');
       
       // Mock issue with valid title
       fetchIssueRowByIdentifier.mockResolvedValue({
@@ -127,12 +127,24 @@ describe('Issue Lifecycle Invariants', () => {
         data: null, // No active issue
       });
 
+      // Mock transitionIssue for status change
+      transitionIssue.mockResolvedValue({
+        success: true,
+        data: {
+          id: mockIssueId,
+          title: 'Valid Issue Title',
+          status: Afu9IssueStatus.IMPLEMENTING,
+        },
+      });
+
+      // Mock updateAfu9Issue for activated_at timestamp
       updateAfu9Issue.mockResolvedValue({
         success: true,
         data: {
           id: mockIssueId,
           title: 'Valid Issue Title',
           status: Afu9IssueStatus.IMPLEMENTING,
+          activated_at: expect.any(String),
         },
       });
 
