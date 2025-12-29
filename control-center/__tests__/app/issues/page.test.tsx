@@ -77,10 +77,11 @@ describe('Issues List UI Page', () => {
       expect(screen.getByText('Test Issue 1')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByText('ACTIVE').length).toBeGreaterThan(0);
+    // Issues list shows canonical status (legacy statuses are mapped)
+    expect(screen.getAllByText('SPEC_READY').length).toBeGreaterThan(0);
+    expect(screen.getByTitle('Legacy status: ACTIVE → SPEC_READY')).toBeInTheDocument();
     expect(screen.getAllByText('bug').length).toBeGreaterThan(0);
     expect(screen.getAllByText('priority-p0').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('NOT_SENT').length).toBeGreaterThan(0);
   });
 
   test('should display "No issues found" when no issues exist', async () => {
@@ -138,9 +139,9 @@ describe('Issues List UI Page', () => {
     });
 
     // Check filter controls by text
-    expect(screen.getByText('Status')).toBeInTheDocument();
-    expect(screen.getByText('Label')).toBeInTheDocument();
-    expect(screen.getByText('Search')).toBeInTheDocument();
+    expect(screen.getByText('Status', { selector: 'label' })).toBeInTheDocument();
+    expect(screen.getByText('Label', { selector: 'label' })).toBeInTheDocument();
+    expect(screen.getByText('Search', { selector: 'label' })).toBeInTheDocument();
   });
 
   test('should render "New Issue" button', async () => {
@@ -164,7 +165,7 @@ describe('Issues List UI Page', () => {
     });
   });
 
-  test('should display handoff FAILED indicator', async () => {
+  test('should render issues with failed handoff state', async () => {
     const mockIssues = {
       issues: [
         {
@@ -198,10 +199,13 @@ describe('Issues List UI Page', () => {
     render(<IssuesPage />);
 
     await waitFor(() => {
-      const failedElements = screen.getAllByText('FAILED');
-      expect(failedElements.length).toBeGreaterThan(0);
-      expect(screen.getByText('⚠️')).toBeInTheDocument();
+      expect(screen.getByText('Failed Handoff Issue')).toBeInTheDocument();
     });
+
+    // List view shows canonical status + legacy marker; it does not render handoff_state badges.
+    expect(screen.getAllByText('SPEC_READY').length).toBeGreaterThan(0);
+    expect(screen.getByTitle('Legacy status: ACTIVE → SPEC_READY')).toBeInTheDocument();
+    expect(screen.getByText('No labels')).toBeInTheDocument();
   });
 
   test('should display table headers correctly', async () => {

@@ -1,0 +1,694 @@
+﻿{
+  "catalogVersion": "0.6.0",
+  "generatedAt": "2025-12-29T18:00:00+01:00",
+  "notes": "Canonical MCP tool catalog for AFU-9 Control Center. Server names and ports must match Control Center config + UI. Tool names are server-scoped (JSON-RPC params.tool). Guardrails are binding for client/server behavior and Verdict logic.",
+  "servers": [
+    {
+      "name": "observability",
+      "displayName": "Observability",
+      "contractVersion": "0.6.0",
+      "port": 3001,
+      "endpoint": "http://localhost:3001",
+      "tools": [
+        {
+          "name": "health",
+          "description": "Liveness check. Returns basic process health without dependency checks.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "status", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["UP", "DOWN"] },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "version": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "READ_ONLY",
+              "description": "Tool is read-only and must not mutate any infrastructure state.",
+              "severity": "info",
+              "appliesTo": "both"
+            }
+          ],
+          "examples": [
+            {
+              "title": "Basic liveness",
+              "arguments": {},
+              "expected": { "ok": true, "status": "UP", "timestamp": "2025-12-29T18:00:00+01:00", "version": "0.6.0" }
+            }
+          ]
+        },
+        {
+          "name": "ready",
+          "description": "Readiness check. Verifies dependencies (AWS APIs reachable, required permissions) and returns structured dependency status.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "awsRegion": { "type": "string", "description": "AWS region override (optional)." },
+              "require": {
+                "type": "array",
+                "description": "Optional list of dependency checks to enforce (e.g. ecs, elbv2, logs).",
+                "items": { "type": "string" }
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "status", "checks", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["READY", "NOT_READY"] },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "ok"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "ok": { "type": "boolean" },
+                    "message": { "type": "string" }
+                  }
+                }
+              },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "NO_SECRETS_IN_OUTPUT",
+              "description": "Do not return secrets/tokens/credentials in any field. Only redacted identifiers are allowed.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        },
+        {
+          "name": "checkHttp",
+          "description": "Performs an HTTP GET to a given URL (typically AFU-9 /api/health or /api/ready) and returns status + latency.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "description": "URL to probe." },
+              "timeoutMs": { "type": "integer", "minimum": 100, "description": "Probe timeout in ms (optional)." },
+              "expectStatus": {
+                "type": "array",
+                "description": "Allowed status codes (optional).",
+                "items": { "type": "integer", "minimum": 100, "maximum": 599 }
+              }
+            },
+            "required": ["url"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "statusCode", "latencyMs", "url", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "url": { "type": "string" },
+              "statusCode": { "type": "integer" },
+              "latencyMs": { "type": "integer" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "bodySnippet": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "ALLOWLIST_URLS",
+              "description": "Client must only call URLs from an allowlist (e.g. afu-9.com, internal ALB endpoints).",
+              "severity": "error",
+              "appliesTo": "client"
+            }
+          ]
+        },
+        {
+          "name": "getAlbTargetHealth",
+          "description": "Fetches ALB target group health and summarizes healthy/unhealthy targets (read-only).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "loadBalancerArn": { "type": "string", "description": "ALB ARN (optional if resolvable by tags)." },
+              "targetGroupArn": { "type": "string", "description": "Target group ARN." }
+            },
+            "required": ["targetGroupArn"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "summary", "targets", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "summary": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["healthy", "unhealthy"],
+                "properties": {
+                  "healthy": { "type": "integer", "minimum": 0 },
+                  "unhealthy": { "type": "integer", "minimum": 0 }
+                }
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "correlationId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "name": "getEcsServiceStatus",
+          "description": "Reads ECS service status/events and returns a condensed status summary (read-only).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "clusterArn": { "type": "string" },
+              "serviceArn": { "type": "string" },
+              "includeEvents": { "type": "boolean", "default": true },
+              "maxEvents": { "type": "integer", "minimum": 0, "maximum": 50, "default": 10 }
+            },
+            "required": ["clusterArn", "serviceArn"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "status", "desiredCount", "runningCount", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "status": { "type": "string" },
+              "desiredCount": { "type": "integer" },
+              "runningCount": { "type": "integer" },
+              "pendingCount": { "type": "integer" },
+              "events": { "type": "array", "items": { "type": "object" } },
+              "correlationId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "name": "tailLogs",
+          "description": "Fetches recent CloudWatch logs for a given log group/stream prefix (read-only).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "logGroupName": { "type": "string" },
+              "streamPrefix": { "type": "string" },
+              "sinceMinutes": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 15 },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+            },
+            "required": ["logGroupName"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "events", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["message", "ingestionTime"],
+                  "properties": {
+                    "message": { "type": "string" },
+                    "ingestionTime": { "type": "integer" }
+                  }
+                }
+              },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "PII_REDACTION",
+              "description": "Server must redact tokens/secrets/PII patterns in log output before returning.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "deploy",
+      "displayName": "Deploy",
+      "contractVersion": "0.6.0",
+      "port": 3002,
+      "endpoint": "http://localhost:3002",
+      "tools": [
+        {
+          "name": "cdkSynth",
+          "description": "Runs CDK synth for a given stack and context. Returns synth success + artifact path (if applicable).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "stack": { "type": "string", "description": "CDK stack name." },
+              "context": { "type": "object", "description": "CDK context key/values (optional)." },
+              "profile": { "type": "string", "description": "AWS CLI profile name (optional)." },
+              "region": { "type": "string", "description": "AWS region (optional)." }
+            },
+            "required": ["stack"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "stack", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "stack": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "artifactPath": { "type": "string" },
+              "warnings": { "type": "array", "items": { "type": "string" } },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "NO_DEPLOY_SIDE_EFFECTS",
+              "description": "Synth must not mutate AWS resources; it is a read-only plan step.",
+              "severity": "info",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "cdkDiff",
+          "description": "Runs CDK diff and returns a structured summary (including resource replacements).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "stack": { "type": "string" },
+              "context": { "type": "object" },
+              "profile": { "type": "string" },
+              "region": { "type": "string" },
+              "failOnReplacement": { "type": "boolean", "default": true },
+              "allowReplacementFor": {
+                "type": "array",
+                "description": "Optional allowlist of logical IDs/types allowed to replace.",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["stack"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "hasReplacement", "summary", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "hasReplacement": { "type": "boolean" },
+              "summary": { "type": "string" },
+              "replacements": { "type": "array", "items": { "type": "object" } },
+              "diffTextSnippet": { "type": "string" },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "REPLACEMENT_GATE",
+              "description": "If failOnReplacement=true, the server must return ok=false when replacements are detected (unless allowReplacementFor covers them).",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        },
+        {
+          "name": "cdkDeploy",
+          "description": "Runs CDK deploy for a given stack after preconditions have been satisfied (diff gate, build gate).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "stack": { "type": "string" },
+              "context": { "type": "object" },
+              "profile": { "type": "string" },
+              "region": { "type": "string" },
+              "requireGreenDiffGate": { "type": "boolean", "default": true },
+              "requireDeterminismGate": { "type": "boolean", "default": true }
+            },
+            "required": ["stack"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "stack", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "stack": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "outputs": { "type": "object", "additionalProperties": true },
+              "deploymentId": { "type": "string" },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "MUTATING_OPERATION",
+              "description": "This tool mutates AWS state; caller must ensure approvals/guards are satisfied.",
+              "severity": "warn",
+              "appliesTo": "client"
+            },
+            {
+              "id": "REQUIRE_DIFF_GATE",
+              "description": "If requireGreenDiffGate=true, deploy must be preceded by a passing cdkDiff (no forbidden replacements).",
+              "severity": "error",
+              "appliesTo": "both"
+            }
+          ],
+          "examples": [
+            {
+              "title": "Deploy with gates",
+              "arguments": { "stack": "Afu9EcsStack", "context": { "domainName": "afu-9.com", "enableDatabase": false }, "region": "eu-central-1" },
+              "expected": { "ok": true, "stack": "Afu9EcsStack", "deploymentId": "dep-2025-12-29-001", "outputs": { "AlbDnsName": "..." }, "timestamp": "2025-12-29T18:00:00+01:00" }
+            }
+          ]
+        },
+        {
+          "name": "verifyDeterminism",
+          "description": "Verifies deterministic build artifacts for the MCP server images (used by CI gates).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "description": "What to verify (e.g. deploy, observability, all)."
+              }
+            },
+            "required": ["target"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "target", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "target": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "details": { "type": "object", "additionalProperties": true },
+              "correlationId": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "github",
+      "displayName": "GitHub",
+      "contractVersion": "0.6.0",
+      "port": 3003,
+      "endpoint": "http://localhost:3003",
+      "tools": [
+        {
+          "name": "status",
+          "description": "Checks GitHub integration readiness (GitHub App preferred; PAT allowed only as explicit dev fallback).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Optional repo 'owner/name' to validate access." }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "mode", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "mode": { "type": "string", "enum": ["github_app", "pat", "unknown"] },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "app": { "type": "object", "additionalProperties": true },
+              "installation": { "type": "object", "additionalProperties": true },
+              "rateLimit": { "type": "object", "additionalProperties": true },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "NO_TOKENS_IN_OUTPUT",
+              "description": "Do not return JWTs, installation tokens, PATs, or private keys. Only redacted IDs are allowed.",
+              "severity": "error",
+              "appliesTo": "server"
+            },
+            {
+              "id": "CANONICAL_AUTH_GITHUB_APP",
+              "description": "Prefer GitHub App server-to-server auth (JWT + installation token). PAT is dev-only fallback.",
+              "severity": "warn",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "getIssue",
+          "description": "Reads a GitHub issue by number.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo 'owner/name'." },
+              "number": { "type": "integer", "minimum": 1 }
+            },
+            "required": ["repo", "number"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "issue", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "issue": { "type": "object", "additionalProperties": true },
+              "correlationId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "name": "listIssues",
+          "description": "Lists issues for a repo with optional filters (state, labels, assignee).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "state": { "type": "string", "enum": ["open", "closed", "all"], "default": "open" },
+              "labels": { "type": "array", "items": { "type": "string" } },
+              "assignee": { "type": "string" },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 }
+            },
+            "required": ["repo"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "items", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "items": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+              "correlationId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "name": "createIssue",
+          "description": "Creates a GitHub issue (mutating). Intended for AFU-9 handoff from internal issues.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "title": { "type": "string", "minLength": 1 },
+              "body": { "type": "string" },
+              "labels": { "type": "array", "items": { "type": "string" } },
+              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key to prevent duplicates." }
+            },
+            "required": ["repo", "title", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "number", "url", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "number": { "type": "integer" },
+              "url": { "type": "string" },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "MUTATING_OPERATION",
+              "description": "Creates/changes GitHub state. Must require explicit intent and idempotencyKey.",
+              "severity": "warn",
+              "appliesTo": "client"
+            },
+            {
+              "id": "REQUIRE_IDEMPOTENCY_KEY",
+              "description": "Server must reject calls without idempotencyKey to avoid duplicates.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ],
+          "examples": [
+            {
+              "title": "Create issue from AFU-9 handoff",
+              "arguments": {
+                "repo": "adaefler-art/codefactory-control",
+                "title": "[AFU9] Fix GH App status route mismatch",
+                "body": "Context: ...\nAcceptance Criteria: ...",
+                "labels": ["afu9", "mcp", "github"],
+                "idempotencyKey": "AFU9-ISSUE-123"
+              },
+              "expected": { "ok": true, "number": 401, "url": "https://github.com/.../issues/401", "timestamp": "2025-12-29T18:00:00+01:00" }
+            }
+          ]
+        },
+        {
+          "name": "updateIssue",
+          "description": "Updates issue title/body/labels/state (mutating).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "number": { "type": "integer", "minimum": 1 },
+              "title": { "type": "string" },
+              "body": { "type": "string" },
+              "state": { "type": "string", "enum": ["open", "closed"] },
+              "labels": { "type": "array", "items": { "type": "string" } },
+              "idempotencyKey": { "type": "string" }
+            },
+            "required": ["repo", "number", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "number", "url", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "number": { "type": "integer" },
+              "url": { "type": "string" },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "REQUIRE_IDEMPOTENCY_KEY",
+              "description": "Server must reject calls without idempotencyKey to avoid unintended repeated updates.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        },
+        {
+          "name": "commentIssue",
+          "description": "Adds a comment to an issue (mutating).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "number": { "type": "integer", "minimum": 1 },
+              "body": { "type": "string", "minLength": 1 },
+              "idempotencyKey": { "type": "string" }
+            },
+            "required": ["repo", "number", "body", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "commentId", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "commentId": { "type": "integer" },
+              "correlationId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "name": "createPullRequest",
+          "description": "Creates a PR from a branch (mutating). Intended for AFU-9 automation when a change is ready for review.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string" },
+              "head": { "type": "string", "description": "Head branch (e.g. feature/xyz)." },
+              "base": { "type": "string", "description": "Base branch (e.g. main)." },
+              "title": { "type": "string", "minLength": 1 },
+              "body": { "type": "string" },
+              "draft": { "type": "boolean", "default": true },
+              "idempotencyKey": { "type": "string" }
+            },
+            "required": ["repo", "head", "base", "title", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "number", "url", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "number": { "type": "integer" },
+              "url": { "type": "string" },
+              "correlationId": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "REQUIRE_DRAFT_BY_DEFAULT",
+              "description": "Caller should create draft PRs by default unless explicitly requested otherwise.",
+              "severity": "warn",
+              "appliesTo": "client"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

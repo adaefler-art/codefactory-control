@@ -42,6 +42,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate MCP Catalog
+        run: npm --prefix control-center run validate-mcp-catalog
+
       - name: Run Repository Canon Verification
         id: repo_verify
         shell: bash

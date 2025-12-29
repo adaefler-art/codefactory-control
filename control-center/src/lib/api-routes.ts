@@ -206,15 +206,14 @@ export const API_ROUTES = {
 } as const;
 
 /**
- * Deprecated routes for backward compatibility tracking.
- * DO NOT USE these routes in new code.
- * 
- * @deprecated These routes will be removed in future versions
+ * Deprecated route aliases.
+ *
+ * These are kept for backward compatibility tracking only.
+ * The GitHub webhook endpoint is deactivated; do not use this in new code.
  */
 export const DEPRECATED_ROUTES = {
   /**
    * @deprecated Use API_ROUTES.webhooks.github instead
-   * @removal v0.6
    */
   githubWebhook: '/api/github/webhook',
 } as const;

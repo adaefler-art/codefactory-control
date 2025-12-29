@@ -41,14 +41,9 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueById: jest.fn(),
   getAfu9IssueByPublicId: jest.fn(),
   updateAfu9Issue: jest.fn(),
+  transitionIssue: jest.fn(),
   getActiveIssue: jest.fn(),
   getIssueEvents: jest.fn(),
-}));
-
-// Mock _shared module for handoff route
-jest.mock('../../app/api/issues/_shared', () => ({
-  fetchIssueRowByIdentifier: jest.fn(),
-  normalizeIssueForApi: jest.fn((issue) => issue),
 }));
 
 describe('AFU9 Issues API', () => {
@@ -367,12 +362,13 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 409 for Single-Active constraint violation', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, transitionIssue } = require('../../src/lib/db/afu9Issues');
       getAfu9IssueById.mockResolvedValue({
         success: true,
         data: mockIssue,
       });
-      updateAfu9Issue.mockResolvedValue({
+
+      transitionIssue.mockResolvedValue({
         success: false,
         error: 'Single-Active constraint: Issue abc is already IMPLEMENTING',
       });
@@ -393,8 +389,8 @@ describe('AFU9 Issues API', () => {
       expect(body.error).toContain('Single-Active');
     });
 
-    test('accepts new status values SPEC_READY, IMPLEMENTING, and FAILED', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+    test('accepts new status values SPEC_READY, IMPLEMENTING, and VERIFIED', async () => {
+      const { getAfu9IssueById, transitionIssue } = require('../../src/lib/db/afu9Issues');
       getAfu9IssueById.mockResolvedValue({
         success: true,
         data: mockIssue,
@@ -402,7 +398,7 @@ describe('AFU9 Issues API', () => {
 
       // Test SPEC_READY
       const specReadyIssue = { ...mockIssue, status: Afu9IssueStatus.SPEC_READY };
-      updateAfu9Issue.mockResolvedValue({
+      transitionIssue.mockResolvedValue({
         success: true,
         data: specReadyIssue,
       });
@@ -423,8 +419,8 @@ describe('AFU9 Issues API', () => {
       expect(body.status).toBe('SPEC_READY');
 
       // Test IMPLEMENTING
-      const implementingIssue = { ...mockIssue, status: 'IMPLEMENTING' as any };
-      updateAfu9Issue.mockResolvedValue({
+      const implementingIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING };
+      transitionIssue.mockResolvedValue({
         success: true,
         data: implementingIssue,
       });
@@ -444,17 +440,17 @@ describe('AFU9 Issues API', () => {
       expect(response.status).toBe(200);
       expect(body.status).toBe('IMPLEMENTING');
 
-      // Test FAILED
-      const failedIssue = { ...mockIssue, status: 'FAILED' as any };
-      updateAfu9Issue.mockResolvedValue({
+      // Test VERIFIED
+      const verifiedIssue = { ...mockIssue, status: Afu9IssueStatus.VERIFIED };
+      transitionIssue.mockResolvedValue({
         success: true,
-        data: failedIssue,
+        data: verifiedIssue,
       });
 
       request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
         method: 'PATCH',
         body: JSON.stringify({
-          status: 'FAILED',
+          status: 'VERIFIED',
         }),
       });
 
@@ -464,7 +460,7 @@ describe('AFU9 Issues API', () => {
       body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.status).toBe('FAILED');
+      expect(body.status).toBe('VERIFIED');
     });
 
     test('updates issue priority', async () => {
@@ -551,8 +547,8 @@ describe('AFU9 Issues API', () => {
   });
 
   describe('POST /api/issues/[id]/activate', () => {
-    test('activates an issue with IMPLEMENTING status', async () => {
-      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+    test('activates an issue to SPEC_READY', async () => {
+      const { getAfu9IssueById, getActiveIssue, transitionIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       getAfu9IssueById.mockResolvedValue({
         success: true,
@@ -564,7 +560,12 @@ describe('AFU9 Issues API', () => {
         data: null,
       });
 
-      const activatedIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING, activated_at: '2023-12-23T12:00:00Z' };
+      transitionIssue.mockResolvedValue({
+        success: true,
+        data: { ...mockIssue, status: Afu9IssueStatus.SPEC_READY },
+      });
+
+      const activatedIssue = { ...mockIssue, status: Afu9IssueStatus.SPEC_READY, activated_at: '2023-12-23T12:00:00Z' };
       updateAfu9Issue.mockResolvedValue({
         success: true,
         data: activatedIssue,
@@ -581,24 +582,32 @@ describe('AFU9 Issues API', () => {
 
       expect(response.status).toBe(200);
       expect(body.message).toContain('activated successfully');
-      expect(body.issue.status).toBe(Afu9IssueStatus.IMPLEMENTING);
+      expect(body.issue.status).toBe(Afu9IssueStatus.SPEC_READY);
+
+      expect(transitionIssue).toHaveBeenCalledWith(
+        expect.anything(),
+        '123e4567-e89b-12d3-a456-426614174000',
+        Afu9IssueStatus.SPEC_READY,
+        'api-user',
+        expect.objectContaining({ via: 'POST /api/issues/[id]/activate' })
+      );
+
       expect(updateAfu9Issue).toHaveBeenCalledWith(
         expect.anything(),
         '123e4567-e89b-12d3-a456-426614174000',
         expect.objectContaining({
-          status: Afu9IssueStatus.IMPLEMENTING,
           activated_at: expect.any(String),
         })
       );
     });
 
-    test('deactivates current implementing issue to DONE before activating new one', async () => {
-      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+    test('returns 409 if another issue is already active', async () => {
+      const { getAfu9IssueById, getActiveIssue, transitionIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       const currentActiveIssue = {
         ...mockIssue,
         id: 'current-active-id',
-        status: Afu9IssueStatus.IMPLEMENTING,
+        status: Afu9IssueStatus.SPEC_READY,
       };
 
       getAfu9IssueById.mockResolvedValue({
@@ -609,6 +618,11 @@ describe('AFU9 Issues API', () => {
       getActiveIssue.mockResolvedValue({
         success: true,
         data: currentActiveIssue,
+      });
+
+      transitionIssue.mockResolvedValue({
+        success: true,
+        data: { ...mockIssue },
       });
 
       updateAfu9Issue.mockResolvedValue({
@@ -625,23 +639,18 @@ describe('AFU9 Issues API', () => {
       });
       const body = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(updateAfu9Issue).toHaveBeenCalledTimes(2); // Once to deactivate, once to activate
-      expect(updateAfu9Issue).toHaveBeenCalledWith(
-        expect.anything(),
-        'current-active-id',
-        expect.objectContaining({
-          status: Afu9IssueStatus.DONE,
-        })
-      );
-      expect(body.deactivated).toBeDefined();
-      expect(body.deactivated.id).toBe('current-active-id');
+      expect(response.status).toBe(409);
+      expect(body.error).toContain('Another issue is already active');
+      expect(body.activeIssue).toBeDefined();
+      expect(body.activeIssue.id).toBe('current-active-id');
+      expect(transitionIssue).not.toHaveBeenCalled();
+      expect(updateAfu9Issue).not.toHaveBeenCalled();
     });
 
-    test('returns success if already implementing', async () => {
+    test('returns success if already active (SPEC_READY)', async () => {
       const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       
-      const implementingIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING };
+      const implementingIssue = { ...mockIssue, status: Afu9IssueStatus.SPEC_READY };
       getAfu9IssueById.mockResolvedValue({
         success: true,
         data: implementingIssue,
@@ -657,20 +666,17 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.message).toContain('already IMPLEMENTING');
+      expect(body.message).toContain('already active (SPEC_READY)');
     });
   });
 
   describe('POST /api/issues/[id]/handoff', () => {
     test('hands off issue to GitHub', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
-      fetchIssueRowByIdentifier.mockResolvedValue({
-        ok: true,
-        row: mockIssue,
-      });
+      getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
       createGithubIssue.mockResolvedValue({
         html_url: 'https://github.com/owner/repo/issues/123',
@@ -703,7 +709,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns success if already handed off', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { updateIssue } = require('../../src/lib/github');
 
@@ -716,10 +722,7 @@ describe('AFU9 Issues API', () => {
         github_repo: 'owner/repo',
       };
 
-      fetchIssueRowByIdentifier.mockResolvedValue({
-        ok: true,
-        row: syncedIssue,
-      });
+      getAfu9IssueById.mockResolvedValue({ success: true, data: syncedIssue });
 
       updateAfu9Issue.mockResolvedValue({
         success: true,
@@ -747,14 +750,11 @@ describe('AFU9 Issues API', () => {
     });
 
     test('handles GitHub API errors', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
-      fetchIssueRowByIdentifier.mockResolvedValue({
-        ok: true,
-        row: mockIssue,
-      });
+      getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
       updateAfu9Issue.mockResolvedValue({
         success: true,
@@ -778,14 +778,11 @@ describe('AFU9 Issues API', () => {
     });
 
     test('includes idempotency marker in GitHub issue body', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
-      fetchIssueRowByIdentifier.mockResolvedValue({
-        ok: true,
-        row: mockIssue,
-      });
+      getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
       createGithubIssue.mockResolvedValue({
         html_url: 'https://github.com/owner/repo/issues/123',
@@ -813,7 +810,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('includes priority as GitHub label when priority is set', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
@@ -823,10 +820,7 @@ describe('AFU9 Issues API', () => {
         labels: ['bug', 'feature'],
       };
 
-      fetchIssueRowByIdentifier.mockResolvedValue({
-        ok: true,
-        row: issueWithPriority,
-      });
+      getAfu9IssueById.mockResolvedValue({ success: true, data: issueWithPriority });
 
       createGithubIssue.mockResolvedValue({
         html_url: 'https://github.com/owner/repo/issues/123',
@@ -854,7 +848,7 @@ describe('AFU9 Issues API', () => {
     });
 
     test('does not include priority label when priority is null', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
@@ -864,10 +858,7 @@ describe('AFU9 Issues API', () => {
         labels: ['bug'],
       };
 
-      fetchIssueRowByIdentifier.mockResolvedValue({
-        ok: true,
-        row: issueWithoutPriority,
-      });
+      getAfu9IssueById.mockResolvedValue({ success: true, data: issueWithoutPriority });
 
       createGithubIssue.mockResolvedValue({
         html_url: 'https://github.com/owner/repo/issues/123',

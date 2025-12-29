@@ -94,7 +94,8 @@ describe('Issue detail page', () => {
     expect(await screen.findByText('GitHub API error: Rate limit exceeded')).toBeInTheDocument();
     
     // Check that retry button is present
-    expect(await screen.findByText('Retry Handoff')).toBeInTheDocument();
+    const retryButtons = await screen.findAllByText('Retry Handoff');
+    expect(retryButtons.length).toBeGreaterThan(0);
   });
 
   test('displays status as read-only badge (E62.2)', async () => {

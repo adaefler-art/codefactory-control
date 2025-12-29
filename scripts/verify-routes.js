@@ -95,7 +95,7 @@ function loadBaseline() {
   
   const content = fs.readFileSync(BASELINE_FILE, 'utf-8');
   const lines = content.split('\n')
-    .map(line => line.trim())
+    .map(line => line.trim().replace(/\\/g, '/'))
     .filter(line => line && !line.startsWith('#'));
   
   return new Set(lines);
@@ -119,7 +119,8 @@ function writeBaseline(findings) {
 }
 
 function isAllowedFile(filePath) {
-  return ALLOWED_HARDCODED_FILES.some(pattern => filePath.includes(pattern));
+  const normalizedPath = String(filePath).replace(/\\/g, '/');
+  return ALLOWED_HARDCODED_FILES.some((pattern) => normalizedPath.includes(String(pattern).replace(/\\/g, '/')));
 }
 
 function extractApiPath(line) {
@@ -193,7 +194,7 @@ function checkNoHardcodedApiStrings() {
           const apiPath = extractApiPath(line);
           if (apiPath) {
             violations.push({
-              filePath: path.relative(REPO_ROOT, fullPath),
+              filePath: path.relative(REPO_ROOT, fullPath).replace(/\\/g, '/'),
               lineNumber: index + 1,
               line: line.trim(),
               apiPath,
