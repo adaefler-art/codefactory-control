@@ -4,6 +4,10 @@
  * Centralized database operations for afu9_issues table.
  * Provides type-safe CRUD operations with proper error handling.
  * Enforces Single-Active constraint at service layer.
+ * 
+ * E61.1: Issue Lifecycle State Machine & Events Ledger
+ * - Centralized state transition validation
+ * - Atomic event logging for all transitions
  */
 
 import { Pool } from 'pg';
@@ -14,6 +18,7 @@ import {
   Afu9HandoffState,
   sanitizeAfu9IssueInput,
 } from '../contracts/afu9Issue';
+import { IssueState, isValidTransition } from '../types/issue-state';
 
 /**
  * Operation result type
@@ -635,10 +640,11 @@ export async function countIssuesByStatus(
       [Afu9IssueStatus.CREATED]: 0,
       [Afu9IssueStatus.SPEC_READY]: 0,
       [Afu9IssueStatus.IMPLEMENTING]: 0,
-      [Afu9IssueStatus.ACTIVE]: 0,
-      [Afu9IssueStatus.BLOCKED]: 0,
+      [Afu9IssueStatus.VERIFIED]: 0,
+      [Afu9IssueStatus.MERGE_READY]: 0,
       [Afu9IssueStatus.DONE]: 0,
-      [Afu9IssueStatus.FAILED]: 0,
+      [Afu9IssueStatus.HOLD]: 0,
+      [Afu9IssueStatus.KILLED]: 0,
     };
 
     result.rows.forEach((row) => {
@@ -665,18 +671,17 @@ export async function countIssuesByStatus(
 /**
  * AFU9 Issue Event Row
  * Represents a row from the afu9_issue_events table
+ * Updated for E61.1: Issue Lifecycle State Machine & Events Ledger
  */
 export interface Afu9IssueEventRow {
   id: string;
   issue_id: string;
-  event_type: string;
-  event_data: Record<string, unknown>;
-  old_status: string | null;
-  new_status: string | null;
-  old_handoff_state: string | null;
-  new_handoff_state: string | null;
-  created_at: string;
-  created_by: string | null;
+  type: string;
+  payload_json: Record<string, unknown>;
+  from_status: string | null;
+  to_status: string | null;
+  at: string;
+  actor: string | null;
 }
 
 /**
@@ -695,13 +700,12 @@ export async function getIssueEvents(
   try {
     const result = await pool.query<Afu9IssueEventRow>(
       `SELECT 
-        id, issue_id, event_type, event_data, 
-        old_status, new_status, 
-        old_handoff_state, new_handoff_state,
-        created_at, created_by
+        id, issue_id, type, payload_json, 
+        from_status, to_status, 
+        at, actor
        FROM afu9_issue_events 
        WHERE issue_id = $1 
-       ORDER BY created_at DESC 
+       ORDER BY at DESC 
        LIMIT $2`,
       [issueId, limit]
     );
@@ -721,5 +725,108 @@ export async function getIssueEvents(
       success: false,
       error: error instanceof Error ? error.message : 'Database operation failed',
     };
+  }
+}
+
+/**
+ * E61.1: Centralized Issue State Transition Function
+ * 
+ * Transitions an issue from one state to another with:
+ * - Validation of allowed transitions
+ * - Atomic event logging
+ * - Deterministic state changes
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param issueId - Issue UUID
+ * @param toState - Target state (as Afu9IssueStatus)
+ * @param actor - Who/what is triggering the transition (user, system, etc.)
+ * @param payload - Optional metadata for the transition
+ * @returns Operation result with updated issue or error
+ */
+export async function transitionIssue(
+  pool: Pool,
+  issueId: string,
+  toState: Afu9IssueStatus,
+  actor: string = 'system',
+  payload?: Record<string, unknown>
+): Promise<OperationResult> {
+  // Get current issue state
+  const issueResult = await getAfu9IssueById(pool, issueId);
+  if (!issueResult.success || !issueResult.data) {
+    return {
+      success: false,
+      error: issueResult.error || `Issue not found: ${issueId}`,
+    };
+  }
+
+  const currentIssue = issueResult.data;
+  const fromState = currentIssue.status as IssueState;
+  const targetState = toState as IssueState;
+
+  // Validate transition
+  if (!isValidTransition(fromState, targetState)) {
+    return {
+      success: false,
+      error: `Invalid transition: ${fromState} → ${targetState}. This transition is not allowed by the state machine.`,
+    };
+  }
+
+  // Use a transaction to ensure atomicity
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Update issue status
+    const updateResult = await client.query<Afu9IssueRow>(
+      'UPDATE afu9_issues SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [toState, issueId]
+    );
+
+    if (updateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: `Issue not found: ${issueId}`,
+      };
+    }
+
+    // Write transition event explicitly (in addition to trigger)
+    await client.query(
+      `INSERT INTO afu9_issue_events (
+        issue_id, type, from_status, to_status, actor, payload_json
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        issueId,
+        'TRANSITION',
+        fromState,
+        targetState,
+        actor,
+        payload ? JSON.stringify(payload) : '{}',
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      success: true,
+      data: updateResult.rows[0],
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[afu9Issues] Transition failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      issueId,
+      fromState,
+      toState: targetState,
+      actor,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  } finally {
+    client.release();
   }
 }

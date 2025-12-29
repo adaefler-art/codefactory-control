@@ -4,6 +4,7 @@
  * Manages individual AFU9 issue - get and update operations
  * Issue #297: AFU9 Issues API (List/Detail/Edit/Activate/Handoff)
  * Issue #3: Identifier Consistency (UUID + publicId)
+ * E61.1: Issue Lifecycle State Machine & Events Ledger
  * 
  * **Identifier Handling:**
  * - Accepts both UUID (canonical) and 8-hex publicId (display)
@@ -16,6 +17,7 @@ import { getPool } from '../../../../src/lib/db';
 import {
   updateAfu9Issue,
   softDeleteAfu9Issue,
+  transitionIssue,
 } from '../../../../src/lib/db/afu9Issues';
 import {
   Afu9IssueStatus,
@@ -135,6 +137,8 @@ export const PATCH = withApi(async (
         `Status must be one of: ${Object.values(Afu9IssueStatus).join(', ')}`
       );
     }
+    // Note: Status transitions are handled separately via transitionIssue
+    // to ensure proper validation and event logging (E61.1)
     updates.status = body.status;
   }
 
@@ -164,6 +168,54 @@ export const PATCH = withApi(async (
   // Get current issue state for invariant checking
   const currentIssue = resolved.row as any;
 
+  // E61.1: Handle status transitions separately via transitionIssue
+  // This ensures proper validation and atomic event logging
+  if (updates.status && updates.status !== currentIssue.status) {
+    const statusToTransition = updates.status;
+    delete updates.status; // Remove from updates - will be handled by transitionIssue
+
+    // Apply non-status updates first if any exist
+    if (Object.keys(updates).length > 0) {
+      const updateResult = await updateAfu9Issue(pool, internalId, updates);
+      if (!updateResult.success) {
+        return NextResponse.json(
+          { error: 'Failed to update issue fields', details: updateResult.error },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Now perform the state transition
+    const transitionResult = await transitionIssue(
+      pool,
+      internalId,
+      statusToTransition,
+      'api-user', // TODO: Extract actual user from auth context
+      { via: 'PATCH /api/issues/[id]' }
+    );
+
+    if (!transitionResult.success) {
+      // Check for invalid transition
+      if (transitionResult.error && transitionResult.error.includes('Invalid transition')) {
+        return NextResponse.json(
+          { error: transitionResult.error },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: 'Failed to transition issue', details: transitionResult.error },
+        { status: 500 }
+      );
+    }
+
+    const responseBody: any = normalizeIssueForApi(transitionResult.data);
+    if (isDebugApiEnabled()) {
+      responseBody.contextTrace = await buildContextTrace(request);
+    }
+    return NextResponse.json(responseBody);
+  }
+
   // Invariant: SYNCED handoff_state cannot occur with CREATED status
   const finalStatus = updates.status ?? currentIssue.status;
   const finalHandoffState = updates.handoff_state ?? currentIssue.handoff_state;
@@ -176,7 +228,7 @@ export const PATCH = withApi(async (
     );
   }
 
-  // Update issue
+  // Update issue (non-status fields only at this point)
   const result = await updateAfu9Issue(pool, internalId, updates);
 
   if (!result.success) {

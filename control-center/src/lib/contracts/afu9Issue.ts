@@ -9,15 +9,17 @@
 
 /**
  * AFU9 Issue Status enum
+ * Updated for E61.1: Canonical Issue State Machine
  */
 export enum Afu9IssueStatus {
   CREATED = 'CREATED',
   SPEC_READY = 'SPEC_READY',
   IMPLEMENTING = 'IMPLEMENTING',
-  ACTIVE = 'ACTIVE',
-  BLOCKED = 'BLOCKED',
+  VERIFIED = 'VERIFIED',
+  MERGE_READY = 'MERGE_READY',
   DONE = 'DONE',
-  FAILED = 'FAILED',
+  HOLD = 'HOLD',
+  KILLED = 'KILLED',
 }
 
 /**
