@@ -240,15 +240,21 @@ export async function POST(
       const errorMessage =
         githubError instanceof Error ? githubError.message : String(githubError);
 
-      await updateAfu9Issue(pool, internalId, {
-        handoff_state: Afu9HandoffState.FAILED,
-        handoff_error: errorMessage,
-      });
-
+      // Log full error for debugging
       console.error('[API /api/issues/[id]/handoff] GitHub issue operation failed:', {
         id,
         error: errorMessage,
         isUpdate,
+        fullError: githubError instanceof Error ? {
+          message: githubError.message,
+          stack: githubError.stack,
+          name: githubError.name,
+        } : githubError,
+      });
+
+      await updateAfu9Issue(pool, internalId, {
+        handoff_state: Afu9HandoffState.FAILED,
+        handoff_error: errorMessage,
       });
 
       return NextResponse.json(

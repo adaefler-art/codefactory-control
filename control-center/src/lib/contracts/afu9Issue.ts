@@ -27,10 +27,12 @@ export enum Afu9IssueStatus {
  * Updated for E61.3: GitHub Handoff Metadata + Idempotence
  */
 export enum Afu9HandoffState {
-  NONE = 'NONE', // Deprecated, use NOT_SENT
+  /** @deprecated Use NOT_SENT instead */
+  NONE = 'NONE',
   NOT_SENT = 'NOT_SENT',
   PENDING = 'PENDING', // E61.3: Handoff in progress
-  SENT = 'SENT', // Deprecated, use SYNCED or SYNCHRONIZED
+  /** @deprecated Use SYNCED or SYNCHRONIZED instead */
+  SENT = 'SENT',
   SYNCED = 'SYNCED',
   SYNCHRONIZED = 'SYNCHRONIZED', // E61.3: Successfully updated (idempotent)
   FAILED = 'FAILED',
