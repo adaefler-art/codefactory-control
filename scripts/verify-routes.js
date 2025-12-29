@@ -119,7 +119,8 @@ function writeBaseline(findings) {
 }
 
 function isAllowedFile(filePath) {
-  return ALLOWED_HARDCODED_FILES.some(pattern => filePath.includes(pattern));
+  const normalizedPath = String(filePath).replace(/\\/g, '/');
+  return ALLOWED_HARDCODED_FILES.some((pattern) => normalizedPath.includes(String(pattern).replace(/\\/g, '/')));
 }
 
 function extractApiPath(line) {

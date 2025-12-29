@@ -1,0 +1,391 @@
+﻿{
+  "catalogVersion": "0.6.0",
+  "generatedAt": "2025-12-29T00:00:00Z",
+  "notes": "Canonical MCP tool catalog for AFU-9. Tool names are server-scoped (JSON-RPC params.tool). Server names and default ports match Control Center defaults: observability=3001, deploy=3002, github=3003. Mutating tools require idempotencyKey and explicit guardrails.",
+  "servers": [
+    {
+      "name": "observability",
+      "displayName": "Observability",
+      "contractVersion": "0.6.0",
+      "port": 3001,
+      "endpoint": "http://localhost:3001",
+      "tools": [
+        {
+          "name": "health",
+          "description": "Liveness check (no dependency checks).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "status", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["UP", "DOWN"] },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "version": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "READ_ONLY",
+              "description": "Read-only tool. Must not mutate infrastructure state.",
+              "severity": "info",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "ready",
+          "description": "Readiness check with dependency verification (AWS APIs reachable, permissions ok).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "awsRegion": { "type": "string", "description": "AWS region override (optional)." },
+              "require": {
+                "type": "array",
+                "description": "Optional dependency checks to enforce (e.g. ecs, elbv2, logs).",
+                "items": { "type": "string" }
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "status", "checks", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["READY", "NOT_READY"] },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "ok"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "ok": { "type": "boolean" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "NO_SECRETS_IN_OUTPUT",
+              "description": "Do not return secrets/tokens/credentials in any field.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        },
+        {
+          "name": "logs_search",
+          "description": "Search CloudWatch logs by filter pattern (e.g., ERROR, RequestId, TaskId).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "logGroupName": { "type": "string", "description": "Log group name." },
+              "filterPattern": { "type": "string", "description": "Filter pattern." },
+              "startTimeMs": { "type": "integer", "description": "Start time (Unix epoch ms)." },
+              "endTimeMs": { "type": "integer", "description": "End time (Unix epoch ms)." },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 },
+              "nextToken": { "type": "string", "description": "Pagination token (optional)." }
+            },
+            "required": ["logGroupName"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ok", "events", "timestamp"],
+            "properties": {
+              "ok": { "type": "boolean" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["message", "timestampMs"],
+                  "properties": {
+                    "message": { "type": "string" },
+                    "timestampMs": { "type": "integer" },
+                    "logStreamName": { "type": "string" }
+                  }
+                }
+              },
+              "nextToken": { "type": "string" }
+            }
+          },
+          "guardrails": [
+            {
+              "id": "PII_REDACTION",
+              "description": "Server must redact tokens/secrets/PII patterns before returning log lines.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        },
+        {
+          "name": "metrics_getServiceHealth",
+          "description": "Get ECS service health metrics including CPU, Memory, and (optional) ALB 5xx rate.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "cluster": { "type": "string", "description": "ECS cluster name." },
+              "service": { "type": "string", "description": "ECS service name." },
+              "loadBalancerName": { "type": "string", "description": "ALB name (optional)." },
+              "targetGroupArn": { "type": "string", "description": "Target group ARN (optional)." },
+              "periodSeconds": { "type": "integer", "minimum": 60, "default": 300 }
+            },
+            "required": ["cluster", "service"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "getAlarmStatus",
+          "description": "Get CloudWatch alarm status.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "alarmNames": { "type": "array", "items": { "type": "string" } },
+              "stateValue": { "type": "string", "enum": ["OK", "ALARM", "INSUFFICIENT_DATA"] }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "deploy",
+      "displayName": "Deploy",
+      "contractVersion": "0.6.0",
+      "port": 3002,
+      "endpoint": "http://localhost:3002",
+      "tools": [
+        {
+          "name": "getServiceStatus",
+          "description": "Get comprehensive status of an ECS service including deployments, tasks, and recent events (read-only).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "cluster": { "type": "string", "description": "ECS cluster name." },
+              "service": { "type": "string", "description": "ECS service name." },
+              "includeTaskDetails": { "type": "boolean", "default": true }
+            },
+            "required": ["cluster", "service"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "updateService",
+          "description": "Update an ECS service (mutating): set a new image URI for a container and/or force a new deployment.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "cluster": { "type": "string", "description": "ECS cluster name." },
+              "service": { "type": "string", "description": "ECS service name." },
+              "containerName": { "type": "string", "description": "Container name to update (required if imageUri provided)." },
+              "imageUri": { "type": "string", "description": "New image URI (optional)." },
+              "forceNewDeployment": { "type": "boolean", "default": true },
+              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key to prevent repeated mutations." }
+            },
+            "required": ["cluster", "service", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "guardrails": [
+            {
+              "id": "MUTATING_OPERATION",
+              "description": "This tool mutates ECS state. Must require explicit intent and idempotencyKey.",
+              "severity": "warn",
+              "appliesTo": "client"
+            },
+            {
+              "id": "REQUIRE_IDEMPOTENCY_KEY",
+              "description": "Server must reject calls without idempotencyKey.",
+              "severity": "error",
+              "appliesTo": "server"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "github",
+      "displayName": "GitHub",
+      "contractVersion": "0.6.0",
+      "port": 3003,
+      "endpoint": "http://localhost:3003",
+      "tools": [
+        {
+          "name": "getIssue",
+          "description": "Get details of a GitHub issue.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
+              "number": { "type": "integer", "minimum": 1, "description": "Issue number." }
+            },
+            "required": ["repo", "number"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "listIssues",
+          "description": "List issues in a repository.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
+              "state": { "type": "string", "enum": ["open", "closed", "all"], "default": "open" },
+              "labels": { "type": "array", "items": { "type": "string" }, "description": "Optional label filter." },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 }
+            },
+            "required": ["repo"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "createBranch",
+          "description": "Create a new branch in a repository (mutating).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
+              "branch": { "type": "string", "minLength": 1, "description": "Name of the new branch." },
+              "from": { "type": "string", "minLength": 1, "description": "Base branch or commit SHA." },
+              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key." }
+            },
+            "required": ["repo", "branch", "from", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "guardrails": [
+            {
+              "id": "MUTATING_OPERATION",
+              "description": "This tool mutates GitHub state. Requires explicit intent and idempotencyKey.",
+              "severity": "warn",
+              "appliesTo": "client"
+            }
+          ]
+        },
+        {
+          "name": "commitFileChanges",
+          "description": "Commit file changes to a branch (mutating).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
+              "branch": { "type": "string", "minLength": 1, "description": "Branch to commit to." },
+              "message": { "type": "string", "minLength": 1, "description": "Commit message." },
+              "files": {
+                "type": "array",
+                "minItems": 1,
+                "description": "Files to commit.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["path", "content"],
+                  "properties": {
+                    "path": { "type": "string", "minLength": 1 },
+                    "content": { "type": "string", "description": "File content (UTF-8 text; binary must be base64 with an agreed marker)." }
+                  }
+                }
+              },
+              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key." }
+            },
+            "required": ["repo", "branch", "message", "files", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "guardrails": [
+            {
+              "id": "MUTATING_OPERATION",
+              "description": "This tool mutates GitHub state. Requires explicit intent and idempotencyKey.",
+              "severity": "warn",
+              "appliesTo": "client"
+            },
+            {
+              "id": "NO_SECRETS_IN_CONTENT",
+              "description": "Client must prevent committing secrets. Server should reject obvious secret patterns when feasible.",
+              "severity": "error",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "createPullRequest",
+          "description": "Create a pull request (mutating).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
+              "title": { "type": "string", "minLength": 1 },
+              "body": { "type": "string" },
+              "head": { "type": "string", "minLength": 1, "description": "Head branch (source)." },
+              "base": { "type": "string", "minLength": 1, "description": "Base branch (target)." },
+              "draft": { "type": "boolean", "default": true },
+              "idempotencyKey": { "type": "string" }
+            },
+            "required": ["repo", "title", "head", "base", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "guardrails": [
+            {
+              "id": "REQUIRE_DRAFT_BY_DEFAULT",
+              "description": "Caller should create draft PRs by default unless explicitly requested otherwise.",
+              "severity": "warn",
+              "appliesTo": "client"
+            }
+          ]
+        },
+        {
+          "name": "mergePullRequest",
+          "description": "Merge a pull request (mutating).",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
+              "pullNumber": { "type": "integer", "minimum": 1, "description": "Pull request number." },
+              "mergeMethod": { "type": "string", "enum": ["merge", "squash", "rebase"], "default": "merge" },
+              "commitTitle": { "type": "string" },
+              "commitMessage": { "type": "string" },
+              "idempotencyKey": { "type": "string" }
+            },
+            "required": ["repo", "pullNumber", "idempotencyKey"],
+            "additionalProperties": false
+          },
+          "guardrails": [
+            {
+              "id": "REQUIRE_STATUS_CHECKS_GREEN",
+              "description": "Client must only request merge after required checks are green; server may enforce.",
+              "severity": "error",
+              "appliesTo": "both"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
