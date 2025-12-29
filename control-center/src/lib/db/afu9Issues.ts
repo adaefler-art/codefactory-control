@@ -53,8 +53,8 @@ export async function createAfu9Issue(
   // Sanitize input to ensure all constraints are met
   const sanitized = sanitizeAfu9IssueInput(input);
 
-  // Check Single-Active constraint before creating
-  if (sanitized.status === Afu9IssueStatus.IMPLEMENTING) {
+  // E61.2: Check Single-Active constraint before creating
+  if (sanitized.status === Afu9IssueStatus.SPEC_READY) {
     const canSetActive = await canSetIssueActive(pool, null);
     if (!canSetActive.success) {
       return {
@@ -219,6 +219,8 @@ export async function getAfu9IssueByPublicId(
 /**
  * Get the currently active issue (if any)
  * 
+ * E61.2: Active is defined as status = SPEC_READY
+ * 
  * @param pool - PostgreSQL connection pool
  * @returns Operation result with active issue or null if none
  */
@@ -226,7 +228,7 @@ export async function getActiveIssue(pool: Pool): Promise<OperationResult<Afu9Is
   try {
     const result = await pool.query<Afu9IssueRow>(
       'SELECT * FROM afu9_issues WHERE status = $1',
-      [Afu9IssueStatus.IMPLEMENTING]
+      [Afu9IssueStatus.SPEC_READY]
     );
 
     return {
@@ -313,8 +315,8 @@ export async function updateAfu9Issue(
   id: string,
   updates: Partial<Afu9IssueInput>
 ): Promise<OperationResult> {
-  // Check Single-Active constraint if updating to IMPLEMENTING status
-  if (updates.status === Afu9IssueStatus.IMPLEMENTING) {
+  // E61.2: Check Single-Active constraint if updating to SPEC_READY status
+  if (updates.status === Afu9IssueStatus.SPEC_READY) {
     const canSetActive = await canSetIssueActive(pool, id);
     if (!canSetActive.success) {
       return {
@@ -393,6 +395,12 @@ export async function updateAfu9Issue(
     if (updates.activated_at !== undefined) {
       fields.push(`activated_at = $${paramIndex}`);
       values.push(updates.activated_at);
+      paramIndex++;
+    }
+
+    if ((updates as any).activated_by !== undefined) {
+      fields.push(`activated_by = $${paramIndex}`);
+      values.push((updates as any).activated_by);
       paramIndex++;
     }
 
@@ -577,6 +585,8 @@ export async function deleteAfu9Issue(
 /**
  * Check if an issue can be set to ACTIVE status (Single-Active enforcement)
  * 
+ * E61.2: Active is defined as status = SPEC_READY
+ * 
  * @param pool - PostgreSQL connection pool
  * @param excludeId - Issue ID to exclude from check (for updates)
  * @returns Operation result indicating if the issue can be set to ACTIVE
@@ -587,7 +597,7 @@ export async function canSetIssueActive(
 ): Promise<OperationResult<boolean>> {
   try {
     let query = 'SELECT id, title FROM afu9_issues WHERE status = $1';
-    const params: (string | Afu9IssueStatus)[] = [Afu9IssueStatus.IMPLEMENTING];
+    const params: (string | Afu9IssueStatus)[] = [Afu9IssueStatus.SPEC_READY];
 
     if (excludeId) {
       query += ' AND id != $2';
@@ -600,7 +610,7 @@ export async function canSetIssueActive(
       const activeIssue = result.rows[0];
       return {
         success: false,
-        error: `Single-Active constraint: Issue ${activeIssue.id} ("${activeIssue.title}") is already IMPLEMENTING. Only one issue can have status=IMPLEMENTING at a time.`,
+        error: `Single-Active constraint: Issue ${activeIssue.id} ("${activeIssue.title}") is already SPEC_READY. Only one issue can have status=SPEC_READY at a time.`,
       };
     }
 

@@ -166,6 +166,7 @@ export function normalizeIssueForApi(input: unknown): any {
   const createdAt = toIsoOrNull(normalized?.createdAt ?? normalized?.created_at);
   const updatedAt = toIsoOrNull(normalized?.updatedAt ?? normalized?.updated_at);
   const activatedAt = toIsoOrNull(normalized?.activatedAt ?? normalized?.activated_at);
+  const activatedBy = normalized?.activatedBy ?? normalized?.activated_by ?? null;
   const executionStartedAt = toIsoOrNull(normalized?.executionStartedAt ?? normalized?.execution_started_at);
   const executionCompletedAt = toIsoOrNull(normalized?.executionCompletedAt ?? normalized?.execution_completed_at);
   const deletedAt = toIsoOrNull(normalized?.deletedAt ?? normalized?.deleted_at);
@@ -239,6 +240,7 @@ export function normalizeIssueForApi(input: unknown): any {
     githubUrl: contractData.github_url,
     lastError: contractData.last_error,
     activatedAt,
+    activatedBy,
     executionState: contractData.execution_state,
     executionStartedAt,
     executionCompletedAt,
@@ -254,6 +256,7 @@ export function normalizeIssueForApi(input: unknown): any {
   api.created_at = createdAt;
   api.updated_at = updatedAt;
   api.activated_at = activatedAt;
+  api.activated_by = activatedBy;
   api.execution_state = api.executionState;
   api.execution_started_at = executionStartedAt;
   api.execution_completed_at = executionCompletedAt;
