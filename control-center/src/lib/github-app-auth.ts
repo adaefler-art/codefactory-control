@@ -2,9 +2,15 @@ import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-sec
 import { createPrivateKey } from 'crypto';
 
 export type GitHubAppSecret = {
-  appId: string | number;
-  webhookSecret: string;
-  privateKeyPem: string;
+  appId?: string | number;
+  app_id?: string | number;
+  webhookSecret?: string;
+  webhook_secret?: string;
+  webhook_secret_token?: string;
+  privateKeyPem?: string;
+  private_key_pem?: string;
+  private_key?: string;
+  privateKey?: string;
 };
 
 export class GitHubAppConfigError extends Error {
@@ -23,7 +29,7 @@ export class GitHubAppKeyFormatError extends GitHubAppConfigError {
 
 type GitHubAppConfig = {
   appId: string;
-  webhookSecret: string;
+  webhookSecret?: string;
   privateKeyPem: string;
 };
 
@@ -71,8 +77,66 @@ function getEnvFirst(names: string[]): string | undefined {
   return undefined;
 }
 
+function stripSurroundingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function tryDecodeBase64WrappedPem(value: string): string | null {
+  const compact = value.trim().replace(/\s+/g, '');
+  if (compact.length < 80) return null;
+
+  const asB64 = compact.replace(/-/g, '+').replace(/_/g, '/');
+  if (!/^[A-Za-z0-9+/=]+$/.test(asB64)) return null;
+
+  const padded = asB64 + '='.repeat((4 - (asB64.length % 4)) % 4);
+
+  let raw: Buffer;
+  try {
+    raw = Buffer.from(padded, 'base64');
+  } catch {
+    return null;
+  }
+
+  // Case 1: It's base64 of a PEM string.
+  try {
+    const decodedUtf8 = raw.toString('utf8');
+    if (
+      decodedUtf8.includes('-----BEGIN PRIVATE KEY-----') ||
+      decodedUtf8.includes('-----BEGIN RSA PRIVATE KEY-----')
+    ) {
+      return decodedUtf8;
+    }
+  } catch {
+    // ignore
+  }
+
+  // Case 2: It's base64 of DER bytes. Try PKCS#8 first, then PKCS#1.
+  for (const type of ['pkcs8', 'pkcs1'] as const) {
+    try {
+      const keyObject = createPrivateKey({ key: raw, format: 'der', type });
+      const pkcs8 = keyObject.export({ format: 'pem', type: 'pkcs8' });
+      return String(pkcs8).replace(/\r\n/g, '\n').trim() + '\n';
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 function normalizePrivateKeyPem(maybePem: string): string {
-  const withRealNewlines = maybePem.includes('\\n') ? maybePem.replace(/\\n/g, '\n') : maybePem;
+  const unquoted = stripSurroundingQuotes(maybePem);
+  const base64Decoded = tryDecodeBase64WrappedPem(unquoted);
+  const maybeDecoded = base64Decoded ?? unquoted;
+
+  const withRealNewlines = maybeDecoded.includes('\\n') ? maybeDecoded.replace(/\\n/g, '\n') : maybeDecoded;
   const normalizedNewlines = withRealNewlines.replace(/\r\n/g, '\n').trim() + '\n';
 
   if (normalizedNewlines.includes('-----BEGIN PRIVATE KEY-----')) {
@@ -106,12 +170,30 @@ function toNumber(value: string | number, fieldName: string): number {
   return n;
 }
 
-function toNonEmptyString(value: string | number, fieldName: string): string {
+function toNonEmptyString(value: unknown, fieldName: string): string {
+  if (value === undefined || value === null) {
+    throw new GitHubAppConfigError(`Missing ${fieldName}`);
+  }
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    throw new GitHubAppConfigError(`Invalid ${fieldName}`);
+  }
+
   const s = String(value).trim();
   if (!s) {
     throw new GitHubAppConfigError(`Missing ${fieldName}`);
   }
   return s;
+}
+
+function pickFirstNonEmptyString(obj: Record<string, unknown>, keys: string[], fieldName: string): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    const s = String(value).trim();
+    if (s) return s;
+  }
+  throw new GitHubAppConfigError(`Missing ${fieldName}`);
 }
 
 export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
@@ -126,10 +208,10 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
     const envWebhookSecret = getEnvFirst(['GITHUB_APP_WEBHOOK_SECRET', 'GH_APP_WEBHOOK_SECRET']);
     const envPrivateKeyPem = getEnvFirst(['GITHUB_APP_PRIVATE_KEY_PEM', 'GH_APP_PRIVATE_KEY_PEM']);
 
-    if (envAppId && envWebhookSecret && envPrivateKeyPem) {
+    if (envAppId && envPrivateKeyPem) {
       return {
         appId: toNonEmptyString(envAppId, 'GITHUB_APP_ID'),
-        webhookSecret: toNonEmptyString(envWebhookSecret, 'GITHUB_APP_WEBHOOK_SECRET'),
+        webhookSecret: envWebhookSecret ? toNonEmptyString(envWebhookSecret, 'GITHUB_APP_WEBHOOK_SECRET') : undefined,
         privateKeyPem: normalizePrivateKeyPem(envPrivateKeyPem),
       };
     }
@@ -152,10 +234,26 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
       throw new GitHubAppConfigError('GitHub App secret is not valid JSON');
     }
 
+    const parsedObj = parsed as unknown as Record<string, unknown>;
+
+    const webhookSecret = (() => {
+      try {
+        return pickFirstNonEmptyString(
+          parsedObj,
+          ['webhookSecret', 'webhook_secret', 'webhook_secret_token'],
+          'webhookSecret'
+        );
+      } catch {
+        return undefined;
+      }
+    })();
+
     return {
-      appId: toNonEmptyString(parsed.appId, 'appId'),
-      webhookSecret: toNonEmptyString(parsed.webhookSecret, 'webhookSecret'),
-      privateKeyPem: normalizePrivateKeyPem(toNonEmptyString(parsed.privateKeyPem, 'privateKeyPem')),
+      appId: pickFirstNonEmptyString(parsedObj, ['appId', 'app_id'], 'appId'),
+      webhookSecret,
+      privateKeyPem: normalizePrivateKeyPem(
+        pickFirstNonEmptyString(parsedObj, ['privateKeyPem', 'private_key_pem', 'private_key', 'privateKey'], 'privateKeyPem')
+      ),
     };
   })();
 
@@ -164,6 +262,9 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
 
 export async function getGitHubWebhookSecret(): Promise<string> {
   const config = await loadGitHubAppConfig();
+  if (!config.webhookSecret) {
+    throw new GitHubAppConfigError('Missing webhookSecret');
+  }
   return config.webhookSecret;
 }
 

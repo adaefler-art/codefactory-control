@@ -8,16 +8,19 @@
 import * as jwtVerify from '../../lib/auth/jwt-verify';
 import * as stageEnforcement from '../../lib/auth/stage-enforcement';
 import { PUBLIC_ROUTES, isPublicRoute } from '../../lib/auth/middleware-public-routes';
+import { shouldAllowUnauthenticatedGithubStatusEndpoint } from '../../src/lib/auth/public-status-endpoints';
 
 describe('Middleware Authentication Logic', () => {
   beforeEach(() => {
     process.env.AFU9_AUTH_COOKIE = 'afu9_id';
     process.env.AFU9_UNAUTH_REDIRECT = 'https://afu-9.com/';
+    delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
   });
 
   afterEach(() => {
     delete process.env.AFU9_AUTH_COOKIE;
     delete process.env.AFU9_UNAUTH_REDIRECT;
+    delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
   });
 
   test('Environment variables are correctly configured', () => {
@@ -64,5 +67,61 @@ describe('Middleware Authentication Logic', () => {
     expectedHeaders.forEach(header => {
       expect(header).toMatch(/^x-afu9-/);
     });
+  });
+
+  test('Staging-only allow rule: unauthenticated GET /api/integrations/github/status on stage.* host', () => {
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/integrations/github/status',
+        hostname: 'stage.afu-9.com',
+      })
+    ).toBe(true);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'POST',
+        pathname: '/api/integrations/github/status',
+        hostname: 'stage.afu-9.com',
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/health',
+        hostname: 'stage.afu-9.com',
+      })
+    ).toBe(false);
+  });
+
+  test('Staging-only allow rule is disabled on non-stage hosts', () => {
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/integrations/github/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(false);
+  });
+
+  test('Public status endpoint allow rule supports AFU9_PUBLIC_STATUS_ENDPOINTS=true', () => {
+    process.env.AFU9_PUBLIC_STATUS_ENDPOINTS = 'true';
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/integrations/github/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(true);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'POST',
+        pathname: '/api/integrations/github/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(false);
   });
 });
