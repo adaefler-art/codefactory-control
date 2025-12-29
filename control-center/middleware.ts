@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT } from './lib/auth/jwt-verify';
 import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/auth/stage-enforcement';
 import { isPublicRoute } from './lib/auth/middleware-public-routes';
+import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/public-status-endpoints';
+import { getEffectiveHostname } from './src/lib/http/effective-hostname';
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -26,6 +28,14 @@ function getRequestId(): string {
   } catch {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
+}
+
+function getEffectiveHostnameFromRequest(request: NextRequest): string {
+  return getEffectiveHostname({
+    nextUrlHostname: request.nextUrl.hostname,
+    hostHeader: request.headers.get('host'),
+    forwardedHostHeader: request.headers.get('x-forwarded-host'),
+  });
 }
 
 function logAuthDecision(params: {
@@ -71,7 +81,8 @@ function clearCookie(response: NextResponse, name: string) {
  */
 export async function middleware(request: NextRequest) {
   const requestId = getRequestId();
-  const { pathname: rawPathname, hostname } = request.nextUrl;
+  const { pathname: rawPathname } = request.nextUrl;
+  const hostname = getEffectiveHostnameFromRequest(request);
   const pathname = rawPathname === '/' ? rawPathname : rawPathname.replace(/\/+$/, '');
 
   const nextWithRequestId = () => {
@@ -81,6 +92,12 @@ export async function middleware(request: NextRequest) {
     response.headers.set('x-request-id', requestId);
     return response;
   };
+
+  // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
+  // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
+  if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
+    return nextWithRequestId();
+  }
 
   if (isPublicRoute(pathname)) {
     return nextWithRequestId();
