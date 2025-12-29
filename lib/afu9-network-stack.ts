@@ -299,5 +299,15 @@ export class Afu9NetworkStack extends cdk.Stack {
       description: 'Security group ID for RDS database',
       exportName: 'Afu9DbSecurityGroupId',
     });
+
+    // Stable cross-stack export contract (do not remove/rename)
+    // Export name must remain exactly:
+    // Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A
+    new cdk.CfnOutput(this, 'ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A', {
+      value: this.dbSecurityGroup.securityGroupId,
+      description: 'Stable export for DbSecurityGroup GroupId (cross-stack contract)',
+      exportName:
+        'Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A',
+    });
   }
 }

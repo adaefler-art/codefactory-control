@@ -305,6 +305,8 @@ export class Afu9EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
     super(scope, id, props);
 
+    const normalizeStageImageTag = (tag: string): string => (tag === 'staging-latest' ? 'stage-latest' : tag);
+
     // ========================================
     // Configuration Resolution and Validation
     // ========================================
@@ -334,7 +336,11 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Environment-specific defaults (primary service only)
     const envDesiredCount = desiredCount ?? (primaryEnvironment === ENVIRONMENT.PROD ? 2 : 1);
-    const resolvedImageTag = imageTag ?? (isProd ? 'prod-latest' : 'stage-latest');
+    const resolvedImageTagRaw = imageTag ?? (isProd ? 'prod-latest' : 'stage-latest');
+    const resolvedImageTag =
+      environment === ENVIRONMENT.STAGE && resolvedImageTagRaw === 'staging-latest'
+        ? 'stage-latest'
+        : resolvedImageTagRaw;
 
     // Log configuration for diagnostics
     console.log('AFU-9 ECS Stack Configuration:');
@@ -889,9 +895,10 @@ export class Afu9EcsStack extends cdk.Stack {
 
     // Optional staging service on shared cluster/ALB
     if (props.stageTargetGroup && createStagingService) {
+      const stageImageTag = normalizeStageImageTag(props.stageImageTag ?? 'stage-latest');
       const stageTaskDefinition = createTaskDefinition(
         'StageTaskDefinition',
-        props.stageImageTag ?? 'stage-latest',
+        stageImageTag,
         'staging',
         'stage',
         'staging',
