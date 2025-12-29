@@ -68,10 +68,10 @@ export async function createAfu9Issue(
     const result = await pool.query<Afu9IssueRow>(
       `INSERT INTO afu9_issues (
         title, body, status, labels, priority, assignee, source,
-        handoff_state, github_issue_number, github_url, last_error, activated_at,
+        handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
         execution_state, execution_started_at, execution_completed_at, execution_output
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
         sanitized.title,
@@ -86,6 +86,7 @@ export async function createAfu9Issue(
         sanitized.github_url,
         sanitized.last_error,
         sanitized.activated_at,
+        sanitized.activated_by,
         sanitized.execution_state,
         sanitized.execution_started_at,
         sanitized.execution_completed_at,
@@ -398,9 +399,9 @@ export async function updateAfu9Issue(
       paramIndex++;
     }
 
-    if ((updates as any).activated_by !== undefined) {
+    if (updates.activated_by !== undefined) {
       fields.push(`activated_by = $${paramIndex}`);
-      values.push((updates as any).activated_by);
+      values.push(updates.activated_by);
       paramIndex++;
     }
 

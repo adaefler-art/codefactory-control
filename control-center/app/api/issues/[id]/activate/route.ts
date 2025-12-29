@@ -134,7 +134,7 @@ export async function POST(
     const activateResult = await updateAfu9Issue(pool, internalId, {
       activated_at: new Date().toISOString(),
       activated_by: 'api-user',
-    } as any);
+    });
 
     if (!activateResult.success) {
       return NextResponse.json(
