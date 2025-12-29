@@ -31,6 +31,7 @@ jest.mock('../../src/lib/db', () => ({
 // Mock the GitHub module
 jest.mock('../../src/lib/github', () => ({
   createIssue: jest.fn(),
+  updateIssue: jest.fn(),
 }));
 
 // Mock database helpers
@@ -43,6 +44,12 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   transitionIssue: jest.fn(),
   getActiveIssue: jest.fn(),
   getIssueEvents: jest.fn(),
+}));
+
+// Mock _shared module for handoff route
+jest.mock('../../app/api/issues/_shared', () => ({
+  fetchIssueRowByIdentifier: jest.fn(),
+  normalizeIssueForApi: jest.fn((issue) => issue),
 }));
 
 describe('AFU9 Issues API', () => {
@@ -687,12 +694,13 @@ describe('AFU9 Issues API', () => {
 
   describe('POST /api/issues/[id]/handoff', () => {
     test('hands off issue to GitHub', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
-      getAfu9IssueById.mockResolvedValue({
-        success: true,
-        data: mockIssue,
+      fetchIssueRowByIdentifier.mockResolvedValue({
+        ok: true,
+        row: mockIssue,
       });
 
       createGithubIssue.mockResolvedValue({
@@ -726,7 +734,9 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns success if already handed off', async () => {
-      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { updateIssue } = require('../../src/lib/github');
 
       const syncedIssue = {
         ...mockIssue,
@@ -734,11 +744,22 @@ describe('AFU9 Issues API', () => {
         handoff_state: Afu9HandoffState.SYNCED,
         github_issue_number: 123,
         github_url: 'https://github.com/owner/repo/issues/123',
+        github_repo: 'owner/repo',
       };
 
-      getAfu9IssueById.mockResolvedValue({
+      fetchIssueRowByIdentifier.mockResolvedValue({
+        ok: true,
+        row: syncedIssue,
+      });
+
+      updateAfu9Issue.mockResolvedValue({
         success: true,
-        data: syncedIssue,
+        data: { ...syncedIssue, handoff_state: Afu9HandoffState.SYNCHRONIZED },
+      });
+
+      updateIssue.mockResolvedValue({
+        number: 123,
+        html_url: 'https://github.com/owner/repo/issues/123',
       });
 
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000/handoff', {
@@ -751,16 +772,19 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.message).toContain('already handed off');
+      // E61.3: SYNCED issues with github_issue_number can be re-synced via UPDATE
+      expect(body.message).toContain('synchronized with GitHub successfully');
+      expect(body.handoff_state).toBe(Afu9HandoffState.SYNCHRONIZED);
     });
 
     test('handles GitHub API errors', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
-      getAfu9IssueById.mockResolvedValue({
-        success: true,
-        data: mockIssue,
+      fetchIssueRowByIdentifier.mockResolvedValue({
+        ok: true,
+        row: mockIssue,
       });
 
       updateAfu9Issue.mockResolvedValue({
@@ -785,12 +809,13 @@ describe('AFU9 Issues API', () => {
     });
 
     test('includes idempotency marker in GitHub issue body', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
-      getAfu9IssueById.mockResolvedValue({
-        success: true,
-        data: mockIssue,
+      fetchIssueRowByIdentifier.mockResolvedValue({
+        ok: true,
+        row: mockIssue,
       });
 
       createGithubIssue.mockResolvedValue({
@@ -819,7 +844,8 @@ describe('AFU9 Issues API', () => {
     });
 
     test('includes priority as GitHub label when priority is set', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
       const issueWithPriority = {
@@ -828,9 +854,9 @@ describe('AFU9 Issues API', () => {
         labels: ['bug', 'feature'],
       };
 
-      getAfu9IssueById.mockResolvedValue({
-        success: true,
-        data: issueWithPriority,
+      fetchIssueRowByIdentifier.mockResolvedValue({
+        ok: true,
+        row: issueWithPriority,
       });
 
       createGithubIssue.mockResolvedValue({
@@ -859,7 +885,8 @@ describe('AFU9 Issues API', () => {
     });
 
     test('does not include priority label when priority is null', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue: createGithubIssue } = require('../../src/lib/github');
 
       const issueWithoutPriority = {
@@ -868,9 +895,9 @@ describe('AFU9 Issues API', () => {
         labels: ['bug'],
       };
 
-      getAfu9IssueById.mockResolvedValue({
-        success: true,
-        data: issueWithoutPriority,
+      fetchIssueRowByIdentifier.mockResolvedValue({
+        ok: true,
+        row: issueWithoutPriority,
       });
 
       createGithubIssue.mockResolvedValue({

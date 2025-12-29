@@ -95,7 +95,7 @@ function loadBaseline() {
   
   const content = fs.readFileSync(BASELINE_FILE, 'utf-8');
   const lines = content.split('\n')
-    .map(line => line.trim())
+    .map(line => line.trim().replace(/\\/g, '/'))
     .filter(line => line && !line.startsWith('#'));
   
   return new Set(lines);
@@ -194,7 +194,7 @@ function checkNoHardcodedApiStrings() {
           const apiPath = extractApiPath(line);
           if (apiPath) {
             violations.push({
-              filePath: path.relative(REPO_ROOT, fullPath),
+              filePath: path.relative(REPO_ROOT, fullPath).replace(/\\/g, '/'),
               lineNumber: index + 1,
               line: line.trim(),
               apiPath,

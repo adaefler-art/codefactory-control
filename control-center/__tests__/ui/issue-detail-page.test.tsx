@@ -96,4 +96,56 @@ describe('Issue detail page', () => {
     // Check that retry button is present
     expect(await screen.findByText('Retry Handoff')).toBeInTheDocument();
   });
+
+  test('displays status as read-only badge (E62.2)', async () => {
+    const issue = {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      publicId: '123e4567',
+      title: 'Test Issue',
+      body: 'Test body',
+      status: 'SPEC_READY' as const,
+      labels: ['bug', 'high-priority'],
+      priority: 'P1' as const,
+      assignee: null,
+      source: 'afu9',
+      handoff_state: 'NOT_SENT' as const,
+      github_issue_number: null,
+      github_url: null,
+      last_error: null,
+      created_at: '2023-12-23T00:00:00Z',
+      updated_at: '2023-12-23T00:00:00Z',
+      createdAt: '2023-12-23T00:00:00Z',
+      updatedAt: '2023-12-23T00:00:00Z',
+      execution_state: 'IDLE' as const,
+      execution_started_at: null,
+      execution_completed_at: null,
+      execution_output: null,
+    };
+
+    // @ts-expect-error - attach mock fetch
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => issue,
+    }));
+
+    render(<IssueDetailPage params={{ id: issue.id }} />);
+
+    // Wait for the page to load
+    expect(await screen.findByText('Test Issue')).toBeInTheDocument();
+    
+    // Check that status is displayed as text (not in a select/dropdown)
+    expect(await screen.findByText('SPEC_READY')).toBeInTheDocument();
+    
+    // Verify there's no status dropdown (select element with status options)
+    const selects = screen.queryAllByRole('combobox');
+    const statusSelect = selects.find(select => 
+      select.className.includes('status') || 
+      (select as HTMLSelectElement).value === 'SPEC_READY'
+    );
+    expect(statusSelect).toBeUndefined();
+    
+    // Verify helper text indicates status changes via actions
+    expect(await screen.findByText(/Status changes via Activate action or workflow/i)).toBeInTheDocument();
+  });
 });

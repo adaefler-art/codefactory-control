@@ -17,8 +17,8 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@aws-sdk/client-cloudwatch": "^3.700.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.709.0",
-    "@aws-sdk/client-sqs": "^3.700.0",
     "@aws-sdk/client-secrets-manager": "^3.700.0",
+    "@aws-sdk/client-sqs": "^3.700.0",
     "@codefactory/deploy-memory": "file:../packages/deploy-memory",
     "@codefactory/verdict-engine": "file:../packages/verdict-engine",
     "@octokit/webhooks": "^14.2.0",
@@ -47,6 +47,6 @@
     "tailwindcss": "^4",
     "ts-jest": "^29.1.2",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "5.9.3"
   }
 }

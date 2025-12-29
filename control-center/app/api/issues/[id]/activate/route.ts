@@ -1,10 +1,9 @@
 /**
  * API Route: /api/issues/[id]/activate
  * 
- * Activates an AFU9 issue (sets it to IMPLEMENTING and previous active to DONE)
- * Issue #297: AFU9 Issues API (List/Detail/Edit/Activate/Handoff)
- * Issue I5-2.2: Activation Status Mapping
- * Issue #3: Identifier Consistency (UUID + publicId)
+ * E61.2: Activates an AFU9 issue (sets it to SPEC_READY)
+ * Only one issue can be SPEC_READY (active) at a time.
+ * Returns 409 CONFLICT if another issue is already active.
  * 
  * **Identifier Handling:**
  * - Accepts both UUID (canonical) and 8-hex publicId (display)
@@ -13,7 +12,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import {
-  getAfu9IssueById,
   updateAfu9Issue,
   getActiveIssue,
   transitionIssue,
@@ -27,11 +25,13 @@ import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 /**
  * POST /api/issues/[id]/activate
  * 
- * Sets this issue to IMPLEMENTING (and sets activated_at timestamp).
- * Sets the current IMPLEMENTING issue to DONE.
- * Only one issue can be IMPLEMENTING at a time (Single-Active constraint).
+ * E61.2: Activate-Semantik (maxActive=1)
+ * - Sets status to SPEC_READY (active)
+ * - Sets activated_at and activated_by
+ * - Returns 409 if another issue is already active
+ * - No automatic deactivation of other issues
  * 
- * **Identifier Formats (Issue #3):**
+ * **Identifier Formats:**
  * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
  * - 8-hex publicId: "a1b2c3d4"
  */
@@ -62,10 +62,10 @@ export async function POST(
       );
     }
 
-    // Check if already IMPLEMENTING
-    if (issue?.status === Afu9IssueStatus.IMPLEMENTING) {
+    // E61.2: Check if already SPEC_READY (active)
+    if (issue?.status === Afu9IssueStatus.SPEC_READY) {
       const responseBody: any = {
-        message: 'Issue is already IMPLEMENTING',
+        message: 'Issue is already active (SPEC_READY)',
         issue: normalizeIssueForApi(issue),
       };
       if (isDebugApiEnabled()) {
@@ -74,7 +74,7 @@ export async function POST(
       return NextResponse.json(responseBody);
     }
 
-    // Get the current implementing issue (if any)
+    // E61.2: Check if another issue is already active
     const activeIssueResult = await getActiveIssue(pool);
     if (!activeIssueResult.success) {
       return NextResponse.json(
@@ -88,34 +88,29 @@ export async function POST(
 
     const currentActiveIssue = activeIssueResult.data;
 
-    // Deactivate the current active issue (if exists and different from target)
+    // E61.2: Return 409 CONFLICT if another issue is already active
     if (currentActiveIssue && currentActiveIssue.id !== internalId) {
-      // E61.1: Use transitionIssue for status changes
-      const deactivateResult = await transitionIssue(
-        pool,
-        currentActiveIssue.id,
-        Afu9IssueStatus.DONE,
-        'api-user',
-        { via: 'POST /api/issues/[id]/activate', reason: 'deactivated by new activation' }
-      );
-
-      if (!deactivateResult.success) {
-        return NextResponse.json(
-          {
-            error: 'Failed to deactivate current active issue',
-            details: deactivateResult.error,
+      return NextResponse.json(
+        {
+          error: 'Another issue is already active',
+          details: `Issue ${currentActiveIssue.id.substring(0, 8)} ("${currentActiveIssue.title}") is already active (SPEC_READY). Only one issue can be active at a time.`,
+          activeIssue: {
+            id: currentActiveIssue.id,
+            publicId: String(currentActiveIssue.id).substring(0, 8),
+            title: currentActiveIssue.title,
+            status: currentActiveIssue.status,
           },
-          { status: 500 }
-        );
-      }
+        },
+        { status: 409 }
+      );
     }
 
-    // Activate the target issue with IMPLEMENTING status and set activated_at timestamp
-    // E61.1: Use transitionIssue for status change, then update activated_at separately
+    // E61.2: Activate the target issue with SPEC_READY status
+    // Use transitionIssue for atomic state change with event logging
     const transitionResult = await transitionIssue(
       pool,
       internalId,
-      Afu9IssueStatus.IMPLEMENTING,
+      Afu9IssueStatus.SPEC_READY,
       'api-user',
       { via: 'POST /api/issues/[id]/activate' }
     );
@@ -135,14 +130,15 @@ export async function POST(
       );
     }
 
-    // Update activated_at timestamp (non-status field)
+    // E61.2: Update activated_at and activated_by fields (non-status fields)
     const activateResult = await updateAfu9Issue(pool, internalId, {
       activated_at: new Date().toISOString(),
+      activated_by: 'api-user',
     });
 
     if (!activateResult.success) {
       return NextResponse.json(
-        { error: 'Failed to set activation timestamp', details: activateResult.error },
+        { error: 'Failed to set activation metadata', details: activateResult.error },
         { status: 500 }
       );
     }
@@ -150,13 +146,6 @@ export async function POST(
     const responseBody: any = {
       message: 'Issue activated successfully',
       issue: normalizeIssueForApi(activateResult.data),
-      deactivated: currentActiveIssue
-        ? {
-            id: currentActiveIssue.id,
-            publicId: String(currentActiveIssue.id).substring(0, 8),
-            title: currentActiveIssue.title,
-          }
-        : null,
     };
 
     if (isDebugApiEnabled()) {
