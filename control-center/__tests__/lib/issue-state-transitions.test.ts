@@ -2,8 +2,8 @@
  * E61.1: Issue State Machine Transition Contract Tests
  * 
  * Tests the centralized transitionIssue function with:
- * - Allowed transitions (CREATED → SPEC_READY)
- * - Forbidden transitions (CREATED → DONE)
+ * - Allowed transitions (CREATED -> SPEC_READY)
+ * - Forbidden transitions (CREATED -> DONE)
  * - Event logging for successful transitions
  * 
  * @jest-environment node
@@ -37,7 +37,7 @@ describe('E61.1: Issue State Machine Transitions', () => {
   });
 
   describe('Allowed Transitions', () => {
-    test('should allow CREATED → SPEC_READY transition', async () => {
+    test('should allow CREATED -> SPEC_READY transition', async () => {
       const issueId = 'test-issue-id';
       
       // Mock getAfu9IssueById (called internally by transitionIssue)
@@ -95,7 +95,7 @@ describe('E61.1: Issue State Machine Transitions', () => {
       );
     });
 
-    test('should allow SPEC_READY → IMPLEMENTING transition', async () => {
+    test('should allow SPEC_READY -> IMPLEMENTING transition', async () => {
       const issueId = 'test-issue-id';
       
       (mockPool.query as jest.Mock).mockResolvedValueOnce({
@@ -127,7 +127,7 @@ describe('E61.1: Issue State Machine Transitions', () => {
       expect(result.data?.status).toBe(Afu9IssueStatus.IMPLEMENTING);
     });
 
-    test('should allow IMPLEMENTING → VERIFIED transition', async () => {
+    test('should allow IMPLEMENTING -> VERIFIED transition', async () => {
       const issueId = 'test-issue-id';
       
       (mockPool.query as jest.Mock).mockResolvedValueOnce({
@@ -159,7 +159,7 @@ describe('E61.1: Issue State Machine Transitions', () => {
       expect(result.data?.status).toBe(Afu9IssueStatus.VERIFIED);
     });
 
-    test('should allow backward transition IMPLEMENTING → SPEC_READY', async () => {
+    test('should allow backward transition IMPLEMENTING -> SPEC_READY', async () => {
       const issueId = 'test-issue-id';
       
       (mockPool.query as jest.Mock).mockResolvedValueOnce({
@@ -257,7 +257,7 @@ describe('E61.1: Issue State Machine Transitions', () => {
   });
 
   describe('Forbidden Transitions', () => {
-    test('should block CREATED → DONE transition', async () => {
+    test('should block CREATED -> DONE transition', async () => {
       const issueId = 'test-issue-id';
       
       (mockPool.query as jest.Mock).mockResolvedValueOnce({
@@ -277,13 +277,13 @@ describe('E61.1: Issue State Machine Transitions', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid transition');
-      expect(result.error).toContain('CREATED → DONE');
+      expect(result.error).toContain('CREATED -> DONE');
       
       // Verify no transaction was started
       expect(mockClient.query).not.toHaveBeenCalledWith('BEGIN');
     });
 
-    test('should block CREATED → IMPLEMENTING transition (must go through SPEC_READY)', async () => {
+    test('should block CREATED -> IMPLEMENTING transition (must go through SPEC_READY)', async () => {
       const issueId = 'test-issue-id';
       
       (mockPool.query as jest.Mock).mockResolvedValueOnce({
@@ -303,10 +303,10 @@ describe('E61.1: Issue State Machine Transitions', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid transition');
-      expect(result.error).toContain('CREATED → IMPLEMENTING');
+      expect(result.error).toContain('CREATED -> IMPLEMENTING');
     });
 
-    test('should block SPEC_READY → VERIFIED transition (must go through IMPLEMENTING)', async () => {
+    test('should block SPEC_READY -> VERIFIED transition (must go through IMPLEMENTING)', async () => {
       const issueId = 'test-issue-id';
       
       (mockPool.query as jest.Mock).mockResolvedValueOnce({
@@ -348,7 +348,7 @@ describe('E61.1: Issue State Machine Transitions', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid transition');
-      expect(result.error).toContain('DONE → IMPLEMENTING');
+      expect(result.error).toContain('DONE -> IMPLEMENTING');
     });
 
     test('should block transitions from KILLED (terminal state)', async () => {

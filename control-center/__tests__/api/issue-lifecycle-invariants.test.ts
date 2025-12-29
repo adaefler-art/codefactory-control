@@ -287,7 +287,7 @@ describe('Issue Lifecycle Invariants', () => {
       // Mock transition to fail with invalid transition
       transitionIssue.mockResolvedValue({
         success: false,
-        error: 'Invalid transition: SPEC_READY → CREATED. This transition is not allowed by the state machine.',
+        error: 'Invalid transition: SPEC_READY -> CREATED. This transition is not allowed by the state machine.',
       });
 
       const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}`, {

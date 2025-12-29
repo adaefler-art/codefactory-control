@@ -168,7 +168,7 @@ export async function getAfu9IssueById(
  * **Issue #3: Identifier Consistency**
  * 
  * The publicId is an 8-hex display format derived from the UUID prefix.
- * Example: UUID "c300abd8-1234-..." → publicId "c300abd8"
+ * Example: UUID "c300abd8-1234-..." -> publicId "c300abd8"
  * 
  * This is a read-only lookup mechanism. The canonical identifier is
  * always the full UUID stored in the `id` column.
@@ -767,7 +767,7 @@ export async function transitionIssue(
   if (!isValidTransition(fromState, targetState)) {
     return {
       success: false,
-      error: `Invalid transition: ${fromState} → ${targetState}. This transition is not allowed by the state machine.`,
+      error: `Invalid transition: ${fromState} -> ${targetState}. This transition is not allowed by the state machine.`,
     };
   }
 

@@ -2,7 +2,7 @@
  * AFU9 Issue Contract Schema
  * 
  * Defines the contract for afu9_issues table operations.
- * Ensures schema ↔ service ↔ payload synchronization.
+ * Ensures schema <-> service <-> payload synchronization.
  * 
  * MUST be kept in sync with database/migrations/014_afu9_issues.sql
  */

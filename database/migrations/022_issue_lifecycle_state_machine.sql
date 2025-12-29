@@ -26,13 +26,13 @@ ALTER TABLE afu9_issues ADD CONSTRAINT chk_afu9_issue_status CHECK (status IN (
 -- ========================================
 
 -- Safety: Only migrate if status exists and is non-null
--- Map ACTIVE → IMPLEMENTING (already done in migration 015, but ensure consistency)
+-- Map ACTIVE -> IMPLEMENTING (already done in migration 015, but ensure consistency)
 UPDATE afu9_issues SET status = 'IMPLEMENTING' WHERE status = 'ACTIVE' AND status IS NOT NULL;
 
--- Map BLOCKED → HOLD (blocked issues go on hold)
+-- Map BLOCKED -> HOLD (blocked issues go on hold)
 UPDATE afu9_issues SET status = 'HOLD' WHERE status = 'BLOCKED' AND status IS NOT NULL;
 
--- Map FAILED → KILLED (failed issues are terminated)
+-- Map FAILED -> KILLED (failed issues are terminated)
 UPDATE afu9_issues SET status = 'KILLED' WHERE status = 'FAILED' AND status IS NOT NULL;
 
 -- Safety check: Report any issues with unknown status values (should not happen in prod)
