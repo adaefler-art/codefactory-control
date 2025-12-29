@@ -28,10 +28,11 @@ describe('AFU9 Issue Contract', () => {
       expect(isValidStatus('CREATED')).toBe(true);
       expect(isValidStatus('SPEC_READY')).toBe(true);
       expect(isValidStatus('IMPLEMENTING')).toBe(true);
-      expect(isValidStatus('ACTIVE')).toBe(true);
-      expect(isValidStatus('BLOCKED')).toBe(true);
+      expect(isValidStatus('VERIFIED')).toBe(true);
+      expect(isValidStatus('MERGE_READY')).toBe(true);
       expect(isValidStatus('DONE')).toBe(true);
-      expect(isValidStatus('FAILED')).toBe(true);
+      expect(isValidStatus('HOLD')).toBe(true);
+      expect(isValidStatus('KILLED')).toBe(true);
     });
 
     test('isValidStatus rejects invalid statuses', () => {
@@ -201,7 +202,7 @@ describe('AFU9 Issue Contract', () => {
     test('accepts valid status', () => {
       const input = {
         title: 'Test',
-        status: Afu9IssueStatus.ACTIVE,
+        status: Afu9IssueStatus.SPEC_READY,
       };
 
       const result = validateAfu9IssueInput(input);
@@ -558,12 +559,12 @@ describe('AFU9 Issue Contract', () => {
     test('preserves provided status', () => {
       const input: Afu9IssueInput = {
         title: 'Test',
-        status: Afu9IssueStatus.ACTIVE,
+        status: Afu9IssueStatus.IMPLEMENTING,
       };
 
       const result = sanitizeAfu9IssueInput(input);
 
-      expect(result.status).toBe(Afu9IssueStatus.ACTIVE);
+      expect(result.status).toBe(Afu9IssueStatus.IMPLEMENTING);
     });
 
     test('sets default labels to empty array', () => {
@@ -760,7 +761,7 @@ describe('AFU9 Issue Contract', () => {
       const input: Afu9IssueInput = {
         title: 'Test issue',
         body: 'Test body',
-        status: Afu9IssueStatus.ACTIVE,
+        status: Afu9IssueStatus.SPEC_READY,
         labels: ['bug'],
         priority: Afu9IssuePriority.P1,
         assignee: 'agent-1',
@@ -774,7 +775,7 @@ describe('AFU9 Issue Contract', () => {
 
       expect(result.title).toBe('Test issue');
       expect(result.body).toBe('Test body');
-      expect(result.status).toBe(Afu9IssueStatus.ACTIVE);
+      expect(result.status).toBe(Afu9IssueStatus.SPEC_READY);
       expect(result.labels).toEqual(['bug']);
       expect(result.priority).toBe(Afu9IssuePriority.P1);
       expect(result.assignee).toBe('agent-1');

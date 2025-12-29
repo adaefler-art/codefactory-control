@@ -203,6 +203,14 @@ export const PATCH = withApi(async (
         );
       }
 
+      // Check for Single-Active constraint violation
+      if (transitionResult.error && transitionResult.error.includes('Single-Active')) {
+        return NextResponse.json(
+          { error: transitionResult.error },
+          { status: 409 } // Conflict
+        );
+      }
+
       return NextResponse.json(
         { error: 'Failed to transition issue', details: transitionResult.error },
         { status: 500 }

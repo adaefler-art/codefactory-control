@@ -40,6 +40,7 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueById: jest.fn(),
   getAfu9IssueByPublicId: jest.fn(),
   updateAfu9Issue: jest.fn(),
+  transitionIssue: jest.fn(),
   getActiveIssue: jest.fn(),
   getIssueEvents: jest.fn(),
 }));
@@ -360,12 +361,13 @@ describe('AFU9 Issues API', () => {
     });
 
     test('returns 409 for Single-Active constraint violation', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, transitionIssue } = require('../../src/lib/db/afu9Issues');
       getAfu9IssueById.mockResolvedValue({
         success: true,
         data: mockIssue,
       });
-      updateAfu9Issue.mockResolvedValue({
+
+      transitionIssue.mockResolvedValue({
         success: false,
         error: 'Single-Active constraint: Issue abc is already IMPLEMENTING',
       });
@@ -386,8 +388,8 @@ describe('AFU9 Issues API', () => {
       expect(body.error).toContain('Single-Active');
     });
 
-    test('accepts new status values SPEC_READY, IMPLEMENTING, and FAILED', async () => {
-      const { getAfu9IssueById, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+    test('accepts new status values SPEC_READY, IMPLEMENTING, and VERIFIED', async () => {
+      const { getAfu9IssueById, transitionIssue } = require('../../src/lib/db/afu9Issues');
       getAfu9IssueById.mockResolvedValue({
         success: true,
         data: mockIssue,
@@ -395,7 +397,7 @@ describe('AFU9 Issues API', () => {
 
       // Test SPEC_READY
       const specReadyIssue = { ...mockIssue, status: Afu9IssueStatus.SPEC_READY };
-      updateAfu9Issue.mockResolvedValue({
+      transitionIssue.mockResolvedValue({
         success: true,
         data: specReadyIssue,
       });
@@ -416,8 +418,8 @@ describe('AFU9 Issues API', () => {
       expect(body.status).toBe('SPEC_READY');
 
       // Test IMPLEMENTING
-      const implementingIssue = { ...mockIssue, status: 'IMPLEMENTING' as any };
-      updateAfu9Issue.mockResolvedValue({
+      const implementingIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING };
+      transitionIssue.mockResolvedValue({
         success: true,
         data: implementingIssue,
       });
@@ -437,17 +439,17 @@ describe('AFU9 Issues API', () => {
       expect(response.status).toBe(200);
       expect(body.status).toBe('IMPLEMENTING');
 
-      // Test FAILED
-      const failedIssue = { ...mockIssue, status: 'FAILED' as any };
-      updateAfu9Issue.mockResolvedValue({
+      // Test VERIFIED
+      const verifiedIssue = { ...mockIssue, status: Afu9IssueStatus.VERIFIED };
+      transitionIssue.mockResolvedValue({
         success: true,
-        data: failedIssue,
+        data: verifiedIssue,
       });
 
       request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
         method: 'PATCH',
         body: JSON.stringify({
-          status: 'FAILED',
+          status: 'VERIFIED',
         }),
       });
 
@@ -457,7 +459,7 @@ describe('AFU9 Issues API', () => {
       body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.status).toBe('FAILED');
+      expect(body.status).toBe('VERIFIED');
     });
 
     test('updates issue priority', async () => {
@@ -545,7 +547,7 @@ describe('AFU9 Issues API', () => {
 
   describe('POST /api/issues/[id]/activate', () => {
     test('activates an issue with IMPLEMENTING status', async () => {
-      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, getActiveIssue, transitionIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       getAfu9IssueById.mockResolvedValue({
         success: true,
@@ -555,6 +557,11 @@ describe('AFU9 Issues API', () => {
       getActiveIssue.mockResolvedValue({
         success: true,
         data: null,
+      });
+
+      transitionIssue.mockResolvedValue({
+        success: true,
+        data: { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING },
       });
 
       const activatedIssue = { ...mockIssue, status: Afu9IssueStatus.IMPLEMENTING, activated_at: '2023-12-23T12:00:00Z' };
@@ -575,18 +582,26 @@ describe('AFU9 Issues API', () => {
       expect(response.status).toBe(200);
       expect(body.message).toContain('activated successfully');
       expect(body.issue.status).toBe(Afu9IssueStatus.IMPLEMENTING);
+
+      expect(transitionIssue).toHaveBeenCalledWith(
+        expect.anything(),
+        '123e4567-e89b-12d3-a456-426614174000',
+        Afu9IssueStatus.IMPLEMENTING,
+        'api-user',
+        expect.objectContaining({ via: 'POST /api/issues/[id]/activate' })
+      );
+
       expect(updateAfu9Issue).toHaveBeenCalledWith(
         expect.anything(),
         '123e4567-e89b-12d3-a456-426614174000',
         expect.objectContaining({
-          status: Afu9IssueStatus.IMPLEMENTING,
           activated_at: expect.any(String),
         })
       );
     });
 
     test('deactivates current implementing issue to DONE before activating new one', async () => {
-      const { getAfu9IssueById, getActiveIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, getActiveIssue, transitionIssue, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       
       const currentActiveIssue = {
         ...mockIssue,
@@ -604,6 +619,11 @@ describe('AFU9 Issues API', () => {
         data: currentActiveIssue,
       });
 
+      transitionIssue.mockResolvedValue({
+        success: true,
+        data: { ...mockIssue },
+      });
+
       updateAfu9Issue.mockResolvedValue({
         success: true,
         data: mockIssue,
@@ -619,14 +639,25 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(updateAfu9Issue).toHaveBeenCalledTimes(2); // Once to deactivate, once to activate
-      expect(updateAfu9Issue).toHaveBeenCalledWith(
+
+      expect(transitionIssue).toHaveBeenCalledWith(
         expect.anything(),
         'current-active-id',
-        expect.objectContaining({
-          status: Afu9IssueStatus.DONE,
-        })
+        Afu9IssueStatus.DONE,
+        'api-user',
+        expect.objectContaining({ via: 'POST /api/issues/[id]/activate' })
       );
+
+      expect(transitionIssue).toHaveBeenCalledWith(
+        expect.anything(),
+        '123e4567-e89b-12d3-a456-426614174000',
+        Afu9IssueStatus.IMPLEMENTING,
+        'api-user',
+        expect.objectContaining({ via: 'POST /api/issues/[id]/activate' })
+      );
+
+      expect(updateAfu9Issue).toHaveBeenCalledTimes(1);
+
       expect(body.deactivated).toBeDefined();
       expect(body.deactivated.id).toBe('current-active-id');
     });
