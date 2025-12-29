@@ -2,9 +2,15 @@ import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-sec
 import { createPrivateKey } from 'crypto';
 
 export type GitHubAppSecret = {
-  appId: string | number;
-  webhookSecret: string;
-  privateKeyPem: string;
+  appId?: string | number;
+  app_id?: string | number;
+  webhookSecret?: string;
+  webhook_secret?: string;
+  webhook_secret_token?: string;
+  privateKeyPem?: string;
+  private_key_pem?: string;
+  private_key?: string;
+  privateKey?: string;
 };
 
 export class GitHubAppConfigError extends Error {
@@ -179,6 +185,17 @@ function toNonEmptyString(value: unknown, fieldName: string): string {
   return s;
 }
 
+function pickFirstNonEmptyString(obj: Record<string, unknown>, keys: string[], fieldName: string): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    const s = String(value).trim();
+    if (s) return s;
+  }
+  throw new GitHubAppConfigError(`Missing ${fieldName}`);
+}
+
 export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
   if (cachedSecretPromise) return cachedSecretPromise;
 
@@ -217,10 +234,18 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
       throw new GitHubAppConfigError('GitHub App secret is not valid JSON');
     }
 
+    const parsedObj = parsed as unknown as Record<string, unknown>;
+
     return {
-      appId: toNonEmptyString(parsed.appId, 'appId'),
-      webhookSecret: toNonEmptyString(parsed.webhookSecret, 'webhookSecret'),
-      privateKeyPem: normalizePrivateKeyPem(toNonEmptyString(parsed.privateKeyPem, 'privateKeyPem')),
+      appId: pickFirstNonEmptyString(parsedObj, ['appId', 'app_id'], 'appId'),
+      webhookSecret: pickFirstNonEmptyString(
+        parsedObj,
+        ['webhookSecret', 'webhook_secret', 'webhook_secret_token'],
+        'webhookSecret'
+      ),
+      privateKeyPem: normalizePrivateKeyPem(
+        pickFirstNonEmptyString(parsedObj, ['privateKeyPem', 'private_key_pem', 'private_key', 'privateKey'], 'privateKeyPem')
+      ),
     };
   })();
 
