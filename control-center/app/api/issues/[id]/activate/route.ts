@@ -16,6 +16,7 @@ import {
   getAfu9IssueById,
   updateAfu9Issue,
   getActiveIssue,
+  transitionIssue,
 } from '../../../../../src/lib/db/afu9Issues';
 import {
   Afu9IssueStatus,
@@ -89,9 +90,14 @@ export async function POST(
 
     // Deactivate the current active issue (if exists and different from target)
     if (currentActiveIssue && currentActiveIssue.id !== internalId) {
-      const deactivateResult = await updateAfu9Issue(pool, currentActiveIssue.id, {
-        status: Afu9IssueStatus.DONE,
-      });
+      // E61.1: Use transitionIssue for status changes
+      const deactivateResult = await transitionIssue(
+        pool,
+        currentActiveIssue.id,
+        Afu9IssueStatus.DONE,
+        'api-user',
+        { via: 'POST /api/issues/[id]/activate', reason: 'deactivated by new activation' }
+      );
 
       if (!deactivateResult.success) {
         return NextResponse.json(
@@ -105,14 +111,38 @@ export async function POST(
     }
 
     // Activate the target issue with IMPLEMENTING status and set activated_at timestamp
+    // E61.1: Use transitionIssue for status change, then update activated_at separately
+    const transitionResult = await transitionIssue(
+      pool,
+      internalId,
+      Afu9IssueStatus.IMPLEMENTING,
+      'api-user',
+      { via: 'POST /api/issues/[id]/activate' }
+    );
+
+    if (!transitionResult.success) {
+      // Check for invalid transition
+      if (transitionResult.error && transitionResult.error.includes('Invalid transition')) {
+        return NextResponse.json(
+          { error: transitionResult.error },
+          { status: 400 }
+        );
+      }
+      
+      return NextResponse.json(
+        { error: 'Failed to activate issue', details: transitionResult.error },
+        { status: 500 }
+      );
+    }
+
+    // Update activated_at timestamp (non-status field)
     const activateResult = await updateAfu9Issue(pool, internalId, {
-      status: Afu9IssueStatus.IMPLEMENTING,
       activated_at: new Date().toISOString(),
     });
 
     if (!activateResult.success) {
       return NextResponse.json(
-        { error: 'Failed to activate issue', details: activateResult.error },
+        { error: 'Failed to set activation timestamp', details: activateResult.error },
         { status: 500 }
       );
     }

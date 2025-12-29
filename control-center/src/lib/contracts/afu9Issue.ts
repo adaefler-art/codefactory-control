@@ -2,22 +2,24 @@
  * AFU9 Issue Contract Schema
  * 
  * Defines the contract for afu9_issues table operations.
- * Ensures schema ↔ service ↔ payload synchronization.
+ * Ensures schema <-> service <-> payload synchronization.
  * 
  * MUST be kept in sync with database/migrations/014_afu9_issues.sql
  */
 
 /**
  * AFU9 Issue Status enum
+ * Updated for E61.1: Canonical Issue State Machine
  */
 export enum Afu9IssueStatus {
   CREATED = 'CREATED',
   SPEC_READY = 'SPEC_READY',
   IMPLEMENTING = 'IMPLEMENTING',
-  ACTIVE = 'ACTIVE',
-  BLOCKED = 'BLOCKED',
+  VERIFIED = 'VERIFIED',
+  MERGE_READY = 'MERGE_READY',
   DONE = 'DONE',
-  FAILED = 'FAILED',
+  HOLD = 'HOLD',
+  KILLED = 'KILLED',
 }
 
 /**

@@ -33,6 +33,7 @@ jest.mock('../../src/lib/github', () => ({
 jest.mock('../../src/lib/db/afu9Issues', () => ({
   updateAfu9Issue: jest.fn(),
   getActiveIssue: jest.fn(),
+  transitionIssue: jest.fn(),
 }));
 
 // Mock _shared module
@@ -107,7 +108,7 @@ describe('Issue Lifecycle Invariants', () => {
 
     test('allows activation of issue with valid title', async () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
-      const { updateAfu9Issue, getActiveIssue } = require('../../src/lib/db/afu9Issues');
+      const { updateAfu9Issue, getActiveIssue, transitionIssue } = require('../../src/lib/db/afu9Issues');
       
       // Mock issue with valid title
       fetchIssueRowByIdentifier.mockResolvedValue({
@@ -126,12 +127,24 @@ describe('Issue Lifecycle Invariants', () => {
         data: null, // No active issue
       });
 
+      // Mock transitionIssue for status change
+      transitionIssue.mockResolvedValue({
+        success: true,
+        data: {
+          id: mockIssueId,
+          title: 'Valid Issue Title',
+          status: Afu9IssueStatus.IMPLEMENTING,
+        },
+      });
+
+      // Mock updateAfu9Issue for activated_at timestamp
       updateAfu9Issue.mockResolvedValue({
         success: true,
         data: {
           id: mockIssueId,
           title: 'Valid Issue Title',
           status: Afu9IssueStatus.IMPLEMENTING,
+          activated_at: expect.any(String),
         },
       });
 
@@ -258,6 +271,7 @@ describe('Issue Lifecycle Invariants', () => {
   describe('Update Invariants', () => {
     test('blocks update that would create CREATED + SYNCED combination', async () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      const { transitionIssue } = require('../../src/lib/db/afu9Issues');
       
       // Mock current issue state
       fetchIssueRowByIdentifier.mockResolvedValue({
@@ -268,6 +282,12 @@ describe('Issue Lifecycle Invariants', () => {
           status: Afu9IssueStatus.SPEC_READY,
           handoff_state: Afu9HandoffState.SYNCED,
         },
+      });
+
+      // Mock transition to fail with invalid transition
+      transitionIssue.mockResolvedValue({
+        success: false,
+        error: 'Invalid transition: SPEC_READY -> CREATED. This transition is not allowed by the state machine.',
       });
 
       const request = new NextRequest(`http://localhost/api/issues/${mockPublicId}`, {
@@ -286,12 +306,12 @@ describe('Issue Lifecycle Invariants', () => {
       const body = await response.json();
 
       expect(response.status).toBe(400);
-      expect(body.error).toContain('Invalid state combination');
+      expect(body.error).toContain('Invalid transition');
     });
 
     test('allows valid status updates', async () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
-      const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+      const { transitionIssue } = require('../../src/lib/db/afu9Issues');
       
       // Mock current issue state
       fetchIssueRowByIdentifier.mockResolvedValue({
@@ -304,7 +324,7 @@ describe('Issue Lifecycle Invariants', () => {
         },
       });
 
-      updateAfu9Issue.mockResolvedValue({
+      transitionIssue.mockResolvedValue({
         success: true,
         data: {
           id: mockIssueId,
