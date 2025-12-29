@@ -31,7 +31,7 @@ export interface Afu9DatabaseStackProps extends cdk.StackProps {
   /**
    * Security group for database access
    */
-  dbSecurityGroup: ec2.SecurityGroup;
+  dbSecurityGroup?: ec2.ISecurityGroup;
 
   /**
    * Whether to enable Multi-AZ deployment (default: false for cost optimization)
@@ -47,7 +47,21 @@ export class Afu9DatabaseStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: Afu9DatabaseStackProps) {
     super(scope, id, props);
 
-    const { vpc, dbSecurityGroup, multiAz = false } = props;
+    const { vpc, multiAz = false } = props;
+
+    // IMPORTANT: Avoid CDK auto-generated cross-stack exports for DbSecurityGroup.
+    // We import the stable legacy export contract from Afu9NetworkStack to prevent
+    // export name churn and to keep the contract present even when stacks are
+    // deployed independently.
+    const dbSecurityGroupId = cdk.Fn.importValue(
+      'Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A'
+    );
+    const dbSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
+      this,
+      'DbSecurityGroupImported',
+      dbSecurityGroupId,
+      { mutable: false }
+    );
 
     // ========================================
     // Database Credentials Secret
