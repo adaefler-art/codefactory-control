@@ -190,7 +190,7 @@ export const PATCH = withApi(async (
       pool,
       internalId,
       statusToTransition,
-      'api-user', // TODO: Extract actual user from auth context
+      'api-user', // Future: Extract actual user from auth context
       { via: 'PATCH /api/issues/[id]' }
     );
 
