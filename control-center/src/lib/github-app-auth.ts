@@ -91,16 +91,35 @@ function tryDecodeBase64WrappedPem(value: string): string | null {
 
   const padded = asB64 + '='.repeat((4 - (asB64.length % 4)) % 4);
 
+  let raw: Buffer;
   try {
-    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+    raw = Buffer.from(padded, 'base64');
+  } catch {
+    return null;
+  }
+
+  // Case 1: It's base64 of a PEM string.
+  try {
+    const decodedUtf8 = raw.toString('utf8');
     if (
-      decoded.includes('-----BEGIN PRIVATE KEY-----') ||
-      decoded.includes('-----BEGIN RSA PRIVATE KEY-----')
+      decodedUtf8.includes('-----BEGIN PRIVATE KEY-----') ||
+      decodedUtf8.includes('-----BEGIN RSA PRIVATE KEY-----')
     ) {
-      return decoded;
+      return decodedUtf8;
     }
   } catch {
     // ignore
+  }
+
+  // Case 2: It's base64 of DER bytes. Try PKCS#8 first, then PKCS#1.
+  for (const type of ['pkcs8', 'pkcs1'] as const) {
+    try {
+      const keyObject = createPrivateKey({ key: raw, format: 'der', type });
+      const pkcs8 = keyObject.export({ format: 'pem', type: 'pkcs8' });
+      return String(pkcs8).replace(/\r\n/g, '\n').trim() + '\n';
+    } catch {
+      // ignore
+    }
   }
 
   return null;
@@ -145,7 +164,14 @@ function toNumber(value: string | number, fieldName: string): number {
   return n;
 }
 
-function toNonEmptyString(value: string | number, fieldName: string): string {
+function toNonEmptyString(value: unknown, fieldName: string): string {
+  if (value === undefined || value === null) {
+    throw new GitHubAppConfigError(`Missing ${fieldName}`);
+  }
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    throw new GitHubAppConfigError(`Invalid ${fieldName}`);
+  }
+
   const s = String(value).trim();
   if (!s) {
     throw new GitHubAppConfigError(`Missing ${fieldName}`);

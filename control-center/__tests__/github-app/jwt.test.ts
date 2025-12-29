@@ -180,6 +180,59 @@ describe('createGitHubAppJwt', () => {
     expect(pemArg).toContain('-----END PRIVATE KEY-----');
   });
 
+  it('accepts a base64-encoded DER private key (pkcs8)', async () => {
+    jest.resetModules();
+
+    const { generateKeyPairSync } = await import('crypto');
+    const { privateKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      privateKeyEncoding: { format: 'der', type: 'pkcs8' },
+      publicKeyEncoding: { format: 'pem', type: 'pkcs1' },
+    });
+
+    const derB64 = Buffer.from(privateKey).toString('base64');
+
+    process.env.GITHUB_APP_ID = '3456';
+    process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = derB64;
+
+    const jose = await import('jose');
+    (jose as any).importPKCS8.mockClear();
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createGitHubAppJwt } = require('../../src/lib/github-app-auth');
+    await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
+
+    const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
+    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
+    expect(pemArg).toContain('-----END PRIVATE KEY-----');
+  });
+
+  it('throws a clear config error when privateKeyPem is missing from the secret JSON', async () => {
+    jest.resetModules();
+
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_WEBHOOK_SECRET;
+    delete process.env.GITHUB_APP_PRIVATE_KEY_PEM;
+    delete process.env.GH_APP_ID;
+    delete process.env.GH_APP_WEBHOOK_SECRET;
+    delete process.env.GH_APP_PRIVATE_KEY_PEM;
+
+    const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
+    (SecretsManagerClient as any).mockImplementation(() => ({
+      send: jest.fn(async () => ({
+        SecretString: JSON.stringify({ appId: '123', webhookSecret: 'whsec_test' }),
+      })),
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createGitHubAppJwt } = require('../../src/lib/github-app-auth');
+    await expect(createGitHubAppJwt({ nowSeconds: 1_700_000_000 })).rejects.toMatchObject({
+      name: 'GitHubAppConfigError',
+      message: expect.stringContaining('Missing privateKeyPem'),
+    });
+  });
+
   it('converts PKCS#1 (RSA PRIVATE KEY) PEM to PKCS#8 before calling jose', async () => {
     jest.resetModules();
 
