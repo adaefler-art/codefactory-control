@@ -137,6 +137,49 @@ describe('createGitHubAppJwt', () => {
     expect(pemArg).not.toContain('\\n');
   });
 
+  it('accepts a quoted PEM string (common when values get double-serialized)', async () => {
+    jest.resetModules();
+
+    const quotedPem = '"-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----\\n"';
+
+    process.env.GITHUB_APP_ID = '3456';
+    process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = quotedPem;
+
+    const jose = await import('jose');
+    (jose as any).importPKCS8.mockClear();
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createGitHubAppJwt } = require('../../src/lib/github-app-auth');
+    await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
+
+    const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
+    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
+    expect(pemArg).toContain('\n');
+  });
+
+  it('accepts a base64-wrapped PEM string (common when stored in env/secret)', async () => {
+    jest.resetModules();
+
+    const pem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
+    const pemB64 = Buffer.from(pem, 'utf8').toString('base64');
+
+    process.env.GITHUB_APP_ID = '3456';
+    process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = pemB64;
+
+    const jose = await import('jose');
+    (jose as any).importPKCS8.mockClear();
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createGitHubAppJwt } = require('../../src/lib/github-app-auth');
+    await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
+
+    const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
+    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
+    expect(pemArg).toContain('-----END PRIVATE KEY-----');
+  });
+
   it('converts PKCS#1 (RSA PRIVATE KEY) PEM to PKCS#8 before calling jose', async () => {
     jest.resetModules();
 
