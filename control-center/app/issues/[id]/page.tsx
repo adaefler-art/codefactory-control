@@ -11,7 +11,7 @@ interface Issue {
   publicId: string | null;
   title: string;
   body: string | null;
-  status: "CREATED" | "SPEC_READY" | "IMPLEMENTING" | "ACTIVE" | "BLOCKED" | "DONE" | "FAILED";
+  status: "CREATED" | "SPEC_READY" | "IMPLEMENTING" | "VERIFIED" | "MERGE_READY" | "DONE" | "HOLD" | "KILLED";
   labels: string[];
   priority: "P0" | "P1" | "P2" | null;
   assignee: string | null;
@@ -389,13 +389,15 @@ export default function IssueDetailPage({
         return "bg-cyan-900/30 text-cyan-200 border border-cyan-700";
       case "IMPLEMENTING":
         return "bg-blue-900/30 text-blue-200 border border-blue-700";
-      case "ACTIVE":
+      case "VERIFIED":
         return "bg-green-900/30 text-green-200 border border-green-700";
-      case "BLOCKED":
-        return "bg-orange-900/30 text-orange-200 border border-orange-700";
+      case "MERGE_READY":
+        return "bg-purple-900/30 text-purple-200 border border-purple-700";
       case "DONE":
         return "bg-emerald-900/30 text-emerald-200 border border-emerald-700";
-      case "FAILED":
+      case "HOLD":
+        return "bg-orange-900/30 text-orange-200 border border-orange-700";
+      case "KILLED":
         return "bg-red-900/30 text-red-200 border border-red-700";
       default:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
@@ -638,10 +640,11 @@ export default function IssueDetailPage({
                   <option value="CREATED">CREATED</option>
                   <option value="SPEC_READY">SPEC_READY</option>
                   <option value="IMPLEMENTING">IMPLEMENTING</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="BLOCKED">BLOCKED</option>
+                  <option value="VERIFIED">VERIFIED</option>
+                  <option value="MERGE_READY">MERGE_READY</option>
                   <option value="DONE">DONE</option>
-                  <option value="FAILED">FAILED</option>
+                  <option value="HOLD">HOLD</option>
+                  <option value="KILLED">KILLED</option>
                 </select>
               </div>
 
