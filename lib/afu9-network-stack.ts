@@ -301,30 +301,13 @@ export class Afu9NetworkStack extends cdk.Stack {
     });
 
     // Stable cross-stack export contract (do not remove/rename)
-    // When Afu9DatabaseStack is NOT part of the current CDK app (e.g., afu9-enable-database=false),
-    // CDK will otherwise drop the auto-generated cross-stack export which can break existing
-    // deployed stacks that still import it.
-    const enableDatabaseContext = this.node.tryGetContext('afu9-enable-database');
-    const databaseEnabled =
-      enableDatabaseContext === undefined
-        ? true
-        : enableDatabaseContext !== false && enableDatabaseContext !== 'false';
-
-    if (!databaseEnabled) {
-      // NOTE: We intentionally rely on the default exportName format: <StackName>:<OutputLogicalId>
-      // to match the legacy contract:
-      // Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A
-      new cdk.CfnOutput(
-        this,
-        'ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A',
-        {
-          value: this.dbSecurityGroup.securityGroupId,
-          description:
-            'Stable export for DbSecurityGroup GroupId (cross-stack contract)',
-          exportName:
-            'Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A',
-        }
-      );
-    }
+    // Export name must remain exactly:
+    // Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A
+    new cdk.CfnOutput(this, 'ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A', {
+      value: this.dbSecurityGroup.securityGroupId,
+      description: 'Stable export for DbSecurityGroup GroupId (cross-stack contract)',
+      exportName:
+        'Afu9NetworkStack:ExportsOutputFnGetAttDbSecurityGroupE9D701ADGroupId7A7C114A',
+    });
   }
 }
