@@ -3,13 +3,15 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { mapToCanonicalStatus, isLegacyStatus, getCanonicalStatuses } from "@/lib/utils/status-mapping";
+import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 
 interface Issue {
   id: string;
   publicId: string;
   title: string;
   body: string | null;
-  status: "CREATED" | "SPEC_READY" | "IMPLEMENTING" | "ACTIVE" | "BLOCKED" | "DONE" | "FAILED";
+  status: string; // Can be canonical or legacy status
   labels: string[];
   priority: "P0" | "P1" | "P2" | null;
   assignee: string | null;
@@ -59,6 +61,11 @@ export default function IssuesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [labelFilter, setLabelFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [activeOnly, setActiveOnly] = useState<boolean>(false);
+  
+  // Sort states
+  const [sortField, setSortField] = useState<"updatedAt" | "createdAt" | "priority" | "status">("updatedAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // Import modal states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -80,9 +87,8 @@ export default function IssuesPage() {
     setError(null);
     
     try {
+      // Fetch all issues without status/label filtering (we'll filter client-side)
       const params = new URLSearchParams();
-      if (statusFilter) params.append("status", statusFilter);
-      if (labelFilter) params.append("label", labelFilter);
       if (searchQuery) params.append("q", searchQuery);
       
       const response = await fetch(`/api/issues?${params.toString()}`, {
@@ -98,7 +104,7 @@ export default function IssuesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, labelFilter, searchQuery]);
+  }, [searchQuery]);
 
   useEffect(() => {
     fetchIssues();
@@ -228,21 +234,82 @@ export default function IssuesPage() {
     return issue.status === "CREATED" && issue.handoff_state === "NOT_SENT";
   };
 
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case "CREATED":
+  // Client-side filtering and sorting (memoized for performance)
+  const filteredAndSortedIssues = useMemo(() => {
+    let result = [...issues];
+
+    // Apply status filter (on mapped canonical status)
+    if (statusFilter) {
+      result = result.filter((issue) => mapToCanonicalStatus(issue.status) === statusFilter);
+    }
+
+    // Apply Active-only filter (status === SPEC_READY)
+    if (activeOnly) {
+      result = result.filter((issue) => mapToCanonicalStatus(issue.status) === Afu9IssueStatus.SPEC_READY);
+    }
+
+    // Apply label filter
+    if (labelFilter) {
+      result = result.filter((issue) => issue.labels.includes(labelFilter));
+    }
+
+    // Sort issues
+    result.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case "updatedAt": {
+          const aTime = new Date(a.updatedAt ?? a.updated_at ?? 0).getTime();
+          const bTime = new Date(b.updatedAt ?? b.updated_at ?? 0).getTime();
+          comparison = aTime - bTime;
+          break;
+        }
+        case "createdAt": {
+          const aTime = new Date(a.createdAt ?? a.created_at ?? 0).getTime();
+          const bTime = new Date(b.createdAt ?? b.created_at ?? 0).getTime();
+          comparison = aTime - bTime;
+          break;
+        }
+        case "priority": {
+          // Custom priority order: P0 > P1 > P2 > null
+          const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, "null": 3 };
+          const aPriority = priorityOrder[a.priority ?? "null"];
+          const bPriority = priorityOrder[b.priority ?? "null"];
+          comparison = aPriority - bPriority;
+          break;
+        }
+        case "status": {
+          // Sort by canonical status alphabetically
+          const aStatus = mapToCanonicalStatus(a.status);
+          const bStatus = mapToCanonicalStatus(b.status);
+          comparison = aStatus.localeCompare(bStatus);
+          break;
+        }
+      }
+
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+
+    return result;
+  }, [issues, statusFilter, activeOnly, labelFilter, sortField, sortOrder]);
+
+  const getStatusBadgeColor = (canonicalStatus: string) => {
+    switch (canonicalStatus) {
+      case Afu9IssueStatus.CREATED:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
-      case "SPEC_READY":
+      case Afu9IssueStatus.SPEC_READY:
         return "bg-cyan-900/30 text-cyan-200 border border-cyan-700";
-      case "IMPLEMENTING":
+      case Afu9IssueStatus.IMPLEMENTING:
         return "bg-blue-900/30 text-blue-200 border border-blue-700";
-      case "ACTIVE":
-        return "bg-green-900/30 text-green-200 border border-green-700";
-      case "BLOCKED":
-        return "bg-orange-900/30 text-orange-200 border border-orange-700";
-      case "DONE":
+      case Afu9IssueStatus.VERIFIED:
+        return "bg-purple-900/30 text-purple-200 border border-purple-700";
+      case Afu9IssueStatus.MERGE_READY:
+        return "bg-indigo-900/30 text-indigo-200 border border-indigo-700";
+      case Afu9IssueStatus.DONE:
         return "bg-emerald-900/30 text-emerald-200 border border-emerald-700";
-      case "FAILED":
+      case Afu9IssueStatus.HOLD:
+        return "bg-orange-900/30 text-orange-200 border border-orange-700";
+      case Afu9IssueStatus.KILLED:
         return "bg-red-900/30 text-red-200 border border-red-700";
       default:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
@@ -308,7 +375,7 @@ export default function IssuesPage() {
           
           {/* Filters */}
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               {/* Status Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -320,13 +387,11 @@ export default function IssuesPage() {
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="">All Statuses</option>
-                  <option value="CREATED">CREATED</option>
-                  <option value="SPEC_READY">SPEC_READY</option>
-                  <option value="IMPLEMENTING">IMPLEMENTING</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="BLOCKED">BLOCKED</option>
-                  <option value="DONE">DONE</option>
-                  <option value="FAILED">FAILED</option>
+                  {getCanonicalStatuses().map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -362,6 +427,55 @@ export default function IssuesPage() {
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
+
+              {/* Active Only Toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Active Only
+                </label>
+                <button
+                  onClick={() => setActiveOnly(!activeOnly)}
+                  className={`w-full px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeOnly
+                      ? "bg-cyan-900/30 text-cyan-200 border border-cyan-700"
+                      : "bg-gray-800 border border-gray-700 text-gray-100 hover:bg-gray-700"
+                  }`}
+                >
+                  {activeOnly ? "✓ Active Only" : "Show All"}
+                </button>
+              </div>
+            </div>
+
+            {/* Sort Controls */}
+            <div className="flex gap-4 pt-4 border-t border-gray-800">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Sort By
+                </label>
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="updatedAt">Updated</option>
+                  <option value="createdAt">Created</option>
+                  <option value="priority">Priority</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Order
+                </label>
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -384,7 +498,7 @@ export default function IssuesPage() {
         {/* Issues Table */}
         {!isLoading && !error && (
           <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-            {issues.length === 0 ? (
+            {filteredAndSortedIssues.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-gray-400 text-lg">No issues found</p>
                 <p className="text-gray-500 mt-2">
@@ -406,7 +520,7 @@ export default function IssuesPage() {
                         Labels
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                        Handoff State
+                        Priority
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                         Updated
@@ -417,90 +531,96 @@ export default function IssuesPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-gray-900 divide-y divide-gray-800">
-                    {issues.map((issue) => (
-                      <tr
-                        key={issue.id}
-                        className="hover:bg-gray-800/50 transition-colors"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <div>
-                              <Link
-                                href={`/issues/${issue.id}`}
-                                className="text-sm font-medium text-purple-400 hover:text-purple-300"
+                    {filteredAndSortedIssues.map((issue) => {
+                      const canonicalStatus = mapToCanonicalStatus(issue.status);
+                      const isActive = canonicalStatus === Afu9IssueStatus.SPEC_READY;
+                      const isLegacy = isLegacyStatus(issue.status);
+                      
+                      return (
+                        <tr
+                          key={issue.id}
+                          className="hover:bg-gray-800/50 transition-colors"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              {isActive && (
+                                <span className="text-cyan-400 text-lg" title="Active (SPEC_READY)">
+                                  ⚡
+                                </span>
+                              )}
+                              <div>
+                                <Link
+                                  href={`/issues/${issue.id}`}
+                                  className="text-sm font-medium text-purple-400 hover:text-purple-300"
+                                >
+                                  {issue.title}
+                                </Link>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-1 text-xs font-medium rounded-md ${getStatusBadgeColor(
+                                  canonicalStatus
+                                )}`}
                               >
-                                {issue.title}
-                              </Link>
-                              {issue.priority && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {issue.priority}
-                                </div>
+                                {canonicalStatus}
+                              </span>
+                              {isLegacy && (
+                                <span
+                                  className="text-xs text-gray-500"
+                                  title={`Legacy status: ${issue.status} → ${canonicalStatus}`}
+                                >
+                                  📜
+                                </span>
                               )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2 py-1 text-xs font-medium rounded-md ${getStatusBadgeColor(
-                              issue.status
-                            )}`}
-                          >
-                            {issue.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-wrap gap-1">
-                            {issue.labels.length === 0 ? (
-                              <span className="text-xs text-gray-500">
-                                No labels
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-1">
+                              {issue.labels.length === 0 ? (
+                                <span className="text-xs text-gray-500">
+                                  No labels
+                                </span>
+                              ) : (
+                                issue.labels.map((label) => (
+                                  <span
+                                    key={label}
+                                    className="px-2 py-1 text-xs font-medium rounded-md bg-blue-900/30 text-blue-200 border border-blue-700"
+                                  >
+                                    {label}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {issue.priority ? (
+                              <span className="text-sm text-gray-300 font-medium">
+                                {issue.priority}
                               </span>
                             ) : (
-                              issue.labels.map((label) => (
-                                <span
-                                  key={label}
-                                  className="px-2 py-1 text-xs font-medium rounded-md bg-blue-900/30 text-blue-200 border border-blue-700"
-                                >
-                                  {label}
-                                </span>
-                              ))
+                              <span className="text-xs text-gray-500">—</span>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`px-2 py-1 text-xs font-medium rounded-md ${getHandoffStateBadgeColor(
-                                issue.handoff_state
-                              )}`}
-                            >
-                              {issue.handoff_state}
-                            </span>
-                            {issue.handoff_state === "FAILED" && (
-                              <span
-                                className="text-red-400 text-xs"
-                                title={issue.last_error || "Failed"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                            {formatDate(issue.updatedAt ?? issue.updated_at)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            {canDeleteIssue(issue) && (
+                              <button
+                                onClick={() => handleDeleteClick(issue)}
+                                className="text-red-400 hover:text-red-300 transition-colors"
+                                title="Delete issue (only for CREATED + NOT_SENT)"
                               >
-                                ⚠️
-                              </span>
+                                Delete
+                              </button>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                          {formatDate(issue.updatedAt ?? issue.updated_at)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {canDeleteIssue(issue) && (
-                            <button
-                              onClick={() => handleDeleteClick(issue)}
-                              className="text-red-400 hover:text-red-300 transition-colors"
-                              title="Delete issue (only for CREATED + NOT_SENT)"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -511,7 +631,7 @@ export default function IssuesPage() {
         {/* Footer Info */}
         {!isLoading && !error && issues.length > 0 && (
           <div className="mt-4 text-sm text-gray-500">
-            Showing {issues.length} issue{issues.length !== 1 ? "s" : ""}
+            Showing {filteredAndSortedIssues.length} of {issues.length} issue{issues.length !== 1 ? "s" : ""}
           </div>
         )}
 
