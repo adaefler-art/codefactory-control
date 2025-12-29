@@ -24,11 +24,17 @@ export enum Afu9IssueStatus {
 
 /**
  * AFU9 Issue Handoff State enum
+ * Updated for E61.3: GitHub Handoff Metadata + Idempotence
  */
 export enum Afu9HandoffState {
+  /** @deprecated Use NOT_SENT instead */
+  NONE = 'NONE',
   NOT_SENT = 'NOT_SENT',
+  PENDING = 'PENDING', // E61.3: Handoff in progress
+  /** @deprecated Use SYNCED or SYNCHRONIZED instead */
   SENT = 'SENT',
   SYNCED = 'SYNCED',
+  SYNCHRONIZED = 'SYNCHRONIZED', // E61.3: Successfully updated (idempotent)
   FAILED = 'FAILED',
 }
 
@@ -54,6 +60,7 @@ export enum Afu9ExecutionState {
 /**
  * AFU9 Issue Input Contract
  * Represents the required and optional fields for creating/updating an issue
+ * Updated for E61.3: GitHub Handoff Metadata + Idempotence
  */
 export interface Afu9IssueInput {
   title: string;
@@ -68,16 +75,23 @@ export interface Afu9IssueInput {
   github_url?: string | null;
   last_error?: string | null;
   activated_at?: string | null;
+  activated_by?: string | null;
   execution_state?: Afu9ExecutionState;
   execution_started_at?: string | null;
   execution_completed_at?: string | null;
   execution_output?: Record<string, unknown> | null;
   deleted_at?: string | null;
+  // E61.3: Handoff metadata fields
+  handoff_at?: string | null;
+  handoff_error?: string | null;
+  github_repo?: string | null;
+  github_issue_last_sync_at?: string | null;
 }
 
 /**
  * AFU9 Issue Row Contract
  * Represents a row from the afu9_issues table
+ * Updated for E61.3: GitHub Handoff Metadata + Idempotence
  */
 export interface Afu9IssueRow {
   id: string;
@@ -95,11 +109,17 @@ export interface Afu9IssueRow {
   created_at: string;
   updated_at: string;
   activated_at: string | null;
+  activated_by: string | null;
   execution_state: Afu9ExecutionState;
   execution_started_at: string | null;
   execution_completed_at: string | null;
   execution_output: Record<string, unknown> | null;
   deleted_at: string | null;
+  // E61.3: Handoff metadata fields
+  handoff_at: string | null;
+  handoff_error: string | null;
+  github_repo: string | null;
+  github_issue_last_sync_at: string | null;
 }
 
 /**
@@ -108,6 +128,7 @@ export interface Afu9IssueRow {
 export const AFU9_ISSUE_CONSTRAINTS = {
   title: 500,
   assignee: 255,
+  activated_by: 255,
   source: 50,
   github_url: 500,
   status: 50,
@@ -390,5 +411,10 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     execution_started_at: input.execution_started_at === undefined ? null : input.execution_started_at,
     execution_completed_at: input.execution_completed_at === undefined ? null : input.execution_completed_at,
     execution_output: input.execution_output === undefined ? null : input.execution_output,
+    // E61.3: Handoff metadata fields
+    handoff_at: input.handoff_at === undefined ? null : input.handoff_at,
+    handoff_error: input.handoff_error === undefined || input.handoff_error === null ? null : input.handoff_error.trim(),
+    github_repo: input.github_repo === undefined || input.github_repo === null ? null : input.github_repo.trim(),
+    github_issue_last_sync_at: input.github_issue_last_sync_at === undefined ? null : input.github_issue_last_sync_at,
   };
 }

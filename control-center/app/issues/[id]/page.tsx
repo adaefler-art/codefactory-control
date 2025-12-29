@@ -5,13 +5,15 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
 import { parseLabelsInput } from "@/lib/label-utils";
+import { mapToCanonicalStatus, isLegacyStatus, getSelectableStates } from "@/lib/utils/status-mapping";
+import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 
 interface Issue {
   id: string;
   publicId: string | null;
   title: string;
   body: string | null;
-  status: "CREATED" | "SPEC_READY" | "IMPLEMENTING" | "ACTIVE" | "BLOCKED" | "DONE" | "FAILED";
+  status: string; // Can be canonical or legacy status
   labels: string[];
   priority: "P0" | "P1" | "P2" | null;
   assignee: string | null;
@@ -80,13 +82,29 @@ export default function IssueDetailPage({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [editedBody, setEditedBody] = useState("");
-  const [editedStatus, setEditedStatus] = useState<Issue["status"]>("CREATED");
+  const [editedStatus, setEditedStatus] = useState<string>("CREATED");
   const [editedPriority, setEditedPriority] = useState<Issue["priority"]>(null);
   const [editedLabels, setEditedLabels] = useState<string[]>([]);
   const [newLabel, setNewLabel] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Compute canonical status and selectable states for dropdown
+  const canonicalStatus = useMemo(() => 
+    issue ? mapToCanonicalStatus(issue.status) : "CREATED",
+    [issue]
+  );
+  
+  const selectableStates = useMemo(() => 
+    issue ? getSelectableStates(issue.status) : [],
+    [issue]
+  );
+
+  const isLegacy = useMemo(() => 
+    issue ? isLegacyStatus(issue.status) : false,
+    [issue]
+  );
 
   // Action states
   const [isActivating, setIsActivating] = useState(false);
@@ -103,7 +121,8 @@ export default function IssueDetailPage({
     if (issue) {
       setEditedTitle(issue.title);
       setEditedBody(issue.body || "");
-      setEditedStatus(issue.status);
+      // Always set to canonical status for editing
+      setEditedStatus(mapToCanonicalStatus(issue.status));
       setEditedPriority(issue.priority);
       setEditedLabels(issue.labels);
     }
@@ -220,8 +239,11 @@ export default function IssueDetailPage({
       if (editedBody !== (issue.body || "")) {
         updates.body = editedBody;
       }
-      if (editedStatus !== issue.status) {
-        updates.status = editedStatus;
+      // Compare with canonical current status
+      const currentCanonical = mapToCanonicalStatus(issue.status);
+      if (editedStatus !== currentCanonical) {
+        // Send canonical status to API
+        updates.status = editedStatus as any;
       }
       if (editedPriority !== issue.priority) {
         updates.priority = editedPriority;
@@ -267,7 +289,7 @@ export default function IssueDetailPage({
       return;
     }
 
-    // Check if another issue is active
+    // E61.2: Check if another issue is active - block activation if so
     const activeIssue = await checkActiveIssue();
     if (activeIssue) {
       setCurrentActiveIssue(activeIssue);
@@ -293,13 +315,23 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
+      // E61.2: Handle 409 conflict when another issue is already active
+      if (response.status === 409) {
+        const data = await response.json();
+        setSaveError(data.error || 'Another issue is already active');
+        if (data.activeIssue) {
+          setCurrentActiveIssue({
+            publicId: data.activeIssue.publicId,
+            title: data.activeIssue.title,
+          });
+          setShowActivationWarning(true);
+        }
+        return;
+      }
+
       const data = await safeFetch(response);
       setIssue(data.issue);
-      setActionMessage(
-        data.deactivated
-          ? `Issue activated. Previously active issue "${data.deactivated.title}" was deactivated.`
-          : "Issue activated successfully"
-      );
+      setActionMessage("Issue activated successfully");
       
       // Refresh activity log
       refreshActivityLogIfVisible();
@@ -372,20 +404,24 @@ export default function IssueDetailPage({
   };
 
   const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case "CREATED":
+    // Always use canonical status for badge colors
+    const canonical = mapToCanonicalStatus(status);
+    switch (canonical) {
+      case Afu9IssueStatus.CREATED:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
-      case "SPEC_READY":
+      case Afu9IssueStatus.SPEC_READY:
         return "bg-cyan-900/30 text-cyan-200 border border-cyan-700";
-      case "IMPLEMENTING":
+      case Afu9IssueStatus.IMPLEMENTING:
         return "bg-blue-900/30 text-blue-200 border border-blue-700";
-      case "ACTIVE":
-        return "bg-green-900/30 text-green-200 border border-green-700";
-      case "BLOCKED":
-        return "bg-orange-900/30 text-orange-200 border border-orange-700";
-      case "DONE":
+      case Afu9IssueStatus.VERIFIED:
+        return "bg-purple-900/30 text-purple-200 border border-purple-700";
+      case Afu9IssueStatus.MERGE_READY:
+        return "bg-indigo-900/30 text-indigo-200 border border-indigo-700";
+      case Afu9IssueStatus.DONE:
         return "bg-emerald-900/30 text-emerald-200 border border-emerald-700";
-      case "FAILED":
+      case Afu9IssueStatus.HOLD:
+        return "bg-orange-900/30 text-orange-200 border border-orange-700";
+      case Afu9IssueStatus.KILLED:
         return "bg-red-900/30 text-red-200 border border-red-700";
       default:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
@@ -423,9 +459,9 @@ export default function IssueDetailPage({
   };
 
   const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return "—";
+    if (!dateString) return "-";
     const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) return "-";
     return date.toLocaleDateString("de-DE", {
       year: "numeric",
       month: "short",
@@ -617,22 +653,26 @@ export default function IssueDetailPage({
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Status
+                  {isLegacy && (
+                    <span className="ml-2 text-xs text-orange-400" title={`Legacy status "${issue.status}" mapped to "${canonicalStatus}"`}>
+                      (legacy)
+                    </span>
+                  )}
                 </label>
                 <select
                   value={editedStatus}
-                  onChange={(e) =>
-                    setEditedStatus(e.target.value as Issue["status"])
-                  }
+                  onChange={(e) => setEditedStatus(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="CREATED">CREATED</option>
-                  <option value="SPEC_READY">SPEC_READY</option>
-                  <option value="IMPLEMENTING">IMPLEMENTING</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="BLOCKED">BLOCKED</option>
-                  <option value="DONE">DONE</option>
-                  <option value="FAILED">FAILED</option>
+                  {selectableStates.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
                 </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Only valid transitions are shown
+                </p>
               </div>
 
               {/* Priority */}
@@ -791,7 +831,7 @@ export default function IssueDetailPage({
             </label>
             <div className="flex flex-wrap gap-2 mb-3">
               {editedLabels.length === 0 ? (
-                <span className="text-sm text-gray-600 italic">—</span>
+                <span className="text-sm text-gray-600 italic">-</span>
               ) : (
                 editedLabels.map((label) => (
                   <span
@@ -873,12 +913,12 @@ export default function IssueDetailPage({
 
               <button
                 onClick={handleActivate}
-                disabled={isActivating || issue.status === "ACTIVE"}
+                disabled={isActivating || issue.status === "SPEC_READY"}
                 className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isActivating
                   ? "Activating..."
-                  : issue.status === "ACTIVE"
+                  : issue.status === "SPEC_READY"
                   ? "Already Active"
                   : "Activate"}
               </button>
@@ -965,7 +1005,7 @@ export default function IssueDetailPage({
                         </div>
                         <div className="mt-1 text-xs text-gray-500">
                           {formatDate(event.created_at)}
-                          {event.created_by && ` • by ${event.created_by}`}
+                          {event.created_by && ` - by ${event.created_by}`}
                         </div>
                       </div>
                     </div>
@@ -981,11 +1021,11 @@ export default function IssueDetailPage({
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-900 border border-yellow-700 rounded-lg p-6 max-w-md mx-4">
               <h3 className="text-xl font-bold text-yellow-400 mb-4">
-                ⚠️ Single-Active Issue Mode
+                ⚠️ Cannot Activate Issue
               </h3>
               <div className="text-gray-300 space-y-3">
                 <p>
-                  Another issue is currently ACTIVE:
+                  Another issue is currently ACTIVE (SPEC_READY):
                 </p>
                 <div className="p-3 bg-gray-800 border border-gray-700 rounded-md">
                   <p className="font-medium text-purple-400">
@@ -996,27 +1036,19 @@ export default function IssueDetailPage({
                   </p>
                 </div>
                 <p className="text-sm">
-                  Only one issue can be ACTIVE at a time. Activating this issue
-                  will automatically set the other issue to CREATED status.
+                  Only one issue can be ACTIVE (SPEC_READY) at a time. 
+                  You must manually deactivate or complete the active issue before activating this one.
                 </p>
               </div>
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={performActivation}
-                  disabled={isActivating}
-                  className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
-                >
-                  {isActivating ? "Activating..." : "Proceed with Activation"}
-                </button>
+              <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => {
                     setShowActivationWarning(false);
                     setCurrentActiveIssue(null);
                   }}
-                  disabled={isActivating}
                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium transition-colors"
                 >
-                  Cancel
+                  OK
                 </button>
               </div>
             </div>
