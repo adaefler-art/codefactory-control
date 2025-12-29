@@ -71,8 +71,47 @@ function getEnvFirst(names: string[]): string | undefined {
   return undefined;
 }
 
+function stripSurroundingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function tryDecodeBase64WrappedPem(value: string): string | null {
+  const compact = value.trim().replace(/\s+/g, '');
+  if (compact.length < 80) return null;
+
+  const asB64 = compact.replace(/-/g, '+').replace(/_/g, '/');
+  if (!/^[A-Za-z0-9+/=]+$/.test(asB64)) return null;
+
+  const padded = asB64 + '='.repeat((4 - (asB64.length % 4)) % 4);
+
+  try {
+    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+    if (
+      decoded.includes('-----BEGIN PRIVATE KEY-----') ||
+      decoded.includes('-----BEGIN RSA PRIVATE KEY-----')
+    ) {
+      return decoded;
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
 function normalizePrivateKeyPem(maybePem: string): string {
-  const withRealNewlines = maybePem.includes('\\n') ? maybePem.replace(/\\n/g, '\n') : maybePem;
+  const unquoted = stripSurroundingQuotes(maybePem);
+  const base64Decoded = tryDecodeBase64WrappedPem(unquoted);
+  const maybeDecoded = base64Decoded ?? unquoted;
+
+  const withRealNewlines = maybeDecoded.includes('\\n') ? maybeDecoded.replace(/\\n/g, '\n') : maybeDecoded;
   const normalizedNewlines = withRealNewlines.replace(/\r\n/g, '\n').trim() + '\n';
 
   if (normalizedNewlines.includes('-----BEGIN PRIVATE KEY-----')) {
