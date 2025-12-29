@@ -68,6 +68,7 @@ export interface Afu9IssueInput {
   github_url?: string | null;
   last_error?: string | null;
   activated_at?: string | null;
+  activated_by?: string | null;
   execution_state?: Afu9ExecutionState;
   execution_started_at?: string | null;
   execution_completed_at?: string | null;
@@ -95,6 +96,7 @@ export interface Afu9IssueRow {
   created_at: string;
   updated_at: string;
   activated_at: string | null;
+  activated_by: string | null;
   execution_state: Afu9ExecutionState;
   execution_started_at: string | null;
   execution_completed_at: string | null;
@@ -108,6 +110,7 @@ export interface Afu9IssueRow {
 export const AFU9_ISSUE_CONSTRAINTS = {
   title: 500,
   assignee: 255,
+  activated_by: 255,
   source: 50,
   github_url: 500,
   status: 50,
