@@ -90,7 +90,10 @@ export async function POST(
     const isUpdate = issue.github_issue_number !== null && issue.github_issue_number > 0;
     const targetState = isUpdate ? Afu9HandoffState.SYNCHRONIZED : Afu9HandoffState.SYNCED;
 
-    // If already in target state, return success (already synced)
+    // If already in final state for this operation type, return success (true idempotency)
+    // - For creates (no github_issue_number): skip if state is SYNCED
+    // - For updates (has github_issue_number): skip if state is SYNCHRONIZED
+    // This means: SYNCED issues can be re-synced via UPDATE, but won't create duplicates
     if (issue.handoff_state === targetState) {
       const responseBody: any = {
         message: isUpdate 
