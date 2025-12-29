@@ -28,7 +28,7 @@ control-center/app/issues/[id]/page.tsx:157|/api/issues/${id}/events
 control-center/app/issues/[id]/page.tsx:173|/api/issues/active-check
 control-center/app/issues/[id]/page.tsx:238|/api/issues/${id}
 control-center/app/issues/[id]/page.tsx:291|/api/issues/${id}/activate
-control-center/app/issues/[id]/page.tsx:328|/api/issues/${id}/handoff
+control-center/app/issues/[id]/page.tsx:338|/api/issues/${id}/handoff
 control-center/app/issues/new/page.tsx:63|/api/issues/new
 control-center/app/issues/new/page.tsx:95|/api/issues/new
 control-center/app/issues/page.tsx:88|/api/issues?${params.toString()}
