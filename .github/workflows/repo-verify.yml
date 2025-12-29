@@ -36,7 +36,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
@@ -59,7 +59,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run routes:verify 2>&1 | tee routes_verification_output.txt
+          echo "PWD: $(pwd)"
+          echo "Node: $(node -v)"
+          echo "npm:  $(npm -v)"
+          echo "Listing repo root:"
+          ls -la
+          
+          # NOTE: This step intentionally runs the same command used locally.
+          # API route verification is covered by the repository canon script.
+          npm run repo:verify 2>&1 | tee routes_verification_output.txt
           ROUTES_EXIT_CODE=${PIPESTATUS[0]}
           echo "exit_code=$ROUTES_EXIT_CODE" >> $GITHUB_OUTPUT
           
