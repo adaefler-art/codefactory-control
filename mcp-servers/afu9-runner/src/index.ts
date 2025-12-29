@@ -1,4 +1,4 @@
-import { MCPServer, Tool, DependencyCheck } from '../../base/src/server';
+import { MCPServer, Tool, DependencyCheck } from '@afu9/mcp-base/src/server';
 import { DummyExecutorAdapter, ExecutorAdapter } from './adapters/executor';
 import { PlaybookManager } from './adapters/playbook-manager';
 import { 
