@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
 import { parseLabelsInput } from "@/lib/label-utils";
-import { mapToCanonicalStatus, isLegacyStatus, getSelectableStates } from "@/lib/utils/status-mapping";
+import { mapToCanonicalStatus, isLegacyStatus } from "@/lib/utils/status-mapping";
 import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 
 interface Issue {
@@ -82,7 +82,6 @@ export default function IssueDetailPage({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [editedBody, setEditedBody] = useState("");
-  const [editedStatus, setEditedStatus] = useState<string>("CREATED");
   const [editedPriority, setEditedPriority] = useState<Issue["priority"]>(null);
   const [editedLabels, setEditedLabels] = useState<string[]>([]);
   const [newLabel, setNewLabel] = useState("");
@@ -90,14 +89,9 @@ export default function IssueDetailPage({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Compute canonical status and selectable states for dropdown
+  // Compute canonical status for display (read-only)
   const canonicalStatus = useMemo(() => 
     issue ? mapToCanonicalStatus(issue.status) : "CREATED",
-    [issue]
-  );
-  
-  const selectableStates = useMemo(() => 
-    issue ? getSelectableStates(issue.status) : [],
     [issue]
   );
 
@@ -121,8 +115,6 @@ export default function IssueDetailPage({
     if (issue) {
       setEditedTitle(issue.title);
       setEditedBody(issue.body || "");
-      // Always set to canonical status for editing
-      setEditedStatus(mapToCanonicalStatus(issue.status));
       setEditedPriority(issue.priority);
       setEditedLabels(issue.labels);
     }
@@ -231,19 +223,13 @@ export default function IssueDetailPage({
     setActionMessage(null);
 
     try {
-      const updates: Partial<Pick<Issue, 'title' | 'body' | 'status' | 'priority' | 'labels'>> = {};
+      const updates: Partial<Pick<Issue, 'title' | 'body' | 'priority' | 'labels'>> = {};
 
       if (editedTitle !== issue.title) {
         updates.title = editedTitle;
       }
       if (editedBody !== (issue.body || "")) {
         updates.body = editedBody;
-      }
-      // Compare with canonical current status
-      const currentCanonical = mapToCanonicalStatus(issue.status);
-      if (editedStatus !== currentCanonical) {
-        // Send canonical status to API
-        updates.status = editedStatus as any;
       }
       if (editedPriority !== issue.priority) {
         updates.priority = editedPriority;
@@ -649,7 +635,7 @@ export default function IssueDetailPage({
           {/* Metadata Section */}
           <div className="p-6 border-b border-gray-800 bg-gray-800/30">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Status */}
+              {/* Status - Read-only display */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Status
@@ -659,19 +645,17 @@ export default function IssueDetailPage({
                     </span>
                   )}
                 </label>
-                <select
-                  value={editedStatus}
-                  onChange={(e) => setEditedStatus(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  {selectableStates.map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-2 text-sm font-medium rounded-md ${getStatusBadgeColor(
+                      issue.status
+                    )}`}
+                  >
+                    {canonicalStatus}
+                  </span>
+                </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Only valid transitions are shown
+                  Status changes via Activate action or workflow
                 </p>
               </div>
 
@@ -928,8 +912,7 @@ export default function IssueDetailPage({
                 disabled={
                   isHandingOff ||
                   issue.handoff_state === "SYNCED" ||
-                  issue.handoff_state === "SENT" ||
-                  issue.handoff_state === "FAILED"
+                  issue.handoff_state === "SENT"
                 }
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -940,7 +923,7 @@ export default function IssueDetailPage({
                   : issue.handoff_state === "SENT"
                   ? "Handoff in Progress"
                   : issue.handoff_state === "FAILED"
-                  ? "Handoff Failed (See Error Panel)"
+                  ? "Retry Handoff"
                   : "Handoff to GitHub"}
               </button>
 
