@@ -69,9 +69,10 @@ export async function createAfu9Issue(
       `INSERT INTO afu9_issues (
         title, body, status, labels, priority, assignee, source,
         handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
-        execution_state, execution_started_at, execution_completed_at, execution_output
+        execution_state, execution_started_at, execution_completed_at, execution_output,
+        handoff_at, handoff_error, github_repo, github_issue_last_sync_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       RETURNING *`,
       [
         sanitized.title,
@@ -91,6 +92,10 @@ export async function createAfu9Issue(
         sanitized.execution_started_at,
         sanitized.execution_completed_at,
         sanitized.execution_output,
+        sanitized.handoff_at,
+        sanitized.handoff_error,
+        sanitized.github_repo,
+        sanitized.github_issue_last_sync_at,
       ]
     );
 
@@ -428,6 +433,31 @@ export async function updateAfu9Issue(
       // execution_output should be a plain object (validated by contract)
       // PostgreSQL JSONB expects a JSON string, so we stringify if it's not null
       values.push(updates.execution_output ? JSON.stringify(updates.execution_output) : null);
+      paramIndex++;
+    }
+
+    // E61.3: Handoff metadata fields
+    if (updates.handoff_at !== undefined) {
+      fields.push(`handoff_at = $${paramIndex}`);
+      values.push(updates.handoff_at);
+      paramIndex++;
+    }
+
+    if (updates.handoff_error !== undefined) {
+      fields.push(`handoff_error = $${paramIndex}`);
+      values.push(updates.handoff_error);
+      paramIndex++;
+    }
+
+    if (updates.github_repo !== undefined) {
+      fields.push(`github_repo = $${paramIndex}`);
+      values.push(updates.github_repo);
+      paramIndex++;
+    }
+
+    if (updates.github_issue_last_sync_at !== undefined) {
+      fields.push(`github_issue_last_sync_at = $${paramIndex}`);
+      values.push(updates.github_issue_last_sync_at);
       paramIndex++;
     }
 
