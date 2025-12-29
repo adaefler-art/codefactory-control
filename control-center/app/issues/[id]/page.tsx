@@ -267,7 +267,7 @@ export default function IssueDetailPage({
       return;
     }
 
-    // Check if another issue is active
+    // E61.2: Check if another issue is active - block activation if so
     const activeIssue = await checkActiveIssue();
     if (activeIssue) {
       setCurrentActiveIssue(activeIssue);
@@ -293,13 +293,23 @@ export default function IssueDetailPage({
         credentials: "include",
       });
 
+      // E61.2: Handle 409 conflict when another issue is already active
+      if (response.status === 409) {
+        const data = await response.json();
+        setSaveError(data.error || 'Another issue is already active');
+        if (data.activeIssue) {
+          setCurrentActiveIssue({
+            publicId: data.activeIssue.publicId,
+            title: data.activeIssue.title,
+          });
+          setShowActivationWarning(true);
+        }
+        return;
+      }
+
       const data = await safeFetch(response);
       setIssue(data.issue);
-      setActionMessage(
-        data.deactivated
-          ? `Issue activated. Previously active issue "${data.deactivated.title}" was deactivated.`
-          : "Issue activated successfully"
-      );
+      setActionMessage("Issue activated successfully");
       
       // Refresh activity log
       refreshActivityLogIfVisible();
@@ -873,12 +883,12 @@ export default function IssueDetailPage({
 
               <button
                 onClick={handleActivate}
-                disabled={isActivating || issue.status === "ACTIVE"}
+                disabled={isActivating || issue.status === "SPEC_READY"}
                 className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isActivating
                   ? "Activating..."
-                  : issue.status === "ACTIVE"
+                  : issue.status === "SPEC_READY"
                   ? "Already Active"
                   : "Activate"}
               </button>
@@ -981,11 +991,11 @@ export default function IssueDetailPage({
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-900 border border-yellow-700 rounded-lg p-6 max-w-md mx-4">
               <h3 className="text-xl font-bold text-yellow-400 mb-4">
-                ⚠️ Single-Active Issue Mode
+                ⚠️ Cannot Activate Issue
               </h3>
               <div className="text-gray-300 space-y-3">
                 <p>
-                  Another issue is currently ACTIVE:
+                  Another issue is currently ACTIVE (SPEC_READY):
                 </p>
                 <div className="p-3 bg-gray-800 border border-gray-700 rounded-md">
                   <p className="font-medium text-purple-400">
@@ -996,27 +1006,19 @@ export default function IssueDetailPage({
                   </p>
                 </div>
                 <p className="text-sm">
-                  Only one issue can be ACTIVE at a time. Activating this issue
-                  will automatically set the other issue to CREATED status.
+                  Only one issue can be ACTIVE (SPEC_READY) at a time. 
+                  You must manually deactivate or complete the active issue before activating this one.
                 </p>
               </div>
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={performActivation}
-                  disabled={isActivating}
-                  className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
-                >
-                  {isActivating ? "Activating..." : "Proceed with Activation"}
-                </button>
+              <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => {
                     setShowActivationWarning(false);
                     setCurrentActiveIssue(null);
                   }}
-                  disabled={isActivating}
                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md font-medium transition-colors"
                 >
-                  Cancel
+                  OK
                 </button>
               </div>
             </div>
