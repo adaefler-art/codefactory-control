@@ -29,7 +29,7 @@ export class GitHubAppKeyFormatError extends GitHubAppConfigError {
 
 type GitHubAppConfig = {
   appId: string;
-  webhookSecret: string;
+  webhookSecret?: string;
   privateKeyPem: string;
 };
 
@@ -208,10 +208,10 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
     const envWebhookSecret = getEnvFirst(['GITHUB_APP_WEBHOOK_SECRET', 'GH_APP_WEBHOOK_SECRET']);
     const envPrivateKeyPem = getEnvFirst(['GITHUB_APP_PRIVATE_KEY_PEM', 'GH_APP_PRIVATE_KEY_PEM']);
 
-    if (envAppId && envWebhookSecret && envPrivateKeyPem) {
+    if (envAppId && envPrivateKeyPem) {
       return {
         appId: toNonEmptyString(envAppId, 'GITHUB_APP_ID'),
-        webhookSecret: toNonEmptyString(envWebhookSecret, 'GITHUB_APP_WEBHOOK_SECRET'),
+        webhookSecret: envWebhookSecret ? toNonEmptyString(envWebhookSecret, 'GITHUB_APP_WEBHOOK_SECRET') : undefined,
         privateKeyPem: normalizePrivateKeyPem(envPrivateKeyPem),
       };
     }
@@ -236,13 +236,21 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
 
     const parsedObj = parsed as unknown as Record<string, unknown>;
 
+    const webhookSecret = (() => {
+      try {
+        return pickFirstNonEmptyString(
+          parsedObj,
+          ['webhookSecret', 'webhook_secret', 'webhook_secret_token'],
+          'webhookSecret'
+        );
+      } catch {
+        return undefined;
+      }
+    })();
+
     return {
       appId: pickFirstNonEmptyString(parsedObj, ['appId', 'app_id'], 'appId'),
-      webhookSecret: pickFirstNonEmptyString(
-        parsedObj,
-        ['webhookSecret', 'webhook_secret', 'webhook_secret_token'],
-        'webhookSecret'
-      ),
+      webhookSecret,
       privateKeyPem: normalizePrivateKeyPem(
         pickFirstNonEmptyString(parsedObj, ['privateKeyPem', 'private_key_pem', 'private_key', 'privateKey'], 'privateKeyPem')
       ),
@@ -254,6 +262,9 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
 
 export async function getGitHubWebhookSecret(): Promise<string> {
   const config = await loadGitHubAppConfig();
+  if (!config.webhookSecret) {
+    throw new GitHubAppConfigError('Missing webhookSecret');
+  }
   return config.webhookSecret;
 }
 

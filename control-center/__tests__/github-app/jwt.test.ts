@@ -267,6 +267,35 @@ describe('createGitHubAppJwt', () => {
     expect((jose as any).importPKCS8).toHaveBeenCalledTimes(1);
   });
 
+  it('allows JWT minting when webhookSecret is missing (webhooks disabled)', async () => {
+    jest.resetModules();
+
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_WEBHOOK_SECRET;
+    delete process.env.GITHUB_APP_PRIVATE_KEY_PEM;
+    delete process.env.GH_APP_ID;
+    delete process.env.GH_APP_WEBHOOK_SECRET;
+    delete process.env.GH_APP_PRIVATE_KEY_PEM;
+
+    const pem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
+
+    const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
+    (SecretsManagerClient as any).mockImplementation(() => ({
+      send: jest.fn(async () => ({
+        SecretString: JSON.stringify({ appId: '123', privateKeyPem: pem }),
+      })),
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createGitHubAppJwt, getGitHubWebhookSecret } = require('../../src/lib/github-app-auth');
+
+    await expect(createGitHubAppJwt({ nowSeconds: 1_700_000_000 })).resolves.toMatchObject({ iss: '123' });
+    await expect(getGitHubWebhookSecret()).rejects.toMatchObject({
+      name: 'GitHubAppConfigError',
+      message: expect.stringContaining('Missing webhookSecret'),
+    });
+  });
+
   it('converts PKCS#1 (RSA PRIVATE KEY) PEM to PKCS#8 before calling jose', async () => {
     jest.resetModules();
 
