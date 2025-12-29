@@ -32,15 +32,15 @@ const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
  * E61.3: Idempotent GitHub Handoff with Metadata Tracking
  * 
  * Handoff Semantics:
- * - Unidirectional: AFU9 → GitHub
+ * - Unidirectional: AFU9 -> GitHub
  * - Idempotent: If github_issue_number exists, UPDATE instead of CREATE
  * - Deterministic: Uses AFU9-ISSUE:<id> marker in issue body
  * - Traceable: Stores handoff_at, github_repo, github_issue_last_sync_at
  * 
  * States:
- * - NOT_SENT → PENDING → SYNCED (on create)
- * - SYNCED/FAILED → PENDING → SYNCHRONIZED (on update)
- * - Any → PENDING → FAILED (on error)
+ * - NOT_SENT -> PENDING -> SYNCED (on create)
+ * - SYNCED/FAILED -> PENDING -> SYNCHRONIZED (on update)
+ * - Any -> PENDING -> FAILED (on error)
  * 
  * **Identifier Formats (Issue #3):**
  * - Full UUID: "a1b2c3d4-5678-90ab-cdef-1234567890ab"

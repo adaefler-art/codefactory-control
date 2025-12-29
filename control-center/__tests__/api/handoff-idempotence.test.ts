@@ -502,7 +502,7 @@ describe('E61.3: Idempotent GitHub Handoff', () => {
   });
 
   describe('State transitions', () => {
-    it('transitions NOT_SENT → PENDING → SYNCED on first handoff', async () => {
+    it('transitions NOT_SENT -> PENDING -> SYNCED on first handoff', async () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { createIssue } = require('../../src/lib/github');
@@ -535,7 +535,7 @@ describe('E61.3: Idempotent GitHub Handoff', () => {
       expect(calls[1][2]).toMatchObject({ handoff_state: Afu9HandoffState.SYNCED });
     });
 
-    it('transitions SYNCED → PENDING → SYNCHRONIZED on repeated handoff', async () => {
+    it('transitions SYNCED -> PENDING -> SYNCHRONIZED on repeated handoff', async () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
       const { updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
       const { updateIssue } = require('../../src/lib/github');
