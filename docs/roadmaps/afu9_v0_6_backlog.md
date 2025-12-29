@@ -1,45 +1,23 @@
-EPIC E6.1 — Issue Lifecycle, Activation & GitHub Handoff (deterministisch)
+# AFU-9 Backlog v0.6
 
-Ziel: AFU-9 Issues sind vollwertig: Liste/Detail/Edit, eindeutige Aktivierung, Handoff sauber nachvollziehbar.
+## EPIC E61 — Issue Lifecycle, Activation & GitHub Handoff
+- I611 (E61.1): Issue Lifecycle State Machine & Events Ledger
+- I612 (E61.2): Activate Semantik (maxActive=1) atomar erzwingen
+- I613 (E61.3): GitHub Handoff Metadaten + Idempotenz
 
-I6.1.1 — Issue Lifecycle State Machine & Events Ledger
+## EPIC E62 — Control Center UX: Issue-Liste & Detail
+- I621 (E62.1): Issue Liste: Filter, Sort, Labels, Status
+- I622 (E62.2): Issue Detail: Edit, Activity Timeline, Actions
 
-Intent: Status-Transitions sind kanonisch und auditierbar.
+## EPIC E63 — MCP Server Zero-Copy Debugging MVP
+- I631 (E63.1): MCP Server Skeleton + RunSpec/RunResult Contracts
+- I632 (E63.2): Runs Ledger DB (runs, run_steps, run_artifacts)
+- I633 (E63.3): Issue UI Runs Tab (Start, Re-run, Logs, Artefakte)
 
-AC:
+## EPIC E64 — Runner Adapter: GitHub Runner Execution
+- I641 (E64.1): GitHub Runner Adapter (dispatch, poll, ingest)
+- I642 (E64.2): Playbook Deploy Determinism Check
 
-Enum: CREATED → SPEC_READY → IMPLEMENTING → VERIFIED → MERGE_READY → DONE + HOLD/KILLED
-
-issue_events Tabelle (who/when/from/to/reason/payload)
-
-Jede Transition schreibt Event; API validiert erlaubte Transition
-
-Evidence: Contract-Tests für Transition-Validierung.
-
-I6.1.2 — Activate Semantik (maxActive=1) atomar erzwingen
-
-Intent: “Aktives Issue” ist eindeutig und race-safe.
-
-AC:
-
-POST /api/issues/{id}/activate atomar (Transaktion/Lock)
-
-Aktivierung setzt activated_at/by, Status → SPEC_READY
-
-Entweder: (A) deaktiviert vorheriges Active automatisch oder (B) 409 (klar dokumentiert)
-
-Evidence: Test: Activate A, Activate B → definierte Semantik wird eingehalten.
-
-I6.1.3 — GitHub Handoff Metadaten + Idempotenz
-
-Intent: Handoff erzeugt brauchbare GH Issues, ohne Duplikate.
-
-AC:
-
-Payload enthält Canonical ID, Intent, AC, Links, Context (letzte Events)
-
-Speichert github_issue_number, handoff_at, handoff_status, handoff_error
-
-Idempotenz-Key: wiederholter Handoff updatet/verlinkt statt Duplikat
-
-Evidence: Mocked GH Call Test + UI zeigt GH-Link.
+## EPIC E65 — Deploy & Operate Guardrails
+- I651 (E65.1): Deploy Status Monitor (GREEN/YELLOW/RED)
+- I652 (E65.2): Post-Deploy Verification Playbook
