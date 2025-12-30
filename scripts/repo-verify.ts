@@ -685,12 +685,18 @@ function checkSecretFiles(): ValidationResult {
 
   function matchesSecretPattern(filename: string): boolean {
     return SECRET_FILE_PATTERNS.some((pattern) => {
-      // Convert glob pattern to regex
-      const regexPattern = pattern
-        .replace(/\./g, '\\.')
-        .replace(/\*/g, '.*');
-      const regex = new RegExp(`^${regexPattern}$`);
-      return regex.test(filename);
+      // Simple glob matching for common patterns
+      // Handles: *.ext, prefix*, *suffix, exact-match
+      if (pattern.includes('*')) {
+        const regexPattern = pattern
+          .replace(/\./g, '\\.')  // Escape dots
+          .replace(/\*+/g, '.*'); // Convert * to .*
+        const regex = new RegExp(`^${regexPattern}$`);
+        return regex.test(filename);
+      } else {
+        // Exact match
+        return filename === pattern;
+      }
     });
   }
 
@@ -717,9 +723,14 @@ function checkSecretFiles(): ValidationResult {
         }
       }
     } catch (error) {
-      // Skip directories we can't read
-      if (error instanceof Error && !error.message?.includes('EACCES')) {
-        console.warn(`  ⚠️  Could not scan directory: ${dir}`);
+      // Skip directories we can't read (permission errors are common)
+      if (error instanceof Error && error.message?.includes('EACCES')) {
+        // Permission denied - skip silently
+        return;
+      }
+      // Log other unexpected errors but continue
+      if (error instanceof Error) {
+        console.warn(`  ⚠️  Could not scan directory: ${dir} - ${error.message}`);
       }
     }
   }
@@ -728,9 +739,12 @@ function checkSecretFiles(): ValidationResult {
   scanForSecretFiles(REPO_ROOT);
 
   if (foundSecretFiles.length > 0) {
+    const fileList = foundSecretFiles.slice(0, 10).map((f) => `  - ${f}`).join('\n') +
+      (foundSecretFiles.length > 10 ? `\n  ... and ${foundSecretFiles.length - 10} more` : '');
+    
     errors.push(
       `\n❌ CRITICAL SECURITY VIOLATION: Found ${foundSecretFiles.length} secret file(s):\n` +
-      foundSecretFiles.map((f) => `  - ${f}`).join('\n') +
+      fileList +
       `\n\n` +
       `Error: Secret files must NEVER be committed to the repository\n` +
       `\n` +
@@ -744,13 +758,13 @@ function checkSecretFiles(): ValidationResult {
       `1. DO NOT COMMIT OR PUSH\n` +
       `\n` +
       `2. Remove files from working tree:\n` +
-      `   git rm --cached ${foundSecretFiles[0]}\n` +
-      `\n` +
+      foundSecretFiles.map((f) => `   git rm --cached ${f}`).join('\n') +
+      `\n\n` +
       `3. Verify secrets are in AWS Secrets Manager:\n` +
       `   aws secretsmanager list-secrets --filters Key=name,Values=afu9/\n` +
       `\n` +
       `4. Check if already in git history:\n` +
-      `   git log --all --name-only -- ${foundSecretFiles[0]}\n` +
+      `   git log --all --name-only -- <file>\n` +
       `   If found in history, see docs/v065/HISTORY_REWRITE.md\n` +
       `\n` +
       `5. If secret was exposed, ROTATE IMMEDIATELY:\n` +

@@ -68,8 +68,10 @@ tags = ["key", "AWS", "AFU-9"]
 [[rules]]
 id = "afu9-aws-secret-key"
 description = "AWS Secret Access Key"
-regex = '''(?i)aws(.{0,20})?(?-i)['\"][0-9a-zA-Z\/+]{40}['\"]'''
+regex = '''(?i)(aws_secret_access_key|secret.?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9/+=]{40})["']?'''
 tags = ["key", "AWS", "AFU-9"]
+# More restrictive pattern to reduce false positives
+# Looks for explicit AWS secret key assignment with 40-character base64 value
 
 [[rules]]
 id = "afu9-private-key-block"

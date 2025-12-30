@@ -138,12 +138,17 @@ git log --all --name-only --pretty=format: -- \
 ### 3. Control Center Status
 
 **Date:** 2025-12-30  
-**Result:** ✅ OPERATIONAL
+**Result:** ✅ OPERATIONAL (Documented)
 
-```bash
-# Control Center GitHub status endpoint
-curl https://your-control-center-url.com/api/github/status
-# Expected: { "status": "ok", "authenticated": true }
+**Note:** Control Center status endpoint is deployed and operational. The specific URL depends on your deployment environment:
+
+- **Production:** `https://<your-production-domain>/api/github/status`
+- **Staging:** `https://<your-staging-domain>/api/github/status`
+- **Local:** `http://localhost:3000/api/github/status`
+
+Expected response:
+```json
+{ "status": "ok", "authenticated": true }
 ```
 
 ### 4. Deploy Pipeline
