@@ -7,6 +7,7 @@ import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch"
 import { parseLabelsInput } from "@/lib/label-utils";
 import { mapToCanonicalStatus, isLegacyStatus } from "@/lib/utils/status-mapping";
 import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
+import { RunsSection } from "@/app/components/runs/RunsSection";
 
 interface Issue {
   id: string;
@@ -998,6 +999,9 @@ export default function IssueDetailPage({
             </div>
           )}
         </div>
+
+        {/* Runs Section */}
+        <RunsSection issueId={id} />
 
         {/* Activation Warning Dialog */}
         {showActivationWarning && currentActiveIssue && (
