@@ -161,25 +161,29 @@ describe('GitHub Auth Wrapper', () => {
       mockLoadPolicy.mockReturnValue(policy);
 
       // Act & Assert
-      try {
-        await getAuthenticatedToken({ 
-          owner: 'test', 
-          repo: 'repo',
-          branch: 'main',
-          path: 'src/file.ts'
-        });
-        fail('Should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(RepoAccessDeniedError);
-        const err = error as RepoAccessDeniedError;
-        expect(err.code).toBe('REPO_NOT_ALLOWED');
-        expect(err.details).toEqual({
-          owner: 'test',
-          repo: 'repo',
-          branch: 'main',
-          path: 'src/file.ts',
-        });
-      }
+      await expect(getAuthenticatedToken({ 
+        owner: 'test', 
+        repo: 'repo',
+        branch: 'main',
+        path: 'src/file.ts'
+      })).rejects.toThrow(RepoAccessDeniedError);
+
+      const error = await getAuthenticatedToken({ 
+        owner: 'test', 
+        repo: 'repo',
+        branch: 'main',
+        path: 'src/file.ts'
+      }).catch(e => e);
+      
+      expect(error).toBeInstanceOf(RepoAccessDeniedError);
+      const err = error as RepoAccessDeniedError;
+      expect(err.code).toBe('REPO_NOT_ALLOWED');
+      expect(err.details).toEqual({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: 'src/file.ts',
+      });
     });
   });
 
