@@ -114,6 +114,31 @@ export function getAllowedRepos(): Array<{ owner: string; repo: string }> {
   return policy.getAllowedRepos();
 }
 
+/**
+ * Post a comment to a GitHub issue with policy enforcement
+ * 
+ * @param input - Issue comment details
+ * @throws RepoAccessDeniedError if repository not allowed
+ */
+export async function postGitHubIssueComment(input: {
+  owner: string;
+  repo: string;
+  issue_number: number;
+  body: string;
+}): Promise<void> {
+  const octokit = await createAuthenticatedClient({
+    owner: input.owner,
+    repo: input.repo,
+  });
+
+  await octokit.rest.issues.createComment({
+    owner: input.owner,
+    repo: input.repo,
+    issue_number: input.issue_number,
+    body: input.body,
+  });
+}
+
 // ========================================
 // Re-export for convenience
 // ========================================

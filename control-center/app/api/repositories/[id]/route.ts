@@ -6,12 +6,12 @@
  * PATCH /api/repositories/[id] - Updates repository configuration
  * 
  * Fetches repository details from database along with PRs and issues from GitHub.
+ * E71.1: Enforces repo access policy via auth-wrapper
  */
 
 import { NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
-import { getGitHubInstallationToken } from '../../../../src/lib/github-app-auth';
-import { Octokit } from 'octokit';
+import { createAuthenticatedClient, RepoAccessDeniedError } from '../../../../src/lib/github/auth-wrapper';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -51,15 +51,15 @@ export async function GET(_request: Request, { params }: RouteParams) {
     const repo = repoResult.rows[0];
     
     // Fetch data from GitHub using GitHub App authentication
+    // E71.1: Uses policy-enforced client
     let pullRequests: PullRequestData[] = [];
     let issues: IssueData[] = [];
     
     try {
-      const { token } = await getGitHubInstallationToken({
+      const octokit = await createAuthenticatedClient({
         owner: repo.owner,
         repo: repo.name,
       });
-      const octokit = new Octokit({ auth: token });
     
     interface PullRequestData {
       number: number;

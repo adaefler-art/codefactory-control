@@ -2,10 +2,11 @@
  * E64.1: GitHub Runner Adapter - Core Implementation
  * 
  * Provides functions to dispatch, poll, and ingest GitHub Actions workflow runs.
+ * E71.1: Enforces repo access policy via auth-wrapper
  */
 
 import type { Pool } from 'pg';
-import { getGitHubInstallationToken } from '../github-app-auth';
+import { getAuthenticatedToken, RepoAccessDeniedError } from '../github/auth-wrapper';
 import {
   type DispatchWorkflowInput,
   type DispatchWorkflowResult,
@@ -70,10 +71,11 @@ export async function dispatchWorkflow(
     };
   }
 
-  // Get GitHub installation token
-  const { token } = await getGitHubInstallationToken({
+  // E71.1: Get GitHub installation token with policy enforcement
+  const { token } = await getAuthenticatedToken({
     owner: input.owner,
     repo: input.repo,
+    branch: input.ref,
   });
 
   // Dispatch the workflow via GitHub API
@@ -201,8 +203,8 @@ export async function pollRun(
     runId: input.runId,
   });
 
-  // Get GitHub installation token
-  const { token } = await getGitHubInstallationToken({
+  // E71.1: Get GitHub installation token with policy enforcement
+  const { token } = await getAuthenticatedToken({
     owner: input.owner,
     repo: input.repo,
   });
@@ -283,8 +285,8 @@ export async function ingestRun(
     runId: input.runId,
   });
 
-  // Get GitHub installation token
-  const { token } = await getGitHubInstallationToken({
+  // E71.1: Get GitHub installation token with policy enforcement
+  const { token } = await getAuthenticatedToken({
     owner: input.owner,
     repo: input.repo,
   });
