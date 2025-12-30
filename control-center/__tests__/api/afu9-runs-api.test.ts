@@ -329,4 +329,112 @@ describe('AFU9 Runs API', () => {
       expect(mockService.executeRun).not.toHaveBeenCalled();
     });
   });
+
+  // Error Handling Tests (Merge-Blocker A)
+  describe('Error Envelope Format', () => {
+    test('GET /api/runs/[runId] returns 404 with error envelope for non-existent run', async () => {
+      const { getRunnerService } = require('../../src/lib/runner-service');
+      const mockService = getRunnerService();
+
+      mockService.getRunResult.mockResolvedValue(null);
+
+      const request = new NextRequest('http://localhost/api/runs/non-existent');
+      const params = Promise.resolve({ runId: 'non-existent' });
+      const response = await getRunDetail(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBeDefined();
+      expect(body.error.code).toBe('RUN_NOT_FOUND');
+      expect(body.error.message).toContain('non-existent');
+      expect(body.error.details).toBeDefined();
+      expect(body.error.details.runId).toBe('non-existent');
+    });
+
+    test('POST /api/issues/[id]/runs returns 404 with error envelope for non-existent playbook', async () => {
+      const { getRunnerService } = require('../../src/lib/runner-service');
+      const mockService = getRunnerService();
+
+      mockService.getPlaybook.mockResolvedValue(null);
+
+      const request = new NextRequest('http://localhost/api/issues/issue-123/runs', {
+        method: 'POST',
+        body: JSON.stringify({ playbookId: 'non-existent' }),
+      });
+      const params = Promise.resolve({ id: 'issue-123' });
+      const response = await createRun(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBeDefined();
+      expect(body.error.code).toBe('PLAYBOOK_NOT_FOUND');
+      expect(body.error.message).toContain('non-existent');
+      expect(body.error.details).toBeDefined();
+      expect(body.error.details.playbookId).toBe('non-existent');
+    });
+
+    test('POST /api/issues/[id]/runs returns 400 with error envelope for missing playbookId and spec', async () => {
+      const request = new NextRequest('http://localhost/api/issues/issue-123/runs', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      const params = Promise.resolve({ id: 'issue-123' });
+      const response = await createRun(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBeDefined();
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+      expect(body.error.message).toBeDefined();
+    });
+  });
+
+  // Execute Idempotency Tests (Merge-Blocker B)
+  describe('Execute Idempotency', () => {
+    test('POST /api/runs/[runId]/execute returns 409 when run already executed', async () => {
+      const { getRunnerService } = require('../../src/lib/runner-service');
+      const mockService = getRunnerService();
+
+      // Simulate idempotency error
+      mockService.executeRun.mockRejectedValue(
+        new Error('Run run-123 already executed or in progress (status: RUNNING)')
+      );
+
+      const request = new NextRequest('http://localhost/api/runs/run-123/execute', {
+        method: 'POST',
+      });
+      const params = Promise.resolve({ runId: 'run-123' });
+      const response = await executeRun(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(body.error).toBeDefined();
+      expect(body.error.code).toBe('RUN_ALREADY_EXECUTED');
+      expect(body.error.message).toContain('already executed or in progress');
+      expect(body.error.details).toBeDefined();
+      expect(body.error.details.runId).toBe('run-123');
+      expect(body.error.details.status).toBe('RUNNING');
+    });
+
+    test('POST /api/runs/[runId]/execute succeeds first time', async () => {
+      const { getRunnerService } = require('../../src/lib/runner-service');
+      const mockService = getRunnerService();
+
+      mockService.executeRun.mockResolvedValue({
+        runId: 'run-123',
+        status: 'running',
+      });
+
+      const request = new NextRequest('http://localhost/api/runs/run-123/execute', {
+        method: 'POST',
+      });
+      const params = Promise.resolve({ runId: 'run-123' });
+      const response = await executeRun(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.runId).toBe('run-123');
+      expect(body.status).toBe('executing');
+    });
+  });
 });

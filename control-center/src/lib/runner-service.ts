@@ -168,14 +168,28 @@ export class RunnerService {
   /**
    * Execute a run (dummy implementation for I631/I633)
    * Real execution will be implemented in I641 (GitHub Runner Adapter)
+   * 
+   * Execute Idempotency Policy (Option A - Strict):
+   * - Throws error if run is not in QUEUED status
+   * - Safe to call multiple times (first call executes, subsequent calls fail)
+   * - Prevents accidental re-execution
+   * 
+   * Reference: I633, Merge-Blocker B
    */
   async executeRun(runId: string): Promise<RunResult> {
     const dao = getRunsDAO(this.pool);
 
-    // Mark run as running
-    await dao.updateRunStatus(runId, 'RUNNING', new Date());
+    // Idempotent transition: only proceeds if status is QUEUED
+    const transition = await dao.transitionToRunningIfQueued(runId);
+    
+    if (!transition.success) {
+      // Run is not in QUEUED state - already executed or executing
+      throw new Error(
+        `Run ${runId} already executed or in progress (status: ${transition.currentStatus})`
+      );
+    }
 
-    // Simulate execution (dummy)
+    // Fetch run data for execution
     const data = await dao.getRun(runId);
     if (!data) {
       throw new Error(`Run ${runId} not found`);

@@ -123,6 +123,44 @@ export class RunsDAO {
   }
 
   /**
+   * Transition run to RUNNING status if it's QUEUED (idempotent execute)
+   * 
+   * Returns the current status:
+   * - If transitioned successfully: 'RUNNING'
+   * - If already in another state: current status
+   * 
+   * This ensures execute is idempotent - calling it multiple times won't re-execute.
+   * 
+   * Reference: I633, Merge-Blocker B (Execute Idempotency)
+   */
+  async transitionToRunningIfQueued(runId: string): Promise<{ success: boolean; currentStatus: string }> {
+    const result = await this.pool.query(
+      `UPDATE runs 
+       SET status = 'RUNNING', started_at = NOW() 
+       WHERE id = $1 AND status = 'QUEUED' 
+       RETURNING status`,
+      [runId]
+    );
+
+    if (result.rows.length > 0) {
+      // Successfully transitioned from QUEUED to RUNNING
+      return { success: true, currentStatus: 'RUNNING' };
+    }
+
+    // Run was not in QUEUED state, fetch current status
+    const currentRun = await this.pool.query(
+      'SELECT status FROM runs WHERE id = $1',
+      [runId]
+    );
+
+    if (currentRun.rows.length === 0) {
+      throw new Error(`Run ${runId} not found`);
+    }
+
+    return { success: false, currentStatus: currentRun.rows[0].status };
+  }
+
+  /**
    * Update run with result summary
    */
   async updateRunResult(runId: string, resultJson: any): Promise<void> {

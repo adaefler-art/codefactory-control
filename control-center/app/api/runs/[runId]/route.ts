@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
 import { getRunnerService } from '../../../../src/lib/runner-service';
 import { withApi } from '../../../../src/lib/http/withApi';
+import { handleApiError, runNotFoundError } from '../../../../src/lib/api/errors';
 
 /**
  * GET /api/runs/[runId]
@@ -19,18 +20,19 @@ export const GET = withApi(async (
   request: NextRequest,
   { params }: { params: Promise<{ runId: string }> }
 ) => {
-  const pool = getPool();
-  const runnerService = getRunnerService(pool);
-  const { runId } = await params;
+  try {
+    const pool = getPool();
+    const runnerService = getRunnerService(pool);
+    const { runId } = await params;
 
-  const result = await runnerService.getRunResult(runId);
+    const result = await runnerService.getRunResult(runId);
 
-  if (!result) {
-    return NextResponse.json(
-      { error: `Run ${runId} not found` },
-      { status: 404 }
-    );
+    if (!result) {
+      return runNotFoundError(runId);
+    }
+
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  return NextResponse.json(result);
 });

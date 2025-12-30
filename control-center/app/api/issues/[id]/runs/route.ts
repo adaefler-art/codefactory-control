@@ -12,7 +12,14 @@ import { getRunsDAO } from '../../../../../src/lib/db/afu9Runs';
 import { getRunnerService } from '../../../../../src/lib/runner-service';
 import { withApi } from '../../../../../src/lib/http/withApi';
 import { RunSpecSchema } from '../../../../../src/lib/contracts/afu9Runner';
-import { z } from 'zod';
+import { 
+  handleApiError, 
+  playbookNotFoundError, 
+  jsonError,
+  RunsErrorCode,
+  handleValidationError 
+} from '../../../../../src/lib/api/errors';
+import { ZodError } from 'zod';
 
 /**
  * GET /api/issues/[id]/runs
@@ -26,20 +33,24 @@ export const GET = withApi(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  const pool = getPool();
-  const dao = getRunsDAO(pool);
-  const { id: issueId } = await params;
+  try {
+    const pool = getPool();
+    const dao = getRunsDAO(pool);
+    const { id: issueId } = await params;
 
-  const url = new URL(request.url);
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
-  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-  const runs = await dao.listRunsByIssue(issueId, limit, offset);
+    const runs = await dao.listRunsByIssue(issueId, limit, offset);
 
-  return NextResponse.json({
-    runs,
-    total: runs.length, // Simple approximation; could query total count if needed
-  });
+    return NextResponse.json({
+      runs,
+      total: runs.length, // Simple approximation; could query total count if needed
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
 });
 
 /**
@@ -56,53 +67,63 @@ export const POST = withApi(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  const pool = getPool();
-  const runnerService = getRunnerService(pool);
-  const { id: issueId } = await params;
+  try {
+    const pool = getPool();
+    const runnerService = getRunnerService(pool);
+    const { id: issueId } = await params;
 
-  const body = await request.json();
-  const { playbookId, spec: customSpec, title, autoExecute = true } = body;
+    const body = await request.json();
+    const { playbookId, spec: customSpec, title, autoExecute = true } = body;
 
-  let spec;
+    let spec;
 
-  if (playbookId) {
-    // Load spec from playbook
-    const playbook = await runnerService.getPlaybook(playbookId);
-    if (!playbook) {
-      return NextResponse.json(
-        { error: `Playbook ${playbookId} not found` },
-        { status: 404 }
+    if (playbookId) {
+      // Load spec from playbook
+      const playbook = await runnerService.getPlaybook(playbookId);
+      if (!playbook) {
+        return playbookNotFoundError(playbookId);
+      }
+      spec = { ...playbook.spec };
+      if (title) {
+        spec.title = title;
+      }
+    } else if (customSpec) {
+      // Validate custom spec
+      try {
+        spec = RunSpecSchema.parse(customSpec);
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return handleValidationError(error);
+        }
+        throw error;
+      }
+    } else {
+      return jsonError(
+        400,
+        RunsErrorCode.VALIDATION_ERROR,
+        'Either playbookId or spec must be provided'
       );
     }
-    spec = { ...playbook.spec };
-    if (title) {
-      spec.title = title;
+
+    // Create run
+    const runId = await runnerService.createRun(spec, issueId, playbookId, undefined);
+
+    // Execute if requested
+    if (autoExecute) {
+      // Execute asynchronously (don't await)
+      // Note: Errors during async execution are logged but don't fail the API response
+      // The run status will be updated in the database and visible via polling
+      runnerService.executeRun(runId).catch((err) => {
+        console.error(`[API] Failed to execute run ${runId}:`, err);
+        // Future: Send to error tracking service, update run status with error
+      });
     }
-  } else if (customSpec) {
-    // Validate custom spec
-    spec = RunSpecSchema.parse(customSpec);
-  } else {
-    return NextResponse.json(
-      { error: 'Either playbookId or spec must be provided' },
-      { status: 400 }
-    );
-  }
 
-  // Create run
-  const runId = await runnerService.createRun(spec, issueId, playbookId, undefined);
-
-  // Execute if requested
-  if (autoExecute) {
-    // Execute asynchronously (don't await)
-    // TODO: Implement proper error tracking/notification for failed async executions
-    runnerService.executeRun(runId).catch((err) => {
-      console.error(`[API] Failed to execute run ${runId}:`, err);
-      // Future: Send to error tracking service, update run status, notify user
+    return NextResponse.json({
+      runId,
+      status: autoExecute ? 'executing' : 'created',
     });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  return NextResponse.json({
-    runId,
-    status: autoExecute ? 'executing' : 'created',
-  });
 });

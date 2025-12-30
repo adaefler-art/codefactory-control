@@ -84,11 +84,18 @@ export function RunsSection({ issueId }: RunsSectionProps) {
   
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
+  // Track polling interval for cleanup
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      // Clean up polling on unmount
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
     };
   }, []);
 
@@ -113,8 +120,8 @@ export function RunsSection({ issueId }: RunsSectionProps) {
     }
   }, [issueId]);
 
-  // Fetch run details
-  const fetchRunDetail = useCallback(async (runId: string) => {
+  // Fetch run details (without polling - polling managed by useEffect)
+  const fetchRunDetail = useCallback(async (runId: string, signal?: AbortSignal) => {
     if (!isMountedRef.current) return;
     
     setIsLoadingDetail(true);
@@ -124,6 +131,7 @@ export function RunsSection({ issueId }: RunsSectionProps) {
       const response = await fetch(`/api/runs/${runId}`, {
         credentials: "include",
         cache: "no-store",
+        signal,
       });
 
       const data = await safeFetch<RunResult>(response);
@@ -131,16 +139,12 @@ export function RunsSection({ issueId }: RunsSectionProps) {
       if (!isMountedRef.current) return;
       
       setSelectedRun(data);
-
-      // Auto-poll if running
-      if (data.status === "running") {
-        setTimeout(() => {
-          if (isMountedRef.current) {
-            fetchRunDetail(runId);
-          }
-        }, 3000);
-      }
     } catch (err) {
+      // Ignore AbortError (expected when component unmounts or selection changes)
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      
       console.error("Error fetching run detail:", err);
       if (isMountedRef.current) {
         setError(formatErrorMessage(err));
@@ -151,6 +155,40 @@ export function RunsSection({ issueId }: RunsSectionProps) {
       }
     }
   }, []);
+
+  // Polling effect: polls selected run if it's in RUNNING status
+  // Reference: I633, Merge-Blocker C (Polling/Unmount Cleanup)
+  useEffect(() => {
+    // Clear any existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    // Don't poll if no run selected or run is not running
+    if (!selectedRunId || !selectedRun || selectedRun.status !== 'running') {
+      return;
+    }
+
+    // Create AbortController for fetch cancellation
+    const abortController = new AbortController();
+
+    // Start polling interval
+    pollingIntervalRef.current = setInterval(() => {
+      if (isMountedRef.current) {
+        fetchRunDetail(selectedRunId, abortController.signal);
+      }
+    }, 3000);
+
+    // Cleanup function
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      abortController.abort();
+    };
+  }, [selectedRunId, selectedRun?.status, fetchRunDetail]);
 
   // Fetch playbooks
   const fetchPlaybooks = useCallback(async () => {
