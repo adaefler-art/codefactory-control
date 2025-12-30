@@ -57,6 +57,15 @@ const ARTIFACT_DENYLIST = [
   '.temp',
 ];
 
+// I671 (E67) — Known project directory structure
+// These paths are checked for artifact subdirectories
+// Update this list if project structure changes
+const PROJECT_DIRECTORIES = [
+  'control-center',  // Next.js control center app
+  'apps',            // Additional apps (landing, etc.)
+  'packages',        // Monorepo packages
+];
+
 // I671 (E67) — Maximum file size allowed in repository (bytes)
 // Files larger than this should be flagged unless explicitly allowed
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -852,10 +861,17 @@ function checkTrackedArtifacts(): ValidationResult {
         // Only flag if artifact directory is at root or in a known project directory
         // This avoids false positives like "src/lib/build/" which is source code
         const isRootArtifact = segments[0] === artifactPath;
-        const isProjectArtifact = 
-          (segments[0] === 'control-center' && segments[1] === artifactPath) ||
-          (segments[0] === 'apps' && segments.length > 2 && segments[2] === artifactPath) ||
-          (segments[0] === 'packages' && segments.length > 2 && segments[2] === artifactPath);
+        
+        // Check if in any known project directory structure
+        const isProjectArtifact = PROJECT_DIRECTORIES.some((projectDir) => {
+          if (segments[0] === projectDir) {
+            // For simple project dirs (control-center), check second segment
+            if (segments.length > 1 && segments[1] === artifactPath) return true;
+            // For nested dirs (apps/*, packages/*), check third segment
+            if (segments.length > 2 && segments[2] === artifactPath) return true;
+          }
+          return false;
+        });
         
         if (isRootArtifact || isProjectArtifact) {
           trackedArtifacts.push(file);
@@ -910,8 +926,9 @@ function checkTrackedArtifacts(): ValidationResult {
       `1. DO NOT COMMIT OR PUSH\n` +
       `\n` +
       `2. Remove artifacts from git tracking:\n` +
-      `   git rm -r --cached ${Array.from(new Set(Object.keys(groupedArtifacts))).join(' ')}\n` +
-      `\n` +
+      trackedArtifacts.slice(0, 10).map((f) => `   git rm -r --cached ${f}`).join('\n') +
+      (trackedArtifacts.length > 10 ? '\n   # ... and more (run for each file)' : '') +
+      `\n\n` +
       `3. Verify .gitignore includes these patterns:\n` +
       ARTIFACT_DENYLIST.map((a) => `   ${a}/`).join('\n') +
       `\n\n` +
@@ -957,6 +974,9 @@ function checkLargeFiles(): ValidationResult {
       encoding: 'utf-8',
     });
     const trackedFiles = output.trim().split('\n').filter(Boolean);
+    
+    // Convert allowlist to Set for O(1) lookup performance
+    const allowlistSet = new Set(LARGE_FILE_ALLOWLIST);
 
     // Check size of each tracked file
     for (const file of trackedFiles) {
@@ -972,7 +992,7 @@ function checkLargeFiles(): ValidationResult {
         if (!stats.isFile()) continue;
 
         // Check if file exceeds size limit and is not in allowlist
-        if (stats.size > MAX_FILE_SIZE_BYTES && !LARGE_FILE_ALLOWLIST.includes(file)) {
+        if (stats.size > MAX_FILE_SIZE_BYTES && !allowlistSet.has(file)) {
           largeFiles.push({ path: file, size: stats.size });
         }
       } catch (error) {
