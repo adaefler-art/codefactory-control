@@ -14,10 +14,11 @@ The monitor provides a **GREEN/YELLOW/RED** traffic light status that indicates 
 
 ### Components
 
-1. **Database Layer** (`database/migrations/027_deploy_status_snapshots.sql`)
+1. **Database Layer** (`database/migrations/027_deploy_status_snapshots.sql`, `database/migrations/028_deploy_status_snapshots_idempotency.sql`)
    - Stores historical status snapshots
    - Enables timeline views and trending analysis
    - Schema includes: status, reasons, signals, timestamps
+  - Enforces idempotency at the database level for verification-derived snapshots
 
 2. **Verification Run Resolver** (`control-center/src/lib/deploy-status/verification-resolver.ts`)
   - Queries persisted playbook runs from the database
@@ -131,6 +132,8 @@ Visit `/deploy/status` to see:
 
 ## Database Schema
 
+Deploy status snapshots are stored in `deploy_status_snapshots`. E65.1 v2 persists only verification-derived evidence in `signals`.
+
 ```sql
 CREATE TABLE deploy_status_snapshots (
   id UUID PRIMARY KEY,
@@ -138,13 +141,22 @@ CREATE TABLE deploy_status_snapshots (
   status TEXT CHECK (status IN ('GREEN', 'YELLOW', 'RED')),
   observed_at TIMESTAMPTZ NOT NULL,
   reasons JSONB NOT NULL,  -- Array of reason objects
-  signals JSONB NOT NULL,  -- Raw signal data
-  related_deploy_event_id UUID REFERENCES deploy_events(id),
+  signals JSONB NOT NULL,  -- Verification-derived signals (checkedAt, correlationId, verificationRun)
   staleness_seconds INTEGER,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
+
+### Idempotency
+
+E65.1 treats a snapshot as idempotent if it has the same:
+
+- `env`
+- correlation key: `signals.correlationId` (or legacy `signals.correlation_id`, falling back to `signals.verificationRun.runId`)
+- `signals.verificationRun.runId`
+
+Database-level enforcement is added in `database/migrations/028_deploy_status_snapshots_idempotency.sql`.
 
 ## Testing
 
@@ -197,27 +209,6 @@ The status monitor provides a recommendation for AFU-9's Self-Propelling Mode:
 - **GREEN**: System is safe to ADVANCE autonomously
 
 This recommendation appears on the `/deploy/status` detail page.
-
-## Future Enhancements
-
-1. **AWS Integration**
-   - ECS task health metrics
-   - ALB target group health
-   - CloudWatch alarms
-
-2. **Trending & Analytics**
-   - Status history charts
-   - MTTR (Mean Time To Recovery) metrics
-   - Uptime percentage
-
-3. **Alerting**
-   - Slack/email notifications on RED status
-   - PagerDuty integration for critical failures
-
-4. **Advanced Rules**
-   - Custom rule definitions via configuration
-   - Per-service health checks
-   - Dependency health aggregation
 
 ## Troubleshooting
 

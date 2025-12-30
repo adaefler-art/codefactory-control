@@ -41,7 +41,139 @@ export async function insertDeployStatusSnapshot(
   pool: Pool,
   input: CreateDeployStatusInput
 ): Promise<InsertSnapshotResult> {
+  const runId = input.signals?.verificationRun?.runId;
+  const correlationKey = input.signals?.correlationId || runId;
+
   try {
+    // Idempotency hardening:
+    // If we have a verification run ID, ensure we do not create duplicate snapshots
+    // for the same (env, correlationId-or-runId, verificationRun.runId). We do this
+    // with a transaction-scoped advisory lock and an update-or-insert flow.
+    if (runId && correlationKey) {
+      const lockKey = `deploy_status_snapshots|${input.env}|${correlationKey}|${runId}`;
+      const observedAt = input.observedAt || new Date().toISOString();
+      const reasonsJson = JSON.stringify(input.reasons);
+      const signalsJson = JSON.stringify(input.signals);
+
+      await pool.query('BEGIN');
+      try {
+        await pool.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
+
+        const existing = await pool.query<{ id: string }>(
+          `SELECT id
+           FROM deploy_status_snapshots
+           WHERE env = $1
+             AND COALESCE(
+               signals->>'correlationId',
+               signals->>'correlation_id',
+               signals #>> '{verificationRun,runId}',
+               signals #>> '{verification_run,run_id}'
+             ) = $2
+             AND COALESCE(
+               signals #>> '{verificationRun,runId}',
+               signals #>> '{verification_run,run_id}'
+             ) = $3
+           ORDER BY observed_at DESC
+           LIMIT 1`,
+          [input.env, correlationKey, runId]
+        );
+
+        if (existing.rows.length > 0) {
+          const updateResult = await pool.query<DeployStatusSnapshot>(
+            `UPDATE deploy_status_snapshots
+             SET status = $2,
+                 observed_at = $3,
+                 reasons = $4,
+                 signals = $5,
+                 related_deploy_event_id = $6,
+                 staleness_seconds = $7
+             WHERE id = $1
+             RETURNING
+               id,
+               created_at as "createdAt",
+               updated_at as "updatedAt",
+               env,
+               status,
+               observed_at as "observedAt",
+               reasons,
+               signals,
+               related_deploy_event_id as "relatedDeployEventId",
+               staleness_seconds as "stalenessSeconds"`,
+            [
+              existing.rows[0].id,
+              input.status,
+              observedAt,
+              reasonsJson,
+              signalsJson,
+              input.relatedDeployEventId || null,
+              input.stalenessSeconds || null,
+            ]
+          );
+
+          await pool.query('COMMIT');
+
+          if (updateResult.rows.length === 0) {
+            return {
+              success: false,
+              error: 'No row returned from update',
+            };
+          }
+
+          return {
+            success: true,
+            snapshot: updateResult.rows[0],
+          };
+        }
+
+        const insertResult = await pool.query<DeployStatusSnapshot>(
+          `INSERT INTO deploy_status_snapshots
+            (env, status, observed_at, reasons, signals, related_deploy_event_id, staleness_seconds)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING
+             id,
+             created_at as "createdAt",
+             updated_at as "updatedAt",
+             env,
+             status,
+             observed_at as "observedAt",
+             reasons,
+             signals,
+             related_deploy_event_id as "relatedDeployEventId",
+             staleness_seconds as "stalenessSeconds"`,
+          [
+            input.env,
+            input.status,
+            observedAt,
+            reasonsJson,
+            signalsJson,
+            input.relatedDeployEventId || null,
+            input.stalenessSeconds || null,
+          ]
+        );
+
+        await pool.query('COMMIT');
+
+        if (insertResult.rows.length === 0) {
+          return {
+            success: false,
+            error: 'No row returned from insert',
+          };
+        }
+
+        return {
+          success: true,
+          snapshot: insertResult.rows[0],
+        };
+      } catch (txError) {
+        try {
+          await pool.query('ROLLBACK');
+        } catch {
+          // ignore rollback failure
+        }
+        throw txError;
+      }
+    }
+
     const result = await pool.query<DeployStatusSnapshot>(
       `INSERT INTO deploy_status_snapshots 
         (env, status, observed_at, reasons, signals, related_deploy_event_id, staleness_seconds)
@@ -80,6 +212,48 @@ export async function insertDeployStatusSnapshot(
       snapshot: result.rows[0],
     };
   } catch (error) {
+    // If a DB-level unique constraint prevents a duplicate insert, treat it as success and
+    // return the existing snapshot.
+    const maybePgError = error as any;
+    if (runId && correlationKey && maybePgError && maybePgError.code === '23505') {
+      try {
+        const existing = await pool.query<DeployStatusSnapshot>(
+          `SELECT
+             id,
+             created_at as "createdAt",
+             updated_at as "updatedAt",
+             env,
+             status,
+             observed_at as "observedAt",
+             reasons,
+             signals,
+             related_deploy_event_id as "relatedDeployEventId",
+             staleness_seconds as "stalenessSeconds"
+           FROM deploy_status_snapshots
+           WHERE env = $1
+             AND COALESCE(
+               signals->>'correlationId',
+               signals->>'correlation_id',
+               signals #>> '{verificationRun,runId}',
+               signals #>> '{verification_run,run_id}'
+             ) = $2
+             AND COALESCE(
+               signals #>> '{verificationRun,runId}',
+               signals #>> '{verification_run,run_id}'
+             ) = $3
+           ORDER BY observed_at DESC
+           LIMIT 1`,
+          [input.env, correlationKey, runId]
+        );
+
+        if (existing.rows.length > 0) {
+          return { success: true, snapshot: existing.rows[0] };
+        }
+      } catch {
+        // Fall through to normal error handling.
+      }
+    }
+
     console.error('[deployStatusSnapshots] Insert failed:', {
       error: error instanceof Error ? error.message : String(error),
       env: input.env,
