@@ -5,8 +5,19 @@
 # in addition to gitleaks' built-in patterns.
 #
 # Usage:
+#   # Scan entire git history (all commits, all branches)
 #   gitleaks detect --config .gitleaks.toml --verbose
-#   gitleaks protect --config .gitleaks.toml --staged
+#
+#   # Scan only staged changes (pre-commit hook)
+#   gitleaks protect --config .gitleaks.toml --staged --verbose
+#
+#   # Scan specific directory
+#   gitleaks detect --source ./path/to/dir --config .gitleaks.toml
+#
+# CI Usage (automated in .github/workflows/security-gates.yml):
+#   - Runs on every push and PR
+#   - Scans full git history (fetch-depth: 0)
+#   - Blocks merge if secrets detected
 
 title = "AFU-9 Gitleaks Configuration"
 

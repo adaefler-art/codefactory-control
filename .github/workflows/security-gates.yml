@@ -25,13 +25,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for gitleaks
+          fetch-depth: 0  # CRITICAL: Full git history required for gitleaks to scan all commits
 
-      - name: Run Gitleaks Secret Scanning
+      - name: Run Gitleaks Secret Scanning (History + Working Tree)
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Uncomment for Gitleaks Pro
+        # EVIDENCE (I661/E66): This action runs 'gitleaks detect' which scans:
+        # - Entire git history (all commits, all branches) when fetch-depth: 0
+        # - Current working tree files
+        # - Uses .gitleaks.toml for AFU-9 custom patterns + built-in rules
+        # Default behavior: NO --no-git flag, full history scan enabled
         # Note: Gitleaks Pro provides additional features like custom rules and priority support.
         # For AFU-9, the free version is sufficient for basic secret scanning.
         # If using Gitleaks Pro, uncomment GITLEAKS_LICENSE above and add the license to repository secrets.

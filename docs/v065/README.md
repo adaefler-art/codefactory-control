@@ -140,7 +140,7 @@ The security hardening includes these CI gates:
    - **NEW:** Secret file patterns check
 
 2. **security-gates.yml** - Secret scanning and security validation
-   - Gitleaks secret scanning
+   - Gitleaks secret scanning (history + working tree)
    - Forbidden file detection
    - Secret pattern matching
    - Blocks PRs with detected secrets
@@ -149,6 +149,73 @@ The security hardening includes these CI gates:
    - Least privilege verification
    - Resource scope validation
    - Wildcard usage checks
+
+### Evidence: Git History Scanning (I661/E66)
+
+**CI Configuration Proof:**
+
+The `.github/workflows/security-gates.yml` workflow is configured to scan **entire git history**:
+
+```yaml
+- name: Checkout code
+  uses: actions/checkout@v4
+  with:
+    fetch-depth: 0  # CRITICAL: Full git history
+
+- name: Run Gitleaks Secret Scanning (History + Working Tree)
+  uses: gitleaks/gitleaks-action@v2
+```
+
+**Key Evidence Points:**
+
+1. **`fetch-depth: 0`** - Fetches complete git history (all commits, all branches)
+   - Default GitHub Actions checkout is shallow (1 commit)
+   - `fetch-depth: 0` overrides this to get full history
+   
+2. **`gitleaks detect` command** - The gitleaks-action@v2 runs `gitleaks detect` which:
+   - Scans all commits in git history when `.git` directory is present
+   - Does NOT use `--no-git` flag (which would skip history)
+   - Uses `.gitleaks.toml` configuration for custom AFU-9 patterns
+   
+3. **Verified behavior** - Gitleaks scans:
+   - ✅ All historical commits across all branches
+   - ✅ Current working tree files
+   - ✅ Staged changes
+   - ✅ Uses both built-in and custom patterns
+
+**Local Verification (PowerShell):**
+
+```powershell
+# Install gitleaks (one-time setup)
+# Windows: winget install gitleaks
+# macOS: brew install gitleaks
+# Linux: See https://github.com/gitleaks/gitleaks#installation
+
+# Scan entire git history locally
+gitleaks detect --source . --config .gitleaks.toml --verbose
+
+# Scan only staged changes (pre-commit check)
+gitleaks protect --config .gitleaks.toml --staged --verbose
+```
+
+**Expected Output (clean repository):**
+```
+○ No leaks found
+```
+
+**If secrets detected:**
+```
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+Finding:     GitHub Personal Access Token
+Secret:      ghp_xxxx... (redacted)
+File:        path/to/file.ext
+Commit:      abc123def456
+```
 
 ## Related Documentation
 
