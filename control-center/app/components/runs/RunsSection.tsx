@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
 
 interface RunSummary {
@@ -81,6 +81,16 @@ export function RunsSection({ issueId }: RunsSectionProps) {
   const [error, setError] = useState<string | null>(null);
   const [showPlaybookSelector, setShowPlaybookSelector] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Fetch runs list
   const fetchRuns = useCallback(async () => {
@@ -105,6 +115,8 @@ export function RunsSection({ issueId }: RunsSectionProps) {
 
   // Fetch run details
   const fetchRunDetail = useCallback(async (runId: string) => {
+    if (!isMountedRef.current) return;
+    
     setIsLoadingDetail(true);
     setError(null);
 
@@ -115,17 +127,28 @@ export function RunsSection({ issueId }: RunsSectionProps) {
       });
 
       const data = await safeFetch<RunResult>(response);
+      
+      if (!isMountedRef.current) return;
+      
       setSelectedRun(data);
 
       // Auto-poll if running
       if (data.status === "running") {
-        setTimeout(() => fetchRunDetail(runId), 3000);
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            fetchRunDetail(runId);
+          }
+        }, 3000);
       }
     } catch (err) {
       console.error("Error fetching run detail:", err);
-      setError(formatErrorMessage(err));
+      if (isMountedRef.current) {
+        setError(formatErrorMessage(err));
+      }
     } finally {
-      setIsLoadingDetail(false);
+      if (isMountedRef.current) {
+        setIsLoadingDetail(false);
+      }
     }
   }, []);
 

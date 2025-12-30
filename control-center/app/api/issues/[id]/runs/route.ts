@@ -94,8 +94,10 @@ export const POST = withApi(async (
   // Execute if requested
   if (autoExecute) {
     // Execute asynchronously (don't await)
+    // TODO: Implement proper error tracking/notification for failed async executions
     runnerService.executeRun(runId).catch((err) => {
       console.error(`[API] Failed to execute run ${runId}:`, err);
+      // Future: Send to error tracking service, update run status, notify user
     });
   }
 

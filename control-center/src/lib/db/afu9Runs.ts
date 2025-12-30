@@ -256,15 +256,15 @@ export class RunsDAO {
 
   /**
    * Cap output to maximum length (tail)
+   * Keeps the last N characters and prepends "..." to indicate truncation
    */
   private capOutput(output: string): string {
     if (output.length <= RunsDAO.MAX_OUTPUT_LENGTH) {
       return output;
     }
-    return (
-      RunsDAO.TRUNCATION_PREFIX +
-      output.slice(-RunsDAO.MAX_OUTPUT_LENGTH + RunsDAO.TRUNCATION_PREFIX.length)
-    );
+    // Take last (MAX_OUTPUT_LENGTH - prefix.length) characters and prepend "..."
+    const tailLength = RunsDAO.MAX_OUTPUT_LENGTH - RunsDAO.TRUNCATION_PREFIX.length;
+    return RunsDAO.TRUNCATION_PREFIX + output.slice(-tailLength);
   }
 
   /**
