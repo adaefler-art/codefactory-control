@@ -2,10 +2,11 @@
  * GitHub File Fetcher
  * 
  * Fetches file content from GitHub repository using GitHub App authentication.
+ * E71.1: Enforces repo access policy via auth-wrapper
  */
 
-import { Octokit } from 'octokit';
-import { getGitHubInstallationToken, GitHubAppConfigError } from '../github-app-auth';
+import { createAuthenticatedClient, RepoAccessDeniedError } from './auth-wrapper';
+import { GitHubAppConfigError } from '../github-app-auth';
 
 export interface FetchFileOptions {
   owner: string;
@@ -32,12 +33,13 @@ export async function fetchGitHubFile(
   options: FetchFileOptions
 ): Promise<FetchFileResult> {
   try {
-    // Get installation token from GitHub App for this specific repository
-    const { token } = await getGitHubInstallationToken({
+    // E71.1: Use policy-enforced client
+    const octokit = await createAuthenticatedClient({
       owner: options.owner,
       repo: options.repo,
+      branch: options.ref,
+      path: options.path,
     });
-    const octokit = new Octokit({ auth: token });
     
     const response = await octokit.rest.repos.getContent({
       owner: options.owner,
@@ -68,6 +70,14 @@ export async function fetchGitHubFile(
       options,
       timestamp: new Date().toISOString(),
     });
+
+    if (error instanceof RepoAccessDeniedError) {
+      return {
+        success: false,
+        statusCode: 403,
+        error: `Repository access denied: ${error.message}`,
+      };
+    }
 
     if (error instanceof GitHubAppConfigError) {
       return {
