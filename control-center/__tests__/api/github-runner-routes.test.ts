@@ -5,9 +5,6 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
-import { POST as dispatchRoute } from '../../app/api/integrations/github/runner/dispatch/route';
-import { POST as pollRoute } from '../../app/api/integrations/github/runner/poll/route';
-import { POST as ingestRoute } from '../../app/api/integrations/github/runner/ingest/route';
 
 // Mock dependencies
 jest.mock('../../src/lib/db', () => ({
@@ -22,8 +19,16 @@ jest.mock('../../src/lib/github-runner/adapter', () => ({
 
 describe('E64.1: GitHub Runner API Routes', () => {
   beforeEach(() => {
+    jest.resetModules();
     jest.clearAllMocks();
   });
+
+  const getRoutes = () => {
+    const dispatchRoute = require('../../app/api/integrations/github/runner/dispatch/route').POST;
+    const pollRoute = require('../../app/api/integrations/github/runner/poll/route').POST;
+    const ingestRoute = require('../../app/api/integrations/github/runner/ingest/route').POST;
+    return { dispatchRoute, pollRoute, ingestRoute };
+  };
 
   describe('POST /api/integrations/github/runner/dispatch', () => {
     it('should dispatch workflow successfully', async () => {
@@ -36,6 +41,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
         isExisting: false,
       });
 
+      const { dispatchRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
@@ -69,6 +75,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
         isExisting: true,
       });
 
+      const { dispatchRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
@@ -90,6 +97,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
     });
 
     it('should return 400 for missing required fields', async () => {
+      const { dispatchRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
@@ -106,6 +114,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
     });
 
     it('should return 400 for missing correlationId', async () => {
+      const { dispatchRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
@@ -129,6 +138,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       
       dispatchWorkflow.mockRejectedValue(new Error('GitHub API error'));
 
+      const { dispatchRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
@@ -163,6 +173,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
         runStartedAt: '2024-01-01T12:01:00Z',
       });
 
+      const { pollRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
@@ -183,6 +194,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
     });
 
     it('should return 400 for missing required fields', async () => {
+      const { pollRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
@@ -203,6 +215,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       
       pollRun.mockRejectedValue(new Error('Run not found'));
 
+      const { pollRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
@@ -260,6 +273,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
         logsUrl: 'https://api.github.com/repos/owner/repo/actions/runs/123456/logs',
       });
 
+      const { ingestRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({
@@ -281,6 +295,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
     });
 
     it('should return 400 for missing required fields', async () => {
+      const { ingestRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({
@@ -301,6 +316,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       
       ingestRun.mockRejectedValue(new Error('No run record found'));
 
+      const { ingestRoute } = getRoutes();
       const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({

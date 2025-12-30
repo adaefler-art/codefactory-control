@@ -6,7 +6,6 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
-import { POST as dispatchRoute } from '../../app/api/integrations/github/runner/dispatch/route';
 
 // Mock dependencies
 jest.mock('../../src/lib/db', () => ({
@@ -19,12 +18,20 @@ jest.mock('../../src/lib/github-runner/adapter', () => ({
 
 describe('E64.1: Gate 3 - Idempotency', () => {
   beforeEach(() => {
+    jest.resetModules();
     jest.clearAllMocks();
   });
+
+  const getDispatchRoute = () =>
+    require('../../app/api/integrations/github/runner/dispatch/route').POST;
+
+  const dispatchRoute = (request: NextRequest) => getDispatchRoute()(request);
 
   describe('Dispatch Idempotency', () => {
     it('should return isExisting=true for duplicate dispatch with same correlationId+workflow+repo', async () => {
       const { dispatchWorkflow } = require('../../src/lib/github-runner/adapter');
+
+      const dispatchRoute = getDispatchRoute();
 
       // First call: create new run
       dispatchWorkflow.mockResolvedValueOnce({
@@ -79,6 +86,8 @@ describe('E64.1: Gate 3 - Idempotency', () => {
 
     it('should create new run when correlationId is different', async () => {
       const { dispatchWorkflow } = require('../../src/lib/github-runner/adapter');
+
+      const dispatchRoute = getDispatchRoute();
 
       // First call with correlationId: issue-123
       dispatchWorkflow.mockResolvedValueOnce({
