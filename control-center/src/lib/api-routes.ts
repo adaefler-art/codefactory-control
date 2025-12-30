@@ -87,9 +87,22 @@ export const API_ROUTES = {
     selfPropel: (id: string) => `/api/issues/${id}/self-propel`,
     execution: (id: string) => `/api/issues/${id}/execution`,
     events: (id: string) => `/api/issues/${id}/events`,
+    runs: (id: string) => `/api/issues/${id}/runs`,
     new: '/api/issues/new',
     import: '/api/issues/import',
     activeCheck: '/api/issues/active-check',
+  },
+
+  // Playbooks
+  playbooks: {
+    list: '/api/playbooks',
+  },
+
+  // Runs
+  runs: {
+    get: (runId: string) => `/api/runs/${runId}`,
+    execute: (runId: string) => `/api/runs/${runId}/execute`,
+    rerun: (runId: string) => `/api/runs/${runId}/rerun`,
   },
 
   // Products
