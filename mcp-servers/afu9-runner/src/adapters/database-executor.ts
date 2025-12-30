@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { RunSpec, RunResult, Runtime } from '../contracts/schemas';
 import { RunsDAO } from './runs-dao';
 import { ExecutorAdapter } from './executor';
+import { validateRuntime } from './validation';
 
 /**
  * DatabaseExecutorAdapter (I632)
@@ -29,9 +30,7 @@ export class DatabaseExecutorAdapter implements ExecutorAdapter {
     const runId = spec.runId || this.generateRunId();
     
     // Validate runtime is supported
-    if (spec.runtime !== 'dummy') {
-      throw new Error(`Runtime ${spec.runtime} not supported by DatabaseExecutorAdapter. Only 'dummy' runtime is supported in I632.`);
-    }
+    validateRuntime(spec.runtime, this.runtime, 'DatabaseExecutorAdapter');
 
     // Check for duplicate runId
     const existing = await this.dao.getRun(runId);

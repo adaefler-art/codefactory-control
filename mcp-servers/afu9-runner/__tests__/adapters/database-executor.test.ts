@@ -41,7 +41,7 @@ describe('DatabaseExecutorAdapter Contract Tests', () => {
   beforeEach(async () => {
     if (!pool) return;
     
-    // Clean up test data before each test
+    // Clean up test data in dependency order (respect foreign key constraints)
     await pool.query('DELETE FROM run_artifacts');
     await pool.query('DELETE FROM run_steps');
     await pool.query('DELETE FROM runs');

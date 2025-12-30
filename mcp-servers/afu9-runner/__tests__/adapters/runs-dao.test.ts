@@ -41,7 +41,7 @@ describe('RunsDAO Contract Tests', () => {
   beforeEach(async () => {
     if (!pool) return;
     
-    // Clean up test data
+    // Clean up test data in dependency order (respect foreign key constraints)
     await pool.query('DELETE FROM run_artifacts WHERE run_id LIKE $1', ['test-%']);
     await pool.query('DELETE FROM run_steps WHERE run_id LIKE $1', ['test-%']);
     await pool.query('DELETE FROM runs WHERE id LIKE $1', ['test-%']);

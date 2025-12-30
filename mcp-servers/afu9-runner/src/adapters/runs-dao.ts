@@ -217,7 +217,8 @@ export class RunsDAO {
     if (output.length <= maxLength) {
       return output;
     }
-    return '...' + output.slice(-maxLength + 3);
+    const TRUNCATION_PREFIX = '...';
+    return TRUNCATION_PREFIX + output.slice(-maxLength + TRUNCATION_PREFIX.length);
   }
 
   /**

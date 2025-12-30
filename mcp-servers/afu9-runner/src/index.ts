@@ -378,7 +378,11 @@ if (require.main === module) {
   
   let pool: Pool | undefined;
   if (useDatabase) {
-    const sslConfig = process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined;
+    // Use strict SSL in production, configurable otherwise
+    const sslConfig = process.env.DATABASE_SSL === 'true' 
+      ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' }
+      : undefined;
+      
     pool = new Pool({
       host: process.env.DATABASE_HOST || 'localhost',
       port: parseInt(process.env.DATABASE_PORT || '5432', 10),
