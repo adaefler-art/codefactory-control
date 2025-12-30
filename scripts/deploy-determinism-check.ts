@@ -57,6 +57,7 @@ interface StackAnalysis {
   safeChanges: DiffChange[];
   diffOutput?: string;
   error?: string;
+  reasonCode?: string; // Machine-readable reason code
 }
 
 interface DeterminismReport {
@@ -69,6 +70,7 @@ interface DeterminismReport {
   blockingIssues: string[];
   warnings: string[];
   summary: string;
+  reasonCodes: string[]; // Machine-readable reason codes for all failures
 }
 
 /**
@@ -263,7 +265,44 @@ function runBuild(): boolean {
 }
 
 /**
+ * Canonicalize CloudFormation template JSON for deterministic comparison
+ * Removes volatile fields and sorts keys to ensure consistent hashing
+ */
+function canonicalizeTemplate(content: string): string {
+  try {
+    const template = JSON.parse(content);
+    
+    // Remove known volatile fields that don't affect deployment
+    if (template.Rules && template.Rules.CheckBootstrapVersion) {
+      delete template.Rules.CheckBootstrapVersion;
+    }
+    
+    // Sort keys recursively to ensure consistent ordering
+    const sortObject = (obj: any): any => {
+      if (obj === null || typeof obj !== 'object') {
+        return obj;
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(sortObject);
+      }
+      return Object.keys(obj)
+        .sort()
+        .reduce((result: any, key) => {
+          result[key] = sortObject(obj[key]);
+          return result;
+        }, {});
+    };
+    
+    return JSON.stringify(sortObject(template));
+  } catch (error) {
+    // If parse fails, return original content
+    return content;
+  }
+}
+
+/**
  * Compute hash of directory contents (for synth determinism check)
+ * Canonicalizes templates before hashing to avoid false positives
  */
 function hashDirectory(dirPath: string): string {
   if (!existsSync(dirPath)) {
@@ -280,8 +319,9 @@ function hashDirectory(dirPath: string): string {
     const fullPath = join(dirPath, file);
     try {
       const content = readFileSync(fullPath, 'utf8');
+      const canonicalized = canonicalizeTemplate(content);
       hash.update(file);
-      hash.update(content);
+      hash.update(canonicalized);
     } catch (error) {
       // Skip files that can't be read
     }
@@ -489,17 +529,35 @@ function generateReport(
 ): DeterminismReport {
   const blockingIssues: string[] = [];
   const warnings: string[] = [];
+  const reasonCodes: string[] = [];
 
-  // Collect issues
-  if (!testsPass) blockingIssues.push('Tests failed');
-  if (!buildSuccess) blockingIssues.push('Build failed');
-  if (!synthDeterministic) blockingIssues.push('CDK synth is non-deterministic');
+  // Collect issues and reason codes
+  if (!testsPass) {
+    blockingIssues.push('Tests failed');
+    reasonCodes.push('TESTS_FAILED');
+  }
+  if (!buildSuccess) {
+    blockingIssues.push('Build failed');
+    reasonCodes.push('BUILD_FAILED');
+  }
+  if (!synthDeterministic) {
+    blockingIssues.push('CDK synth is non-deterministic');
+    reasonCodes.push('NONDETERMINISTIC_SYNTH');
+  }
 
   for (const stack of stackAnalyses) {
     if (stack.blockingChanges.length > 0) {
       blockingIssues.push(
         `${stack.name}: ${stack.blockingChanges.length} blocking change(s)`
       );
+      // Add resource-specific reason codes
+      for (const change of stack.blockingChanges) {
+        const resourceCode = change.resourceType.replace(/::/g, '_').toUpperCase();
+        const changeCode = change.changeType.toUpperCase();
+        reasonCodes.push(`${resourceCode}_${changeCode}`);
+      }
+      // Add stack-level reason code
+      stack.reasonCode = 'BLOCKING_CHANGES_DETECTED';
     }
     if (stack.warningChanges.length > 0) {
       warnings.push(`${stack.name}: ${stack.warningChanges.length} warning(s)`);
@@ -521,6 +579,7 @@ function generateReport(
     blockingIssues,
     warnings,
     summary,
+    reasonCodes,
   };
 
   return report;

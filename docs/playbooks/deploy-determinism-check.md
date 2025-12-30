@@ -47,7 +47,7 @@ The deploy determinism check follows these steps in order:
 
 Run existing tests to ensure code quality:
 
-```bash
+```powershell
 npm test
 ```
 
@@ -58,7 +58,7 @@ npm test
 
 Build TypeScript to ensure compilation succeeds:
 
-```bash
+```powershell
 npm run build
 ```
 
@@ -69,7 +69,7 @@ npm run build
 
 Synthesize CDK stacks to CloudFormation templates:
 
-```bash
+```powershell
 npx cdk synth
 ```
 
@@ -86,7 +86,7 @@ npx cdk synth
 
 Re-synthesize to verify reproducibility:
 
-```bash
+```powershell
 npx cdk synth
 ```
 
@@ -100,7 +100,7 @@ npx cdk synth
 
 For each critical stack, run diff and analyze for destructive changes:
 
-```bash
+```powershell
 npx cdk diff --exclusively <StackName>
 ```
 
@@ -233,7 +233,7 @@ Deployment is BLOCKED - Review required
 4. TypeScript compilation errors
 
 **Solutions:**
-```bash
+```powershell
 # Check credentials
 aws sts get-caller-identity
 
@@ -241,7 +241,7 @@ aws sts get-caller-identity
 npx cdk context
 
 # Skip secret validation for local dev
-SKIP_SECRET_VALIDATION=true npx cdk synth
+$env:SKIP_SECRET_VALIDATION="true"; npx cdk synth
 
 # Check TypeScript
 npm run build
@@ -271,7 +271,7 @@ npm run build
 3. Dependency updates changing resource behavior
 
 **Solutions:**
-```bash
+```powershell
 # Review what changed
 git diff
 
@@ -293,8 +293,8 @@ git checkout <file>
    - Get manual approval
    - Consider updating gate rules if pattern is safe
 3. For emergency deploys:
-   ```bash
-   SKIP_DIFF_GATE=true npm run deploy
+   ```powershell
+   $env:SKIP_DIFF_GATE="true"; npm run deploy
    ```
    ⚠️ **Not recommended** - Use only with manual verification
 
@@ -304,7 +304,7 @@ git checkout <file>
 
 Run before committing infrastructure changes:
 
-```bash
+```powershell
 npm run determinism:check
 ```
 
@@ -327,8 +327,8 @@ Add as a required check in GitHub Actions:
 
 Run automatically before deploy:
 
-```bash
-npm run determinism:check && npm run deploy
+```powershell
+npm run determinism:check; if ($LASTEXITCODE -eq 0) { npm run deploy }
 ```
 
 ## Related Documentation

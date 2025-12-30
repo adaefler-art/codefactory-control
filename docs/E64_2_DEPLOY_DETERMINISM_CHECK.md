@@ -17,18 +17,18 @@ This check prevents:
 
 ### Run the full check
 
-```bash
+```powershell
 npm run determinism:check
 ```
 
 ### Run with specific options
 
-```bash
+```powershell
 # Skip tests only (useful during development)
-SKIP_TESTS=true npm run determinism:check
+$env:SKIP_TESTS="true"; npm run determinism:check
 
 # Skip all validation steps (not recommended)
-SKIP_DETERMINISM_CHECK=true npm run determinism:check
+$env:SKIP_DETERMINISM_CHECK="true"; npm run determinism:check
 
 # Check a specific stack only
 npm run determinism:check -- --stack Afu9EcsStack
@@ -40,17 +40,17 @@ The script performs the following validations in order:
 
 ### 1. **Test Validation**
 - Runs `npm test` to ensure code quality
-- Can be skipped with `SKIP_TESTS=true`
+- Can be skipped with `$env:SKIP_TESTS="true"`
 
 ### 2. **Build Validation**
 - Runs `npm run build` to ensure TypeScript compiles
-- Can be skipped with `SKIP_BUILD=true`
+- Can be skipped with `$env:SKIP_BUILD="true"`
 
 ### 3. **CDK Synth Determinism**
 - Synthesizes CDK stacks twice
 - Compares CloudFormation template hashes
 - Ensures reproducible infrastructure-as-code
-- Can be skipped with `SKIP_SYNTH_CHECK=true`
+- Can be skipped with `$env:SKIP_SYNTH_CHECK="true"`
 
 ### 4. **CDK Diff Analysis**
 - Analyzes diffs for all critical stacks:
@@ -148,7 +148,7 @@ Machine-readable output is saved to `artifacts/determinism-report.json`:
 
 Run before committing infrastructure changes:
 
-```bash
+```powershell
 npm run determinism:check
 ```
 
@@ -176,8 +176,8 @@ Add to GitHub Actions workflow:
 
 Automatically run before deployment:
 
-```bash
-npm run determinism:check && npm run deploy
+```powershell
+npm run determinism:check; if ($LASTEXITCODE -eq 0) { npm run deploy }
 ```
 
 ## Exit Codes
@@ -218,9 +218,9 @@ npx ts-node scripts/test-deploy-determinism-check.ts
 
 **Solution**: Check AWS credentials and context values
 
-```bash
+```powershell
 aws sts get-caller-identity
-SKIP_SECRET_VALIDATION=true npx cdk synth
+$env:SKIP_SECRET_VALIDATION="true"; npx cdk synth
 ```
 
 ### Issue: Non-Deterministic Synth
@@ -231,7 +231,7 @@ SKIP_SECRET_VALIDATION=true npx cdk synth
 
 **Solution**: Review git diff and CDK code changes
 
-```bash
+```powershell
 git diff
 npx cdk diff <StackName> --exclusively
 ```
@@ -241,7 +241,7 @@ npx cdk diff <StackName> --exclusively
 **Solutions**:
 1. Review gate rules in the script
 2. Document intentional change in PR
-3. For emergency: `SKIP_DIFF_GATE=true npm run deploy` (not recommended)
+3. For emergency: `$env:SKIP_DIFF_GATE="true"; npm run deploy` (not recommended)
 
 ## Maintenance
 
