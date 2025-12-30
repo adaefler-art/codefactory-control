@@ -1,0 +1,187 @@
+# Gitleaks Configuration for AFU-9
+# I661 (E66) — Repo Security Hardening
+#
+# This configuration defines custom secret patterns specific to AFU-9
+# in addition to gitleaks' built-in patterns.
+#
+# Usage:
+#   # Scan entire git history (all commits, all branches)
+#   gitleaks detect --config .gitleaks.toml --verbose
+#
+#   # Scan only staged changes (pre-commit hook)
+#   gitleaks protect --config .gitleaks.toml --staged --verbose
+#
+#   # Scan specific directory
+#   gitleaks detect --source ./path/to/dir --config .gitleaks.toml
+#
+# CI Usage (automated in .github/workflows/security-gates.yml):
+#   - Runs on every push and PR
+#   - Scans full git history (fetch-depth: 0)
+#   - Blocks merge if secrets detected
+
+title = "AFU-9 Gitleaks Configuration"
+
+[extend]
+# Use gitleaks default rules in addition to custom rules below
+useDefault = true
+
+[[rules]]
+id = "afu9-github-pat"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+[[rules.Entropies]]
+Min = "3.5"
+Max = "8"
+
+[[rules]]
+id = "afu9-github-oauth"
+description = "GitHub OAuth Token"
+regex = '''gho_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+
+[[rules]]
+id = "afu9-github-app"
+description = "GitHub App Token"
+regex = '''ghs_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+
+[[rules]]
+id = "afu9-github-refresh"
+description = "GitHub Refresh Token"
+regex = '''ghr_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+
+[[rules]]
+id = "afu9-openai-key"
+description = "OpenAI API Key"
+regex = '''sk-proj-[a-zA-Z0-9]{20,}'''
+tags = ["key", "OpenAI", "AFU-9"]
+
+[[rules]]
+id = "afu9-openai-legacy"
+description = "OpenAI API Key (Legacy)"
+regex = '''sk-[a-zA-Z0-9]{48}'''
+tags = ["key", "OpenAI", "AFU-9"]
+
+[[rules]]
+id = "afu9-aws-access-key"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["key", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-aws-session-token"
+description = "AWS Session Token (temporary)"
+regex = '''ASIA[0-9A-Z]{16}'''
+tags = ["key", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)(aws_secret_access_key|secret.?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9/+=]{40})["']?'''
+tags = ["key", "AWS", "AFU-9"]
+# More restrictive pattern to reduce false positives
+# Looks for explicit AWS secret key assignment with 40-character base64 value
+
+[[rules]]
+id = "afu9-private-key-block"
+description = "Private Key Block (RSA, EC, etc.)"
+regex = '''-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'''
+tags = ["key", "private-key", "AFU-9"]
+
+[[rules]]
+id = "afu9-env-github-token"
+description = "GITHUB_TOKEN in environment variable"
+regex = '''(?i)(GITHUB_TOKEN|GH_TOKEN)\s*[:=]\s*['\"]?([a-zA-Z0-9_-]{20,})['\"]?'''
+tags = ["env", "GitHub", "AFU-9"]
+[rules.allowlist]
+paths = [
+  '''docs/examples/.*''',
+  '''docs/v065/.*\.md''',  # Documentation can reference patterns
+]
+
+[[rules]]
+id = "afu9-env-openai-key"
+description = "OPENAI_API_KEY in environment variable"
+regex = '''(?i)OPENAI_API_KEY\s*[:=]\s*['\"]?(sk-[a-zA-Z0-9_-]{20,})['\"]?'''
+tags = ["env", "OpenAI", "AFU-9"]
+
+[[rules]]
+id = "afu9-env-aws-key"
+description = "AWS credentials in environment variable"
+regex = '''(?i)(AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID)\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{20,})['\"]?'''
+tags = ["env", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-connection-string"
+description = "Database connection string with password"
+regex = '''(?i)(postgres|mysql|mongodb)://[^:]+:([^@\s]{8,})@'''
+tags = ["database", "connection-string", "AFU-9"]
+
+[[rules]]
+id = "afu9-secret-file-reference"
+description = "Reference to secret files"
+regex = '''(github-app-private-key|secret-final|secret-updated|github-app-secret)\.(pem|json|pkcs8\.pem)'''
+tags = ["file", "secret", "AFU-9"]
+[rules.allowlist]
+paths = [
+  '''\.gitignore''',  # .gitignore can reference these files
+  '''docs/v065/.*\.md''',  # Security docs reference these patterns
+]
+
+# Global allowlist - paths that should never be scanned
+[allowlist]
+description = "Global allowlist for AFU-9"
+paths = [
+  '''^\.git/''',
+  '''^node_modules/''',
+  '''^\.next/''',
+  '''^dist/''',
+  '''^build/''',
+  '''^cdk\.out/''',
+  '''^coverage/''',
+  '''^\.worktrees/''',
+]
+
+# Specific file allowlist
+files = [
+  '''package-lock\.json''',
+  '''npm-shrinkwrap\.json''',
+  '''yarn\.lock''',
+  '''pnpm-lock\.yaml''',
+]
+
+# Allowlist for test fixtures and documentation
+regexes = [
+  '''test.*fake.*token''',
+  '''test.*mock.*key''',
+  '''example.*token.*here''',
+  '''your.*key.*here''',
+  '''placeholder.*secret''',
+  '''<REDACTED.*>''',
+  '''\*\*\*REMOVED\*\*\*''',
+]
+
+# Commit allowlist - commits that are known to be safe
+commits = [
+  # Add commit SHAs here if needed for historical commits that triggered false positives
+  # Example: "abc123def456..."
+]
+
+# Regex target - what content to scan in git objects
+[allowlist.regexTarget]
+description = "Allowlist certain patterns in specific contexts"
+
+# Stop words - common false positives
+stopwords = [
+  '''example''',
+  '''sample''',
+  '''test''',
+  '''demo''',
+  '''placeholder''',
+  '''your-token-here''',
+  '''insert-key-here''',
+  '''fake''',
+  '''mock''',
+]
