@@ -378,9 +378,13 @@ if (require.main === module) {
   
   let pool: Pool | undefined;
   if (useDatabase) {
-    // Use strict SSL in production, configurable otherwise
-    const sslConfig = process.env.DATABASE_SSL === 'true' 
-      ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' }
+    // SSL configuration: enabled via DATABASE_SSL, with certificate validation enforced by default
+    // Set DATABASE_SSL_REJECT_UNAUTHORIZED=false only in development to disable validation
+    const useSSL = process.env.DATABASE_SSL === 'true';
+    const sslConfig = useSSL 
+      ? { 
+          rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' 
+        }
       : undefined;
       
     pool = new Pool({

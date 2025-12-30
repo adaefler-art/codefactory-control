@@ -9,6 +9,8 @@ import { RunSpec, RunResult, StepResult } from '../contracts/schemas';
  */
 export class RunsDAO {
   private pool: Pool;
+  private static readonly TRUNCATION_PREFIX = '...';
+  private static readonly MAX_OUTPUT_LENGTH = 4000;
 
   constructor(pool: Pool) {
     this.pool = pool;
@@ -141,12 +143,12 @@ export class RunsDAO {
 
     if (stdoutTail !== undefined) {
       updates.push(`stdout_tail = $${paramIndex++}`);
-      params.push(this.capOutput(stdoutTail, 4000));
+      params.push(this.capOutput(stdoutTail));
     }
 
     if (stderrTail !== undefined) {
       updates.push(`stderr_tail = $${paramIndex++}`);
-      params.push(this.capOutput(stderrTail, 4000));
+      params.push(this.capOutput(stderrTail));
     }
 
     await this.pool.query(
@@ -213,12 +215,11 @@ export class RunsDAO {
   /**
    * Cap output to maximum length (tail)
    */
-  private capOutput(output: string, maxLength: number): string {
-    if (output.length <= maxLength) {
+  private capOutput(output: string): string {
+    if (output.length <= RunsDAO.MAX_OUTPUT_LENGTH) {
       return output;
     }
-    const TRUNCATION_PREFIX = '...';
-    return TRUNCATION_PREFIX + output.slice(-maxLength + TRUNCATION_PREFIX.length);
+    return RunsDAO.TRUNCATION_PREFIX + output.slice(-RunsDAO.MAX_OUTPUT_LENGTH + RunsDAO.TRUNCATION_PREFIX.length);
   }
 
   /**
