@@ -18,6 +18,7 @@
     "validate-secrets": "ts-node scripts/validate-secrets.ts",
     "validate-iam": "ts-node scripts/validate-iam-policies.ts",
     "validate:diff": "ts-node scripts/validate-cdk-diff.ts",
+    "determinism:check": "ts-node scripts/deploy-determinism-check.ts",
     "security:check": "npm run validate-iam",
     "repo:verify": "ts-node scripts/repo-verify.ts",
     "routes:verify": "node scripts/verify-routes.js",
