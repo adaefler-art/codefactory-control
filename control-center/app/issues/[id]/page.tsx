@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 import { parseLabelsInput } from "@/lib/label-utils";
 import { mapToCanonicalStatus, isLegacyStatus } from "@/lib/utils/status-mapping";
 import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
-import { RunsSection } from "@/app/components/runs/RunsSection";
+import { RunsSection } from "../../components/runs/RunsSection";
 
 interface Issue {
   id: string;
@@ -139,7 +140,7 @@ export default function IssueDetailPage({
     setError(null);
 
     try {
-      const response = await fetch(`/api/issues/${issueId}`, {
+      const response = await fetch(API_ROUTES.issues.get(issueId), {
         credentials: "include",
         cache: "no-store",
       });
@@ -166,7 +167,7 @@ export default function IssueDetailPage({
   const fetchActivityEvents = async () => {
     setIsLoadingEvents(true);
     try {
-      const response = await fetch(`/api/issues/${id}/events`, {
+      const response = await fetch(API_ROUTES.issues.events(id), {
         credentials: "include",
         cache: "no-store",
       });
@@ -182,7 +183,7 @@ export default function IssueDetailPage({
 
   const checkActiveIssue = async () => {
     try {
-      const response = await fetch(`/api/issues/active-check`, {
+      const response = await fetch(API_ROUTES.issues.activeCheck, {
         credentials: "include",
         cache: "no-store",
       });
@@ -244,7 +245,7 @@ export default function IssueDetailPage({
         return;
       }
 
-      const response = await fetch(`/api/issues/${id}`, {
+      const response = await fetch(API_ROUTES.issues.update(id), {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -297,7 +298,7 @@ export default function IssueDetailPage({
     setShowActivationWarning(false);
 
     try {
-      const response = await fetch(`/api/issues/${id}/activate`, {
+      const response = await fetch(API_ROUTES.issues.activate(id), {
         method: "POST",
         credentials: "include",
       });
@@ -344,7 +345,7 @@ export default function IssueDetailPage({
     setSaveError(null);
 
     try {
-      const response = await fetch(`/api/issues/${id}/handoff`, {
+      const response = await fetch(API_ROUTES.issues.handoff(id), {
         method: "POST",
         credentials: "include",
       });

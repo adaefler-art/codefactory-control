@@ -10,6 +10,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { safeFetch, formatErrorMessage, isApiError } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface RunSummary {
   runId: string;
@@ -105,7 +106,7 @@ export function RunsSection({ issueId }: RunsSectionProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/issues/${issueId}/runs`, {
+      const response = await fetch(API_ROUTES.issues.runs(issueId), {
         credentials: "include",
         cache: "no-store",
       });
@@ -128,7 +129,7 @@ export function RunsSection({ issueId }: RunsSectionProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/runs/${runId}`, {
+      const response = await fetch(API_ROUTES.runs.get(runId), {
         credentials: "include",
         cache: "no-store",
         signal,
@@ -195,7 +196,7 @@ export function RunsSection({ issueId }: RunsSectionProps) {
     setIsLoadingPlaybooks(true);
 
     try {
-      const response = await fetch("/api/playbooks", {
+      const response = await fetch(API_ROUTES.playbooks.list, {
         credentials: "include",
         cache: "no-store",
       });
@@ -216,7 +217,7 @@ export function RunsSection({ issueId }: RunsSectionProps) {
     setShowPlaybookSelector(false);
 
     try {
-      const response = await fetch(`/api/issues/${issueId}/runs`, {
+      const response = await fetch(API_ROUTES.issues.runs(issueId), {
         method: "POST",
         credentials: "include",
         headers: {
@@ -252,7 +253,7 @@ export function RunsSection({ issueId }: RunsSectionProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/runs/${selectedRunId}/rerun`, {
+      const response = await fetch(API_ROUTES.runs.rerun(selectedRunId), {
         method: "POST",
         credentials: "include",
         headers: {
