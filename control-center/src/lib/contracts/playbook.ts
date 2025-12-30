@@ -23,7 +23,7 @@ export const HttpCheckStepSchema = z.object({
   expectedStatus: z.number().int().min(100).max(599).default(200),
   expectedBodyIncludes: z.string().optional(),
   timeoutSeconds: z.number().int().positive().default(30),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
 }).strict();
 
 export type HttpCheckStep = z.infer<typeof HttpCheckStepSchema>;
@@ -113,7 +113,7 @@ export const StepEvidenceSchema = z.object({
   type: z.string(),
   status: z.number().optional(),
   responseTime: z.number().optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
   message: z.string().optional(),
 }).passthrough(); // Allow additional fields for extensibility

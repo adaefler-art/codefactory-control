@@ -51,7 +51,7 @@ async function executeHttpCheck(
 
     const response = await fetch(url, {
       method: step.method,
-      headers: step.headers,
+      headers: step.headers as Record<string, string> | undefined,
       signal: controller.signal,
     });
 

@@ -114,23 +114,34 @@ Successfully implemented a comprehensive, production-ready post-deploy verificat
 
 ## Usage Examples
 
-### Via API (stage)
-```bash
-curl -X POST "https://control.afu9.dev/api/playbooks/post-deploy-verify/run?env=stage" \
-  -H "Content-Type: application/json" \
-  -d '{"variables": {"DEPLOY_URL": "https://stage.control.afu9.dev"}}'
+### Via API (PowerShell - stage)
+```powershell
+$body = @{
+    variables = @{
+        DEPLOY_URL = "https://stage.control.afu9.dev"
+    }
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "https://control.afu9.dev/api/playbooks/post-deploy-verify/run?env=stage" `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
-### Via API (prod)
-```bash
-curl -X POST "https://control.afu9.dev/api/playbooks/post-deploy-verify/run?env=prod" \
-  -H "Content-Type: application/json" \
-  -d '{}'  # DEPLOY_URL defaults to production URL
+### Via API (PowerShell - prod)
+```powershell
+# DEPLOY_URL defaults to production URL
+Invoke-RestMethod -Method Post `
+  -Uri "https://control.afu9.dev/api/playbooks/post-deploy-verify/run?env=prod" `
+  -ContentType "application/json" `
+  -Body "{}"
 ```
 
-### Fetch Run Result
-```bash
-curl "https://control.afu9.dev/api/playbooks/runs/{runId}"
+### Fetch Run Result (PowerShell)
+```powershell
+$runId = "your-run-id-here"
+Invoke-RestMethod -Method Get `
+  -Uri "https://control.afu9.dev/api/playbooks/runs/$runId"
 ```
 
 ### Validate Playbooks (CI)
@@ -148,14 +159,22 @@ npm run validate-playbooks
 npm test -- __tests__/playbooks/
 npm run build
 
-# Run playbook (requires database)
+# Run playbook locally (requires database)
 # Set environment variables first:
-# DATABASE_HOST, DATABASE_PORT, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD
+# $env:DATABASE_HOST = "localhost"
+# $env:DATABASE_PORT = "5432"
+# $env:DATABASE_NAME = "afu9"
+# $env:DATABASE_USER = "postgres"
+# $env:DATABASE_PASSWORD = "your-password"
 
 # Execute via API (dev server)
 npm run dev
-# Then in another terminal:
-Invoke-RestMethod -Method POST -Uri "http://localhost:3000/api/playbooks/post-deploy-verify/run?env=stage" -ContentType "application/json" -Body '{}'
+# Then in another PowerShell terminal:
+$body = @{} | ConvertTo-Json
+Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:3000/api/playbooks/post-deploy-verify/run?env=stage" `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
 ## Integration Points

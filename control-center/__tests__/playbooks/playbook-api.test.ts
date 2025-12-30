@@ -43,7 +43,7 @@ describe('Playbook API Routes', () => {
     
     (getPool as jest.Mock).mockReturnValue(mockPool);
     
-    // Mock playbook file loading
+    // Mock playbook file loading with a valid playbook (no variable substitution in URL for validation)
     (fs.readFileSync as jest.Mock).mockReturnValue(JSON.stringify({
       metadata: {
         id: 'post-deploy-verify',
@@ -58,7 +58,7 @@ describe('Playbook API Routes', () => {
           retries: 2,
           input: {
             type: 'http_check',
-            url: '${DEPLOY_URL}/api/health',
+            url: 'https://example.com/api/health',
             method: 'GET',
             expectedStatus: 200,
           },
