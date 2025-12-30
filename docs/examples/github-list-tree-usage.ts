@@ -5,9 +5,133 @@
  * 
  * This file demonstrates how to use the listTree tool to list repository contents
  * with deterministic ordering, cursor-based pagination, and policy enforcement.
+ * 
+ * Includes both TypeScript (server-side) and PowerShell (API client) examples.
  */
 
 import { listTree, ListTreeParams, ListTreeResult } from '@/lib/github/list-tree';
+
+// ========================================
+// PowerShell API Examples
+// ========================================
+
+/**
+ * PowerShell: List repository root
+ * 
+ * ```powershell
+ * $baseUrl = "http://localhost:3000"  # or your deployed URL
+ * $response = Invoke-RestMethod -Uri "$baseUrl/api/integrations/github/list-tree?owner=adaefler-art&repo=codefactory-control&branch=main" -Method GET
+ * 
+ * # Display results
+ * Write-Host "Total items: $($response.pageInfo.totalEstimate)"
+ * $response.items | ForEach-Object {
+ *   Write-Host "$($_.type): $($_.path)"
+ * }
+ * ```
+ */
+
+/**
+ * PowerShell: List specific subdirectory
+ * 
+ * ```powershell
+ * $baseUrl = "http://localhost:3000"
+ * $params = @{
+ *   owner = "adaefler-art"
+ *   repo = "codefactory-control"
+ *   branch = "main"
+ *   path = "control-center/src"
+ *   recursive = "false"
+ * }
+ * 
+ * $queryString = ($params.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "&"
+ * $response = Invoke-RestMethod -Uri "$baseUrl/api/integrations/github/list-tree?$queryString" -Method GET
+ * 
+ * Write-Host "Contents of $($response.meta.path):"
+ * $response.items | ForEach-Object {
+ *   Write-Host "  $($_.name) ($($_.type))"
+ * }
+ * ```
+ */
+
+/**
+ * PowerShell: Recursive listing with pagination
+ * 
+ * ```powershell
+ * $baseUrl = "http://localhost:3000"
+ * $allItems = @()
+ * $cursor = $null
+ * 
+ * do {
+ *   $params = @{
+ *     owner = "adaefler-art"
+ *     repo = "codefactory-control"
+ *     branch = "main"
+ *     path = "docs"
+ *     recursive = "true"
+ *     limit = "50"
+ *   }
+ *   
+ *   if ($cursor) {
+ *     $params.cursor = $cursor
+ *   }
+ *   
+ *   $queryString = ($params.GetEnumerator() | ForEach-Object { "$($_.Key)=$([System.Web.HttpUtility]::UrlEncode($_.Value))" }) -join "&"
+ *   $response = Invoke-RestMethod -Uri "$baseUrl/api/integrations/github/list-tree?$queryString" -Method GET
+ *   
+ *   $allItems += $response.items
+ *   $cursor = $response.pageInfo.nextCursor
+ *   
+ *   Write-Host "Fetched $($response.items.Count) items (total: $($allItems.Count))"
+ * } while ($cursor)
+ * 
+ * Write-Host "`nTotal items fetched: $($allItems.Count)"
+ * ```
+ */
+
+/**
+ * PowerShell: Error handling
+ * 
+ * ```powershell
+ * $baseUrl = "http://localhost:3000"
+ * 
+ * try {
+ *   # Try to access repository not in allowlist
+ *   $response = Invoke-RestMethod -Uri "$baseUrl/api/integrations/github/list-tree?owner=other-org&repo=private-repo&branch=main" -Method GET
+ * } catch {
+ *   $errorDetails = $_.ErrorDetails.Message | ConvertFrom-Json
+ *   
+ *   Write-Host "Error Code: $($errorDetails.code)" -ForegroundColor Red
+ *   Write-Host "Message: $($errorDetails.error)" -ForegroundColor Red
+ *   
+ *   if ($errorDetails.code -eq "REPO_NOT_ALLOWED") {
+ *     Write-Host "Repository access denied by policy" -ForegroundColor Yellow
+ *   } elseif ($errorDetails.code -eq "INVALID_PATH") {
+ *     Write-Host "Invalid path provided" -ForegroundColor Yellow
+ *   } elseif ($errorDetails.code -eq "TREE_TOO_LARGE") {
+ *     Write-Host "Tree too large - try non-recursive mode or narrower path" -ForegroundColor Yellow
+ *   }
+ * }
+ * ```
+ */
+
+/**
+ * PowerShell: Filter files by extension
+ * 
+ * ```powershell
+ * $baseUrl = "http://localhost:3000"
+ * $response = Invoke-RestMethod -Uri "$baseUrl/api/integrations/github/list-tree?owner=adaefler-art&repo=codefactory-control&branch=main&path=control-center/src&recursive=true" -Method GET
+ * 
+ * # Filter TypeScript files
+ * $tsFiles = $response.items | Where-Object { $_.type -eq "file" -and $_.path -match "\.ts$" }
+ * 
+ * Write-Host "TypeScript files in control-center/src:"
+ * $tsFiles | ForEach-Object {
+ *   Write-Host "  $($_.path) ($($_.size) bytes)"
+ * }
+ * 
+ * Write-Host "`nTotal TS files: $($tsFiles.Count)"
+ * ```
+ */
 
 // ========================================
 // Example 1: Basic Non-Recursive Listing
