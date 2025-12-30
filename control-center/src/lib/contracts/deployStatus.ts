@@ -41,7 +41,13 @@ export interface StatusSignals {
     ok: boolean;
     response?: Record<string, unknown>;
     error?: string;
+    error_name?: string;
+    error_code?: string;
     latency_ms?: number;
+    url?: string;
+    base_url?: string;
+    timeout_ms?: number;
+    attempted_urls?: string[];
   };
   ready?: {
     status: number;
@@ -49,7 +55,13 @@ export interface StatusSignals {
     ready?: boolean;
     response?: Record<string, unknown>;
     error?: string;
+    error_name?: string;
+    error_code?: string;
     latency_ms?: number;
+    url?: string;
+    base_url?: string;
+    timeout_ms?: number;
+    attempted_urls?: string[];
   };
   deploy_events?: Array<{
     id: string;
