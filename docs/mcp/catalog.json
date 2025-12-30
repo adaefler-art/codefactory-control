@@ -1,6 +1,6 @@
-﻿{
+{
   "catalogVersion": "0.6.0",
-  "generatedAt": "2025-12-29T00:00:00Z",
+  "generatedAt": "2025-12-29T20:34:53Z",
   "notes": "Canonical MCP tool catalog for AFU-9. Tool names are server-scoped (JSON-RPC params.tool). Server names and default ports match Control Center defaults: observability=3001, deploy=3002, github=3003. Mutating tools require idempotencyKey and explicit guardrails.",
   "servers": [
     {
@@ -23,12 +23,29 @@
           "outputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["ok", "status", "timestamp"],
+            "required": [
+              "ok",
+              "status",
+              "timestamp"
+            ],
             "properties": {
-              "ok": { "type": "boolean" },
-              "status": { "type": "string", "enum": ["UP", "DOWN"] },
-              "timestamp": { "type": "string", "format": "date-time" },
-              "version": { "type": "string" }
+              "ok": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "UP",
+                  "DOWN"
+                ]
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "version": {
+                "type": "string"
+              }
             }
           },
           "guardrails": [
@@ -47,11 +64,16 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "awsRegion": { "type": "string", "description": "AWS region override (optional)." },
+              "awsRegion": {
+                "type": "string",
+                "description": "AWS region override (optional)."
+              },
               "require": {
                 "type": "array",
                 "description": "Optional dependency checks to enforce (e.g. ecs, elbv2, logs).",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [],
@@ -60,21 +82,46 @@
           "outputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["ok", "status", "checks", "timestamp"],
+            "required": [
+              "ok",
+              "status",
+              "checks",
+              "timestamp"
+            ],
             "properties": {
-              "ok": { "type": "boolean" },
-              "status": { "type": "string", "enum": ["READY", "NOT_READY"] },
-              "timestamp": { "type": "string", "format": "date-time" },
+              "ok": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "READY",
+                  "NOT_READY"
+                ]
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
               "checks": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["id", "ok"],
+                  "required": [
+                    "id",
+                    "ok"
+                  ],
                   "properties": {
-                    "id": { "type": "string" },
-                    "ok": { "type": "boolean" },
-                    "message": { "type": "string" }
+                    "id": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -96,37 +143,79 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "logGroupName": { "type": "string", "description": "Log group name." },
-              "filterPattern": { "type": "string", "description": "Filter pattern." },
-              "startTimeMs": { "type": "integer", "description": "Start time (Unix epoch ms)." },
-              "endTimeMs": { "type": "integer", "description": "End time (Unix epoch ms)." },
-              "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 },
-              "nextToken": { "type": "string", "description": "Pagination token (optional)." }
+              "logGroupName": {
+                "type": "string",
+                "description": "Log group name."
+              },
+              "filterPattern": {
+                "type": "string",
+                "description": "Filter pattern."
+              },
+              "startTimeMs": {
+                "type": "integer",
+                "description": "Start time (Unix epoch ms)."
+              },
+              "endTimeMs": {
+                "type": "integer",
+                "description": "End time (Unix epoch ms)."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100
+              },
+              "nextToken": {
+                "type": "string",
+                "description": "Pagination token (optional)."
+              }
             },
-            "required": ["logGroupName"],
+            "required": [
+              "logGroupName"
+            ],
             "additionalProperties": false
           },
           "outputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["ok", "events", "timestamp"],
+            "required": [
+              "ok",
+              "events",
+              "timestamp"
+            ],
             "properties": {
-              "ok": { "type": "boolean" },
-              "timestamp": { "type": "string", "format": "date-time" },
+              "ok": {
+                "type": "boolean"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
               "events": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["message", "timestampMs"],
+                  "required": [
+                    "message",
+                    "timestampMs"
+                  ],
                   "properties": {
-                    "message": { "type": "string" },
-                    "timestampMs": { "type": "integer" },
-                    "logStreamName": { "type": "string" }
+                    "message": {
+                      "type": "string"
+                    },
+                    "timestampMs": {
+                      "type": "integer"
+                    },
+                    "logStreamName": {
+                      "type": "string"
+                    }
                   }
                 }
               },
-              "nextToken": { "type": "string" }
+              "nextToken": {
+                "type": "string"
+              }
             }
           },
           "guardrails": [
@@ -145,13 +234,32 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "cluster": { "type": "string", "description": "ECS cluster name." },
-              "service": { "type": "string", "description": "ECS service name." },
-              "loadBalancerName": { "type": "string", "description": "ALB name (optional)." },
-              "targetGroupArn": { "type": "string", "description": "Target group ARN (optional)." },
-              "periodSeconds": { "type": "integer", "minimum": 60, "default": 300 }
+              "cluster": {
+                "type": "string",
+                "description": "ECS cluster name."
+              },
+              "service": {
+                "type": "string",
+                "description": "ECS service name."
+              },
+              "loadBalancerName": {
+                "type": "string",
+                "description": "ALB name (optional)."
+              },
+              "targetGroupArn": {
+                "type": "string",
+                "description": "Target group ARN (optional)."
+              },
+              "periodSeconds": {
+                "type": "integer",
+                "minimum": 60,
+                "default": 300
+              }
             },
-            "required": ["cluster", "service"],
+            "required": [
+              "cluster",
+              "service"
+            ],
             "additionalProperties": false
           }
         },
@@ -162,8 +270,20 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "alarmNames": { "type": "array", "items": { "type": "string" } },
-              "stateValue": { "type": "string", "enum": ["OK", "ALARM", "INSUFFICIENT_DATA"] }
+              "alarmNames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "stateValue": {
+                "type": "string",
+                "enum": [
+                  "OK",
+                  "ALARM",
+                  "INSUFFICIENT_DATA"
+                ]
+              }
             },
             "required": [],
             "additionalProperties": false
@@ -185,11 +305,23 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "cluster": { "type": "string", "description": "ECS cluster name." },
-              "service": { "type": "string", "description": "ECS service name." },
-              "includeTaskDetails": { "type": "boolean", "default": true }
+              "cluster": {
+                "type": "string",
+                "description": "ECS cluster name."
+              },
+              "service": {
+                "type": "string",
+                "description": "ECS service name."
+              },
+              "includeTaskDetails": {
+                "type": "boolean",
+                "default": true
+              }
             },
-            "required": ["cluster", "service"],
+            "required": [
+              "cluster",
+              "service"
+            ],
             "additionalProperties": false
           }
         },
@@ -200,14 +332,36 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "cluster": { "type": "string", "description": "ECS cluster name." },
-              "service": { "type": "string", "description": "ECS service name." },
-              "containerName": { "type": "string", "description": "Container name to update (required if imageUri provided)." },
-              "imageUri": { "type": "string", "description": "New image URI (optional)." },
-              "forceNewDeployment": { "type": "boolean", "default": true },
-              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key to prevent repeated mutations." }
+              "cluster": {
+                "type": "string",
+                "description": "ECS cluster name."
+              },
+              "service": {
+                "type": "string",
+                "description": "ECS service name."
+              },
+              "containerName": {
+                "type": "string",
+                "description": "Container name to update (required if imageUri provided)."
+              },
+              "imageUri": {
+                "type": "string",
+                "description": "New image URI (optional)."
+              },
+              "forceNewDeployment": {
+                "type": "boolean",
+                "default": true
+              },
+              "idempotencyKey": {
+                "type": "string",
+                "description": "Caller-provided idempotency key to prevent repeated mutations."
+              }
             },
-            "required": ["cluster", "service", "idempotencyKey"],
+            "required": [
+              "cluster",
+              "service",
+              "idempotencyKey"
+            ],
             "additionalProperties": false
           },
           "guardrails": [
@@ -241,10 +395,20 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
-              "number": { "type": "integer", "minimum": 1, "description": "Issue number." }
+              "repo": {
+                "type": "string",
+                "description": "Repo in the form 'owner/name'."
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Issue number."
+              }
             },
-            "required": ["repo", "number"],
+            "required": [
+              "repo",
+              "number"
+            ],
             "additionalProperties": false
           }
         },
@@ -255,12 +419,36 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
-              "state": { "type": "string", "enum": ["open", "closed", "all"], "default": "open" },
-              "labels": { "type": "array", "items": { "type": "string" }, "description": "Optional label filter." },
-              "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 }
+              "repo": {
+                "type": "string",
+                "description": "Repo in the form 'owner/name'."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "closed",
+                  "all"
+                ],
+                "default": "open"
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional label filter."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 30
+              }
             },
-            "required": ["repo"],
+            "required": [
+              "repo"
+            ],
             "additionalProperties": false
           }
         },
@@ -271,12 +459,31 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
-              "branch": { "type": "string", "minLength": 1, "description": "Name of the new branch." },
-              "from": { "type": "string", "minLength": 1, "description": "Base branch or commit SHA." },
-              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key." }
+              "repo": {
+                "type": "string",
+                "description": "Repo in the form 'owner/name'."
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Name of the new branch."
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Base branch or commit SHA."
+              },
+              "idempotencyKey": {
+                "type": "string",
+                "description": "Caller-provided idempotency key."
+              }
             },
-            "required": ["repo", "branch", "from", "idempotencyKey"],
+            "required": [
+              "repo",
+              "branch",
+              "from",
+              "idempotencyKey"
+            ],
             "additionalProperties": false
           },
           "guardrails": [
@@ -295,9 +502,20 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
-              "branch": { "type": "string", "minLength": 1, "description": "Branch to commit to." },
-              "message": { "type": "string", "minLength": 1, "description": "Commit message." },
+              "repo": {
+                "type": "string",
+                "description": "Repo in the form 'owner/name'."
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Branch to commit to."
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Commit message."
+              },
               "files": {
                 "type": "array",
                 "minItems": 1,
@@ -305,16 +523,34 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["path", "content"],
+                  "required": [
+                    "path",
+                    "content"
+                  ],
                   "properties": {
-                    "path": { "type": "string", "minLength": 1 },
-                    "content": { "type": "string", "description": "File content (UTF-8 text; binary must be base64 with an agreed marker)." }
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "File content (UTF-8 text; binary must be base64 with an agreed marker)."
+                    }
                   }
                 }
               },
-              "idempotencyKey": { "type": "string", "description": "Caller-provided idempotency key." }
+              "idempotencyKey": {
+                "type": "string",
+                "description": "Caller-provided idempotency key."
+              }
             },
-            "required": ["repo", "branch", "message", "files", "idempotencyKey"],
+            "required": [
+              "repo",
+              "branch",
+              "message",
+              "files",
+              "idempotencyKey"
+            ],
             "additionalProperties": false
           },
           "guardrails": [
@@ -339,15 +575,42 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
-              "title": { "type": "string", "minLength": 1 },
-              "body": { "type": "string" },
-              "head": { "type": "string", "minLength": 1, "description": "Head branch (source)." },
-              "base": { "type": "string", "minLength": 1, "description": "Base branch (target)." },
-              "draft": { "type": "boolean", "default": true },
-              "idempotencyKey": { "type": "string" }
+              "repo": {
+                "type": "string",
+                "description": "Repo in the form 'owner/name'."
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "body": {
+                "type": "string"
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Head branch (source)."
+              },
+              "base": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Base branch (target)."
+              },
+              "draft": {
+                "type": "boolean",
+                "default": true
+              },
+              "idempotencyKey": {
+                "type": "string"
+              }
             },
-            "required": ["repo", "title", "head", "base", "idempotencyKey"],
+            "required": [
+              "repo",
+              "title",
+              "head",
+              "base",
+              "idempotencyKey"
+            ],
             "additionalProperties": false
           },
           "guardrails": [
@@ -366,14 +629,39 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "repo": { "type": "string", "description": "Repo in the form 'owner/name'." },
-              "pullNumber": { "type": "integer", "minimum": 1, "description": "Pull request number." },
-              "mergeMethod": { "type": "string", "enum": ["merge", "squash", "rebase"], "default": "merge" },
-              "commitTitle": { "type": "string" },
-              "commitMessage": { "type": "string" },
-              "idempotencyKey": { "type": "string" }
+              "repo": {
+                "type": "string",
+                "description": "Repo in the form 'owner/name'."
+              },
+              "pullNumber": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Pull request number."
+              },
+              "mergeMethod": {
+                "type": "string",
+                "enum": [
+                  "merge",
+                  "squash",
+                  "rebase"
+                ],
+                "default": "merge"
+              },
+              "commitTitle": {
+                "type": "string"
+              },
+              "commitMessage": {
+                "type": "string"
+              },
+              "idempotencyKey": {
+                "type": "string"
+              }
             },
-            "required": ["repo", "pullNumber", "idempotencyKey"],
+            "required": [
+              "repo",
+              "pullNumber",
+              "idempotencyKey"
+            ],
             "additionalProperties": false
           },
           "guardrails": [
@@ -381,6 +669,150 @@
               "id": "REQUIRE_STATUS_CHECKS_GREEN",
               "description": "Client must only request merge after required checks are green; server may enforce.",
               "severity": "error",
+              "appliesTo": "both"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "afu9-runner",
+      "displayName": "AFU-9 Runner",
+      "contractVersion": "0.6.0",
+      "port": 3002,
+      "endpoint": "http://localhost:3002",
+      "description": "MCP server for AFU-9 run management and execution (I631 MVP)",
+      "tools": [
+        {
+          "name": "run.create",
+          "description": "Create a new run from a RunSpec. Returns RunResult with 'created' status.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "spec": {
+                "type": "object",
+                "description": "Run specification conforming to RunSpec schema"
+              }
+            },
+            "required": [
+              "spec"
+            ]
+          },
+          "guardrails": [
+            {
+              "id": "RUNTIME_VALIDATION",
+              "description": "Only 'dummy' runtime supported in I631. Other runtimes will be rejected.",
+              "severity": "info",
+              "appliesTo": "server"
+            }
+          ]
+        },
+        {
+          "name": "run.execute",
+          "description": "Execute a previously created run. Returns RunResult with execution results.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string",
+                "description": "Run ID to execute"
+              }
+            },
+            "required": [
+              "runId"
+            ]
+          }
+        },
+        {
+          "name": "run.status",
+          "description": "Get current status of a run without full results.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string",
+                "description": "Run ID to check"
+              }
+            },
+            "required": [
+              "runId"
+            ]
+          },
+          "guardrails": [
+            {
+              "id": "READ_ONLY",
+              "description": "Read-only tool. Must not mutate run state.",
+              "severity": "info",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "run.read",
+          "description": "Read full results of a run including all step outputs.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string",
+                "description": "Run ID to read"
+              }
+            },
+            "required": [
+              "runId"
+            ]
+          },
+          "guardrails": [
+            {
+              "id": "READ_ONLY",
+              "description": "Read-only tool. Must not mutate run state.",
+              "severity": "info",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "playbook.list",
+          "description": "List all available playbooks.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {}
+          },
+          "guardrails": [
+            {
+              "id": "READ_ONLY",
+              "description": "Read-only tool. Must not mutate playbook state.",
+              "severity": "info",
+              "appliesTo": "both"
+            }
+          ]
+        },
+        {
+          "name": "playbook.get",
+          "description": "Get a specific playbook by ID.",
+          "contractVersion": "0.6.0",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Playbook ID"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "guardrails": [
+            {
+              "id": "READ_ONLY",
+              "description": "Read-only tool. Must not mutate playbook state.",
+              "severity": "info",
               "appliesTo": "both"
             }
           ]

@@ -1,0 +1,98 @@
+name: AFU-9 Runner Regression Guards
+
+on:
+  pull_request:
+    paths:
+      - 'mcp-servers/afu9-runner/**'
+      - 'docs/mcp/catalog.json'
+      - 'docs/mcp/servers/afu9-runner.md'
+      - 'scripts/verify-afu9-runner.ps1'
+      - '.github/workflows/afu9-runner-guards.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'mcp-servers/afu9-runner/**'
+      - 'docs/mcp/catalog.json'
+      - 'docs/mcp/servers/afu9-runner.md'
+      - 'scripts/verify-afu9-runner.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression-guards:
+    name: AFU-9 Runner Regression Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PowerShell
+        shell: bash
+        run: |
+          # PowerShell is pre-installed on ubuntu-latest
+          pwsh --version
+
+      - name: Run Regression Guard Script
+        shell: pwsh
+        run: |
+          Write-Host "Running AFU-9 Runner regression guards..."
+          ./scripts/verify-afu9-runner.ps1 -Verbose
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mcp-servers/afu9-runner/package-lock.json
+
+      - name: Install dependencies (base)
+        working-directory: mcp-servers/base
+        run: npm ci
+
+      - name: Build base
+        working-directory: mcp-servers/base
+        run: npm run build
+
+      - name: Install dependencies (afu9-runner)
+        working-directory: mcp-servers/afu9-runner
+        run: npm ci
+
+      - name: Run tests (includes documentation consistency)
+        working-directory: mcp-servers/afu9-runner
+        run: npm test
+
+      - name: Build afu9-runner
+        working-directory: mcp-servers/afu9-runner
+        run: npm run build
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## AFU-9 Runner Regression Guards ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All regression checks passed:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Naming consistency verified" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Contract version correct (0.6.0)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Toolset matches specification" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ No legacy strings found" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Documentation consistency enforced" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ All tests passing" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build successful" >> $GITHUB_STEP_SUMMARY
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          echo "## AFU-9 Runner Regression Guards ❌" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Some regression checks failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Common issues:" >> $GITHUB_STEP_SUMMARY
+          echo "- Naming inconsistency (must be 'afu9-runner')" >> $GITHUB_STEP_SUMMARY
+          echo "- Contract version mismatch (must be '0.6.0')" >> $GITHUB_STEP_SUMMARY
+          echo "- Toolset changed without updating documentation" >> $GITHUB_STEP_SUMMARY
+          echo "- Legacy strings still present in codebase" >> $GITHUB_STEP_SUMMARY
+          echo "- Documentation out of sync with contracts" >> $GITHUB_STEP_SUMMARY
