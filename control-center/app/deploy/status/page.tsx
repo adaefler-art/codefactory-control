@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { DeployStatusResponse, DeployStatus } from "@/lib/contracts/deployStatus";
 import { API_ROUTES } from "@/lib/api-routes";
 import DeployStatusBadge from "../../components/DeployStatusBadge";
@@ -20,7 +20,7 @@ export default function DeployStatusPage() {
 
   const environments = ["prod", "stage", "dev"];
 
-  const fetchStatus = async (force = false) => {
+  const fetchStatus = useCallback(async (force = false) => {
     setLoading(true);
     try {
       const response = await fetch(API_ROUTES.deploy.status(selectedEnv, force));
@@ -37,7 +37,7 @@ export default function DeployStatusPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedEnv]);
 
   useEffect(() => {
     fetchStatus();
@@ -46,7 +46,7 @@ export default function DeployStatusPage() {
       const interval = setInterval(() => fetchStatus(), 30000); // 30s refresh
       return () => clearInterval(interval);
     }
-  }, [selectedEnv, autoRefresh]);
+  }, [selectedEnv, autoRefresh, fetchStatus]);
 
   const formatTimestamp = (isoString: string) => {
     const date = new Date(isoString);

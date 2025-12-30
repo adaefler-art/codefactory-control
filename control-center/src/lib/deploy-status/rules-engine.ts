@@ -79,18 +79,18 @@ export function isReadyHealthy(signals: StatusSignals): boolean {
  */
 export function hasRecentDeployFailure(
   signals: StatusSignals,
-  lookbackMinutes: number = 30
+  lookbackMinutes: number = 30,
+  currentTime: Date = new Date()
 ): boolean {
   if (!signals.deploy_events || signals.deploy_events.length === 0) {
     return false;
   }
 
-  const now = new Date();
   const lookbackMs = lookbackMinutes * 60 * 1000;
 
   return signals.deploy_events.some(event => {
     const eventTime = new Date(event.created_at);
-    const ageMs = now.getTime() - eventTime.getTime();
+    const ageMs = currentTime.getTime() - eventTime.getTime();
     
     if (ageMs > lookbackMs) return false;
     
@@ -105,18 +105,18 @@ export function hasRecentDeployFailure(
  */
 export function hasRecentDeployWarning(
   signals: StatusSignals,
-  lookbackMinutes: number = 30
+  lookbackMinutes: number = 30,
+  currentTime: Date = new Date()
 ): boolean {
   if (!signals.deploy_events || signals.deploy_events.length === 0) {
     return false;
   }
 
-  const now = new Date();
   const lookbackMs = lookbackMinutes * 60 * 1000;
 
   return signals.deploy_events.some(event => {
     const eventTime = new Date(event.created_at);
-    const ageMs = now.getTime() - eventTime.getTime();
+    const ageMs = currentTime.getTime() - eventTime.getTime();
     
     if (ageMs > lookbackMs) return false;
     
@@ -231,7 +231,7 @@ export function determineDeployStatus(
   }
 
   // Rule 4: Check for recent deploy failures (RED)
-  if (hasRecentDeployFailure(signals)) {
+  if (hasRecentDeployFailure(signals, 30, currentTime)) {
     reasons.push({
       code: REASON_CODES.DEPLOY_FAILED,
       severity: 'error',
@@ -263,7 +263,7 @@ export function determineDeployStatus(
   }
 
   // Rule 6: Check for deploy warnings (YELLOW)
-  if (hasRecentDeployWarning(signals)) {
+  if (hasRecentDeployWarning(signals, 30, currentTime)) {
     reasons.push({
       code: REASON_CODES.DEPLOY_WARNING,
       severity: 'warning',

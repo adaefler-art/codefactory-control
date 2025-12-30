@@ -725,7 +725,7 @@ describe('Deploy Status Rules Engine', () => {
           deploy_events: [
             {
               id: '1',
-              created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1 hour ago
+              created_at: new Date(fixedTime.getTime() - 60 * 60 * 1000).toISOString(), // 1 hour before fixedTime
               env: 'prod',
               service: 'api',
               version: 'v1.0.0',
