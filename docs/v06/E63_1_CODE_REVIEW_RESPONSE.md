@@ -9,16 +9,13 @@ Addressed all integration risks identified in PR #421 code review comment by @ad
 
 #### Naming Unification
 **Problem**: Inconsistent names across files
-- package.json: `@afu9/mcp-runner`
-- src/index.ts: `afu9-mcp-runner`  
-- catalog.json: `afu9-runner`
 
 **Solution**: Unified to `afu9-runner` everywhere
 ```diff
-- "name": "@afu9/mcp-runner"
+- Old package name (removed)
 + "name": "@afu9/afu9-runner"
 
-- super(port, 'afu9-mcp-runner', '0.1.0')
+- Old server name (removed)
 + super(port, 'afu9-runner', '0.1.0')
 ```
 

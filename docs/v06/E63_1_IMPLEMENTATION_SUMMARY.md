@@ -6,7 +6,7 @@
 - **Date**: 2025-12-29
 
 ## Objective
-Implement a new MCP Server "afu9-mcp-runner" as a Zero-Copy-Debugging MVP skeleton with:
+Implement a new MCP Server `afu9-runner` as a Zero-Copy-Debugging MVP skeleton with:
 - Strict contracts (RunSpec/RunResult) using Zod + TypeScript types
 - 6 MCP tools for run management
 - DummyExecutorAdapter for in-memory execution simulation
@@ -148,7 +148,7 @@ Server successfully started on port 3002:
 {
   "timestamp": "2025-12-29T20:32:37.429Z",
   "level": "INFO",
-  "service": "afu9-mcp-runner",
+  "service": "afu9-runner",
   "message": "MCP Server started",
   "context": {
     "port": 3002,

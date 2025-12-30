@@ -1,6 +1,22 @@
-# AFU-9 MCP Runner
+# AFU-9 Runner MCP Server
+
+**Canonical Server Name:** `afu9-runner`  
+**Contract Version:** `0.6.0`  
+**Port:** `3002` (default)
 
 MCP Server for AFU-9 run management and execution (Issue I631 / E63.1).
+
+## 📚 Full Documentation
+
+**Complete reference:** [../../docs/mcp/servers/afu9-runner.md](../../docs/mcp/servers/afu9-runner.md)
+
+The full documentation includes:
+- ✅ Complete tool contracts with schemas
+- ✅ State machine and transitions
+- ✅ Idempotency guarantees
+- ✅ Error model with examples
+- ✅ Timestamp guarantees
+- ✅ API usage examples
 
 ## Overview
 

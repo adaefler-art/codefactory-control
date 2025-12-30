@@ -4,7 +4,7 @@ import { z } from 'zod';
  * AFU-9 Runner Contracts (I631)
  * 
  * Strict type-safe contracts using Zod for RunSpec and RunResult.
- * These define the input/output schemas for the afu9-mcp-runner service.
+ * These define the input/output schemas for the afu9-runner service.
  */
 
 // Step expectation schema for validation
