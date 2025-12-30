@@ -38,6 +38,47 @@ const FORBIDDEN_PATHS = [
   'standalone',
 ];
 
+// I671 (E67) — Artifact paths that should NEVER be committed
+// These are build/runtime outputs that must be in .gitignore
+const ARTIFACT_DENYLIST = [
+  '.next',
+  'cdk.out',
+  'dist',
+  'node_modules',
+  '.local',
+  'artifacts',
+  'build',
+  'out',
+  '.turbo',
+  'coverage',
+  '.cache',
+  'tmp',
+  'temp',
+  '.temp',
+];
+
+// I671 (E67) — Known project directory structure
+// These paths are checked for artifact subdirectories
+// Update this list if project structure changes
+const PROJECT_DIRECTORIES = [
+  'control-center',  // Next.js control center app
+  'apps',            // Additional apps (landing, etc.)
+  'packages',        // Monorepo packages
+];
+
+// I671 (E67) — Maximum file size allowed in repository (bytes)
+// Files larger than this should be flagged unless explicitly allowed
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+// I671 (E67) — Files allowed to exceed size limit
+// Use relative paths from repo root
+const LARGE_FILE_ALLOWLIST = [
+  'package-lock.json',
+  'control-center/package-lock.json',
+  'apps/landing/package-lock.json',
+  // Add other legitimate large files here if needed
+];
+
 // Secret file patterns that should never be committed
 const SECRET_FILE_PATTERNS = [
   '.env.local',
@@ -791,6 +832,232 @@ function checkSecretFiles(): ValidationResult {
 }
 
 // ============================================================================
+// Tracked Artifacts Check (I671 / E67)
+// ============================================================================
+
+/**
+ * Check for tracked artifact files/directories that should be in .gitignore
+ * Part of I671 — Repo Hygiene & Determinism
+ */
+function checkTrackedArtifacts(): ValidationResult {
+  console.log('🔍 Running Tracked Artifacts Check...');
+
+  const errors: string[] = [];
+  const trackedArtifacts: string[] = [];
+
+  // Get list of all tracked files from git
+  try {
+    const output = execSync('git ls-files', {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    });
+    const trackedFiles = output.trim().split('\n').filter(Boolean);
+
+    // Check each tracked file against artifact denylist
+    for (const file of trackedFiles) {
+      for (const artifactPath of ARTIFACT_DENYLIST) {
+        const segments = file.split('/');
+        
+        // Only flag if artifact directory is at root or in a known project directory
+        // This avoids false positives like "src/lib/build/" which is source code
+        const isRootArtifact = segments[0] === artifactPath;
+        
+        // Check if in any known project directory structure
+        const isProjectArtifact = PROJECT_DIRECTORIES.some((projectDir) => {
+          if (segments[0] === projectDir) {
+            // For simple project dirs (control-center), check second segment
+            if (segments.length > 1 && segments[1] === artifactPath) return true;
+            // For nested dirs (apps/*, packages/*), check third segment
+            if (segments.length > 2 && segments[2] === artifactPath) return true;
+          }
+          return false;
+        });
+        
+        if (isRootArtifact || isProjectArtifact) {
+          trackedArtifacts.push(file);
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    console.log('   ⚠️  Tracked Artifacts Check SKIPPED (not a git repository or git unavailable)');
+    return { passed: true, errors: [] };
+  }
+
+  if (trackedArtifacts.length > 0) {
+    // Group by artifact type for better reporting
+    const groupedArtifacts: { [key: string]: string[] } = {};
+    for (const file of trackedArtifacts) {
+      const segments = file.split('/');
+      let artifactType = 'other';
+      
+      // Determine artifact type from path
+      for (const artifact of ARTIFACT_DENYLIST) {
+        if (segments.includes(artifact)) {
+          artifactType = artifact;
+          break;
+        }
+      }
+      
+      if (!groupedArtifacts[artifactType]) {
+        groupedArtifacts[artifactType] = [];
+      }
+      groupedArtifacts[artifactType].push(file);
+    }
+
+    const groupedList = Object.entries(groupedArtifacts)
+      .map(([type, files]) => {
+        const fileList = files.slice(0, 5).map((f) => `    - ${f}`).join('\n') +
+          (files.length > 5 ? `\n    ... and ${files.length - 5} more` : '');
+        return `  [${type}]:\n${fileList}`;
+      })
+      .join('\n\n');
+
+    errors.push(
+      `\n❌ CRITICAL: Found ${trackedArtifacts.length} tracked artifact file(s):\n` +
+      groupedList +
+      `\n\n` +
+      `Error: Build/runtime artifacts must NEVER be committed to repository\n` +
+      `\n` +
+      `These artifacts break build determinism and bloat repository size.\n` +
+      `\n` +
+      `IMMEDIATE ACTIONS REQUIRED:\n` +
+      `\n` +
+      `1. DO NOT COMMIT OR PUSH\n` +
+      `\n` +
+      `2. Remove artifacts from git tracking:\n` +
+      trackedArtifacts.slice(0, 10).map((f) => `   git rm -r --cached ${f}`).join('\n') +
+      (trackedArtifacts.length > 10 ? '\n   # ... and more (run for each file)' : '') +
+      `\n\n` +
+      `3. Verify .gitignore includes these patterns:\n` +
+      ARTIFACT_DENYLIST.map((a) => `   ${a}/`).join('\n') +
+      `\n\n` +
+      `4. Clean local artifacts:\n` +
+      `   npm run clean  # or manually remove artifact directories\n` +
+      `\n` +
+      `5. Verify working tree is clean:\n` +
+      `   git status --porcelain  # should be empty after cleanup\n` +
+      `\n` +
+      `Related Documentation:\n` +
+      `  - docs/v065/DETERMINISM.md - Build determinism policy\n` +
+      `  - .gitignore - Artifact exclusion patterns\n` +
+      `\n` +
+      `This check is part of I671 (E67) — Repo Hygiene & Determinism`
+    );
+
+    console.log(`   ❌ Tracked Artifacts Check FAILED (${trackedArtifacts.length} violations)`);
+    return { passed: false, errors };
+  }
+
+  console.log('   ✅ Tracked Artifacts Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
+// Large File Check (I671 / E67)
+// ============================================================================
+
+/**
+ * Check for large files that exceed size limit
+ * Part of I671 — Repo Hygiene & Determinism
+ */
+function checkLargeFiles(): ValidationResult {
+  console.log('🔍 Running Large File Check...');
+
+  const errors: string[] = [];
+  const largeFiles: Array<{ path: string; size: number }> = [];
+
+  // Get list of all tracked files from git
+  try {
+    const output = execSync('git ls-files', {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    });
+    const trackedFiles = output.trim().split('\n').filter(Boolean);
+    
+    // Convert allowlist to Set for O(1) lookup performance
+    const allowlistSet = new Set(LARGE_FILE_ALLOWLIST);
+
+    // Check size of each tracked file
+    for (const file of trackedFiles) {
+      const fullPath = path.join(REPO_ROOT, file);
+      
+      // Skip if file doesn't exist (e.g., submodule)
+      if (!fs.existsSync(fullPath)) continue;
+
+      try {
+        const stats = fs.statSync(fullPath);
+        
+        // Skip if not a regular file
+        if (!stats.isFile()) continue;
+
+        // Check if file exceeds size limit and is not in allowlist
+        if (stats.size > MAX_FILE_SIZE_BYTES && !allowlistSet.has(file)) {
+          largeFiles.push({ path: file, size: stats.size });
+        }
+      } catch (error) {
+        // Skip files we can't stat
+        continue;
+      }
+    }
+  } catch (error) {
+    console.log('   ⚠️  Large File Check SKIPPED (not a git repository or git unavailable)');
+    return { passed: true, errors: [] };
+  }
+
+  if (largeFiles.length > 0) {
+    // Sort by size descending
+    largeFiles.sort((a, b) => b.size - a.size);
+
+    const formatSize = (bytes: number): string => {
+      const mb = bytes / (1024 * 1024);
+      return `${mb.toFixed(2)} MB`;
+    };
+
+    const fileList = largeFiles
+      .slice(0, 10)
+      .map((f) => `  - ${f.path} (${formatSize(f.size)})`)
+      .join('\n') +
+      (largeFiles.length > 10 ? `\n  ... and ${largeFiles.length - 10} more` : '');
+
+    errors.push(
+      `\n⚠️  Found ${largeFiles.length} large file(s) exceeding ${formatSize(MAX_FILE_SIZE_BYTES)}:\n` +
+      fileList +
+      `\n\n` +
+      `Warning: Large files bloat repository and slow down clone/fetch operations\n` +
+      `\n` +
+      `Recommended Actions:\n` +
+      `\n` +
+      `1. Review if these files are necessary in version control:\n` +
+      `   - Generated files? → Add to .gitignore\n` +
+      `   - Test fixtures? → Consider smaller samples or external storage\n` +
+      `   - Binary assets? → Use Git LFS or external CDN\n` +
+      `\n` +
+      `2. If files are legitimate and must be tracked:\n` +
+      `   - Add to LARGE_FILE_ALLOWLIST in scripts/repo-verify.ts\n` +
+      `   - Document why file is necessary in comments\n` +
+      `\n` +
+      `3. For binary assets consider:\n` +
+      `   - Git LFS (Large File Storage)\n` +
+      `   - External storage (S3, CDN)\n` +
+      `   - Asset optimization/compression\n` +
+      `\n` +
+      `Related Documentation:\n` +
+      `  - docs/v065/DETERMINISM.md - Repository hygiene policy\n` +
+      `\n` +
+      `This check is part of I671 (E67) — Repo Hygiene & Determinism`
+    );
+
+    console.log(`   ⚠️  Large File Check WARNING (${largeFiles.length} files)`);
+    // Return as warning (passed: true) but with errors for logging
+    return { passed: true, errors };
+  }
+
+  console.log('   ✅ Large File Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -802,7 +1069,9 @@ async function main() {
   const results = [
     checkRouteMap(),
     checkForbiddenPaths(),
-    checkSecretFiles(),  // NEW: I661 security check
+    checkTrackedArtifacts(),  // NEW: I671 artifact tracking check
+    checkLargeFiles(),         // NEW: I671 file size check
+    checkSecretFiles(),        // I661 security check
     checkEmptyFolders(),
     checkUnreferencedRoutes(),
     checkMixedScope(),
