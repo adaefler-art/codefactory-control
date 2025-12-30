@@ -1,0 +1,98 @@
+{
+  "docId": "ISSUES-V06",
+  "version": "0.6",
+  "status": "CANONICAL",
+  "lastUpdated": "2025-12-30",
+  "mode": "REVIEW_ONLY",
+  "canonicalOrder": [
+    "E63.2",
+    "E63.3",
+    "E64.1",
+    "E64.2",
+    "E65.1",
+    "E65.2"
+  ],
+  "issues": [
+    {
+      "id": "I632",
+      "evidenceId": "E63.2",
+      "epic": "E63",
+      "title": "Runs Ledger DB (runs, run_steps, run_artifacts)",
+      "status": "completed",
+      "active": false,
+      "description": "Database schema and services for recording debug run executions, steps, and artifacts"
+    },
+    {
+      "id": "I633",
+      "evidenceId": "E63.3",
+      "epic": "E63",
+      "title": "Issue UI Runs Tab (Start, Re-run, Logs, Artifacts)",
+      "status": "completed",
+      "active": false,
+      "description": "User interface for managing and viewing debug runs within the issue detail view"
+    },
+    {
+      "id": "I641",
+      "evidenceId": "E64.1",
+      "epic": "E64",
+      "title": "GitHub Runner Adapter (dispatch, poll, ingest)",
+      "status": "completed",
+      "active": false,
+      "description": "Integration layer for dispatching workflows to GitHub Actions and ingesting results"
+    },
+    {
+      "id": "I642",
+      "evidenceId": "E64.2",
+      "epic": "E64",
+      "title": "Playbook Deploy Determinism Check",
+      "status": "completed",
+      "active": false,
+      "description": "Verification that playbook deployments produce consistent, deterministic results"
+    },
+    {
+      "id": "I651",
+      "evidenceId": "E65.1",
+      "epic": "E65",
+      "title": "Deploy Status Monitor (GREEN/YELLOW/RED)",
+      "status": "completed",
+      "active": false,
+      "description": "Real-time monitoring and status reporting for deployment health"
+    },
+    {
+      "id": "I652",
+      "evidenceId": "E65.2",
+      "epic": "E65",
+      "title": "Post-Deploy Verification Playbook",
+      "status": "in_progress",
+      "active": false,
+      "description": "Automated verification playbook to validate deployments after completion"
+    }
+  ],
+  "epics": [
+    {
+      "id": "E61",
+      "title": "Issue Lifecycle, Activation & GitHub Handoff",
+      "status": "completed"
+    },
+    {
+      "id": "E62",
+      "title": "Control Center UX: Issue-Liste & Detail",
+      "status": "completed"
+    },
+    {
+      "id": "E63",
+      "title": "MCP Server Zero-Copy Debugging MVP",
+      "status": "completed"
+    },
+    {
+      "id": "E64",
+      "title": "Runner Adapter: GitHub Runner Execution",
+      "status": "completed"
+    },
+    {
+      "id": "E65",
+      "title": "Deploy & Operate Guardrails",
+      "status": "in_progress"
+    }
+  ]
+}
