@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DeployStatusResponse, DeployStatus } from "@/lib/contracts/deployStatus";
+import { API_ROUTES } from "@/lib/api-routes";
 import DeployStatusBadge from "../../components/DeployStatusBadge";
 
 const statusColors: Record<DeployStatus, string> = {
@@ -22,8 +23,7 @@ export default function DeployStatusPage() {
   const fetchStatus = async (force = false) => {
     setLoading(true);
     try {
-      const url = `/api/deploy/status?env=${selectedEnv}${force ? "&force=true" : ""}`;
-      const response = await fetch(url);
+      const response = await fetch(API_ROUTES.deploy.status(selectedEnv, force));
       if (!response.ok) {
         throw new Error(`Failed to fetch status: ${response.status}`);
       }

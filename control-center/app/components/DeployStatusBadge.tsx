@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DeployStatusResponse, DeployStatus } from "@/lib/contracts/deployStatus";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface DeployStatusBadgeProps {
   env?: string;
@@ -46,7 +47,7 @@ export default function DeployStatusBadge({
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch(`/api/deploy/status?env=${env}`);
+      const response = await fetch(API_ROUTES.deploy.status(env));
       if (!response.ok) {
         throw new Error(`Failed to fetch status: ${response.status}`);
       }

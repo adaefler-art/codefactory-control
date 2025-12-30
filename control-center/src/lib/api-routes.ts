@@ -163,11 +163,19 @@ export const API_ROUTES = {
     parameters: '/api/lawbook/parameters',
   },
 
-  // Deploy Events
+  // Deploy Events & Status
   deployEvents: {
     list: '/api/deploy-events',
     create: '/api/deploy-events',
     internal: '/api/internal/deploy-events', // Internal webhook receiver
+  },
+
+  // Deploy Status Monitor
+  deploy: {
+    status: (env: string, force?: boolean) => {
+      const queryParams = force ? `?env=${env}&force=true` : `?env=${env}`;
+      return `/api/deploy/status${queryParams}`;
+    },
   },
 
   // Observability
