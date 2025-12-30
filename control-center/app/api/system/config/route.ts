@@ -9,13 +9,25 @@
 import { NextResponse } from 'next/server';
 import { isDebugModeEnabled } from '@/lib/debug-mode';
 import { getBuildInfo } from '@/lib/build/build-info';
+import { loadGitHubAppConfig, GitHubAppConfigError } from '@/lib/github-app-auth';
 
 export async function GET() {
   try {
     const buildInfo = getBuildInfo();
     
-    // Check which integrations are configured without exposing secrets
-    const githubConfigured = !!process.env.GITHUB_TOKEN;
+    // Check GitHub App configuration
+    let githubConfigured = false;
+    let githubAppId = null;
+    try {
+      const config = await loadGitHubAppConfig();
+      githubConfigured = !!config.appId && !!config.privateKeyPem;
+      githubAppId = config.appId;
+    } catch (error) {
+      if (error instanceof GitHubAppConfigError) {
+        console.warn('[System Config] GitHub App not configured:', error.message);
+      }
+    }
+    
     const githubOwner = process.env.GITHUB_OWNER || process.env.NEXT_PUBLIC_GITHUB_OWNER || null;
     
     const awsRegion = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'eu-central-1';
@@ -39,6 +51,8 @@ export async function GET() {
       integrations: {
         github: {
           configured: githubConfigured,
+          authMethod: 'GitHub App (server-to-server)',
+          appId: githubAppId,
           owner: githubOwner,
         },
         aws: {

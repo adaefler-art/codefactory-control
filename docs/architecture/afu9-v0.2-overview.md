@@ -498,7 +498,7 @@ Target Tracking Scaling Policy:
   "afu9/github": {
     "token": "ghp_xxxxxxxxxxxxxxxxxxxx",
     "app_id": "123456",
-    "private_key": "-----BEGIN RSA PRIVATE KEY-----...",
+    "private_key": "__REDACTED_PEM__",
     "webhook_secret": "whs_xxxxxxxxxxxxxxxxx"
   },
   "afu9/database": {

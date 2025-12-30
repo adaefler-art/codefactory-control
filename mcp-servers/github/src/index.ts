@@ -1,5 +1,6 @@
 import { MCPServer, Tool, DependencyCheck } from '../../base/src/server';
 import type { Octokit } from 'octokit';
+import { loadGitHubAppConfig, getGitHubInstallationToken, GitHubAppConfigError } from './github-app-auth';
 
 type OctokitConstructor = new (options: { auth: string }) => Octokit;
 
@@ -30,9 +31,10 @@ async function loadOctokitConstructor(): Promise<OctokitConstructor> {
  * - github.mergePullRequest
  * 
  * Authentication:
- * - Supports GitHub Personal Access Token (PAT) or GitHub App token
- * - Token should be provided via GITHUB_TOKEN environment variable
- * - In production, token is loaded from AWS Secrets Manager
+ * - Uses GitHub App server-to-server authentication (JWT + installation tokens)
+ * - No Personal Access Tokens (PATs) required
+ * - Installation tokens are generated on-demand per repository
+ * - Credentials loaded from AWS Secrets Manager or environment variables
  * 
  * Error Handling:
  * - Rate limit errors (403 with X-RateLimit-Remaining: 0)
@@ -41,30 +43,56 @@ async function loadOctokitConstructor(): Promise<OctokitConstructor> {
  * - Resource not found (404)
  */
 export class GitHubMCPServer extends MCPServer {
-  private octokit!: Octokit;
+  private octokitCtor!: OctokitConstructor;
   private readonly octokitInit: Promise<void>;
+  private readonly configInit: Promise<void>;
 
   constructor(port: number = 3001) {
     super(port, 'mcp-github', '0.2.0');
     
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-      throw new Error('GITHUB_TOKEN environment variable is required');
-    }
+    // Validate GitHub App configuration on startup
+    this.configInit = (async () => {
+      try {
+        const config = await loadGitHubAppConfig();
+        console.log('[mcp-github] GitHub App authentication configured');
+        console.log(`[mcp-github] App ID: ${config.appId}`);
+      } catch (error) {
+        if (error instanceof GitHubAppConfigError) {
+          console.error('[mcp-github] GitHub App configuration error:', error.message);
+          console.error('\nFor local dev, set environment variables:');
+          console.error('  export GITHUB_APP_ID="..."');
+          console.error('  export GITHUB_APP_PRIVATE_KEY_PEM="..."');
+          console.error('\nFor production, ensure AWS Secrets Manager secret exists:');
+          console.error('  Secret ID: afu9/github/app');
+          console.error('  Required keys: appId, privateKeyPem');
+        } else {
+          console.error('[mcp-github] Unexpected error loading GitHub App config:', error);
+        }
+        throw error;
+      }
+    })();
 
     this.octokitInit = (async () => {
-      const OctokitCtor = await loadOctokitConstructor();
-      this.octokit = new OctokitCtor({ auth: token });
+      this.octokitCtor = await loadOctokitConstructor();
     })();
   }
 
   override start() {
-    this.octokitInit
+    Promise.all([this.configInit, this.octokitInit])
       .then(() => super.start())
       .catch((error) => {
-        this.logger.error('Failed to initialize Octokit', error);
+        this.logger.error('Failed to initialize GitHub MCP Server', error);
         process.exit(1);
       });
+  }
+
+  /**
+   * Create an authenticated Octokit instance for a specific repository
+   * Uses GitHub App installation tokens (generated on-demand)
+   */
+  private async createOctokit(owner: string, repo: string): Promise<Octokit> {
+    const { token } = await getGitHubInstallationToken({ owner, repo });
+    return new this.octokitCtor({ auth: token });
   }
 
   /**
@@ -81,7 +109,7 @@ export class GitHubMCPServer extends MCPServer {
     const githubApiCheck = await this.checkGitHubAPI();
     checks.set('github_api', githubApiCheck);
 
-    // Check 3: Authentication token validity
+    // Check 3: GitHub App configuration validity
     const authCheck = await this.checkAuthentication();
     checks.set('authentication', authCheck);
 
@@ -126,67 +154,24 @@ export class GitHubMCPServer extends MCPServer {
   }
 
   /**
-   * Check if authentication token is valid
+   * Check if GitHub App authentication is valid
    */
   private async checkAuthentication(): Promise<DependencyCheck> {
     try {
-      // Check if token is configured
-      const token = process.env.GITHUB_TOKEN;
-      if (!token) {
+      // Check if GitHub App config is loaded
+      const config = await loadGitHubAppConfig();
+      
+      if (!config.appId || !config.privateKeyPem) {
         return {
           status: 'error',
-          message: 'GitHub token not configured',
+          message: 'GitHub App configuration incomplete',
         };
       }
 
-      // Verify token format (basic check)
-      if (token.length < 10) {
-        return {
-          status: 'error',
-          message: 'Invalid token format',
-        };
-      }
-
-      // Optional: Try to get rate limit to verify token validity
-      // This makes an actual API call, so it's more thorough but slower
-      try {
-        const startTime = Date.now();
-        const { data } = await this.octokit.rest.rateLimit.get();
-        const latency = Date.now() - startTime;
-
-        // Check if we're close to rate limit
-        const remaining = data.rate.remaining;
-        const limit = data.rate.limit;
-        const percentRemaining = (remaining / limit) * 100;
-
-        if (percentRemaining < 10) {
-          return {
-            status: 'warning',
-            message: `Low rate limit: ${remaining}/${limit} remaining`,
-            latency_ms: latency,
-          };
-        }
-
-        return {
-          status: 'ok',
-          message: `Token valid, ${remaining}/${limit} requests remaining`,
-          latency_ms: latency,
-        };
-      } catch (apiError: any) {
-        // If rate limit check fails, token is likely invalid
-        if (apiError.status === 401) {
-          return {
-            status: 'error',
-            message: 'Invalid or expired token',
-          };
-        }
-        
-        // For other errors, token exists but API check failed
-        return {
-          status: 'warning',
-          message: `Token configured but validation failed: ${apiError.message}`,
-        };
-      }
+      return {
+        status: 'ok',
+        message: `GitHub App configured (App ID: ${config.appId})`,
+      };
     } catch (error) {
       return {
         status: 'error',
@@ -420,7 +405,8 @@ export class GitHubMCPServer extends MCPServer {
       
       this.logger.info('Fetching GitHub issue', { owner, repo, issueNumber: number });
 
-      const { data } = await this.octokit.rest.issues.get({
+      const octokit = await this.createOctokit(owner, repo);
+      const { data } = await octokit.rest.issues.get({
         owner,
         repo,
         issue_number: number,
@@ -450,7 +436,8 @@ export class GitHubMCPServer extends MCPServer {
     return this.handleGitHubAPICall(async () => {
       const { owner, repo, state = 'open', labels } = args;
       
-      const { data } = await this.octokit.rest.issues.listForRepo({
+      const octokit = await this.createOctokit(owner, repo);
+      const { data } = await octokit.rest.issues.listForRepo({
         owner,
         repo,
         state: state as any,
@@ -475,8 +462,10 @@ export class GitHubMCPServer extends MCPServer {
 
       this.logger.info('Creating branch', { owner, repo, branch, from });
 
+      const octokit = await this.createOctokit(owner, repo);
+
       // Get the SHA of the base ref
-      const { data: refData } = await this.octokit.rest.git.getRef({
+      const { data: refData } = await octokit.rest.git.getRef({
         owner,
         repo,
         ref: `heads/${from}`,
@@ -485,7 +474,7 @@ export class GitHubMCPServer extends MCPServer {
       const sha = refData.object.sha;
 
       // Create the new branch
-      const { data } = await this.octokit.rest.git.createRef({
+      const { data } = await octokit.rest.git.createRef({
         owner,
         repo,
         ref: `refs/heads/${branch}`,
@@ -517,8 +506,10 @@ export class GitHubMCPServer extends MCPServer {
     return this.handleGitHubAPICall(async () => {
       const { owner, repo, branch, message, files } = args;
 
+      const octokit = await this.createOctokit(owner, repo);
+
       // Get the current commit SHA of the branch
-      const { data: refData } = await this.octokit.rest.git.getRef({
+      const { data: refData } = await octokit.rest.git.getRef({
         owner,
         repo,
         ref: `heads/${branch}`,
@@ -527,7 +518,7 @@ export class GitHubMCPServer extends MCPServer {
       const currentCommitSha = refData.object.sha;
 
       // Get the tree SHA of the current commit
-      const { data: commitData } = await this.octokit.rest.git.getCommit({
+      const { data: commitData } = await octokit.rest.git.getCommit({
         owner,
         repo,
         commit_sha: currentCommitSha,
@@ -543,7 +534,7 @@ export class GitHubMCPServer extends MCPServer {
           const isBase64 = /^[A-Za-z0-9+/=]+$/.test(file.content.replace(/\s/g, ''));
           const encoding = isBase64 && file.content.length > 100 ? 'base64' : 'utf-8';
           
-          const { data: blob } = await this.octokit.rest.git.createBlob({
+          const { data: blob } = await octokit.rest.git.createBlob({
             owner,
             repo,
             content: file.content,
@@ -560,7 +551,7 @@ export class GitHubMCPServer extends MCPServer {
       );
 
       // Create a new tree
-      const { data: newTree } = await this.octokit.rest.git.createTree({
+      const { data: newTree } = await octokit.rest.git.createTree({
         owner,
         repo,
         base_tree: baseTreeSha,
@@ -568,7 +559,7 @@ export class GitHubMCPServer extends MCPServer {
       });
 
       // Create a new commit
-      const { data: newCommit } = await this.octokit.rest.git.createCommit({
+      const { data: newCommit } = await octokit.rest.git.createCommit({
         owner,
         repo,
         message,
@@ -577,7 +568,7 @@ export class GitHubMCPServer extends MCPServer {
       });
 
       // Update the reference
-      await this.octokit.rest.git.updateRef({
+      await octokit.rest.git.updateRef({
         owner,
         repo,
         ref: `heads/${branch}`,
@@ -609,7 +600,8 @@ export class GitHubMCPServer extends MCPServer {
 
       this.logger.info('Creating pull request', { owner, repo, title, head, base });
 
-      const { data } = await this.octokit.rest.pulls.create({
+      const octokit = await this.createOctokit(owner, repo);
+      const { data } = await octokit.rest.pulls.create({
         owner,
         repo,
         title,
@@ -646,7 +638,8 @@ export class GitHubMCPServer extends MCPServer {
     return this.handleGitHubAPICall(async () => {
       const { owner, repo, pull_number, commit_title, commit_message, merge_method = 'merge' } = args;
 
-      const { data } = await this.octokit.rest.pulls.merge({
+      const octokit = await this.createOctokit(owner, repo);
+      const { data } = await octokit.rest.pulls.merge({
         owner,
         repo,
         pull_number,

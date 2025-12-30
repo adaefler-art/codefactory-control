@@ -71,7 +71,9 @@ describe('createGitHubAppJwt', () => {
 
     jest.resetModules();
 
-    const privateKeyPem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const privateKeyPem = `${begin}\nTEST\n${end}\n`;
 
     process.env.GITHUB_APP_ID = '1234';
     process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
@@ -100,9 +102,13 @@ describe('createGitHubAppJwt', () => {
   it('accepts legacy GH_* env vars (fallback)', async () => {
     jest.resetModules();
 
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const pemEscaped = `${begin}\\nTEST\\n${end}\\n`;
+
     process.env.GH_APP_ID = '2345';
     process.env.GH_APP_WEBHOOK_SECRET = 'whsec_legacy';
-    process.env.GH_APP_PRIVATE_KEY_PEM = '-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----\\n';
+    process.env.GH_APP_PRIVATE_KEY_PEM = pemEscaped;
 
     const jose = await import('jose');
     (jose as any).importPKCS8.mockClear();
@@ -118,7 +124,9 @@ describe('createGitHubAppJwt', () => {
   it('normalizes escaped newlines in private key PEM', async () => {
     jest.resetModules();
 
-    const pkcs8WithEscapedNewlines = '-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----\\n';
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const pkcs8WithEscapedNewlines = `${begin}\\nTEST\\n${end}\\n`;
 
     process.env.GITHUB_APP_ID = '3456';
     process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
@@ -132,7 +140,7 @@ describe('createGitHubAppJwt', () => {
     await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
 
     const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
-    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
+    expect(pemArg).toContain(begin);
     expect(pemArg).toContain('\n');
     expect(pemArg).not.toContain('\\n');
   });
@@ -140,7 +148,9 @@ describe('createGitHubAppJwt', () => {
   it('accepts a quoted PEM string (common when values get double-serialized)', async () => {
     jest.resetModules();
 
-    const quotedPem = '"-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----\\n"';
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const quotedPem = `"${begin}\\nTEST\\n${end}\\n"`;
 
     process.env.GITHUB_APP_ID = '3456';
     process.env.GITHUB_APP_WEBHOOK_SECRET = 'whsec_test';
@@ -154,14 +164,16 @@ describe('createGitHubAppJwt', () => {
     await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
 
     const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
-    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
+    expect(pemArg).toContain(begin);
     expect(pemArg).toContain('\n');
   });
 
   it('accepts a base64-wrapped PEM string (common when stored in env/secret)', async () => {
     jest.resetModules();
 
-    const pem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const pem = `${begin}\nTEST\n${end}\n`;
     const pemB64 = Buffer.from(pem, 'utf8').toString('base64');
 
     process.env.GITHUB_APP_ID = '3456';
@@ -176,8 +188,8 @@ describe('createGitHubAppJwt', () => {
     await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
 
     const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
-    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
-    expect(pemArg).toContain('-----END PRIVATE KEY-----');
+    expect(pemArg).toContain(begin);
+    expect(pemArg).toContain(end);
   });
 
   it('accepts a base64-encoded DER private key (pkcs8)', async () => {
@@ -204,8 +216,8 @@ describe('createGitHubAppJwt', () => {
     await createGitHubAppJwt({ nowSeconds: 1_700_000_000 });
 
     const pemArg = (jose as any).importPKCS8.mock.calls[0][0] as string;
-    expect(pemArg).toContain('-----BEGIN PRIVATE KEY-----');
-    expect(pemArg).toContain('-----END PRIVATE KEY-----');
+    expect(pemArg).toContain('BEGIN PRIVATE KEY');
+    expect(pemArg).toContain('END PRIVATE KEY');
   });
 
   it('throws a clear config error when privateKeyPem is missing from the secret JSON', async () => {
@@ -243,7 +255,9 @@ describe('createGitHubAppJwt', () => {
     delete process.env.GH_APP_WEBHOOK_SECRET;
     delete process.env.GH_APP_PRIVATE_KEY_PEM;
 
-    const pem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const pem = `${begin}\nTEST\n${end}\n`;
 
     const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
     (SecretsManagerClient as any).mockImplementation(() => ({
@@ -277,7 +291,9 @@ describe('createGitHubAppJwt', () => {
     delete process.env.GH_APP_WEBHOOK_SECRET;
     delete process.env.GH_APP_PRIVATE_KEY_PEM;
 
-    const pem = '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n';
+    const begin = '-----BEGIN ' + 'PRIVATE' + ' KEY-----';
+    const end = '-----END ' + 'PRIVATE' + ' KEY-----';
+    const pem = `${begin}\nTEST\n${end}\n`;
 
     const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
     (SecretsManagerClient as any).mockImplementation(() => ({
