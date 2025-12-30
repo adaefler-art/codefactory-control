@@ -688,10 +688,11 @@ function checkSecretFiles(): ValidationResult {
       // Simple glob matching for common patterns
       // Handles: *.ext, prefix*, *suffix, exact-match
       if (pattern.includes('*')) {
-        const regexPattern = pattern
-          .replace(/\./g, '\\.')  // Escape dots
-          .replace(/\*+/g, '.*'); // Convert * to .*
-        const regex = new RegExp(`^${regexPattern}$`);
+        // Escape special regex characters to prevent injection
+        const escapedPattern = pattern
+          .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // Escape all regex special chars
+          .replace(/\*/g, '.*');  // Then convert glob * to regex .*
+        const regex = new RegExp(`^${escapedPattern}$`);
         return regex.test(filename);
       } else {
         // Exact match
