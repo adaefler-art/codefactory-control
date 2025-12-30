@@ -1,9 +1,9 @@
 ---
-Doc-ID: GUARDRAIL-CONSISTENCY-V1
-Version: 1.0
-Status: ACTIVE
-Last-Updated: 2025-12-25
-Canonical-Copy: docs/canon/SCOPE_GUARD.md
+Doc-ID: SCOPE-GUARD-V06
+Version: 0.6
+Status: CANONICAL
+Last-Updated: 2025-12-30
+Original-Source: docs/guardrails/GUARDRAIL_CONSISTENCY_CANONICALS.md
 ---
 
 # AFU-9 Guardrail – Consistency Canonicals (v1)
