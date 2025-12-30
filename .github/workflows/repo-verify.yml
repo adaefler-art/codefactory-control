@@ -42,6 +42,52 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build and verify clean tree (I671)
+        id: clean_tree_check
+        shell: bash
+        run: |
+          echo "🔍 I671 (E67) — Build Determinism & Clean Tree Check"
+          echo ""
+          
+          # Build root project (TypeScript/CDK)
+          echo "Building root project..."
+          npm run build
+          
+          # Check for uncommitted changes after root build
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ FAILED: Git tree is not clean after root build"
+            echo ""
+            echo "Uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Diff:"
+            git --no-pager diff
+            echo ""
+            echo "ERROR: Build artifacts detected in working tree"
+            echo "Please verify .gitignore includes all build outputs"
+            exit 1
+          fi
+          
+          echo "✅ Root build: Git tree clean"
+          echo ""
+          
+          # Install control-center dependencies
+          echo "Installing control-center dependencies..."
+          npm --prefix control-center ci
+          
+          # Verify still clean after control-center install
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ FAILED: Git tree is not clean after control-center npm ci"
+            echo ""
+            echo "Uncommitted changes:"
+            git status --porcelain
+            exit 1
+          fi
+          
+          echo "✅ Control-center install: Git tree clean"
+          echo ""
+          echo "✅ All builds completed with clean git tree"
+
       - name: Validate MCP Catalog
         run: npm --prefix control-center run validate-mcp-catalog
 
@@ -109,8 +155,12 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Verified Checks:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Build Determinism:** Git tree clean after builds (I671/E67)" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Route-Map Check:** All client API calls have corresponding route definitions" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Forbidden Paths Check:** No build artifacts (.next/, .worktrees/, standalone/) committed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Tracked Artifacts Check:** No artifact files/directories committed (I671/E67)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Large File Check:** No excessive file sizes (>10MB allowlist)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ **Secret Files Check:** No secrets or keys committed (I661/E66)" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Empty Folders Check:** No unnecessary empty directories in the repository" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Unreferenced Routes Check:** API routes that may be unused (warning only)" >> $GITHUB_STEP_SUMMARY
           echo "- ✓ **Mixed-Scope Check:** Frontend and infrastructure changes are properly separated" >> $GITHUB_STEP_SUMMARY
@@ -133,6 +183,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "📖 See [Repository Canon Documentation](https://github.com/${{ github.repository }}/blob/main/docs/lawbook/repo-canon.md) for details" >> $GITHUB_STEP_SUMMARY
+          echo "📖 See [Build Determinism Policy](https://github.com/${{ github.repository }}/blob/main/docs/v065/DETERMINISM.md) for determinism requirements (I671/E67)" >> $GITHUB_STEP_SUMMARY
           echo "📖 See [API Routes Documentation](https://github.com/${{ github.repository }}/blob/main/docs/API_ROUTES.md) for API route details" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📋 Full verification output available in workflow logs" >> $GITHUB_STEP_SUMMARY
