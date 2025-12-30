@@ -169,10 +169,6 @@ commits = [
   # Example: "abc123def456..."
 ]
 
-# Regex target - what content to scan in git objects
-[allowlist.regexTarget]
-description = "Allowlist certain patterns in specific contexts"
-
 # Stop words - common false positives
 stopwords = [
   '''example''',
