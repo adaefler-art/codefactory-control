@@ -2,6 +2,11 @@
  * API Route: POST /api/integrations/github/runner/dispatch
  * 
  * E64.1: Dispatch a GitHub Actions workflow run
+ * 
+ * Request body accepts either:
+ * - `workflowIdOrFile` (preferred, matches GitHub API terminology)
+ * - `workflow` (legacy/convenience alias)
+ * Only one should be provided. If both are present, `workflowIdOrFile` takes precedence.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,6 +19,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Validate input
+    // Support both workflowIdOrFile (preferred) and workflow (alias) for flexibility
     const input: DispatchWorkflowInput = {
       owner: body.owner,
       repo: body.repo,

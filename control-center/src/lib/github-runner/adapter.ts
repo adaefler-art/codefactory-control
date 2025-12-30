@@ -105,48 +105,73 @@ export async function dispatchWorkflow(
 
   // GitHub workflow_dispatch returns 204 with no body
   // We need to poll for the run to get the run ID
-  // Wait a short time for the run to appear
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // Wait for run to appear with configurable delay and retries
+  const initialDelayMs = parseInt(process.env.GITHUB_DISPATCH_DELAY_MS || '2000', 10);
+  const maxRetries = parseInt(process.env.GITHUB_DISPATCH_MAX_RETRIES || '3', 10);
+  const perPage = parseInt(process.env.GITHUB_DISPATCH_LOOKUP_PER_PAGE || '20', 10);
+  
+  let githubRunId: number | null = null;
+  let runUrl: string | null = null;
+  const dispatchTimestamp = new Date();
 
-  // List recent workflow runs to find the one we just dispatched
-  const runsUrl = `${GH_API}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/actions/workflows/${encodeURIComponent(input.workflowIdOrFile)}/runs?per_page=5`;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      console.log(`[dispatchWorkflow] Retry ${attempt}/${maxRetries} to find workflow run`);
+    }
+    
+    await new Promise((resolve) => setTimeout(resolve, initialDelayMs * (attempt + 1)));
 
-  const runsRes = await fetch(runsUrl, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': API_VERSION,
-      'User-Agent': USER_AGENT,
-    },
-  });
+    // List recent workflow runs to find the one we just dispatched
+    // Use higher per_page to handle concurrent dispatches
+    const runsUrl = `${GH_API}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/actions/workflows/${encodeURIComponent(input.workflowIdOrFile)}/runs?per_page=${perPage}`;
 
-  if (!runsRes.ok) {
-    const text = await runsRes.text().catch(() => '');
-    throw new Error(
-      `Failed to list workflow runs (${runsRes.status}): ${text}`
+    const runsRes = await fetch(runsUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': API_VERSION,
+        'User-Agent': USER_AGENT,
+      },
+    });
+
+    if (!runsRes.ok) {
+      const text = await runsRes.text().catch(() => '');
+      throw new Error(
+        `Failed to list workflow runs (${runsRes.status}): ${text}`
+      );
+    }
+
+    const runsData = (await runsRes.json()) as {
+      workflow_runs: Array<{
+        id: number;
+        html_url: string;
+        status: GitHubRunStatus;
+        created_at: string;
+      }>;
+    };
+
+    // Find the most recent run created after dispatch time
+    // This handles concurrent dispatches more reliably
+    const candidateRuns = runsData.workflow_runs.filter(
+      (run) => new Date(run.created_at) >= new Date(dispatchTimestamp.getTime() - 5000)
     );
+
+    if (candidateRuns.length > 0) {
+      const latestRun = candidateRuns[0];
+      githubRunId = latestRun.id;
+      runUrl = latestRun.html_url;
+      break;
+    }
   }
 
-  const runsData = (await runsRes.json()) as {
-    workflow_runs: Array<{
-      id: number;
-      html_url: string;
-      status: GitHubRunStatus;
-      created_at: string;
-    }>;
-  };
-
-  // Find the most recent run (should be ours)
-  const latestRun = runsData.workflow_runs[0];
-  if (!latestRun) {
+  if (!githubRunId || !runUrl) {
     throw new Error(
-      'Workflow dispatched successfully but no runs found. The workflow may be queued.'
+      `Workflow dispatched successfully but run not found after ${maxRetries} attempts. ` +
+      `The workflow may be queued or GitHub API may be delayed. ` +
+      `Try polling later with the workflow file: ${input.workflowIdOrFile} ref: ${input.ref}`
     );
   }
-
-  const githubRunId = latestRun.id;
-  const runUrl = latestRun.html_url;
 
   console.log('[dispatchWorkflow] Workflow dispatched:', {
     githubRunId,
@@ -371,8 +396,14 @@ export async function ingestRun(
 
   // Get annotations (check runs)
   const annotations: WorkflowAnnotation[] = [];
-  // Note: Annotations come from check runs, which require additional API calls
-  // For MVP, we'll leave this as an empty array and can enhance later
+  // TODO(E64.1-enhancement): Implement annotations via Check Runs API
+  // Required API calls:
+  // 1. GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs
+  // 2. Parse annotations from check_run.output.annotations[]
+  // 3. Map to WorkflowAnnotation type (level, message, path, line)
+  // Note: This requires additional API calls and should be implemented
+  // as a follow-up enhancement to avoid initial implementation complexity.
+  // For MVP, we return an empty array.
 
   // Calculate summary
   const successfulJobs = jobs.filter(

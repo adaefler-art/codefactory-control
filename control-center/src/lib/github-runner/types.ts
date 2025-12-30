@@ -300,6 +300,11 @@ export interface GitHubRunRecord {
 
 /**
  * Helper to normalize GitHub run status to internal status
+ * 
+ * Note on 'skipped': Skipped workflows are treated as SUCCEEDED because
+ * they completed without errors. A skipped workflow means all steps were
+ * intentionally bypassed (e.g., via conditions), which is a successful outcome.
+ * This differs from 'cancelled' which indicates user intervention.
  */
 export function normalizeGitHubRunStatus(
   status: GitHubRunStatus,

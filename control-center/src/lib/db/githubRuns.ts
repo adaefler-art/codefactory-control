@@ -81,7 +81,10 @@ export async function createRunRecord(
   runUrl: string
 ): Promise<GitHubRunRecord> {
   const now = new Date().toISOString();
-  const runId = `gh-${input.correlationId}-${Date.now()}`;
+  // Generate unique run ID: gh-{correlationId}-{timestamp}-{random}
+  // Prevents collisions in high-concurrency scenarios
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  const runId = `gh-${input.correlationId}-${Date.now()}-${randomSuffix}`;
   
   const spec = {
     owner: input.owner,
