@@ -1,8 +1,8 @@
 import { Octokit } from "octokit";
+import { getGitHubInstallationToken } from "./github-app-auth";
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
 const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 /**
  * Minimal issue fields returned by listIssuesByLabel
@@ -53,20 +53,21 @@ export interface UpdateIssueResult {
 }
 
 /**
+ * Create an authenticated Octokit instance using GitHub App authentication
+ */
+async function createAuthenticatedOctokit(owner: string, repo: string): Promise<Octokit> {
+  const { token } = await getGitHubInstallationToken({ owner, repo });
+  return new Octokit({ auth: token });
+}
+
+/**
  * Creates a new GitHub issue
  * @param params - Issue creation parameters
  * @returns The created issue with URL and number
  */
 export async function createIssue(params: CreateIssueParams): Promise<CreateIssueResult> {
-  if (!GITHUB_TOKEN) {
-    console.error("GITHUB_TOKEN environment variable is not configured");
-    throw new Error("GITHUB_TOKEN is not configured");
-  }
-
   try {
-    const octokit = new Octokit({
-      auth: GITHUB_TOKEN,
-    });
+    const octokit = await createAuthenticatedOctokit(GITHUB_OWNER, GITHUB_REPO);
 
     const { title, body, labels = [] } = params;
 
@@ -93,7 +94,7 @@ export async function createIssue(params: CreateIssueParams): Promise<CreateIssu
     });
     
     if (error instanceof Error && error.message.includes("Bad credentials")) {
-      throw new Error("GitHub-Token ist ungültig");
+      throw new Error("GitHub App authentication failed");
     }
     
     if (error instanceof Error && error.message.includes("Not Found")) {
@@ -116,15 +117,8 @@ export async function createIssue(params: CreateIssueParams): Promise<CreateIssu
  * @returns The updated issue with URL and number
  */
 export async function updateIssue(params: UpdateIssueParams): Promise<UpdateIssueResult> {
-  if (!GITHUB_TOKEN) {
-    console.error("GITHUB_TOKEN environment variable is not configured");
-    throw new Error("GITHUB_TOKEN is not configured");
-  }
-
   try {
-    const octokit = new Octokit({
-      auth: GITHUB_TOKEN,
-    });
+    const octokit = await createAuthenticatedOctokit(GITHUB_OWNER, GITHUB_REPO);
 
     const { number, title, body, labels } = params;
 
@@ -171,7 +165,7 @@ export async function updateIssue(params: UpdateIssueParams): Promise<UpdateIssu
     });
     
     if (error instanceof Error && error.message.includes("Bad credentials")) {
-      throw new Error("GitHub-Token ist ungültig");
+      throw new Error("GitHub App authentication failed");
     }
     
     if (error instanceof Error && error.message.includes("Not Found")) {
@@ -192,15 +186,8 @@ export async function updateIssue(params: UpdateIssueParams): Promise<UpdateIssu
  * @returns Array of minimal issue objects
  */
 export async function listIssuesByLabel(label: string): Promise<MinimalIssue[]> {
-  if (!GITHUB_TOKEN) {
-    console.error("GITHUB_TOKEN environment variable is not configured");
-    throw new Error("GITHUB_TOKEN is not configured");
-  }
-
   try {
-    const octokit = new Octokit({
-      auth: GITHUB_TOKEN,
-    });
+    const octokit = await createAuthenticatedOctokit(GITHUB_OWNER, GITHUB_REPO);
 
     console.log(`Fetching issues with label ${label} from ${GITHUB_OWNER}/${GITHUB_REPO}...`);
     const { data: issues } = await octokit.rest.issues.listForRepo({
@@ -232,7 +219,7 @@ export async function listIssuesByLabel(label: string): Promise<MinimalIssue[]> 
     });
     
     if (error instanceof Error && error.message.includes("Bad credentials")) {
-      throw new Error("GitHub-Token ist ungültig");
+      throw new Error("GitHub App authentication failed");
     }
     
     if (error instanceof Error && error.message.includes("Not Found")) {

@@ -43,7 +43,7 @@ Expected JSON shape:
 {
   "appId": "123456",
   "webhookSecret": "<github webhook secret>",
-  "privateKeyPem": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+  "privateKeyPem": "__PASTE_GITHUB_APP_PRIVATE_KEY_PEM_HERE__"
 }
 ```
 

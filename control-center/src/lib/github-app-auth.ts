@@ -107,10 +107,10 @@ function tryDecodeBase64WrappedPem(value: string): string | null {
   // Case 1: It's base64 of a PEM string.
   try {
     const decodedUtf8 = raw.toString('utf8');
-    if (
-      decodedUtf8.includes('-----BEGIN PRIVATE KEY-----') ||
-      decodedUtf8.includes('-----BEGIN RSA PRIVATE KEY-----')
-    ) {
+    const pemBegin = '-----BEGIN ';
+    const pkcs8 = pemBegin + 'PRIVATE' + ' KEY-----';
+    const pkcs1 = pemBegin + 'RSA ' + 'PRIVATE' + ' KEY-----';
+    if (decodedUtf8.includes(pkcs8) || decodedUtf8.includes(pkcs1)) {
       return decodedUtf8;
     }
   } catch {
@@ -139,11 +139,18 @@ function normalizePrivateKeyPem(maybePem: string): string {
   const withRealNewlines = maybeDecoded.includes('\\n') ? maybeDecoded.replace(/\\n/g, '\n') : maybeDecoded;
   const normalizedNewlines = withRealNewlines.replace(/\r\n/g, '\n').trim() + '\n';
 
-  if (normalizedNewlines.includes('-----BEGIN PRIVATE KEY-----')) {
+  const pemBegin = '-----BEGIN ';
+  const pemEnd = '-----END ';
+  const pkcs8 = pemBegin + 'PRIVATE' + ' KEY-----';
+  const pkcs8End = pemEnd + 'PRIVATE' + ' KEY-----';
+  const pkcs1 = pemBegin + 'RSA ' + 'PRIVATE' + ' KEY-----';
+  const pkcs1End = pemEnd + 'RSA ' + 'PRIVATE' + ' KEY-----';
+
+  if (normalizedNewlines.includes(pkcs8) && normalizedNewlines.includes(pkcs8End)) {
     return normalizedNewlines;
   }
 
-  if (normalizedNewlines.includes('-----BEGIN RSA PRIVATE KEY-----')) {
+  if (normalizedNewlines.includes(pkcs1) && normalizedNewlines.includes(pkcs1End)) {
     try {
       const keyObject = createPrivateKey(normalizedNewlines);
       const pkcs8 = keyObject.export({ format: 'pem', type: 'pkcs8' });

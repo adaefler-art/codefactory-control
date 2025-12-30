@@ -19,27 +19,34 @@ The GitHub MCP Server exposes GitHub API operations through a JSON-RPC 2.0 inter
 
 ### Authentication
 
-The server supports two authentication methods:
+The server uses **GitHub App server-to-server authentication** exclusively:
 
-- **Personal Access Token (PAT)**: GitHub personal access token with appropriate scopes
-- **GitHub App Token**: Token generated from a GitHub App installation
+- **GitHub App**: JWT + installation tokens (recommended, production-ready)
+- **No PAT support**: Personal Access Tokens are not supported
 
 #### Local Development
 
-Set the `GITHUB_TOKEN` environment variable:
+Set GitHub App credentials via environment variables:
 
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
+export GITHUB_APP_ID="123456"
+export GITHUB_APP_PRIVATE_KEY_PEM="__PASTE_GITHUB_APP_PRIVATE_KEY_PEM_HERE__"
 ```
 
 #### Production (AWS ECS)
 
-In production, the token is automatically loaded from AWS Secrets Manager:
+In production, credentials are automatically loaded from AWS Secrets Manager:
 
-- **Secret Name**: `afu9/github`
-- **Secret Key**: `token`
+- **Secret Name**: `afu9/github/app` (configurable via `GITHUB_APP_SECRET_ID`)
+- **Secret Format**:
+  ```json
+  {
+    "appId": "123456",
+    "privateKeyPem": "__PASTE_GITHUB_APP_PRIVATE_KEY_PEM_HERE__"
+  }
+  ```
 
-The ECS task definition is configured to inject this secret as the `GITHUB_TOKEN` environment variable.
+The ECS task definition is configured with IAM permissions to read this secret.
 
 ### Error Handling
 
@@ -107,7 +114,8 @@ npm install
 Start the server with auto-reload:
 
 ```bash
-export GITHUB_TOKEN=your_token_here
+export GITHUB_APP_ID="123456"
+export GITHUB_APP_PRIVATE_KEY_PEM="__PASTE_GITHUB_APP_PRIVATE_KEY_PEM_HERE__"
 npm run dev
 ```
 
@@ -137,7 +145,8 @@ Run the container:
 docker run -d \
   --name mcp-github \
   -p 3001:3001 \
-  -e GITHUB_TOKEN=your_token_here \
+  -e GITHUB_APP_ID="123456" \
+  -e GITHUB_APP_PRIVATE_KEY_PEM="..." \
   afu9/mcp-github:latest
 ```
 
@@ -289,24 +298,29 @@ curl -X POST http://localhost:3001 \
   }'
 ```
 
-## Required GitHub Token Scopes
+## Required GitHub App Permissions
 
-Different operations require different token permissions:
+Different operations require different permissions:
 
-| Tool | Required Scopes |
-|------|----------------|
-| `getIssue` | `repo` (private repos) or none (public repos) |
-| `listIssues` | `repo` (private repos) or none (public repos) |
-| `createBranch` | `repo` |
-| `commitFileChanges` | `repo` |
-| `createPullRequest` | `repo` or `public_repo` |
-| `mergePullRequest` | `repo` |
+| Tool | Required Permissions |
+|------|---------------------|
+| `getIssue` | **Issues**: Read |
+| `listIssues` | **Issues**: Read |
+| `createBranch` | **Contents**: Read & Write |
+| `commitFileChanges` | **Contents**: Read & Write |
+| `createPullRequest` | **Pull Requests**: Read & Write, **Contents**: Read |
+| `mergePullRequest` | **Pull Requests**: Read & Write |
 
-For GitHub Apps, the following permissions are required:
+For GitHub Apps, configure these permissions in your app settings:
 
 - **Contents**: Read & Write (for branches and commits)
 - **Pull Requests**: Read & Write (for PR operations)
-- **Issues**: Read (for issue operations)
+- **Issues**: Read & Write (for issue operations)
+- **Metadata**: Read (automatic, required)
+
+## Creating a GitHub App
+
+See the comprehensive guide in `docs/v065/GITHUB_AUTH_APP_ONLY.md` for step-by-step instructions on creating and configuring a GitHub App for AFU-9.
 
 ## Adding New Tools
 
@@ -353,18 +367,30 @@ The server integrates with the AFU-9 Control Center, which can be tested end-to-
 
 ### Server won't start
 
-**Problem**: Server fails to start with "GITHUB_TOKEN environment variable is required"
+**Problem**: Server fails to start with GitHub App configuration errors
 
-**Solution**: Set the `GITHUB_TOKEN` environment variable or ensure AWS Secrets Manager is configured correctly.
+**Solution**: 
+- Set `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY_PEM` environment variables for local dev
+- Ensure AWS Secrets Manager secret `afu9/github/app` exists and is accessible in production
+- Verify IAM permissions allow reading the secret
 
 ### Rate limit errors
 
 **Problem**: Getting 403 errors with rate limit messages
 
 **Solution**: 
-- Use a GitHub App token instead of PAT for higher rate limits
-- Wait for the rate limit to reset
-- Implement request queuing in your application
+- GitHub Apps have higher rate limits than PATs (5,000 requests/hour per installation)
+- Installation tokens are repository-scoped and reset independently
+- Wait for the rate limit to reset or use different repositories
+
+### Installation not found
+
+**Problem**: "Failed to get installation for owner/repo"
+
+**Solution**:
+- Install the GitHub App on the target repository
+- Verify the app has access to the organization/user
+- Check that the repository owner and name are correct
 
 ### Permission errors
 
@@ -406,11 +432,11 @@ In production (ECS), logs are sent to CloudWatch Logs:
 
 ## Security
 
-- **Never commit tokens**: Always use environment variables or Secrets Manager
-- **Use least privilege**: Grant only the minimum required scopes
-- **Rotate tokens regularly**: Implement a token rotation policy
+- **Never commit private keys**: Always use environment variables or Secrets Manager
+- **Use least privilege**: Grant only the minimum required permissions
+- **Rotate keys regularly**: Implement a key rotation policy (see docs/v065/GITHUB_AUTH_APP_ONLY.md)
 - **Audit access**: Review GitHub audit logs regularly
-- **Use GitHub Apps**: Prefer GitHub Apps over PATs for production use
+- **Installation tokens**: Short-lived (1 hour), automatically rotated per operation
 
 ## Performance
 

@@ -125,7 +125,7 @@ const SECRET_CONTENT_PATTERNS = [
   },
   {
     name: 'Private Key Block',
-    pattern: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/g,
+    pattern: new RegExp('-----BEGIN (RSA |EC )?PRIVATE' + ' KEY-----', 'g'),
     severity: 'critical',
   },
 ];

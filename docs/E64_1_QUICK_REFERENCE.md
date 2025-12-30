@@ -101,7 +101,7 @@ completed + cancelled → CANCELLED
 ```bash
 # GitHub App Auth (Production: AWS Secrets Manager)
 GITHUB_APP_ID=123456
-GITHUB_APP_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----..."
+GITHUB_APP_PRIVATE_KEY_PEM="__PASTE_GITHUB_APP_PRIVATE_KEY_PEM_HERE__"
 
 # Dispatch Tuning (optional)
 GITHUB_DISPATCH_DELAY_MS=2000          # Default: 2000ms
