@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import DeployStatusBadge from "./DeployStatusBadge";
+import { API_ROUTES } from "@/lib/api-routes";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -22,7 +24,7 @@ export default function Navigation() {
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", {
+      await fetch(API_ROUTES.auth.logout, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -52,6 +54,11 @@ export default function Navigation() {
 
           {/* Navigation Links */}
           <div className="flex items-center space-x-1">
+            {/* Deploy Status Badge */}
+            <Link href="/deploy/status" className="mr-2">
+              <DeployStatusBadge env="prod" />
+            </Link>
+            
             {navItems.map((item) => (
               <Link
                 key={item.href}
