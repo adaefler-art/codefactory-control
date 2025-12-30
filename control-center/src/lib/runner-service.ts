@@ -34,6 +34,27 @@ const EXAMPLE_PLAYBOOKS: Playbook[] = [
     },
   },
   {
+    id: 'hello-world-fail',
+    name: 'Hello World (Fail)',
+    description: 'Hello world example with a guaranteed failing step',
+    spec: {
+      title: 'Hello World Run (Fail)',
+      runtime: 'dummy',
+      steps: [
+        {
+          name: 'Print Hello',
+          shell: 'bash',
+          command: 'echo "Hello, World!"',
+        },
+        {
+          name: 'Forced Fail',
+          shell: 'bash',
+          command: 'echo "FORCED FAILURE: hello-world-fail" 1>&2; exit 1',
+        },
+      ],
+    },
+  },
+  {
     id: 'multi-step-build',
     name: 'Multi-Step Build',
     description: 'Example multi-step build process',
@@ -199,14 +220,36 @@ export class RunnerService {
     const spec = run.spec_json as RunSpec;
 
     // Simulate step execution
+    let failedAtStepIdx: number | null = null;
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
+      const specStep = spec.steps[i];
       
       // Mark step as running
       await dao.updateStep(runId, i, 'RUNNING');
 
+      const stepStart = Date.now();
       // Simulate execution delay
       await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const isForcedFailPlaybook = run.playbook_id === 'hello-world-fail';
+      const shouldFail =
+        (isForcedFailPlaybook && i === 1) ||
+        /\bFORCE_FAIL\b|process\.exit\(1\)|\bexit\s+1\b/i.test(specStep?.command || '');
+
+      if (shouldFail) {
+        failedAtStepIdx = i;
+        await dao.updateStep(
+          runId,
+          i,
+          'FAILED',
+          1,
+          Date.now() - stepStart,
+          '',
+          '[Dummy] FORCED FAILURE: This step is designed to fail (hello-world-fail).'
+        );
+        break;
+      }
 
       // Mark step as succeeded with dummy output
       await dao.updateStep(
@@ -214,14 +257,26 @@ export class RunnerService {
         i,
         'SUCCEEDED',
         0,
-        100,
+        Date.now() - stepStart,
         `[Dummy] Output for step: ${step.name}`,
         ''
       );
     }
 
-    // Mark run as succeeded
-    await dao.updateRunStatus(runId, 'SUCCEEDED', undefined, new Date());
+    // Mark any remaining steps as skipped after a failure
+    if (failedAtStepIdx !== null) {
+      for (let i = failedAtStepIdx + 1; i < steps.length; i++) {
+        await dao.updateStep(runId, i, 'SKIPPED');
+      }
+    }
+
+    // Mark run as succeeded/failed
+    await dao.updateRunStatus(
+      runId,
+      failedAtStepIdx !== null ? 'FAILED' : 'SUCCEEDED',
+      undefined,
+      new Date()
+    );
 
     // Reconstruct and return result
     const result = await dao.reconstructRunResult(runId);
