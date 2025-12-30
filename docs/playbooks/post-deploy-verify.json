@@ -1,0 +1,62 @@
+{
+  "metadata": {
+    "id": "post-deploy-verify",
+    "name": "Post-Deploy Verification",
+    "version": "1.0.0",
+    "description": "Verifies critical endpoints and services after deployment to stage or production environments",
+    "environments": ["stage", "prod"],
+    "requiredSecrets": []
+  },
+  "steps": [
+    {
+      "id": "health-check",
+      "title": "Health Endpoint Check",
+      "retries": 2,
+      "input": {
+        "type": "http_check",
+        "url": "${DEPLOY_URL}/api/health",
+        "method": "GET",
+        "expectedStatus": 200,
+        "expectedBodyIncludes": "\"status\":\"ok\"",
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "id": "ready-check",
+      "title": "Readiness Endpoint Check",
+      "retries": 2,
+      "input": {
+        "type": "http_check",
+        "url": "${DEPLOY_URL}/api/ready",
+        "method": "GET",
+        "expectedStatus": 200,
+        "expectedBodyIncludes": "\"ready\":true",
+        "timeoutSeconds": 15
+      }
+    },
+    {
+      "id": "root-page-check",
+      "title": "Root Page Availability",
+      "retries": 1,
+      "input": {
+        "type": "http_check",
+        "url": "${DEPLOY_URL}/",
+        "method": "GET",
+        "expectedStatus": 200,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "id": "api-issues-check",
+      "title": "Issues API Endpoint",
+      "retries": 1,
+      "input": {
+        "type": "http_check",
+        "url": "${DEPLOY_URL}/api/issues",
+        "method": "GET",
+        "expectedStatus": 200,
+        "timeoutSeconds": 15
+      }
+    }
+  ]
+}
