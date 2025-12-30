@@ -187,7 +187,11 @@ npm test
 ### Environment Variables
 
 - `DATABASE_ENABLED`: Enable/disable database persistence (default: false)
-- `NEXT_PUBLIC_APP_URL`: Base URL for health checks (default: http://localhost:3000)
+- `NEXT_PUBLIC_APP_URL`: **REQUIRED for production/staging** - Base URL for health checks (default: http://localhost:3000)
+
+⚠️ **Critical**: In production and staging environments, `NEXT_PUBLIC_APP_URL` must be set to the actual service URL. If not set or left as localhost, health checks will fail and the monitor will return RED status.
+
+See [Environment Configuration Guide](./DEPLOY_STATUS_ENVIRONMENT_CONFIG.md) for detailed setup instructions.
 
 ### Customization
 

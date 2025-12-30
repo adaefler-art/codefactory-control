@@ -65,6 +65,25 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Warn if NEXT_PUBLIC_APP_URL is not set in non-development environments
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  
+  if (isProduction && (!baseUrl || baseUrl.includes('localhost'))) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        route: '/api/deploy/status',
+        message: 'NEXT_PUBLIC_APP_URL not properly configured for production',
+        env,
+        current_value: baseUrl || '(not set)',
+        impact: 'Health checks may fail, causing false RED status',
+        remedy: 'Set NEXT_PUBLIC_APP_URL to the actual service URL in ECS task definition',
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }
+
   // Check if database is enabled
   if (!isDatabaseEnabled()) {
     // Without database, we can still provide basic status from HTTP checks

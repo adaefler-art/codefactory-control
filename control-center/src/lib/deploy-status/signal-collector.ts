@@ -71,6 +71,15 @@ async function fetchWithTimeout(
  * @param pool - Database connection pool (optional, for deploy events)
  * @param options - Collection options
  * @returns StatusSignals with all collected data
+ * 
+ * IMPORTANT: In production/staging environments, NEXT_PUBLIC_APP_URL must be set
+ * to the actual service URL. If not set, it defaults to http://localhost:3000,
+ * which will cause health checks to fail and return RED status.
+ * 
+ * Example:
+ * - Development: NEXT_PUBLIC_APP_URL=http://localhost:3000 (or omit for default)
+ * - Staging: NEXT_PUBLIC_APP_URL=https://control-center.stage.afu9.cloud
+ * - Production: NEXT_PUBLIC_APP_URL=https://control-center.afu9.cloud
  */
 export async function collectStatusSignals(
   pool: Pool | null,
