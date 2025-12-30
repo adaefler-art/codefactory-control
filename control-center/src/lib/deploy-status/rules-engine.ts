@@ -209,6 +209,12 @@ export function determineDeployStatus(
         status: signals.health?.status,
         ok: signals.health?.ok,
         error: signals.health?.error,
+        url: signals.health?.url,
+        base_url: signals.health?.base_url,
+        timeout_ms: signals.health?.timeout_ms,
+        error_name: signals.health?.error_name,
+        error_code: signals.health?.error_code,
+        attempted_urls: signals.health?.attempted_urls,
       },
     });
     return { status: 'RED', reasons, staleness_seconds };
@@ -225,6 +231,12 @@ export function determineDeployStatus(
         ok: signals.ready?.ok,
         ready: signals.ready?.ready,
         error: signals.ready?.error,
+        url: signals.ready?.url,
+        base_url: signals.ready?.base_url,
+        timeout_ms: signals.ready?.timeout_ms,
+        error_name: signals.ready?.error_name,
+        error_code: signals.ready?.error_code,
+        attempted_urls: signals.ready?.attempted_urls,
       },
     });
     return { status: 'RED', reasons, staleness_seconds };

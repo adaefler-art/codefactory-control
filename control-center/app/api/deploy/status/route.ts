@@ -65,24 +65,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Warn if NEXT_PUBLIC_APP_URL is not set in non-development environments
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
-  
-  if (isProduction && (!baseUrl || baseUrl.includes('localhost'))) {
-    console.warn(
-      JSON.stringify({
-        level: 'warn',
-        route: '/api/deploy/status',
-        message: 'NEXT_PUBLIC_APP_URL not properly configured for production',
-        env,
-        current_value: baseUrl || '(not set)',
-        impact: 'Health checks may fail, causing false RED status',
-        remedy: 'Set NEXT_PUBLIC_APP_URL to the actual service URL in ECS task definition',
-        timestamp: new Date().toISOString(),
-      })
-    );
-  }
+  // Note: deploy-status health/ready checks are performed server-side and prefer loopback
+  // to avoid requiring outbound egress just to self-check. Use AFU9_DEPLOY_STATUS_BASE_URL
+  // if you need to override the base URL used for these checks.
 
   // Check if database is enabled
   if (!isDatabaseEnabled()) {

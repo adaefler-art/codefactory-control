@@ -11,6 +11,8 @@ import { Pool } from 'pg';
 import { StatusSignals, DeployEnvironment } from '../contracts/deployStatus';
 import { getLatestDeployEvents } from '../db/deployStatusSnapshots';
 
+const DEFAULT_TIMEOUT_MS = 5000;
+
 /**
  * Signal collection options
  */
@@ -26,8 +28,18 @@ export interface SignalCollectorOptions {
  */
 async function fetchWithTimeout(
   url: string,
-  timeoutMs: number = 5000
-): Promise<{ status: number; ok: boolean; response?: any; error?: string; latency_ms: number }> {
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+): Promise<{
+  status: number;
+  ok: boolean;
+  response?: any;
+  error?: string;
+  error_name?: string;
+  error_code?: string;
+  latency_ms: number;
+  url?: string;
+  timeout_ms?: number;
+}> {
   const startTime = Date.now();
   
   try {
@@ -53,16 +65,79 @@ async function fetchWithTimeout(
       ok: response.ok,
       response: responseData,
       latency_ms,
+      url,
+      timeout_ms: timeoutMs,
     };
   } catch (error) {
     const latency_ms = Date.now() - startTime;
+
+    const anyError = error as any;
+    const anyCause = anyError?.cause as any;
+    const error_name: string | undefined = anyError?.name;
+    const error_code: string | undefined = anyCause?.code ?? anyError?.code;
+    const error_message = error instanceof Error ? error.message : 'Unknown error';
+
     return {
       status: 0,
       ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error_code ? `${error_message} (code=${error_code})` : error_message,
+      error_name,
+      error_code,
       latency_ms,
+      url,
+      timeout_ms: timeoutMs,
     };
   }
+}
+
+function getDeployStatusBaseUrlCandidates(explicitBaseUrl?: string): string[] {
+  if (explicitBaseUrl) {
+    return [explicitBaseUrl];
+  }
+
+  const candidates: string[] = [];
+
+  // Highest precedence: explicit override for the deploy status monitor.
+  const overrideBaseUrl = process.env.AFU9_DEPLOY_STATUS_BASE_URL;
+  if (overrideBaseUrl) {
+    candidates.push(overrideBaseUrl);
+  }
+
+  // Prefer loopback to avoid requiring VPC egress/NAT just to self-check.
+  const port = process.env.PORT || '3000';
+  candidates.push(`http://127.0.0.1:${port}`);
+
+  // Fallback: public URL (may require egress in some ECS/VPC setups).
+  const publicBaseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (publicBaseUrl) {
+    candidates.push(publicBaseUrl);
+  }
+
+  // De-dup while preserving order.
+  return Array.from(new Set(candidates));
+}
+
+async function fetchFromCandidates(
+  path: string,
+  baseUrls: string[],
+  timeoutMs: number
+): Promise<{ result: any; attempted_urls: string[]; base_url?: string }> {
+  const attempted_urls: string[] = [];
+  let lastResult: any;
+
+  for (const baseUrl of baseUrls) {
+    const url = `${baseUrl}${path}`;
+    attempted_urls.push(url);
+    const result = await fetchWithTimeout(url, timeoutMs);
+    lastResult = { ...result, base_url: baseUrl, attempted_urls };
+
+    // If we got an HTTP response, keep it (even if it is non-2xx).
+    if (result.status !== 0) {
+      return { result: lastResult, attempted_urls, base_url: baseUrl };
+    }
+  }
+
+  return { result: lastResult, attempted_urls, base_url: lastResult?.base_url };
 }
 
 /**
@@ -72,14 +147,13 @@ async function fetchWithTimeout(
  * @param options - Collection options
  * @returns StatusSignals with all collected data
  * 
- * IMPORTANT: In production/staging environments, NEXT_PUBLIC_APP_URL must be set
- * to the actual service URL. If not set, it defaults to http://localhost:3000,
- * which will cause health checks to fail and return RED status.
- * 
- * Example:
- * - Development: NEXT_PUBLIC_APP_URL=http://localhost:3000 (or omit for default)
- * - Staging: NEXT_PUBLIC_APP_URL=https://control-center.stage.afu9.cloud
- * - Production: NEXT_PUBLIC_APP_URL=https://control-center.afu9.cloud
+ * Base URL selection (in order):
+ * 1) options.baseUrl (explicit)
+ * 2) AFU9_DEPLOY_STATUS_BASE_URL (explicit override for the monitor)
+ * 3) http://127.0.0.1:${PORT||3000} (preferred: avoids requiring egress/NAT)
+ * 4) NEXT_PUBLIC_APP_URL (fallback: may require egress in some VPC setups)
+ *
+ * If a candidate fails with a network error (status=0), the collector will try the next candidate.
  */
 export async function collectStatusSignals(
   pool: Pool | null,
@@ -87,10 +161,27 @@ export async function collectStatusSignals(
 ): Promise<StatusSignals> {
   const {
     env,
-    baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-    timeout = 5000,
+    baseUrl,
+    timeout = DEFAULT_TIMEOUT_MS,
     includeDeployEvents = true,
   } = options;
+
+  const baseUrlCandidates = getDeployStatusBaseUrlCandidates(baseUrl);
+  const debugEnabled = process.env.AFU9_DEBUG_DEPLOY_STATUS === 'true';
+
+  if (debugEnabled) {
+    console.log(
+      JSON.stringify({
+        level: 'debug',
+        component: 'deploy-status.signal-collector',
+        message: 'Resolved baseUrl candidates for health checks',
+        env,
+        candidates: baseUrlCandidates,
+        timeout_ms: timeout,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }
 
   const signals: StatusSignals = {
     checked_at: new Date().toISOString(),
@@ -98,8 +189,8 @@ export async function collectStatusSignals(
 
   // Collect health check signal
   try {
-    const healthResult = await fetchWithTimeout(`${baseUrl}/api/health`, timeout);
-    signals.health = healthResult;
+    const { result } = await fetchFromCandidates('/api/health', baseUrlCandidates, timeout);
+    signals.health = result;
   } catch (error) {
     signals.health = {
       status: 0,
@@ -111,10 +202,10 @@ export async function collectStatusSignals(
 
   // Collect ready check signal
   try {
-    const readyResult = await fetchWithTimeout(`${baseUrl}/api/ready`, timeout);
+    const { result } = await fetchFromCandidates('/api/ready', baseUrlCandidates, timeout);
     signals.ready = {
-      ...readyResult,
-      ready: readyResult.ok && readyResult.response?.ready === true,
+      ...result,
+      ready: result.ok && result.response?.ready === true,
     };
   } catch (error) {
     signals.ready = {
