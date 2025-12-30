@@ -21,6 +21,23 @@ import { GET as getRunDetail } from '../../app/api/runs/[runId]/route';
 import { POST as executeRun } from '../../app/api/runs/[runId]/execute/route';
 import { POST as rerunRun } from '../../app/api/runs/[runId]/rerun/route';
 
+const mockRunsDAO = {
+  listRunsByIssue: jest.fn(),
+  getRun: jest.fn(),
+  reconstructRunResult: jest.fn(),
+  createRun: jest.fn(),
+  transitionToRunningIfQueued: jest.fn(),
+};
+
+const mockRunnerService = {
+  listPlaybooks: jest.fn(),
+  getPlaybook: jest.fn(),
+  createRun: jest.fn(),
+  executeRun: jest.fn(),
+  getRunResult: jest.fn(),
+  rerun: jest.fn(),
+};
+
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
@@ -34,24 +51,12 @@ jest.mock('../../src/lib/db', () => ({
 
 // Mock RunsDAO
 jest.mock('../../src/lib/db/afu9Runs', () => ({
-  getRunsDAO: jest.fn(() => ({
-    listRunsByIssue: jest.fn(),
-    getRun: jest.fn(),
-    reconstructRunResult: jest.fn(),
-    createRun: jest.fn(),
-  })),
+  getRunsDAO: jest.fn(() => mockRunsDAO),
 }));
 
 // Mock RunnerService
 jest.mock('../../src/lib/runner-service', () => ({
-  getRunnerService: jest.fn(() => ({
-    listPlaybooks: jest.fn(),
-    getPlaybook: jest.fn(),
-    createRun: jest.fn(),
-    executeRun: jest.fn(),
-    getRunResult: jest.fn(),
-    rerun: jest.fn(),
-  })),
+  getRunnerService: jest.fn(() => mockRunnerService),
 }));
 
 describe('AFU9 Runs API', () => {
