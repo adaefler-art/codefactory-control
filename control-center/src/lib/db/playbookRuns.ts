@@ -203,7 +203,7 @@ export async function listPlaybookRuns(
   pool: Pool,
   options?: {
     playbookId?: string;
-    env?: 'stage' | 'prod';
+    env?: string;
     limit?: number;
     offset?: number;
   }

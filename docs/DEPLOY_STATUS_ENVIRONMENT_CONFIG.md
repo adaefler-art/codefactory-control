@@ -4,69 +4,90 @@
 
 ### Production/Staging Deployment
 
-For the Deploy Status Monitor to function correctly in production and staging environments, the following environment variable **MUST** be set:
+E65.1 v2 derives deploy status from persisted E65.2 verification runs, so the database must be enabled and reachable.
+
+For the Deploy Status Monitor to function correctly in production and staging environments, the following environment variables **MUST** be set:
 
 ```bash
-NEXT_PUBLIC_APP_URL=https://your-domain.com
+DATABASE_ENABLED=true
+DATABASE_HOST=your-postgres-host
+DATABASE_PORT=5432
+DATABASE_NAME=afu9
+DATABASE_USER=postgres
+DATABASE_PASSWORD=...
+
+# If your Postgres requires SSL (typical for managed DBs)
+DATABASE_SSL=true
+# or
+PGSSLMODE=require
 ```
 
 ### Why This Matters
 
-The Deploy Status Monitor performs self-health checks by calling `/api/health` and `/api/ready` endpoints. Without `NEXT_PUBLIC_APP_URL`, it defaults to `http://localhost:3000`, which causes:
+The Deploy Status Monitor reads from `playbook_runs` / `playbook_run_steps` (E65.2 persistence) and persists snapshots to `deploy_status_snapshots`. Without database access:
 
-1. ❌ **RED status in production** - Health checks fail because localhost is unreachable
-2. ❌ **False negatives** - Monitoring reports failures when the service is actually healthy
-3. ❌ **Self-Propelling Mode blocked** - RED status prevents automated deployments
+1. ❌ **API 503** - `/api/deploy/status` fails closed because it cannot resolve verification runs
+2. ❌ **No persistence** - status snapshots cannot be stored
+3. ❌ **Self-Propelling Mode blocked** - deploy readiness signal is unavailable
 
 ### Configuration by Environment
 
 #### Local Development
 ```bash
 # .env.local or .env
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+DATABASE_ENABLED=true
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=afu9
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
 ```
-Default fallback works fine for local development.
 
 #### Staging
 ```bash
 # ECS Task Definition / Environment Variables
-NEXT_PUBLIC_APP_URL=https://control-center.stage.afu9.cloud
+DATABASE_ENABLED=true
+DATABASE_HOST=<staging-postgres-host>
+DATABASE_PORT=5432
+DATABASE_NAME=afu9
+DATABASE_USER=postgres
+DATABASE_PASSWORD=...
+DATABASE_SSL=true
 ```
 
 #### Production
 ```bash
 # ECS Task Definition / Environment Variables
-NEXT_PUBLIC_APP_URL=https://control-center.afu9.cloud
+DATABASE_ENABLED=true
+DATABASE_HOST=<prod-postgres-host>
+DATABASE_PORT=5432
+DATABASE_NAME=afu9
+DATABASE_USER=postgres
+DATABASE_PASSWORD=...
+DATABASE_SSL=true
 ```
 
 ### Deployment Checklist
 
 Before deploying to stage/prod, verify:
 
-- [ ] `NEXT_PUBLIC_APP_URL` is set in ECS task definition
-- [ ] URL matches the actual ALB/domain for the environment
-- [ ] URL uses HTTPS (not HTTP) in production
-- [ ] No trailing slash in the URL
-- [ ] Health endpoints are accessible from within the VPC
+- [ ] `DATABASE_ENABLED=true` is set in ECS task definition
+- [ ] DB host/port/user/dbname/password are set and correct
+- [ ] SSL settings match your Postgres requirements (`DATABASE_SSL` / `PGSSLMODE`)
+- [ ] The service can reach Postgres from within the VPC/security groups
 
 ### Verification
 
 After deployment, check the deploy status monitor:
 
 ```bash
-# Should return GREEN if properly configured
+# Should return a status payload (GREEN/YELLOW/RED) if properly configured
 curl https://your-domain.com/api/deploy/status?env=prod
-
-# Response should show:
-# {
-#   "status": "GREEN",
-#   "reasons": [{ "code": "ALL_HEALTHY", ... }]
-# }
 ```
 
-If you see RED with `HEALTH_FAIL` or `READY_FAIL`:
-1. Check `NEXT_PUBLIC_APP_URL` is set correctly
-2. Verify health endpoints are accessible
+If you see `503`:
+1. Check `DATABASE_ENABLED=true`
+2. Verify DB credentials and connectivity
 3. Check network/security group rules
 
 ### Infrastructure as Code Examples
@@ -79,9 +100,14 @@ resource "aws_ecs_task_definition" "control_center" {
   container_definitions = jsonencode([{
     environment = [
       {
-        name  = "NEXT_PUBLIC_APP_URL"
-        value = "https://control-center.${var.environment}.afu9.cloud"
+        name  = "DATABASE_ENABLED"
+        value = "true"
       },
+      { name = "DATABASE_HOST", value = var.database_host },
+      { name = "DATABASE_PORT", value = "5432" },
+      { name = "DATABASE_NAME", value = "afu9" },
+      { name = "DATABASE_USER", value = "postgres" },
+      { name = "DATABASE_PASSWORD", value = var.database_password },
       # ... other env vars ...
     ]
   }])
@@ -94,7 +120,12 @@ const taskDefinition = new ecs.FargateTaskDefinition(this, 'ControlCenter');
 
 taskDefinition.addContainer('app', {
   environment: {
-    NEXT_PUBLIC_APP_URL: `https://control-center.${props.environment}.afu9.cloud`,
+    DATABASE_ENABLED: 'true',
+    DATABASE_HOST: props.databaseHost,
+    DATABASE_PORT: '5432',
+    DATABASE_NAME: 'afu9',
+    DATABASE_USER: 'postgres',
+    DATABASE_SSL: 'true',
     // ... other env vars ...
   },
 });
@@ -105,29 +136,34 @@ taskDefinition.addContainer('app', {
 services:
   control-center:
     environment:
-      - NEXT_PUBLIC_APP_URL=https://control-center.stage.afu9.cloud
+      - DATABASE_ENABLED=true
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=afu9
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
 ```
 
 ### Troubleshooting
 
-**Symptom**: Deploy status shows RED immediately after deployment
+**Symptom**: `/api/deploy/status` returns `503` immediately after deployment
 
 **Check**:
 ```bash
 # Inside the container
-echo $NEXT_PUBLIC_APP_URL
-# Should output: https://your-domain.com
-# NOT: (empty) or http://localhost:3000
+echo $DATABASE_ENABLED
+echo $DATABASE_HOST
+# Ensure these are set and non-empty
 ```
 
 **Fix**:
-1. Update ECS task definition with correct `NEXT_PUBLIC_APP_URL`
+1. Update ECS task definition with correct database variables
 2. Deploy new task revision
-3. Wait for health checks to stabilize (~2 minutes)
-4. Verify status returns GREEN
+3. Verify the latest `post-deploy-verify` run exists for the environment
+4. Verify the endpoint returns a status payload
 
 ### Related Files
 
-- Signal collector: `control-center/src/lib/deploy-status/signal-collector.ts`
-- Environment validation: `control-center/app/api/deploy/status/route.ts`
+- Verification resolver: `control-center/src/lib/deploy-status/verification-resolver.ts`
+- API route: `control-center/app/api/deploy/status/route.ts`
 - Documentation: `docs/DEPLOY_STATUS_MONITOR.md`

@@ -1,8 +1,8 @@
 /**
  * Deploy Status API Contract Tests (E65.1)
- * 
+ *
  * Validates the /api/deploy/status endpoint contract
- * 
+ *
  * @jest-environment node
  */
 
@@ -16,8 +16,8 @@ jest.mock('../../src/lib/db', () => ({
   })),
 }));
 
-jest.mock('../../src/lib/deploy-status/signal-collector', () => ({
-  collectStatusSignals: jest.fn(),
+jest.mock('../../src/lib/deploy-status/verification-resolver', () => ({
+  resolveDeployStatusFromVerificationRuns: jest.fn(),
 }));
 
 jest.mock('../../src/lib/db/deployStatusSnapshots', () => ({
@@ -70,14 +70,6 @@ describe('Deploy Status API Contract', () => {
     test('accepts valid environment identifiers', async () => {
       process.env.DATABASE_ENABLED = 'false';
 
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
-      collectStatusSignals.mockResolvedValue({
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
-      });
-
       const validEnvs = ['prod', 'stage', 'dev', 'prod-us-east-1', 'staging_v2'];
 
       for (const env of validEnvs) {
@@ -87,63 +79,19 @@ describe('Deploy Status API Contract', () => {
         );
 
         const response = await GET(request);
-        expect(response.status).toBe(200);
+        // Env is valid, but DB is required for verification-run-derived status.
+        expect(response.status).toBe(503);
       }
     });
   });
 
   describe('Database Disabled Mode', () => {
-    test('returns status without database when DB disabled', async () => {
+    test('returns 503 when DB disabled (verification runs required)', async () => {
       process.env.DATABASE_ENABLED = 'false';
 
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
-      const mockSignals = {
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
-      };
-      collectStatusSignals.mockResolvedValue(mockSignals);
-
-      const request = new NextRequest(
-        'http://localhost/api/deploy/status?env=prod',
-        { method: 'GET' }
-      );
-
+      const request = new NextRequest('http://localhost/api/deploy/status?env=prod', { method: 'GET' });
       const response = await GET(request);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.env).toBe('prod');
-      expect(body.status).toBe('GREEN');
-      expect(body.observed_at).toBeDefined();
-      expect(body.reasons).toBeDefined();
-      expect(body.signals).toBeDefined();
-      expect(body.staleness_seconds).toBeDefined();
-      
-      // Should not call DB functions
-      expect(collectStatusSignals).toHaveBeenCalledWith(null, {
-        env: 'prod',
-        includeDeployEvents: false,
-      });
-    });
-
-    test('handles signal collection errors gracefully when DB disabled', async () => {
-      process.env.DATABASE_ENABLED = 'false';
-
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
-      collectStatusSignals.mockRejectedValue(new Error('Network error'));
-
-      const request = new NextRequest(
-        'http://localhost/api/deploy/status?env=prod',
-        { method: 'GET' }
-      );
-
-      const response = await GET(request);
-      const body = await response.json();
-
       expect(response.status).toBe(503);
-      expect(body.error).toBe('Service unavailable');
     });
   });
 
@@ -159,12 +107,10 @@ describe('Deploy Status API Contract', () => {
         env: 'prod',
         status: 'GREEN',
         observed_at: new Date(Date.now() - 10000).toISOString(), // 10 seconds ago
-        reasons: [{ code: 'ALL_HEALTHY', severity: 'info', message: 'All checks passing' }],
+        reasons: [{ code: 'VERIFICATION_SUCCESS', severity: 'info', message: 'ok' }],
         signals: {
           checked_at: new Date(Date.now() - 10000).toISOString(),
-          health: { status: 200, ok: true, latency_ms: 50 },
-          ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-          deploy_events: [],
+          verification_run: null,
         },
         related_deploy_event_id: null,
         staleness_seconds: 0,
@@ -188,8 +134,8 @@ describe('Deploy Status API Contract', () => {
       expect(body.snapshot_id).toBe('test-snapshot-id');
 
       // Should use cached data
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
-      expect(collectStatusSignals).not.toHaveBeenCalled();
+      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
+      expect(resolveDeployStatusFromVerificationRuns).not.toHaveBeenCalled();
     });
 
     test('collects fresh signals when cache is stale', async () => {
@@ -197,7 +143,7 @@ describe('Deploy Status API Contract', () => {
 
       const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
         require('../../src/lib/db/deployStatusSnapshots');
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
+      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
 
       // Cache is 60 seconds old (stale)
       const staleSnapshot = {
@@ -214,23 +160,25 @@ describe('Deploy Status API Contract', () => {
         snapshot: staleSnapshot,
       });
 
-      const freshSignals = {
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
+      const resolved = {
+        env: 'prod',
+        status: 'YELLOW',
+        observed_at: new Date().toISOString(),
+        reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
+        signals: { checked_at: new Date().toISOString(), verification_run: null },
+        staleness_seconds: 0,
       };
-      collectStatusSignals.mockResolvedValue(freshSignals);
+      resolveDeployStatusFromVerificationRuns.mockResolvedValue(resolved);
 
       const mockNewSnapshot = {
         id: 'new-snapshot-id',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         env: 'prod',
-        status: 'GREEN',
-        observed_at: freshSignals.checked_at,
-        reasons: [{ code: 'ALL_HEALTHY', severity: 'info', message: 'All checks passing' }],
-        signals: freshSignals,
+        status: resolved.status,
+        observed_at: resolved.observed_at,
+        reasons: resolved.reasons,
+        signals: resolved.signals,
         related_deploy_event_id: null,
         staleness_seconds: 0,
       };
@@ -249,7 +197,7 @@ describe('Deploy Status API Contract', () => {
 
       expect(response.status).toBe(200);
       expect(body.snapshot_id).toBe('new-snapshot-id');
-      expect(collectStatusSignals).toHaveBeenCalled();
+      expect(resolveDeployStatusFromVerificationRuns).toHaveBeenCalled();
       expect(insertDeployStatusSnapshot).toHaveBeenCalled();
     });
 
@@ -258,7 +206,7 @@ describe('Deploy Status API Contract', () => {
 
       const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
         require('../../src/lib/db/deployStatusSnapshots');
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
+      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
 
       // Fresh cache available
       const freshSnapshot = {
@@ -275,13 +223,14 @@ describe('Deploy Status API Contract', () => {
         snapshot: freshSnapshot,
       });
 
-      const freshSignals = {
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
-      };
-      collectStatusSignals.mockResolvedValue(freshSignals);
+      resolveDeployStatusFromVerificationRuns.mockResolvedValue({
+        env: 'prod',
+        status: 'YELLOW',
+        observed_at: new Date().toISOString(),
+        reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
+        signals: { checked_at: new Date().toISOString(), verification_run: null },
+        staleness_seconds: 0,
+      });
 
       insertDeployStatusSnapshot.mockResolvedValue({
         success: true,
@@ -298,7 +247,7 @@ describe('Deploy Status API Contract', () => {
 
       expect(response.status).toBe(200);
       expect(body.snapshot_id).toBe('forced-snapshot-id');
-      expect(collectStatusSignals).toHaveBeenCalled();
+      expect(resolveDeployStatusFromVerificationRuns).toHaveBeenCalled();
     });
 
     test('continues even if snapshot persistence fails', async () => {
@@ -306,20 +255,21 @@ describe('Deploy Status API Contract', () => {
 
       const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
         require('../../src/lib/db/deployStatusSnapshots');
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
+      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
 
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: false,
         error: 'No snapshots found',
       });
 
-      const freshSignals = {
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
-      };
-      collectStatusSignals.mockResolvedValue(freshSignals);
+      resolveDeployStatusFromVerificationRuns.mockResolvedValue({
+        env: 'prod',
+        status: 'YELLOW',
+        observed_at: new Date().toISOString(),
+        reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
+        signals: { checked_at: new Date().toISOString(), verification_run: null },
+        staleness_seconds: 0,
+      });
 
       // Persistence fails
       insertDeployStatusSnapshot.mockResolvedValue({
@@ -337,23 +287,31 @@ describe('Deploy Status API Contract', () => {
 
       // Should still return status even though persistence failed
       expect(response.status).toBe(200);
-      expect(body.status).toBe('GREEN');
+      expect(body.status).toBe('YELLOW');
       expect(body.snapshot_id).toBeUndefined();
     });
   });
 
   describe('Response Contract', () => {
     test('response contains all required fields', async () => {
-      process.env.DATABASE_ENABLED = 'false';
+      process.env.DATABASE_ENABLED = 'true';
 
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
-      const mockSignals = {
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
-      };
-      collectStatusSignals.mockResolvedValue(mockSignals);
+      const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+      getLatestDeployStatusSnapshot.mockResolvedValue({
+        success: true,
+        snapshot: {
+          id: 'snapshot-1',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          env: 'prod',
+          status: 'YELLOW',
+          observed_at: new Date().toISOString(),
+          reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
+          signals: { checked_at: new Date().toISOString(), verification_run: null },
+          related_deploy_event_id: null,
+          staleness_seconds: 0,
+        },
+      });
 
       const request = new NextRequest(
         'http://localhost/api/deploy/status?env=prod',
@@ -383,16 +341,24 @@ describe('Deploy Status API Contract', () => {
     });
 
     test('reasons array contains properly structured objects', async () => {
-      process.env.DATABASE_ENABLED = 'false';
+      process.env.DATABASE_ENABLED = 'true';
 
-      const { collectStatusSignals } = require('../../src/lib/deploy-status/signal-collector');
-      const mockSignals = {
-        checked_at: new Date().toISOString(),
-        health: { status: 200, ok: true, latency_ms: 50 },
-        ready: { status: 200, ok: true, ready: true, latency_ms: 50 },
-        deploy_events: [],
-      };
-      collectStatusSignals.mockResolvedValue(mockSignals);
+      const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+      getLatestDeployStatusSnapshot.mockResolvedValue({
+        success: true,
+        snapshot: {
+          id: 'snapshot-1',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          env: 'prod',
+          status: 'YELLOW',
+          observed_at: new Date().toISOString(),
+          reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
+          signals: { checked_at: new Date().toISOString(), verification_run: null },
+          related_deploy_event_id: null,
+          staleness_seconds: 0,
+        },
+      });
 
       const request = new NextRequest(
         'http://localhost/api/deploy/status?env=prod',
@@ -402,6 +368,7 @@ describe('Deploy Status API Contract', () => {
       const response = await GET(request);
       const body = await response.json();
 
+      expect(response.status).toBe(200);
       expect(body.reasons.length).toBeGreaterThan(0);
       
       body.reasons.forEach((reason: any) => {

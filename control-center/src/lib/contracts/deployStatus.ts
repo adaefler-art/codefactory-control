@@ -36,6 +36,29 @@ export interface StatusReason {
  * Signal data collected from various sources
  */
 export interface StatusSignals {
+  /**
+   * Optional correlation identifier supplied by the caller.
+   * MVP support: may be a runId (UUID) or external deployId/commitSha.
+   */
+  correlation_id?: string;
+
+  /**
+   * E65.2-derived verification run summary used to deterministically derive
+   * the E65.1 traffic light status.
+   */
+  verification_run?:
+    | {
+        run_id: string;
+        playbook_id: string;
+        playbook_version: string;
+        env: string;
+        status: string;
+        created_at: string;
+        started_at: string | null;
+        completed_at: string | null;
+      }
+    | null;
+
   health?: {
     status: number;
     ok: boolean;
