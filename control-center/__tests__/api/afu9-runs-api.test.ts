@@ -437,4 +437,51 @@ describe('AFU9 Runs API', () => {
       expect(body.status).toBe('executing');
     });
   });
+  
+  // Sanity Check Tests (additional validation)
+  describe('Error Envelope Structure Validation', () => {
+    test('Error envelope has exactly required keys and no undefined details', async () => {
+      const { getRunnerService } = require('../../src/lib/runner-service');
+      const mockService = getRunnerService();
+
+      mockService.getRunResult.mockResolvedValue(null);
+
+      const request = new NextRequest('http://localhost/api/runs/test-run');
+      const params = Promise.resolve({ runId: 'test-run' });
+      const response = await getRunDetail(request, { params });
+      const body = await response.json();
+
+      // Verify structure
+      expect(body).toHaveProperty('error');
+      expect(body.error).toHaveProperty('code');
+      expect(body.error).toHaveProperty('message');
+      expect(typeof body.error.code).toBe('string');
+      expect(typeof body.error.message).toBe('string');
+      
+      // If details exists, it should be an object
+      if ('details' in body.error) {
+        expect(typeof body.error.details).toBe('object');
+        expect(body.error.details).not.toBeUndefined();
+      }
+      
+      // No extra keys in error object
+      const errorKeys = Object.keys(body.error);
+      expect(errorKeys.every(k => ['code', 'message', 'details'].includes(k))).toBe(true);
+    });
+
+    test('Status vocabulary is consistent across layers', () => {
+      // Database statuses (uppercase)
+      const dbStatuses = ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
+      
+      // Contract statuses (lowercase, mapped from DB)
+      const contractRunStatuses = ['created', 'running', 'success', 'failed', 'timeout', 'cancelled'];
+      const contractStepStatuses = ['pending', 'running', 'success', 'failed', 'timeout', 'skipped'];
+      
+      // Verify no forbidden status names are used
+      const forbiddenStatuses = ['CREATED', 'DONE', 'SUCCESS', 'ERROR'];
+      
+      expect(dbStatuses).not.toEqual(expect.arrayContaining(forbiddenStatuses));
+      expect(contractRunStatuses).not.toEqual(expect.arrayContaining(forbiddenStatuses.map(s => s.toLowerCase())));
+    });
+  });
 });

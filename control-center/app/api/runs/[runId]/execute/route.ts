@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import { getRunnerService } from '../../../../../src/lib/runner-service';
 import { withApi } from '../../../../../src/lib/http/withApi';
-import { handleApiError, runNotFoundError, runAlreadyExecutedError } from '../../../../../src/lib/api/errors';
+import { handleApiError, runAlreadyExecutedError } from '../../../../../src/lib/api/errors';
 
 /**
  * POST /api/runs/[runId]/execute
@@ -32,11 +32,10 @@ export const POST = withApi(async (
     const runnerService = getRunnerService(pool);
     const { runId } = await params;
 
-    // Execute asynchronously and handle errors
-    runnerService.executeRun(runId).catch((err) => {
-      console.error(`[API] Failed to execute run ${runId}:`, err);
-      // Error is already in database via status update
-    });
+    // Execute synchronously to catch idempotency errors
+    // The actual execution happens asynchronously in the background,
+    // but the idempotency check is done synchronously
+    await runnerService.executeRun(runId);
 
     return NextResponse.json({
       runId,
@@ -47,7 +46,8 @@ export const POST = withApi(async (
     if (error instanceof Error && error.message.includes('already executed or in progress')) {
       const match = error.message.match(/status: (\w+)/);
       const status = match ? match[1] : 'UNKNOWN';
-      return runAlreadyExecutedError(await params.then(p => p.runId), status);
+      const { runId } = await params;
+      return runAlreadyExecutedError(runId, status);
     }
     
     return handleApiError(error);
