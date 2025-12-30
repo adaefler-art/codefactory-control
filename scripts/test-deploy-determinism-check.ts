@@ -26,7 +26,7 @@ function runTest() {
   console.log('Running determinism check (with steps skipped for testing)...\n');
   try {
     execSync(
-      'SKIP_TESTS=true SKIP_BUILD=true SKIP_SECRET_VALIDATION=true npx ts-node scripts/deploy-determinism-check.ts',
+      'SKIP_TESTS=true SKIP_BUILD=true npx ts-node scripts/deploy-determinism-check.ts',
       {
         stdio: 'inherit',
         env: process.env,
