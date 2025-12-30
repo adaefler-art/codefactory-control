@@ -1,5 +1,5 @@
 {
-  "name": "@afu9/mcp-runner",
+  "name": "@afu9/afu9-runner",
   "version": "0.1.0",
   "private": true,
   "main": "dist/src/index.js",

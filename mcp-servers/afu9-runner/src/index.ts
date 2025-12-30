@@ -32,7 +32,7 @@ export class AFU9RunnerMCPServer extends MCPServer {
   private playbookManager: PlaybookManager;
 
   constructor(port: number = 3002) {
-    super(port, 'afu9-mcp-runner', '0.1.0');
+    super(port, 'afu9-runner', '0.1.0');
     
     // Initialize with DummyExecutorAdapter for I631
     this.executor = new DummyExecutorAdapter();
