@@ -1,10 +1,10 @@
 /**
  * Deploy Status Contract Schema
- * 
+ *
  * Defines types and contracts for the deploy status monitor (E65.1).
  * Ensures schema ↔ API ↔ UI synchronization.
- * 
- * MUST be kept in sync with database/migrations/027_deploy_status_snapshots.sql
+ *
+ * Note: database column names are snake_case, but API/UI contracts are camelCase.
  */
 
 /**
@@ -37,66 +37,32 @@ export interface StatusReason {
  */
 export interface StatusSignals {
   /**
+   * Time at which the status was computed.
+   */
+  checkedAt: string;
+
+  /**
    * Optional correlation identifier supplied by the caller.
    * MVP support: may be a runId (UUID) or external deployId/commitSha.
    */
-  correlation_id?: string;
+  correlationId?: string;
 
   /**
    * E65.2-derived verification run summary used to deterministically derive
    * the E65.1 traffic light status.
    */
-  verification_run?:
+  verificationRun?:
     | {
-        run_id: string;
-        playbook_id: string;
-        playbook_version: string;
+        runId: string;
+        playbookId: string;
+        playbookVersion: string;
         env: string;
         status: string;
-        created_at: string;
-        started_at: string | null;
-        completed_at: string | null;
+        createdAt: string;
+        startedAt: string | null;
+        completedAt: string | null;
       }
     | null;
-
-  health?: {
-    status: number;
-    ok: boolean;
-    response?: Record<string, unknown>;
-    error?: string;
-    error_name?: string;
-    error_code?: string;
-    latency_ms?: number;
-    url?: string;
-    base_url?: string;
-    timeout_ms?: number;
-    attempted_urls?: string[];
-  };
-  ready?: {
-    status: number;
-    ok: boolean;
-    ready?: boolean;
-    response?: Record<string, unknown>;
-    error?: string;
-    error_name?: string;
-    error_code?: string;
-    latency_ms?: number;
-    url?: string;
-    base_url?: string;
-    timeout_ms?: number;
-    attempted_urls?: string[];
-  };
-  deploy_events?: Array<{
-    id: string;
-    created_at: string;
-    env: string;
-    service: string;
-    version: string;
-    commit_hash: string;
-    status: string;
-    message: string | null;
-  }>;
-  checked_at: string;
 }
 
 /**
@@ -104,15 +70,15 @@ export interface StatusSignals {
  */
 export interface DeployStatusSnapshot {
   id: string;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
   env: string;
   status: DeployStatus;
-  observed_at: string;
+  observedAt: string;
   reasons: StatusReason[];
   signals: StatusSignals;
-  related_deploy_event_id: string | null;
-  staleness_seconds: number | null;
+  relatedDeployEventId: string | null;
+  stalenessSeconds: number | null;
 }
 
 /**
@@ -121,11 +87,11 @@ export interface DeployStatusSnapshot {
 export interface CreateDeployStatusInput {
   env: DeployEnvironment;
   status: DeployStatus;
-  observed_at?: string;
+  observedAt?: string;
   reasons: StatusReason[];
   signals: StatusSignals;
-  related_deploy_event_id?: string | null;
-  staleness_seconds?: number | null;
+  relatedDeployEventId?: string | null;
+  stalenessSeconds?: number | null;
 }
 
 /**
@@ -134,11 +100,11 @@ export interface CreateDeployStatusInput {
 export interface DeployStatusResponse {
   env: DeployEnvironment;
   status: DeployStatus;
-  observed_at: string;
+  observedAt: string;
   reasons: StatusReason[];
   signals: StatusSignals;
-  staleness_seconds: number;
-  snapshot_id?: string;
+  stalenessSeconds: number;
+  snapshotId?: string;
 }
 
 /**

@@ -8,7 +8,7 @@
  */
 
 import { Pool } from 'pg';
-import { StatusSignals, DeployEnvironment } from '../contracts/deployStatus';
+import { DeployEnvironment } from '../contracts/deployStatus';
 import { getLatestDeployEvents } from '../db/deployStatusSnapshots';
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -22,6 +22,14 @@ export interface SignalCollectorOptions {
   timeout?: number;
   includeDeployEvents?: boolean;
 }
+
+// Legacy internal signal shape (pre E65.1 v2). Not part of the API contract.
+export type LegacyStatusSignals = {
+  checked_at: string;
+  health?: any;
+  ready?: any;
+  deploy_events?: any[];
+};
 
 /**
  * Fetch with timeout helper
@@ -158,7 +166,7 @@ async function fetchFromCandidates(
 export async function collectStatusSignals(
   pool: Pool | null,
   options: SignalCollectorOptions
-): Promise<StatusSignals> {
+): Promise<LegacyStatusSignals> {
   const {
     env,
     baseUrl,
@@ -183,7 +191,7 @@ export async function collectStatusSignals(
     );
   }
 
-  const signals: StatusSignals = {
+  const signals: LegacyStatusSignals = {
     checked_at: new Date().toISOString(),
   };
 
@@ -240,7 +248,9 @@ export async function collectStatusSignals(
 /**
  * Create mock signals for testing (injectable dependency)
  */
-export function createMockSignals(overrides?: Partial<StatusSignals>): StatusSignals {
+export function createMockSignals(
+  overrides?: Partial<LegacyStatusSignals>
+): LegacyStatusSignals {
   return {
     checked_at: new Date().toISOString(),
     health: {

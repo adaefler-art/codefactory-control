@@ -53,7 +53,7 @@ export default function DeployStatusPage() {
     return date.toLocaleString();
   };
 
-  const verificationRun = status?.signals?.verification_run || null;
+  const verificationRun = status?.signals?.verificationRun || null;
 
   const getRecommendation = (status: DeployStatus): string => {
     switch (status) {
@@ -151,11 +151,11 @@ export default function DeployStatusPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-400 mb-1">Observed At</p>
-                  <p className="text-sm text-gray-200">{formatTimestamp(status.observed_at)}</p>
+                  <p className="text-sm text-gray-200">{formatTimestamp(status.observedAt)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-400 mb-1">Staleness</p>
-                  <p className="text-sm text-gray-200">{status.staleness_seconds}s ago</p>
+                  <p className="text-sm text-gray-200">{status.stalenessSeconds}s ago</p>
                 </div>
               </div>
 
@@ -189,7 +189,7 @@ export default function DeployStatusPage() {
                     </div>
                     <a
                       className="text-sm text-purple-300 hover:text-purple-200 underline"
-                      href={API_ROUTES.playbooks.runs.get(verificationRun.run_id)}
+                      href={API_ROUTES.playbooks.runs.get(verificationRun.runId)}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -200,19 +200,19 @@ export default function DeployStatusPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm text-gray-400">Run ID</p>
-                      <p className="text-xs text-gray-200 break-all">{verificationRun.run_id}</p>
+                      <p className="text-xs text-gray-200 break-all">{verificationRun.runId}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-400">Started</p>
                       <p className="text-sm text-gray-200">
-                        {verificationRun.started_at ? formatTimestamp(verificationRun.started_at) : "N/A"}
+                        {verificationRun.startedAt ? formatTimestamp(verificationRun.startedAt) : "N/A"}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-400">Completed</p>
                       <p className="text-sm text-gray-200">
-                        {verificationRun.completed_at
-                          ? formatTimestamp(verificationRun.completed_at)
+                        {verificationRun.completedAt
+                          ? formatTimestamp(verificationRun.completedAt)
                           : "N/A"}
                       </p>
                     </div>

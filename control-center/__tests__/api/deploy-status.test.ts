@@ -10,17 +10,17 @@ import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/deploy/status/route';
 
 // Mock dependencies
-jest.mock('../../src/lib/db', () => ({
+jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
-jest.mock('../../src/lib/deploy-status/verification-resolver', () => ({
+jest.mock('@/lib/deploy-status/verification-resolver', () => ({
   resolveDeployStatusFromVerificationRuns: jest.fn(),
 }));
 
-jest.mock('../../src/lib/db/deployStatusSnapshots', () => ({
+jest.mock('@/lib/db/deployStatusSnapshots', () => ({
   getLatestDeployStatusSnapshot: jest.fn(),
   insertDeployStatusSnapshot: jest.fn(),
 }));
@@ -99,21 +99,21 @@ describe('Deploy Status API Contract', () => {
     test('returns cached status when available and fresh', async () => {
       process.env.DATABASE_ENABLED = 'true';
 
-      const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+      const { getLatestDeployStatusSnapshot } = require('@/lib/db/deployStatusSnapshots');
       const mockSnapshot = {
         id: 'test-snapshot-id',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         env: 'prod',
         status: 'GREEN',
-        observed_at: new Date(Date.now() - 10000).toISOString(), // 10 seconds ago
+        observedAt: new Date(Date.now() - 10000).toISOString(), // 10 seconds ago
         reasons: [{ code: 'VERIFICATION_SUCCESS', severity: 'info', message: 'ok' }],
         signals: {
-          checked_at: new Date(Date.now() - 10000).toISOString(),
-          verification_run: null,
+          checkedAt: new Date(Date.now() - 10000).toISOString(),
+          verificationRun: null,
         },
-        related_deploy_event_id: null,
-        staleness_seconds: 0,
+        relatedDeployEventId: null,
+        stalenessSeconds: 0,
       };
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: true,
@@ -131,10 +131,10 @@ describe('Deploy Status API Contract', () => {
       expect(response.status).toBe(200);
       expect(body.env).toBe('prod');
       expect(body.status).toBe('GREEN');
-      expect(body.snapshot_id).toBe('test-snapshot-id');
+      expect(body.snapshotId).toBe('test-snapshot-id');
 
       // Should use cached data
-      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
+      const { resolveDeployStatusFromVerificationRuns } = require('@/lib/deploy-status/verification-resolver');
       expect(resolveDeployStatusFromVerificationRuns).not.toHaveBeenCalled();
     });
 
@@ -142,18 +142,18 @@ describe('Deploy Status API Contract', () => {
       process.env.DATABASE_ENABLED = 'true';
 
       const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
-        require('../../src/lib/db/deployStatusSnapshots');
-      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
+        require('@/lib/db/deployStatusSnapshots');
+      const { resolveDeployStatusFromVerificationRuns } = require('@/lib/deploy-status/verification-resolver');
 
       // Cache is 60 seconds old (stale)
       const staleSnapshot = {
         id: 'old-snapshot-id',
         env: 'prod',
         status: 'GREEN',
-        observed_at: new Date(Date.now() - 60000).toISOString(),
+        observedAt: new Date(Date.now() - 60000).toISOString(),
         reasons: [],
         signals: {},
-        staleness_seconds: 60,
+        stalenessSeconds: 60,
       };
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: true,
@@ -163,24 +163,24 @@ describe('Deploy Status API Contract', () => {
       const resolved = {
         env: 'prod',
         status: 'YELLOW',
-        observed_at: new Date().toISOString(),
+        observedAt: new Date().toISOString(),
         reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-        signals: { checked_at: new Date().toISOString(), verification_run: null },
-        staleness_seconds: 0,
+        signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+        stalenessSeconds: 0,
       };
       resolveDeployStatusFromVerificationRuns.mockResolvedValue(resolved);
 
       const mockNewSnapshot = {
         id: 'new-snapshot-id',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         env: 'prod',
         status: resolved.status,
-        observed_at: resolved.observed_at,
+        observedAt: resolved.observedAt,
         reasons: resolved.reasons,
         signals: resolved.signals,
-        related_deploy_event_id: null,
-        staleness_seconds: 0,
+        relatedDeployEventId: null,
+        stalenessSeconds: 0,
       };
       insertDeployStatusSnapshot.mockResolvedValue({
         success: true,
@@ -196,7 +196,7 @@ describe('Deploy Status API Contract', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.snapshot_id).toBe('new-snapshot-id');
+      expect(body.snapshotId).toBe('new-snapshot-id');
       expect(resolveDeployStatusFromVerificationRuns).toHaveBeenCalled();
       expect(insertDeployStatusSnapshot).toHaveBeenCalled();
     });
@@ -205,18 +205,18 @@ describe('Deploy Status API Contract', () => {
       process.env.DATABASE_ENABLED = 'true';
 
       const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
-        require('../../src/lib/db/deployStatusSnapshots');
-      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
+        require('@/lib/db/deployStatusSnapshots');
+      const { resolveDeployStatusFromVerificationRuns } = require('@/lib/deploy-status/verification-resolver');
 
       // Fresh cache available
       const freshSnapshot = {
         id: 'fresh-snapshot-id',
         env: 'prod',
         status: 'GREEN',
-        observed_at: new Date(Date.now() - 5000).toISOString(), // 5 seconds ago
+        observedAt: new Date(Date.now() - 5000).toISOString(), // 5 seconds ago
         reasons: [],
         signals: {},
-        staleness_seconds: 0,
+        stalenessSeconds: 0,
       };
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: true,
@@ -226,10 +226,10 @@ describe('Deploy Status API Contract', () => {
       resolveDeployStatusFromVerificationRuns.mockResolvedValue({
         env: 'prod',
         status: 'YELLOW',
-        observed_at: new Date().toISOString(),
+        observedAt: new Date().toISOString(),
         reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-        signals: { checked_at: new Date().toISOString(), verification_run: null },
-        staleness_seconds: 0,
+        signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+        stalenessSeconds: 0,
       });
 
       insertDeployStatusSnapshot.mockResolvedValue({
@@ -246,7 +246,7 @@ describe('Deploy Status API Contract', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.snapshot_id).toBe('forced-snapshot-id');
+      expect(body.snapshotId).toBe('forced-snapshot-id');
       expect(resolveDeployStatusFromVerificationRuns).toHaveBeenCalled();
     });
 
@@ -254,8 +254,8 @@ describe('Deploy Status API Contract', () => {
       process.env.DATABASE_ENABLED = 'true';
 
       const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
-        require('../../src/lib/db/deployStatusSnapshots');
-      const { resolveDeployStatusFromVerificationRuns } = require('../../src/lib/deploy-status/verification-resolver');
+        require('@/lib/db/deployStatusSnapshots');
+      const { resolveDeployStatusFromVerificationRuns } = require('@/lib/deploy-status/verification-resolver');
 
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: false,
@@ -265,10 +265,10 @@ describe('Deploy Status API Contract', () => {
       resolveDeployStatusFromVerificationRuns.mockResolvedValue({
         env: 'prod',
         status: 'YELLOW',
-        observed_at: new Date().toISOString(),
+        observedAt: new Date().toISOString(),
         reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-        signals: { checked_at: new Date().toISOString(), verification_run: null },
-        staleness_seconds: 0,
+        signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+        stalenessSeconds: 0,
       });
 
       // Persistence fails
@@ -288,7 +288,7 @@ describe('Deploy Status API Contract', () => {
       // Should still return status even though persistence failed
       expect(response.status).toBe(200);
       expect(body.status).toBe('YELLOW');
-      expect(body.snapshot_id).toBeUndefined();
+      expect(body.snapshotId).toBeUndefined();
     });
   });
 
@@ -296,20 +296,21 @@ describe('Deploy Status API Contract', () => {
     test('response contains all required fields', async () => {
       process.env.DATABASE_ENABLED = 'true';
 
-      const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+      const { getLatestDeployStatusSnapshot } = require('@/lib/db/deployStatusSnapshots');
+      
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: true,
         snapshot: {
           id: 'snapshot-1',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           env: 'prod',
           status: 'YELLOW',
-          observed_at: new Date().toISOString(),
+          observedAt: new Date().toISOString(),
           reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-          signals: { checked_at: new Date().toISOString(), verification_run: null },
-          related_deploy_event_id: null,
-          staleness_seconds: 0,
+          signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+          relatedDeployEventId: null,
+          stalenessSeconds: 0,
         },
       });
 
@@ -326,37 +327,37 @@ describe('Deploy Status API Contract', () => {
       // Required fields
       expect(body).toHaveProperty('env');
       expect(body).toHaveProperty('status');
-      expect(body).toHaveProperty('observed_at');
+      expect(body).toHaveProperty('observedAt');
       expect(body).toHaveProperty('reasons');
       expect(body).toHaveProperty('signals');
-      expect(body).toHaveProperty('staleness_seconds');
+      expect(body).toHaveProperty('stalenessSeconds');
 
       // Validate types
       expect(typeof body.env).toBe('string');
       expect(['GREEN', 'YELLOW', 'RED']).toContain(body.status);
-      expect(typeof body.observed_at).toBe('string');
+      expect(typeof body.observedAt).toBe('string');
       expect(Array.isArray(body.reasons)).toBe(true);
       expect(typeof body.signals).toBe('object');
-      expect(typeof body.staleness_seconds).toBe('number');
+      expect(typeof body.stalenessSeconds).toBe('number');
     });
 
     test('reasons array contains properly structured objects', async () => {
       process.env.DATABASE_ENABLED = 'true';
 
-      const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+      const { getLatestDeployStatusSnapshot } = require('@/lib/db/deployStatusSnapshots');
       getLatestDeployStatusSnapshot.mockResolvedValue({
         success: true,
         snapshot: {
           id: 'snapshot-1',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           env: 'prod',
           status: 'YELLOW',
-          observed_at: new Date().toISOString(),
+          observedAt: new Date().toISOString(),
           reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-          signals: { checked_at: new Date().toISOString(), verification_run: null },
-          related_deploy_event_id: null,
-          staleness_seconds: 0,
+          signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+          relatedDeployEventId: null,
+          stalenessSeconds: 0,
         },
       });
 
@@ -386,7 +387,7 @@ describe('Deploy Status API Contract', () => {
     test('handles unexpected errors gracefully', async () => {
       process.env.DATABASE_ENABLED = 'true';
 
-      const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+      const { getLatestDeployStatusSnapshot } = require('@/lib/db/deployStatusSnapshots');
       getLatestDeployStatusSnapshot.mockRejectedValue(new Error('Unexpected database error'));
 
       const request = new NextRequest(

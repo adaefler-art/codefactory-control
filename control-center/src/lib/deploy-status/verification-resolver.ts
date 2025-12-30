@@ -104,21 +104,21 @@ export async function resolveDeployStatusFromVerificationRuns(
       return {
         env: options.env,
         status: 'YELLOW',
-        observed_at: nowIso,
+        observedAt: nowIso,
         reasons: [
           {
             code: VERIFICATION_REASON_CODES.NOT_FOUND,
             severity: 'warning',
             message: 'Requested verification run was not found',
-            evidence: { correlation_id: correlationId },
+            evidence: { correlationId },
           },
         ],
         signals: {
-          checked_at: nowIso,
-          correlation_id: correlationId,
-          verification_run: null,
+          checkedAt: nowIso,
+          correlationId,
+          verificationRun: null,
         },
-        staleness_seconds: 0,
+        stalenessSeconds: 0,
       };
     }
 
@@ -126,34 +126,34 @@ export async function resolveDeployStatusFromVerificationRuns(
       return {
         env: options.env,
         status: 'YELLOW',
-        observed_at: runResult.completedAt || runResult.createdAt,
+        observedAt: runResult.completedAt || runResult.createdAt,
         reasons: [
           {
             code: VERIFICATION_REASON_CODES.WRONG_PLAYBOOK,
             severity: 'warning',
             message: 'Requested run is not a post-deploy verification run',
             evidence: {
-              correlation_id: correlationId,
-              run_id: runResult.id,
-              playbook_id: runResult.playbookId,
+              correlationId,
+              runId: runResult.id,
+              playbookId: runResult.playbookId,
             },
           },
         ],
         signals: {
-          checked_at: nowIso,
-          correlation_id: correlationId,
-          verification_run: {
-            run_id: runResult.id,
-            playbook_id: runResult.playbookId,
-            playbook_version: runResult.playbookVersion,
+          checkedAt: nowIso,
+          correlationId,
+          verificationRun: {
+            runId: runResult.id,
+            playbookId: runResult.playbookId,
+            playbookVersion: runResult.playbookVersion,
             env: runResult.env,
             status: runResult.status,
-            created_at: runResult.createdAt,
-            started_at: runResult.startedAt,
-            completed_at: runResult.completedAt,
+            createdAt: runResult.createdAt,
+            startedAt: runResult.startedAt,
+            completedAt: runResult.completedAt,
           },
         },
-        staleness_seconds: Math.max(
+        stalenessSeconds: Math.max(
           0,
           Math.floor((Date.now() - new Date(runResult.completedAt || runResult.createdAt).getTime()) / 1000)
         ),
@@ -166,33 +166,33 @@ export async function resolveDeployStatusFromVerificationRuns(
     return {
       env: options.env,
       status: derived.status,
-      observed_at: observedAt,
+      observedAt,
       reasons: [
         {
           ...derived.reason,
           evidence: {
             ...(derived.reason.evidence || {}),
-            correlation_id: correlationId,
-            run_id: runResult.id,
-            run_status: runResult.status,
+            correlationId,
+            runId: runResult.id,
+            runStatus: runResult.status,
           },
         },
       ],
       signals: {
-        checked_at: nowIso,
-        correlation_id: correlationId,
-        verification_run: {
-          run_id: runResult.id,
-          playbook_id: runResult.playbookId,
-          playbook_version: runResult.playbookVersion,
+        checkedAt: nowIso,
+        correlationId,
+        verificationRun: {
+          runId: runResult.id,
+          playbookId: runResult.playbookId,
+          playbookVersion: runResult.playbookVersion,
           env: runResult.env,
           status: runResult.status,
-          created_at: runResult.createdAt,
-          started_at: runResult.startedAt,
-          completed_at: runResult.completedAt,
+          createdAt: runResult.createdAt,
+          startedAt: runResult.startedAt,
+          completedAt: runResult.completedAt,
         },
       },
-      staleness_seconds: Math.max(0, Math.floor((Date.now() - new Date(observedAt).getTime()) / 1000)),
+      stalenessSeconds: Math.max(0, Math.floor((Date.now() - new Date(observedAt).getTime()) / 1000)),
     };
   }
 
@@ -209,23 +209,23 @@ export async function resolveDeployStatusFromVerificationRuns(
         code: VERIFICATION_REASON_CODES.NO_RUN,
         severity: 'warning',
         message: 'No post-deploy verification run found for this environment',
-        evidence: correlationId ? { correlation_id: correlationId } : undefined,
+        evidence: correlationId ? { correlationId } : undefined,
       },
     ];
 
     const signals: StatusSignals = {
-      checked_at: nowIso,
-      ...(correlationId ? { correlation_id: correlationId } : {}),
-      verification_run: null,
+      checkedAt: nowIso,
+      ...(correlationId ? { correlationId } : {}),
+      verificationRun: null,
     };
 
     return {
       env: options.env,
       status: 'YELLOW',
-      observed_at: nowIso,
+      observedAt: nowIso,
       reasons,
       signals,
-      staleness_seconds: 0,
+      stalenessSeconds: 0,
     };
   }
 
@@ -238,34 +238,34 @@ export async function resolveDeployStatusFromVerificationRuns(
       ...derived.reason,
       evidence: {
         ...(derived.reason.evidence || {}),
-        ...(correlationId ? { correlation_id: correlationId } : {}),
-        run_id: run.id,
-        run_status: run.status,
+        ...(correlationId ? { correlationId } : {}),
+        runId: run.id,
+        runStatus: run.status,
       },
     },
   ];
 
   const signals: StatusSignals = {
-    checked_at: nowIso,
-    ...(correlationId ? { correlation_id: correlationId } : {}),
-    verification_run: {
-      run_id: run.id,
-      playbook_id: run.playbook_id,
-      playbook_version: run.playbook_version,
+    checkedAt: nowIso,
+    ...(correlationId ? { correlationId } : {}),
+    verificationRun: {
+      runId: run.id,
+      playbookId: run.playbook_id,
+      playbookVersion: run.playbook_version,
       env: run.env,
       status: run.status,
-      created_at: run.created_at,
-      started_at: run.started_at,
-      completed_at: run.completed_at,
+      createdAt: run.created_at,
+      startedAt: run.started_at,
+      completedAt: run.completed_at,
     },
   };
 
   return {
     env: options.env,
     status: derived.status,
-    observed_at: observedAt,
+    observedAt,
     reasons,
     signals,
-    staleness_seconds: Math.max(0, Math.floor((Date.now() - new Date(observedAt).getTime()) / 1000)),
+    stalenessSeconds: Math.max(0, Math.floor((Date.now() - new Date(observedAt).getTime()) / 1000)),
   };
 }

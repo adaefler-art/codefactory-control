@@ -13,9 +13,20 @@
 import {
   DeployStatus,
   StatusReason,
-  StatusSignals,
   DeployEnvironment,
 } from '../contracts/deployStatus';
+
+// Legacy internal signal shape (pre E65.1 v2). Not part of the API contract.
+export interface LegacyStatusSignals {
+  checked_at: string;
+  health?: any;
+  ready?: any;
+  deploy_events?: Array<{
+    status: string;
+    created_at: string;
+    service?: string;
+  }>;
+}
 
 /**
  * Reason codes for status determination
@@ -44,7 +55,7 @@ export const REASON_CODES = {
  */
 export interface StatusDeterminationInput {
   env: DeployEnvironment;
-  signals: StatusSignals;
+  signals: LegacyStatusSignals;
   currentTime?: Date;
   stalenessThresholdSeconds?: number;
 }
@@ -61,7 +72,7 @@ export interface StatusDeterminationResult {
 /**
  * Check if health endpoint is healthy
  */
-export function isHealthHealthy(signals: StatusSignals): boolean {
+export function isHealthHealthy(signals: LegacyStatusSignals): boolean {
   if (!signals.health) return false;
   return signals.health.ok && signals.health.status === 200;
 }
@@ -69,7 +80,7 @@ export function isHealthHealthy(signals: StatusSignals): boolean {
 /**
  * Check if ready endpoint is ready
  */
-export function isReadyHealthy(signals: StatusSignals): boolean {
+export function isReadyHealthy(signals: LegacyStatusSignals): boolean {
   if (!signals.ready) return false;
   return signals.ready.ok && signals.ready.status === 200 && signals.ready.ready === true;
 }
@@ -78,7 +89,7 @@ export function isReadyHealthy(signals: StatusSignals): boolean {
  * Check if there are recent deploy failures
  */
 export function hasRecentDeployFailure(
-  signals: StatusSignals,
+  signals: LegacyStatusSignals,
   lookbackMinutes: number = 30,
   currentTime: Date = new Date()
 ): boolean {
@@ -104,7 +115,7 @@ export function hasRecentDeployFailure(
  * Check if there are recent deploy warnings
  */
 export function hasRecentDeployWarning(
-  signals: StatusSignals,
+  signals: LegacyStatusSignals,
   lookbackMinutes: number = 30,
   currentTime: Date = new Date()
 ): boolean {
@@ -130,7 +141,7 @@ export function hasRecentDeployWarning(
  * Calculate staleness in seconds
  */
 export function calculateStaleness(
-  signals: StatusSignals,
+  signals: LegacyStatusSignals,
   currentTime: Date = new Date()
 ): number {
   const checkedAt = new Date(signals.checked_at);
@@ -141,7 +152,7 @@ export function calculateStaleness(
  * Check if signals are too stale
  */
 export function isDataStale(
-  signals: StatusSignals,
+  signals: LegacyStatusSignals,
   currentTime: Date = new Date(),
   thresholdSeconds: number = 300 // 5 minutes default
 ): boolean {
@@ -152,7 +163,7 @@ export function isDataStale(
 /**
  * Check if any critical signals are missing
  */
-export function hasMissingSignals(signals: StatusSignals): boolean {
+export function hasMissingSignals(signals: LegacyStatusSignals): boolean {
   // At minimum, we need health and ready checks
   return !signals.health || !signals.ready || !signals.checked_at;
 }
@@ -160,7 +171,7 @@ export function hasMissingSignals(signals: StatusSignals): boolean {
 /**
  * Check if health check has high latency
  */
-export function hasHighLatency(signals: StatusSignals, thresholdMs: number = 2000): boolean {
+export function hasHighLatency(signals: LegacyStatusSignals, thresholdMs: number = 2000): boolean {
   if (signals.health?.latency_ms && signals.health.latency_ms > thresholdMs) {
     return true;
   }

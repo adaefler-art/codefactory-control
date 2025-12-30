@@ -21,6 +21,42 @@ export const runtime = 'nodejs';
  */
 const CACHE_TTL_SECONDS = 30;
 
+function normalizeSnapshotSignals(signals: unknown): any {
+  if (!signals || typeof signals !== 'object') {
+    return { checkedAt: new Date().toISOString() };
+  }
+
+  const s = signals as Record<string, any>;
+
+  // Prefer already-camelCase
+  if (typeof s.checkedAt === 'string') {
+    return s;
+  }
+
+  const legacyCheckedAt = typeof s.checked_at === 'string' ? s.checked_at : new Date().toISOString();
+  const legacyCorrelationId = typeof s.correlation_id === 'string' ? s.correlation_id : undefined;
+  const legacyVerificationRun = s.verification_run as any;
+
+  const normalizedVerificationRun = legacyVerificationRun
+    ? {
+        runId: legacyVerificationRun.run_id,
+        playbookId: legacyVerificationRun.playbook_id,
+        playbookVersion: legacyVerificationRun.playbook_version,
+        env: legacyVerificationRun.env,
+        status: legacyVerificationRun.status,
+        createdAt: legacyVerificationRun.created_at,
+        startedAt: legacyVerificationRun.started_at ?? null,
+        completedAt: legacyVerificationRun.completed_at ?? null,
+      }
+    : null;
+
+  return {
+    checkedAt: legacyCheckedAt,
+    ...(legacyCorrelationId ? { correlationId: legacyCorrelationId } : {}),
+    verificationRun: normalizedVerificationRun,
+  };
+}
+
 /**
  * Check if database is enabled
  */
@@ -83,15 +119,12 @@ export async function GET(request: NextRequest) {
       if (cachedResult.success && cachedResult.snapshot) {
         const snapshot = cachedResult.snapshot;
         const age = Math.floor(
-          (Date.now() - new Date(snapshot.observed_at).getTime()) / 1000
+          (Date.now() - new Date(snapshot.observedAt).getTime()) / 1000
         );
 
-        const cachedCorrelationId = (snapshot.signals as any)?.correlation_id as
-          | string
-          | undefined;
-        const cachedRunId = (snapshot.signals as any)?.verification_run?.run_id as
-          | string
-          | undefined;
+        const normalizedSignals = normalizeSnapshotSignals(snapshot.signals);
+        const cachedCorrelationId = normalizedSignals?.correlationId as string | undefined;
+        const cachedRunId = normalizedSignals?.verificationRun?.runId as string | undefined;
         const correlationMatch =
           !correlationId || correlationId === cachedCorrelationId || correlationId === cachedRunId;
 
@@ -112,11 +145,11 @@ export async function GET(request: NextRequest) {
           const response: DeployStatusResponse = {
             env: snapshot.env,
             status: snapshot.status,
-            observed_at: snapshot.observed_at,
+            observedAt: snapshot.observedAt,
             reasons: snapshot.reasons,
-            signals: snapshot.signals,
-            staleness_seconds: snapshot.staleness_seconds || 0,
-            snapshot_id: snapshot.id,
+            signals: normalizedSignals,
+            stalenessSeconds: snapshot.stalenessSeconds || 0,
+            snapshotId: snapshot.id,
           };
 
           return jsonResponse(response, { status: 200, requestId });
@@ -146,28 +179,25 @@ export async function GET(request: NextRequest) {
     const latestSnapshot = await getLatestDeployStatusSnapshot(pool, env);
     if (latestSnapshot.success && latestSnapshot.snapshot) {
       const previous = latestSnapshot.snapshot;
-      const prevCorrelationId = (previous.signals as any)?.correlation_id as
-        | string
-        | undefined;
-      const prevRunId = (previous.signals as any)?.verification_run?.run_id as
-        | string
-        | undefined;
-      const nextCorrelationId = (resolved.signals as any)?.correlation_id as
-        | string
-        | undefined;
-      const nextRunId = (resolved.signals as any)?.verification_run?.run_id as
-        | string
-        | undefined;
+      const prevSignals = normalizeSnapshotSignals(previous.signals);
+      const prevCorrelationId = prevSignals?.correlationId as string | undefined;
+      const prevRunId = prevSignals?.verificationRun?.runId as string | undefined;
+      const nextCorrelationId = resolved.signals?.correlationId;
+      const nextRunId = resolved.signals?.verificationRun?.runId;
 
-      if (previous.status === resolved.status && prevCorrelationId === nextCorrelationId && prevRunId === nextRunId) {
+      if (
+        previous.status === resolved.status &&
+        prevCorrelationId === nextCorrelationId &&
+        prevRunId === nextRunId
+      ) {
         const response: DeployStatusResponse = {
           env: previous.env,
           status: previous.status,
-          observed_at: previous.observed_at,
+          observedAt: previous.observedAt,
           reasons: previous.reasons,
-          signals: previous.signals,
-          staleness_seconds: previous.staleness_seconds || 0,
-          snapshot_id: previous.id,
+          signals: prevSignals,
+          stalenessSeconds: previous.stalenessSeconds || 0,
+          snapshotId: previous.id,
         };
 
         return jsonResponse(response, { status: 200, requestId });
@@ -185,11 +215,11 @@ export async function GET(request: NextRequest) {
     const response: DeployStatusResponse = {
       env,
       status: resolved.status,
-      observed_at: resolved.observed_at || new Date().toISOString(),
+      observedAt: resolved.observedAt || new Date().toISOString(),
       reasons: resolved.reasons,
       signals: resolved.signals,
-      staleness_seconds: resolved.staleness_seconds || 0,
-      snapshot_id: persistResult.snapshot?.id,
+      stalenessSeconds: resolved.stalenessSeconds || 0,
+      snapshotId: persistResult.snapshot?.id,
     };
 
     console.log(

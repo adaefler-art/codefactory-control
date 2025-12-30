@@ -8,17 +8,17 @@
 
 import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/deploy/status/route';
-import { resolveDeployStatusFromVerificationRuns } from '../../src/lib/deploy-status/verification-resolver';
+import { resolveDeployStatusFromVerificationRuns } from '@/lib/deploy-status/verification-resolver';
 
-jest.mock('../../src/lib/db', () => ({
+jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({ query: jest.fn() })),
 }));
 
-jest.mock('../../src/lib/deploy-status/verification-resolver', () => ({
+jest.mock('@/lib/deploy-status/verification-resolver', () => ({
   resolveDeployStatusFromVerificationRuns: jest.fn(),
 }));
 
-jest.mock('../../src/lib/db/deployStatusSnapshots', () => ({
+jest.mock('@/lib/db/deployStatusSnapshots', () => ({
   getLatestDeployStatusSnapshot: jest.fn(),
   insertDeployStatusSnapshot: jest.fn(),
 }));
@@ -47,20 +47,20 @@ describe('E65.1 Proof Gates (v2)', () => {
   test('Proof A: handles different environments (prod, stage, dev)', async () => {
     process.env.DATABASE_ENABLED = 'true';
 
-    const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+    const { getLatestDeployStatusSnapshot } = require('@/lib/db/deployStatusSnapshots');
     getLatestDeployStatusSnapshot.mockImplementation(async (_pool: any, env: string) => ({
       success: true,
       snapshot: {
         id: `snapshot-${env}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         env,
         status: 'YELLOW',
-        observed_at: new Date().toISOString(),
+        observedAt: new Date().toISOString(),
         reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-        signals: { checked_at: new Date().toISOString(), verification_run: null },
-        related_deploy_event_id: null,
-        staleness_seconds: 0,
+        signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+        relatedDeployEventId: null,
+        stalenessSeconds: 0,
       },
     }));
 
@@ -71,27 +71,28 @@ describe('E65.1 Proof Gates (v2)', () => {
 
       expect(response.status).toBe(200);
       expect(body.env).toBe(env);
-      expect(body.snapshot_id).toBe(`snapshot-${env}`);
+      expect(body.snapshotId).toBe(`snapshot-${env}`);
     }
   });
 
   test('Proof B: TTL cache hit does not call resolver', async () => {
     process.env.DATABASE_ENABLED = 'true';
 
-    const { getLatestDeployStatusSnapshot } = require('../../src/lib/db/deployStatusSnapshots');
+    const { getLatestDeployStatusSnapshot } = require('@/lib/db/deployStatusSnapshots');
     getLatestDeployStatusSnapshot.mockResolvedValue({
       success: true,
       snapshot: {
         id: 'cached-snapshot',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         env: 'prod',
         status: 'GREEN',
-        observed_at: new Date(Date.now() - 5000).toISOString(),
+        observedAt: new Date(Date.now() - 5000).toISOString(),
         reasons: [{ code: 'VERIFICATION_SUCCESS', severity: 'info', message: 'ok' }],
+        // Provide a legacy-style signals payload to prove normalization is handled.
         signals: { checked_at: new Date().toISOString(), verification_run: null },
-        related_deploy_event_id: null,
-        staleness_seconds: 0,
+        relatedDeployEventId: null,
+        stalenessSeconds: 0,
       },
     });
 
@@ -100,7 +101,7 @@ describe('E65.1 Proof Gates (v2)', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.snapshot_id).toBe('cached-snapshot');
+    expect(body.snapshotId).toBe('cached-snapshot');
     expect(resolveDeployStatusFromVerificationRuns).not.toHaveBeenCalled();
   });
 
@@ -108,7 +109,7 @@ describe('E65.1 Proof Gates (v2)', () => {
     process.env.DATABASE_ENABLED = 'true';
 
     const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
-      require('../../src/lib/db/deployStatusSnapshots');
+      require('@/lib/db/deployStatusSnapshots');
 
     getLatestDeployStatusSnapshot.mockResolvedValue({
       success: true,
@@ -116,20 +117,20 @@ describe('E65.1 Proof Gates (v2)', () => {
         id: 'cached-snapshot',
         env: 'prod',
         status: 'GREEN',
-        observed_at: new Date(Date.now() - 5000).toISOString(),
+        observedAt: new Date(Date.now() - 5000).toISOString(),
         reasons: [],
-        signals: { checked_at: new Date().toISOString(), verification_run: null },
-        staleness_seconds: 0,
+        signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+        stalenessSeconds: 0,
       },
     });
 
     (resolveDeployStatusFromVerificationRuns as jest.MockedFunction<typeof resolveDeployStatusFromVerificationRuns>).mockResolvedValue({
       env: 'prod',
       status: 'YELLOW',
-      observed_at: new Date().toISOString(),
+      observedAt: new Date().toISOString(),
       reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-      signals: { checked_at: new Date().toISOString(), verification_run: null },
-      staleness_seconds: 0,
+      signals: { checkedAt: new Date().toISOString(), verificationRun: null },
+      stalenessSeconds: 0,
     } as any);
 
     insertDeployStatusSnapshot.mockResolvedValue({ success: true, snapshot: { id: 'new-snapshot' } });
@@ -139,7 +140,7 @@ describe('E65.1 Proof Gates (v2)', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.snapshot_id).toBe('new-snapshot');
+    expect(body.snapshotId).toBe('new-snapshot');
     expect(resolveDeployStatusFromVerificationRuns).toHaveBeenCalled();
     expect(insertDeployStatusSnapshot).toHaveBeenCalled();
   });
@@ -148,7 +149,7 @@ describe('E65.1 Proof Gates (v2)', () => {
     process.env.DATABASE_ENABLED = 'true';
 
     const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
-      require('../../src/lib/db/deployStatusSnapshots');
+      require('@/lib/db/deployStatusSnapshots');
 
     getLatestDeployStatusSnapshot.mockResolvedValue({
       success: true,
@@ -156,24 +157,24 @@ describe('E65.1 Proof Gates (v2)', () => {
         id: 'cached-snapshot',
         env: 'prod',
         status: 'GREEN',
-        observed_at: new Date(Date.now() - 1000).toISOString(),
+        observedAt: new Date(Date.now() - 1000).toISOString(),
         reasons: [],
         signals: {
           checked_at: new Date().toISOString(),
           correlation_id: 'corr-1',
           verification_run: { run_id: 'run-1' },
         },
-        staleness_seconds: 0,
+        stalenessSeconds: 0,
       },
     });
 
     (resolveDeployStatusFromVerificationRuns as jest.MockedFunction<typeof resolveDeployStatusFromVerificationRuns>).mockResolvedValue({
       env: 'prod',
       status: 'YELLOW',
-      observed_at: new Date().toISOString(),
+      observedAt: new Date().toISOString(),
       reasons: [{ code: 'NO_VERIFICATION_RUN', severity: 'warning', message: 'No run' }],
-      signals: { checked_at: new Date().toISOString(), correlation_id: 'corr-X', verification_run: null },
-      staleness_seconds: 0,
+      signals: { checkedAt: new Date().toISOString(), correlationId: 'corr-X', verificationRun: null },
+      stalenessSeconds: 0,
     } as any);
 
     insertDeployStatusSnapshot.mockResolvedValue({ success: true, snapshot: { id: 'new-snapshot' } });
@@ -190,7 +191,7 @@ describe('E65.1 Proof Gates (v2)', () => {
     const matchBody = await matchRes.json();
 
     expect(matchRes.status).toBe(200);
-    expect(matchBody.snapshot_id).toBe('cached-snapshot');
+    expect(matchBody.snapshotId).toBe('cached-snapshot');
     expect(resolveDeployStatusFromVerificationRuns).not.toHaveBeenCalled();
   });
 
@@ -198,20 +199,20 @@ describe('E65.1 Proof Gates (v2)', () => {
     process.env.DATABASE_ENABLED = 'true';
 
     const { getLatestDeployStatusSnapshot, insertDeployStatusSnapshot } =
-      require('../../src/lib/db/deployStatusSnapshots');
+      require('@/lib/db/deployStatusSnapshots');
 
     const previousSnapshot = {
       id: 'prev-snapshot',
       env: 'prod',
       status: 'GREEN',
-      observed_at: new Date(Date.now() - 60000).toISOString(),
+      observedAt: new Date(Date.now() - 60000).toISOString(),
       reasons: [{ code: 'VERIFICATION_SUCCESS', severity: 'info', message: 'ok' }],
       signals: {
-        checked_at: new Date().toISOString(),
-        correlation_id: 'corr-1',
-        verification_run: { run_id: 'run-1' },
+        checkedAt: new Date().toISOString(),
+        correlationId: 'corr-1',
+        verificationRun: { runId: 'run-1' },
       },
-      staleness_seconds: 60,
+      stalenessSeconds: 60,
     };
 
     getLatestDeployStatusSnapshot
@@ -221,14 +222,14 @@ describe('E65.1 Proof Gates (v2)', () => {
     (resolveDeployStatusFromVerificationRuns as jest.MockedFunction<typeof resolveDeployStatusFromVerificationRuns>).mockResolvedValue({
       env: 'prod',
       status: 'GREEN',
-      observed_at: new Date().toISOString(),
+      observedAt: new Date().toISOString(),
       reasons: [{ code: 'VERIFICATION_SUCCESS', severity: 'info', message: 'ok' }],
       signals: {
-        checked_at: new Date().toISOString(),
-        correlation_id: 'corr-1',
-        verification_run: { run_id: 'run-1' },
+        checkedAt: new Date().toISOString(),
+        correlationId: 'corr-1',
+        verificationRun: { runId: 'run-1' },
       },
-      staleness_seconds: 0,
+      stalenessSeconds: 0,
     } as any);
 
     const request = new NextRequest('http://localhost/api/deploy/status?env=prod', { method: 'GET' });
@@ -236,7 +237,7 @@ describe('E65.1 Proof Gates (v2)', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.snapshot_id).toBe('prev-snapshot');
+    expect(body.snapshotId).toBe('prev-snapshot');
     expect(insertDeployStatusSnapshot).not.toHaveBeenCalled();
   });
 });
