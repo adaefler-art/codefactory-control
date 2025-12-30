@@ -6,11 +6,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import type { Pool } from 'pg';
 import {
-  dispatchWorkflow,
-  pollRun,
-  ingestRun,
-} from '../../src/lib/github-runner/adapter';
-import {
   normalizeGitHubRunStatus,
   type DispatchWorkflowInput,
   type PollRunInput,
@@ -35,10 +30,14 @@ global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
 
 describe('E64.1: GitHub Runner Adapter', () => {
   let mockPool: Pool;
+  let dispatchWorkflow: typeof import('../../src/lib/github-runner/adapter').dispatchWorkflow;
+  let pollRun: typeof import('../../src/lib/github-runner/adapter').pollRun;
+  let ingestRun: typeof import('../../src/lib/github-runner/adapter').ingestRun;
 
   beforeEach(() => {
+    jest.resetModules();
     jest.clearAllMocks();
-    mockPool = {} as Pool;
+    mockPool = { query: jest.fn() } as unknown as Pool;
     
     // Default mock for installation token
     const { getGitHubInstallationToken } = require('../../src/lib/github-app-auth');
@@ -46,6 +45,15 @@ describe('E64.1: GitHub Runner Adapter', () => {
       token: 'ghs_mock_token',
       expiresAt: '2024-01-01T13:00:00Z',
     });
+
+    // Avoid slow polling delays in unit tests
+    process.env.GITHUB_DISPATCH_DELAY_MS = '0';
+    process.env.GITHUB_DISPATCH_MAX_RETRIES = '1';
+
+    const adapter = require('../../src/lib/github-runner/adapter');
+    dispatchWorkflow = adapter.dispatchWorkflow;
+    pollRun = adapter.pollRun;
+    ingestRun = adapter.ingestRun;
   });
 
   describe('normalizeGitHubRunStatus', () => {
@@ -134,7 +142,7 @@ describe('E64.1: GitHub Runner Adapter', () => {
                 id: 999888,
                 html_url: 'https://github.com/owner/repo/actions/runs/999888',
                 status: 'queued',
-                created_at: '2024-01-01T12:00:00Z',
+                created_at: new Date().toISOString(),
               },
             ],
           }),
@@ -412,6 +420,16 @@ describe('E64.1: GitHub Runner Adapter', () => {
             html_url: 'https://github.com/owner/repo/actions/runs/333444',
             logs_url: 'https://api.github.com/repos/owner/repo/actions/runs/333444/logs',
           }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({ jobs: [] }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({ artifacts: [] }),
         } as any);
 
       const input: IngestRunInput = {

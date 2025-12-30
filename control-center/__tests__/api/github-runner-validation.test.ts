@@ -6,9 +6,6 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
-import { POST as dispatchRoute } from '../../app/api/integrations/github/runner/dispatch/route';
-import { POST as pollRoute } from '../../app/api/integrations/github/runner/poll/route';
-import { POST as ingestRoute } from '../../app/api/integrations/github/runner/ingest/route';
 
 // Mock dependencies
 jest.mock('../../src/lib/db', () => ({
@@ -23,8 +20,20 @@ jest.mock('../../src/lib/github-runner/adapter', () => ({
 
 describe('E64.1: GitHub Runner API Validation Gates', () => {
   beforeEach(() => {
+    jest.resetModules();
     jest.clearAllMocks();
   });
+
+  const getRoutes = () => {
+    const dispatchRoute = require('../../app/api/integrations/github/runner/dispatch/route').POST;
+    const pollRoute = require('../../app/api/integrations/github/runner/poll/route').POST;
+    const ingestRoute = require('../../app/api/integrations/github/runner/ingest/route').POST;
+    return { dispatchRoute, pollRoute, ingestRoute };
+  };
+
+  const dispatchRoute = (request: NextRequest) => getRoutes().dispatchRoute(request);
+  const pollRoute = (request: NextRequest) => getRoutes().pollRoute(request);
+  const ingestRoute = (request: NextRequest) => getRoutes().ingestRoute(request);
 
   describe('Gate 2: API Contract Validation', () => {
     describe('POST /api/integrations/github/runner/dispatch', () => {
