@@ -1,14 +1,14 @@
 # Deploy Status Monitor (E65.1)
 
-The Deploy Status Monitor provides a deterministic, testable health check system that determines deployment readiness based on real-time signals from cloud infrastructure and runtime health endpoints.
+The Deploy Status Monitor provides a deterministic, testable status signal that determines deployment readiness **exclusively** from E65.2 **post-deploy verification** playbook runs (playbook: `post-deploy-verify`).
 
 ## Overview
 
 The monitor provides a **GREEN/YELLOW/RED** traffic light status that indicates whether it's safe to deploy:
 
-- **GREEN (GO)**: All health checks passing, safe to deploy
-- **YELLOW (CAUTION)**: Warnings detected, proceed with care
-- **RED (HOLD)**: Critical issues detected, do not deploy
+- **GREEN (GO)**: Latest post-deploy verification run succeeded
+- **YELLOW (CAUTION)**: Verification is running/pending or missing
+- **RED (HOLD)**: Latest post-deploy verification run failed/timeout/cancelled
 
 ## Architecture
 
@@ -19,56 +19,53 @@ The monitor provides a **GREEN/YELLOW/RED** traffic light status that indicates 
    - Enables timeline views and trending analysis
    - Schema includes: status, reasons, signals, timestamps
 
-2. **Rules Engine** (`src/lib/deploy-status/rules-engine.ts`)
-   - Pure, deterministic functions
-   - Priority-based rule evaluation
-   - 52 comprehensive unit tests covering all scenarios
+2. **Verification Run Resolver** (`control-center/src/lib/deploy-status/verification-resolver.ts`)
+  - Queries persisted playbook runs from the database
+  - Selects the latest `post-deploy-verify` run (optionally correlation-aware)
+  - Maps run status → traffic light deterministically
 
-3. **Signal Collector** (`src/lib/deploy-status/signal-collector.ts`)
-   - Fetches health data from `/api/health` and `/api/ready`
-   - Queries recent deploy events from database
-   - Designed for extensibility (future: ECS/ALB metrics)
-
-4. **API Endpoint** (`app/api/deploy/status/route.ts`)
+3. **API Endpoint** (`control-center/app/api/deploy/status/route.ts`)
    - GET `/api/deploy/status?env={env}`
    - 30-second cache with force refresh option
-   - Works with or without database
+  - Requires database (`DATABASE_ENABLED=true`) because verification runs are persisted in DB
 
-5. **UI Components**
+4. **UI Components**
    - `DeployStatusBadge`: Real-time status indicator in navigation
-   - `/deploy/status` page: Detailed status view with evidence
+  - `/deploy/status` page: Detailed status view with evidence (derived from the verification run and its steps)
 
 ## Status Determination Rules
 
-The rules are evaluated in priority order:
+E65.1 v2 derives the traffic light **only** from the latest E65.2 `post-deploy-verify` run:
 
-### RED (Critical Failures)
-
-1. **SIGNALS_MISSING**: Health or ready check data unavailable
-2. **HEALTH_FAIL**: `/api/health` returns non-200 or error
-3. **READY_FAIL**: `/api/ready` returns non-200 or ready=false
-4. **DEPLOY_FAILED**: Recent deploy event has failed status (within 30 min)
-
-### YELLOW (Warnings)
-
-5. **STALE_DATA**: Signal data older than 5 minutes
-6. **DEPLOY_WARNING**: Recent deploy with warnings (within 30 min)
-7. **HIGH_LATENCY**: Health check latency > 2000ms
-
-### GREEN (All Healthy)
-
-8. **ALL_HEALTHY**: All checks pass, no warnings
+- Latest run `success` → **GREEN**
+- Latest run `failed` / `timeout` / `cancelled` → **RED**
+- Latest run `pending` / `running` → **YELLOW**
+- No run found → **YELLOW**
 
 ## API Usage
 
 ### Query Current Status
 
-```bash
+```powershell
 # Get status for production environment
-curl http://localhost:3000/api/deploy/status?env=prod
+Invoke-RestMethod -Method Get -Uri "http://localhost:3000/api/deploy/status?env=prod"
 
 # Force fresh check (bypass cache)
-curl http://localhost:3000/api/deploy/status?env=prod&force=true
+Invoke-RestMethod -Method Get -Uri "http://localhost:3000/api/deploy/status?env=prod&force=true"
+```
+
+### Authentication
+
+`/api/deploy/status` requires authentication.
+
+Recommended:
+
+- In the browser, open DevTools → Network, trigger the request, then use **Copy → Copy as PowerShell** to get an authenticated `Invoke-WebRequest` / `Invoke-RestMethod` call (with cookies/headers).
+- If you need to call it manually, include the relevant session cookie header:
+
+```powershell
+$headers = @{ Cookie = "your_cookie_name=..." }
+Invoke-RestMethod -Method Get -Uri "http://localhost:3000/api/deploy/status?env=prod" -Headers $headers
 ```
 
 ### Response Format
@@ -77,36 +74,34 @@ curl http://localhost:3000/api/deploy/status?env=prod&force=true
 {
   "env": "prod",
   "status": "GREEN",
-  "observed_at": "2024-01-01T12:00:00Z",
-  "staleness_seconds": 0,
+  "observedAt": "2024-01-01T12:00:00Z",
+  "stalenessSeconds": 0,
   "reasons": [
     {
-      "code": "ALL_HEALTHY",
+      "code": "VERIFICATION_SUCCESS",
       "severity": "info",
-      "message": "All health checks passing",
+      "message": "Latest post-deploy verification run succeeded",
       "evidence": {
-        "health_ok": true,
-        "ready_ok": true,
-        "no_recent_failures": true
+        "runId": "uuid-here",
+        "runStatus": "success"
       }
     }
   ],
   "signals": {
-    "checked_at": "2024-01-01T12:00:00Z",
-    "health": {
-      "status": 200,
-      "ok": true,
-      "latency_ms": 45
-    },
-    "ready": {
-      "status": 200,
-      "ok": true,
-      "ready": true,
-      "latency_ms": 120
-    },
-    "deploy_events": []
+    "checkedAt": "2024-01-01T12:00:00Z",
+    "correlationId": "optional-correlation-id",
+    "verificationRun": {
+      "runId": "uuid-here",
+      "playbookId": "post-deploy-verify",
+      "playbookVersion": "v1",
+      "env": "prod",
+      "status": "success",
+      "createdAt": "2024-01-01T12:00:00Z",
+      "startedAt": "2024-01-01T12:00:01Z",
+      "completedAt": "2024-01-01T12:00:10Z"
+    }
   },
-  "snapshot_id": "uuid-here"
+  "snapshotId": "uuid-here"
 }
 ```
 
@@ -131,9 +126,8 @@ import DeployStatusBadge from "@/app/components/DeployStatusBadge";
 Visit `/deploy/status` to see:
 - Current status with recommendation
 - Detailed reason codes and evidence
-- Health signal breakdown
-- Recent deploy events
-- Raw JSON signals viewer
+- Last verification run (E65.2) with link to run details
+- Raw signals viewer
 
 ## Database Schema
 
@@ -156,57 +150,43 @@ CREATE TABLE deploy_status_snapshots (
 
 ### Run Tests
 
-```bash
-# Rules engine tests (52 tests)
-npm test -- __tests__/lib/deploy-status-rules-engine.test.ts
+```powershell
+# Resolver unit tests
+npm --prefix control-center test -- __tests__/lib/deploy-status-verification-resolver.test.ts
 
-# API contract tests (12 tests)
-npm test -- __tests__/api/deploy-status.test.ts
+# API contract tests
+npm --prefix control-center test -- __tests__/api/deploy-status.test.ts
 
-# All tests
-npm test
+# Proof gates
+npm --prefix control-center test -- __tests__/api/deploy-status-proof-gates.test.ts
 ```
 
 ### Test Coverage
 
-- **Rules Engine**: 52 tests covering all combinatorial cases
-- **API Contracts**: 12 tests for request validation, caching, error handling
-- **Total**: 64 new tests, all passing ✅
+- Resolver + API contract tests + proof gates cover: mapping, caching, correlation-aware caching, and idempotent persistence.
 
 ### Key Test Cases
 
 1. All status combinations (GREEN, YELLOW, RED)
-2. Priority and cascading rules
-3. Edge cases (boundaries, empty data)
+2. CorrelationId handling (UUID treated as runId)
+3. Edge cases (no run, unknown status)
 4. API validation and error handling
 5. Caching behavior
-6. Database enabled/disabled modes
+6. Database required (fails closed when disabled)
 
 ## Configuration
 
 ### Environment Variables
 
-- `DATABASE_ENABLED`: Enable/disable database persistence (default: false)
-- `NEXT_PUBLIC_APP_URL`: **REQUIRED for production/staging** - Base URL for health checks (default: http://localhost:3000)
-
-⚠️ **Critical**: In production and staging environments, `NEXT_PUBLIC_APP_URL` must be set to the actual service URL. If not set or left as localhost, health checks will fail and the monitor will return RED status.
+- `DATABASE_ENABLED`: **REQUIRED**. Must be `true` for E65.1 v2 (verification runs are read from DB)
+- `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`: PostgreSQL connection settings
+- `DATABASE_SSL` / `PGSSLMODE=require`: enable SSL to Postgres where required
 
 See [Environment Configuration Guide](./DEPLOY_STATUS_ENVIRONMENT_CONFIG.md) for detailed setup instructions.
 
 ### Customization
 
-Adjust thresholds in `rules-engine.ts`:
-
-```typescript
-// Lookback window for deploy events (default: 30 minutes)
-hasRecentDeployFailure(signals, lookbackMinutes: 30)
-
-// Staleness threshold (default: 5 minutes)
-isDataStale(signals, currentTime, thresholdSeconds: 300)
-
-// High latency threshold (default: 2 seconds)
-hasHighLatency(signals, thresholdMs: 2000)
-```
+E65.1 v2 intentionally does not implement a local “signals collector” or threshold tuning for health/ready/latency. Any detailed evidence should come from the persisted E65.2 verification run steps.
 
 ## Integration with Self-Propelling Mode
 
@@ -241,23 +221,15 @@ This recommendation appears on the `/deploy/status` detail page.
 
 ## Troubleshooting
 
-### Status shows RED with SIGNALS_MISSING
+### API returns 503
 
-- Verify `/api/health` and `/api/ready` endpoints are accessible
-- Check network connectivity
-- Review browser console for fetch errors
+- Ensure `DATABASE_ENABLED=true`
+- Ensure DB connectivity (see environment config guide)
 
-### Status shows STALE_DATA
+### Status is YELLOW with no verification run
 
-- Data is older than 5 minutes
-- Check if signal collection is running
-- Verify auto-refresh is enabled in UI
-
-### Status badge not updating
-
-- Verify refreshInterval is set (default: 60000ms)
-- Check browser console for errors
-- Try force refresh on detail page
+- Trigger / observe a `post-deploy-verify` run for the environment
+- Use the "View run details" link on `/deploy/status` to validate the latest run
 
 ## Implementation Notes
 
@@ -265,26 +237,24 @@ This recommendation appears on the `/deploy/status` detail page.
 
 1. **Deterministic**: Same inputs always produce same outputs
 2. **Testable**: Pure functions with comprehensive test coverage
-3. **Fail-safe**: Errors default to RED (safe mode)
+3. **Fail-safe**: When DB is unavailable, the API returns 503 (no false “GO”)
 4. **Evidence-based**: Every decision includes supporting data
 5. **No trial & error**: Clear, documented rules
 
 ### Why These Rules?
 
-- **Health before Ready**: If the process isn't alive, readiness doesn't matter
-- **Recent failures matter**: 30-minute window catches ongoing issues
-- **Staleness indicates problems**: Old data suggests monitoring breakdown
-- **High latency is a warning sign**: May indicate resource exhaustion
+- The deploy traffic light is a pure function of the latest post-deploy verification outcome.
+- Any deeper evidence comes from the verification run steps, not from E65.1 actively probing endpoints.
 
 ## Contributing
 
 When adding new status rules:
 
-1. Add the rule to `rules-engine.ts`
-2. Add reason code to `REASON_CODES`
-3. Write comprehensive tests in `deploy-status-rules-engine.test.ts`
-4. Update this README with the new rule
-5. Ensure tests pass: `npm test`
+1. Update `verification-resolver.ts` mapping logic (run status → traffic light)
+2. Add/adjust reason codes
+3. Write comprehensive tests in `deploy-status-verification-resolver.test.ts`
+4. Update this README with the change
+5. Ensure tests pass: `npm -w control-center test`
 
 ## References
 
@@ -292,4 +262,4 @@ When adding new status rules:
 - Migration: `database/migrations/027_deploy_status_snapshots.sql`
 - API: `/api/deploy/status`
 - UI: `/deploy/status`
-- Tests: `__tests__/lib/deploy-status-rules-engine.test.ts`
+- Tests: `__tests__/lib/deploy-status-verification-resolver.test.ts`

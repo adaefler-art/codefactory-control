@@ -47,16 +47,24 @@ export async function insertDeployStatusSnapshot(
         (env, status, observed_at, reasons, signals, related_deploy_event_id, staleness_seconds)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING 
-         id, created_at, updated_at, env, status, observed_at, 
-         reasons, signals, related_deploy_event_id, staleness_seconds`,
+         id,
+         created_at as "createdAt",
+         updated_at as "updatedAt",
+         env,
+         status,
+         observed_at as "observedAt",
+         reasons,
+         signals,
+         related_deploy_event_id as "relatedDeployEventId",
+         staleness_seconds as "stalenessSeconds"`,
       [
         input.env,
         input.status,
-        input.observed_at || new Date().toISOString(),
+        input.observedAt || new Date().toISOString(),
         JSON.stringify(input.reasons),
         JSON.stringify(input.signals),
-        input.related_deploy_event_id || null,
-        input.staleness_seconds || null,
+        input.relatedDeployEventId || null,
+        input.stalenessSeconds || null,
       ]
     );
 
@@ -100,8 +108,16 @@ export async function getLatestDeployStatusSnapshot(
   try {
     const result = await pool.query<DeployStatusSnapshot>(
       `SELECT 
-         id, created_at, updated_at, env, status, observed_at, 
-         reasons, signals, related_deploy_event_id, staleness_seconds
+         id,
+         created_at as "createdAt",
+         updated_at as "updatedAt",
+         env,
+         status,
+         observed_at as "observedAt",
+         reasons,
+         signals,
+         related_deploy_event_id as "relatedDeployEventId",
+         staleness_seconds as "stalenessSeconds"
        FROM deploy_status_snapshots
        WHERE env = $1
        ORDER BY observed_at DESC
@@ -150,8 +166,16 @@ export async function getRecentDeployStatusSnapshots(
   try {
     const result = await pool.query<DeployStatusSnapshot>(
       `SELECT 
-         id, created_at, updated_at, env, status, observed_at, 
-         reasons, signals, related_deploy_event_id, staleness_seconds
+         id,
+         created_at as "createdAt",
+         updated_at as "updatedAt",
+         env,
+         status,
+         observed_at as "observedAt",
+         reasons,
+         signals,
+         related_deploy_event_id as "relatedDeployEventId",
+         staleness_seconds as "stalenessSeconds"
        FROM deploy_status_snapshots
        WHERE env = $1
        ORDER BY observed_at DESC

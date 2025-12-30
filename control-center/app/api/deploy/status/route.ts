@@ -6,12 +6,11 @@ import {
   DeployEnvironment,
   isValidEnvironment,
 } from '@/lib/contracts/deployStatus';
-import { collectStatusSignals } from '@/lib/deploy-status/signal-collector';
-import { determineDeployStatus } from '@/lib/deploy-status/rules-engine';
 import {
   insertDeployStatusSnapshot,
   getLatestDeployStatusSnapshot,
 } from '@/lib/db/deployStatusSnapshots';
+import { resolveDeployStatusFromVerificationRuns } from '@/lib/deploy-status/verification-resolver';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,10 +21,41 @@ export const runtime = 'nodejs';
  */
 const CACHE_TTL_SECONDS = 30;
 
-/**
- * How stale data can be before we consider it problematic (seconds)
- */
-const STALENESS_THRESHOLD_SECONDS = 300; // 5 minutes
+function normalizeSnapshotSignals(signals: unknown): any {
+  if (!signals || typeof signals !== 'object') {
+    return { checkedAt: new Date().toISOString() };
+  }
+
+  const s = signals as Record<string, any>;
+
+  // Prefer already-camelCase
+  if (typeof s.checkedAt === 'string') {
+    return s;
+  }
+
+  const legacyCheckedAt = typeof s.checked_at === 'string' ? s.checked_at : new Date().toISOString();
+  const legacyCorrelationId = typeof s.correlation_id === 'string' ? s.correlation_id : undefined;
+  const legacyVerificationRun = s.verification_run as any;
+
+  const normalizedVerificationRun = legacyVerificationRun
+    ? {
+        runId: legacyVerificationRun.run_id,
+        playbookId: legacyVerificationRun.playbook_id,
+        playbookVersion: legacyVerificationRun.playbook_version,
+        env: legacyVerificationRun.env,
+        status: legacyVerificationRun.status,
+        createdAt: legacyVerificationRun.created_at,
+        startedAt: legacyVerificationRun.started_at ?? null,
+        completedAt: legacyVerificationRun.completed_at ?? null,
+      }
+    : null;
+
+  return {
+    checkedAt: legacyCheckedAt,
+    ...(legacyCorrelationId ? { correlationId: legacyCorrelationId } : {}),
+    verificationRun: normalizedVerificationRun,
+  };
+}
 
 /**
  * Check if database is enabled
@@ -53,6 +83,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const env = searchParams.get('env') as DeployEnvironment;
   const force = searchParams.get('force') === 'true';
+  const correlationId = searchParams.get('correlationId') || undefined;
 
   // Validate environment parameter
   if (!env || !isValidEnvironment(env)) {
@@ -65,81 +96,47 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Note: deploy-status health/ready checks are performed server-side and prefer loopback
-  // to avoid requiring outbound egress just to self-check. Use AFU9_DEPLOY_STATUS_BASE_URL
-  // if you need to override the base URL used for these checks.
-
   // Check if database is enabled
   if (!isDatabaseEnabled()) {
-    // Without database, we can still provide basic status from HTTP checks
-    // but we won't be able to persist or retrieve historical data
-    console.log(
-      JSON.stringify({
-        level: 'info',
-        route: '/api/deploy/status',
-        action: 'get_status_without_db',
-        env,
-        timestamp: new Date().toISOString(),
-      })
+    return jsonResponse(
+      {
+        error: 'Service unavailable',
+        message:
+          'Deploy status requires DATABASE_ENABLED=true to read post-deploy verification runs and persist status snapshots',
+      },
+      { status: 503, requestId }
     );
-
-    try {
-      // Collect fresh signals (no database needed for HTTP checks)
-      const signals = await collectStatusSignals(null, {
-        env,
-        includeDeployEvents: false,
-      });
-
-      // Determine status based on signals
-      const result = determineDeployStatus({
-        env,
-        signals,
-        stalenessThresholdSeconds: STALENESS_THRESHOLD_SECONDS,
-      });
-
-      const response: DeployStatusResponse = {
-        env,
-        status: result.status,
-        observed_at: signals.checked_at,
-        reasons: result.reasons,
-        signals,
-        staleness_seconds: result.staleness_seconds,
-      };
-
-      return jsonResponse(response, { status: 200, requestId });
-    } catch (error) {
-      console.error('[DeployStatus] Error collecting signals without DB:', error);
-      return jsonResponse(
-        {
-          error: 'Service unavailable',
-          message: 'Failed to collect deployment status signals',
-        },
-        { status: 503, requestId }
-      );
-    }
   }
 
   // Database is enabled - use full functionality with caching
   const pool = getPool();
 
   try {
-    // If not forcing refresh, try to get cached status from database
+    // If not forcing refresh, try to get cached status from database.
+    // If correlationId is provided, only return cached snapshot if it matches.
     if (!force) {
       const cachedResult = await getLatestDeployStatusSnapshot(pool, env);
       if (cachedResult.success && cachedResult.snapshot) {
         const snapshot = cachedResult.snapshot;
         const age = Math.floor(
-          (Date.now() - new Date(snapshot.observed_at).getTime()) / 1000
+          (Date.now() - new Date(snapshot.observedAt).getTime()) / 1000
         );
 
+        const normalizedSignals = normalizeSnapshotSignals(snapshot.signals);
+        const cachedCorrelationId = normalizedSignals?.correlationId as string | undefined;
+        const cachedRunId = normalizedSignals?.verificationRun?.runId as string | undefined;
+        const correlationMatch =
+          !correlationId || correlationId === cachedCorrelationId || correlationId === cachedRunId;
+
         // Use cached data if it's fresh enough
-        if (age < CACHE_TTL_SECONDS) {
+        if (age < CACHE_TTL_SECONDS && correlationMatch) {
           console.log(
             JSON.stringify({
               level: 'info',
               route: '/api/deploy/status',
               action: 'cache_hit',
               env,
+              correlationId: correlationId || null,
               age_seconds: age,
               timestamp: new Date().toISOString(),
             })
@@ -148,11 +145,11 @@ export async function GET(request: NextRequest) {
           const response: DeployStatusResponse = {
             env: snapshot.env,
             status: snapshot.status,
-            observed_at: snapshot.observed_at,
+            observedAt: snapshot.observedAt,
             reasons: snapshot.reasons,
-            signals: snapshot.signals,
-            staleness_seconds: snapshot.staleness_seconds || 0,
-            snapshot_id: snapshot.id,
+            signals: normalizedSignals,
+            stalenessSeconds: snapshot.stalenessSeconds || 0,
+            snapshotId: snapshot.id,
           };
 
           return jsonResponse(response, { status: 200, requestId });
@@ -160,39 +157,55 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Cache miss or forced refresh - collect fresh signals
+    // Cache miss or forced refresh - resolve deterministically from verification runs
     console.log(
       JSON.stringify({
         level: 'info',
         route: '/api/deploy/status',
-        action: 'collect_fresh_signals',
+        action: 'resolve_from_verification_runs',
         env,
         force,
+        correlationId: correlationId || null,
         timestamp: new Date().toISOString(),
       })
     );
 
-    const signals = await collectStatusSignals(pool, {
+    const resolved = await resolveDeployStatusFromVerificationRuns(pool, {
       env,
-      includeDeployEvents: true,
+      correlationId,
     });
 
-    // Determine status based on signals
-    const result = determineDeployStatus({
-      env,
-      signals,
-      stalenessThresholdSeconds: STALENESS_THRESHOLD_SECONDS,
-    });
+    // Idempotency: avoid inserting duplicates for the same correlation/run.
+    const latestSnapshot = await getLatestDeployStatusSnapshot(pool, env);
+    if (latestSnapshot.success && latestSnapshot.snapshot) {
+      const previous = latestSnapshot.snapshot;
+      const prevSignals = normalizeSnapshotSignals(previous.signals);
+      const prevCorrelationId = prevSignals?.correlationId as string | undefined;
+      const prevRunId = prevSignals?.verificationRun?.runId as string | undefined;
+      const nextCorrelationId = resolved.signals?.correlationId;
+      const nextRunId = resolved.signals?.verificationRun?.runId;
+
+      if (
+        previous.status === resolved.status &&
+        prevCorrelationId === nextCorrelationId &&
+        prevRunId === nextRunId
+      ) {
+        const response: DeployStatusResponse = {
+          env: previous.env,
+          status: previous.status,
+          observedAt: previous.observedAt,
+          reasons: previous.reasons,
+          signals: prevSignals,
+          stalenessSeconds: previous.stalenessSeconds || 0,
+          snapshotId: previous.id,
+        };
+
+        return jsonResponse(response, { status: 200, requestId });
+      }
+    }
 
     // Persist snapshot to database for future caching
-    const persistResult = await insertDeployStatusSnapshot(pool, {
-      env,
-      status: result.status,
-      observed_at: signals.checked_at,
-      reasons: result.reasons,
-      signals,
-      staleness_seconds: result.staleness_seconds,
-    });
+    const persistResult = await insertDeployStatusSnapshot(pool, resolved);
 
     if (!persistResult.success) {
       console.error('[DeployStatus] Failed to persist snapshot:', persistResult.error);
@@ -201,12 +214,12 @@ export async function GET(request: NextRequest) {
 
     const response: DeployStatusResponse = {
       env,
-      status: result.status,
-      observed_at: signals.checked_at,
-      reasons: result.reasons,
-      signals,
-      staleness_seconds: result.staleness_seconds,
-      snapshot_id: persistResult.snapshot?.id,
+      status: resolved.status,
+      observedAt: resolved.observedAt || new Date().toISOString(),
+      reasons: resolved.reasons,
+      signals: resolved.signals,
+      stalenessSeconds: resolved.stalenessSeconds || 0,
+      snapshotId: persistResult.snapshot?.id,
     };
 
     console.log(
@@ -215,8 +228,8 @@ export async function GET(request: NextRequest) {
         route: '/api/deploy/status',
         action: 'status_determined',
         env,
-        status: result.status,
-        reason_codes: result.reasons.map(r => r.code),
+        status: resolved.status,
+        reason_codes: resolved.reasons.map(r => r.code),
         timestamp: new Date().toISOString(),
       })
     );

@@ -96,6 +96,12 @@ export const API_ROUTES = {
   // Playbooks
   playbooks: {
     list: '/api/playbooks',
+    runs: {
+      get: (id: string) => `/api/playbooks/runs/${id}`,
+    },
+    postDeployVerify: {
+      run: (env: string) => `/api/playbooks/post-deploy-verify/run?env=${env}`,
+    },
   },
 
   // Runs

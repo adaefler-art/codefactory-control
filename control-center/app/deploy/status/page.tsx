@@ -53,6 +53,8 @@ export default function DeployStatusPage() {
     return date.toLocaleString();
   };
 
+  const verificationRun = status?.signals?.verificationRun || null;
+
   const getRecommendation = (status: DeployStatus): string => {
     switch (status) {
       case "RED":
@@ -149,11 +151,11 @@ export default function DeployStatusPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-400 mb-1">Observed At</p>
-                  <p className="text-sm text-gray-200">{formatTimestamp(status.observed_at)}</p>
+                  <p className="text-sm text-gray-200">{formatTimestamp(status.observedAt)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-400 mb-1">Staleness</p>
-                  <p className="text-sm text-gray-200">{status.staleness_seconds}s ago</p>
+                  <p className="text-sm text-gray-200">{status.stalenessSeconds}s ago</p>
                 </div>
               </div>
 
@@ -166,6 +168,66 @@ export default function DeployStatusPage() {
                   {getRecommendation(status.status)}
                 </p>
               </div>
+            </div>
+
+            {/* Last Verification Run */}
+            <div className="bg-gray-900 rounded-lg border border-gray-800 p-6 mb-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Last Verification Run</h2>
+
+              {!verificationRun && (
+                <p className="text-sm text-gray-400">
+                  No post-deploy verification run found for this environment.
+                </p>
+              )}
+
+              {verificationRun && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-400">Run Status</p>
+                      <p className="text-sm text-gray-200">{verificationRun.status}</p>
+                    </div>
+                    <a
+                      className="text-sm text-purple-300 hover:text-purple-200 underline"
+                      href={API_ROUTES.playbooks.runs.get(verificationRun.runId)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View run details
+                    </a>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-400">Run ID</p>
+                      <p className="text-xs text-gray-200 break-all">{verificationRun.runId}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400">Started</p>
+                      <p className="text-sm text-gray-200">
+                        {verificationRun.startedAt ? formatTimestamp(verificationRun.startedAt) : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400">Completed</p>
+                      <p className="text-sm text-gray-200">
+                        {verificationRun.completedAt
+                          ? formatTimestamp(verificationRun.completedAt)
+                          : "N/A"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <details className="mt-2">
+                    <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                      Verification run payload
+                    </summary>
+                    <pre className="mt-2 text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto">
+                      {JSON.stringify(verificationRun, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              )}
             </div>
 
             {/* Reasons */}
@@ -220,111 +282,18 @@ export default function DeployStatusPage() {
               </div>
             </div>
 
-            {/* Signals Details */}
-            <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Health Signals</h2>
+            {/* Signals (raw) */}
+            <div className="bg-gray-900 rounded-lg border border-gray-800 p-6 mb-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Signals</h2>
 
-              <div className="space-y-4">
-                {/* Health Check */}
-                <div className="p-4 bg-gray-800 rounded-md">
-                  <h3 className="text-sm font-medium text-gray-300 mb-2">Health Check</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                    <div>
-                      <span className="text-gray-400">Status:</span>{" "}
-                      <span className="text-gray-200">{status.signals.health?.status || "N/A"}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">OK:</span>{" "}
-                      <span className="text-gray-200">
-                        {status.signals.health?.ok ? "Yes" : "No"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Latency:</span>{" "}
-                      <span className="text-gray-200">
-                        {status.signals.health?.latency_ms || "N/A"}ms
-                      </span>
-                    </div>
-                    {status.signals.health?.error && (
-                      <div className="col-span-2">
-                        <span className="text-gray-400">Error:</span>{" "}
-                        <span className="text-red-400">{status.signals.health.error}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Ready Check */}
-                <div className="p-4 bg-gray-800 rounded-md">
-                  <h3 className="text-sm font-medium text-gray-300 mb-2">Ready Check</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                    <div>
-                      <span className="text-gray-400">Status:</span>{" "}
-                      <span className="text-gray-200">{status.signals.ready?.status || "N/A"}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Ready:</span>{" "}
-                      <span className="text-gray-200">
-                        {status.signals.ready?.ready ? "Yes" : "No"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Latency:</span>{" "}
-                      <span className="text-gray-200">
-                        {status.signals.ready?.latency_ms || "N/A"}ms
-                      </span>
-                    </div>
-                    {status.signals.ready?.error && (
-                      <div className="col-span-2">
-                        <span className="text-gray-400">Error:</span>{" "}
-                        <span className="text-red-400">{status.signals.ready.error}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Deploy Events */}
-                {status.signals.deploy_events && status.signals.deploy_events.length > 0 && (
-                  <div className="p-4 bg-gray-800 rounded-md">
-                    <h3 className="text-sm font-medium text-gray-300 mb-2">
-                      Recent Deploy Events
-                    </h3>
-                    <div className="space-y-2">
-                      {status.signals.deploy_events.slice(0, 3).map((event, idx) => (
-                        <div key={idx} className="text-xs p-2 bg-gray-900 rounded">
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-400">{event.service}</span>
-                            <code
-                              className={`px-2 py-0.5 rounded ${
-                                event.status.toLowerCase().includes("fail")
-                                  ? "bg-red-900/30 text-red-400"
-                                  : event.status.toLowerCase().includes("warn")
-                                  ? "bg-yellow-900/30 text-yellow-400"
-                                  : "bg-green-900/30 text-green-400"
-                              }`}
-                            >
-                              {event.status}
-                            </code>
-                          </div>
-                          <div className="text-gray-500 mt-1">
-                            {formatTimestamp(event.created_at)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Raw Signals */}
-                <details>
-                  <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300">
-                    View Raw Signal Data
-                  </summary>
-                  <pre className="mt-2 text-xs text-gray-300 bg-gray-800 p-4 rounded overflow-x-auto max-h-96">
-                    {JSON.stringify(status.signals, null, 2)}
-                  </pre>
-                </details>
-              </div>
+              <details>
+                <summary className="text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                  Raw signals payload
+                </summary>
+                <pre className="mt-3 text-xs text-gray-300 bg-gray-800 p-3 rounded overflow-x-auto">
+                  {JSON.stringify(status.signals, null, 2)}
+                </pre>
+              </details>
             </div>
           </>
         )}

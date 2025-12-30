@@ -19,8 +19,9 @@ import {
   hasHighLatency,
   REASON_CODES,
 } from '../../src/lib/deploy-status/rules-engine';
-import { StatusSignals } from '../../src/lib/contracts/deployStatus';
 import { createMockSignals } from '../../src/lib/deploy-status/signal-collector';
+
+type StatusSignals = any;
 
 describe('Deploy Status Rules Engine', () => {
   const fixedTime = new Date('2024-01-01T12:00:00Z');
