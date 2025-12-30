@@ -221,8 +221,8 @@ Commit:      abc123def456
 
 ### Security
 
-- [../SECURITY-IAM.md](../SECURITY-IAM.md) - IAM security practices
-- [../IAM-ROLES-JUSTIFICATION.md](../IAM-ROLES-JUSTIFICATION.md) - IAM role justifications
+- [../v04/SECURITY-IAM.md](../v04/SECURITY-IAM.md) - IAM security practices
+- [../v04/IAM-ROLES-JUSTIFICATION.md](../v04/IAM-ROLES-JUSTIFICATION.md) - IAM role justifications
 - [.gitignore](../../.gitignore) - Ignored file patterns
 
 ### Repository
