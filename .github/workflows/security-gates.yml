@@ -1,0 +1,288 @@
+name: Security Gates
+
+# I661 (E66) — Repo Security Hardening
+# Blocks PRs and commits with detected secrets or forbidden files
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for gitleaks
+
+      - name: Run Gitleaks Secret Scanning
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Optional for Gitleaks Pro
+        # Note: This action will fail if secrets are detected
+        # Gitleaks scans both current files and git history
+
+      - name: Secret Scan Summary
+        if: success()
+        run: |
+          echo "## 🔒 Secret Scanning Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **No secrets detected**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Scanned for:" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub Personal Access Tokens (PATs)" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub App tokens and private keys" >> $GITHUB_STEP_SUMMARY
+          echo "- AWS access keys and session tokens" >> $GITHUB_STEP_SUMMARY
+          echo "- OpenAI API keys" >> $GITHUB_STEP_SUMMARY
+          echo "- Private SSH/RSA keys" >> $GITHUB_STEP_SUMMARY
+          echo "- Database connection strings" >> $GITHUB_STEP_SUMMARY
+          echo "- And 200+ other secret patterns" >> $GITHUB_STEP_SUMMARY
+
+      - name: Secret Scan Failure Summary
+        if: failure()
+        run: |
+          echo "## ❌ Secret Scanning FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Secrets detected in repository!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Immediate Actions Required:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. **DO NOT MERGE** this PR" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Review gitleaks output** above for detected secrets" >> $GITHUB_STEP_SUMMARY
+          echo "3. **Remove secrets** from code and git history" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Rotate exposed secrets** immediately" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Documentation:" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security Rotation Guide](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECURITY_ROTATION.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [History Rewrite Guide](https://github.com/${{ github.repository }}/blob/main/docs/v065/HISTORY_REWRITE.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Secret Scanning Setup](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECRET_SCANNING_SETUP.md)" >> $GITHUB_STEP_SUMMARY
+
+  forbidden-files:
+    name: Forbidden Files Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for Secret Files
+        id: check_secret_files
+        shell: bash
+        run: |
+          echo "Scanning for forbidden secret files..."
+          
+          # Define forbidden patterns
+          FORBIDDEN_PATTERNS=(
+            ".env.local"
+            "*.pem"
+            "*.pkcs8.pem"
+            "*private-key*"
+            "secret-*.json"
+            "github-app-secret.json"
+            "*.key"
+            "*.p12"
+            "*.pfx"
+          )
+          
+          FOUND_FILES=()
+          
+          # Search for each pattern
+          for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+            # Use find with pattern matching, excluding specific directories
+            while IFS= read -r file; do
+              FOUND_FILES+=("$file")
+            done < <(find . -name "$pattern" \
+              -not -path "*/node_modules/*" \
+              -not -path "*/.git/*" \
+              -not -path "*/.next/*" \
+              -not -path "*/dist/*" \
+              -not -path "*/build/*" \
+              -not -path "*/cdk.out/*" \
+              -type f 2>/dev/null)
+          done
+          
+          # Check results
+          if [ ${#FOUND_FILES[@]} -gt 0 ]; then
+            echo "❌ CRITICAL: Found ${#FOUND_FILES[@]} forbidden file(s):"
+            printf '%s\n' "${FOUND_FILES[@]}"
+            echo ""
+            echo "These files must NEVER be committed!"
+            echo ""
+            echo "Immediate actions:"
+            echo "1. Remove files: git rm --cached <file>"
+            echo "2. Verify .gitignore includes these patterns"
+            echo "3. Check git history: git log --all --name-only -- <file>"
+            echo "4. If in history, see docs/v065/HISTORY_REWRITE.md"
+            echo "5. If exposed, rotate secrets: docs/v065/SECURITY_ROTATION.md"
+            echo ""
+            exit 1
+          else
+            echo "✅ No forbidden files found"
+            exit 0
+          fi
+
+      - name: Forbidden Files Summary
+        if: always()
+        run: |
+          echo "## 🚫 Forbidden Files Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.check_secret_files.outcome }}" == "success" ]; then
+            echo "✅ **No forbidden files detected**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Checked for:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.env.local\` files" >> $GITHUB_STEP_SUMMARY
+            echo "- \`*.pem\` certificate/key files" >> $GITHUB_STEP_SUMMARY
+            echo "- \`*private-key*\` files" >> $GITHUB_STEP_SUMMARY
+            echo "- \`secret-*.json\` files" >> $GITHUB_STEP_SUMMARY
+            echo "- Other key material (\`.key\`, \`.p12\`, \`.pfx\`)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Forbidden files detected**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See workflow logs for details" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📖 [Security Rotation Guide](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECURITY_ROTATION.md)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  repo-security-verify:
+    name: Repository Security Verification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Repository Security Verification
+        id: repo_security
+        shell: bash
+        run: |
+          set -o pipefail
+          
+          # Run repo:verify which includes secret file check
+          npm run repo:verify 2>&1 | tee security_verification_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE
+
+      - name: Security Verification Summary
+        if: always()
+        run: |
+          echo "## 🔐 Repository Security Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.repo_security.outputs.exit_code }}" == "0" ]; then
+            echo "✅ **All repository security checks PASSED**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Verified Security Checks:" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ No secret files in working tree" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ No forbidden paths (.next/, .worktrees/)" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Route-map consistency" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ No empty folders" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Proper scope separation" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Repository security verification FAILED**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See workflow logs for detailed error messages" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Security Documentation:" >> $GITHUB_STEP_SUMMARY
+            echo "- [Security Rotation](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECURITY_ROTATION.md)" >> $GITHUB_STEP_SUMMARY
+            echo "- [History Rewrite](https://github.com/${{ github.repository }}/blob/main/docs/v065/HISTORY_REWRITE.md)" >> $GITHUB_STEP_SUMMARY
+            echo "- [Secret Scanning Setup](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECRET_SCANNING_SETUP.md)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 Full verification output available in workflow logs" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload verification output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-verification-output
+          path: security_verification_output.txt
+          retention-days: 30  # Keep security logs longer
+
+  security-gate-summary:
+    name: Security Gate Summary
+    runs-on: ubuntu-latest
+    needs: [secret-scanning, forbidden-files, repo-security-verify]
+    if: always()
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Check All Gates
+        run: |
+          echo "## 🔒 Security Gates Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check each job result
+          SECRET_SCAN="${{ needs.secret-scanning.result }}"
+          FORBIDDEN_FILES="${{ needs.forbidden-files.result }}"
+          REPO_SECURITY="${{ needs.repo-security-verify.result }}"
+          
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$SECRET_SCAN" == "success" ]; then
+            echo "| Secret Scanning (Gitleaks) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Secret Scanning (Gitleaks) | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "$FORBIDDEN_FILES" == "success" ]; then
+            echo "| Forbidden Files Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Forbidden Files Check | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "$REPO_SECURITY" == "success" ]; then
+            echo "| Repository Security Verify | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Repository Security Verify | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Determine overall status
+          if [ "$SECRET_SCAN" == "success" ] && [ "$FORBIDDEN_FILES" == "success" ] && [ "$REPO_SECURITY" == "success" ]; then
+            echo "### ✅ All Security Gates Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Repository is secure and ready for merge." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          else
+            echo "### ❌ Security Gates Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** Review and fix security issues above before merging." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Quick Links:" >> $GITHUB_STEP_SUMMARY
+            echo "- [Security Rotation Guide](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECURITY_ROTATION.md)" >> $GITHUB_STEP_SUMMARY
+            echo "- [History Rewrite Guide](https://github.com/${{ github.repository }}/blob/main/docs/v065/HISTORY_REWRITE.md)" >> $GITHUB_STEP_SUMMARY
+            echo "- [Secret Scanning Setup](https://github.com/${{ github.repository }}/blob/main/docs/v065/SECRET_SCANNING_SETUP.md)" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

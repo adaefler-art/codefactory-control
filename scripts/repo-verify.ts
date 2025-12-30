@@ -38,6 +38,57 @@ const FORBIDDEN_PATHS = [
   'standalone',
 ];
 
+// Secret file patterns that should never be committed
+const SECRET_FILE_PATTERNS = [
+  '.env.local',
+  '.env*.local',
+  '*.pem',
+  '*.pkcs8.pem',
+  '*private-key*',
+  'secret-*.json',
+  'github-app-secret.json',
+  'github-app-private-key*',
+];
+
+// Regex patterns to detect secret-like content in files
+const SECRET_CONTENT_PATTERNS = [
+  {
+    name: 'GitHub Personal Access Token',
+    pattern: /ghp_[a-zA-Z0-9]{36}/g,
+    severity: 'critical',
+  },
+  {
+    name: 'GitHub OAuth Token',
+    pattern: /gho_[a-zA-Z0-9]{36}/g,
+    severity: 'critical',
+  },
+  {
+    name: 'GitHub App Token',
+    pattern: /ghs_[a-zA-Z0-9]{36}/g,
+    severity: 'critical',
+  },
+  {
+    name: 'OpenAI API Key',
+    pattern: /sk-proj-[a-zA-Z0-9]{20,}/g,
+    severity: 'critical',
+  },
+  {
+    name: 'AWS Access Key ID',
+    pattern: /AKIA[0-9A-Z]{16}/g,
+    severity: 'critical',
+  },
+  {
+    name: 'AWS Session Token',
+    pattern: /ASIA[0-9A-Z]{16}/g,
+    severity: 'high',
+  },
+  {
+    name: 'Private Key Block',
+    pattern: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/g,
+    severity: 'critical',
+  },
+];
+
 // Maximum depth to scan directories (prevents excessive recursion)
 const MAX_SCAN_DEPTH = 10;
 
@@ -607,6 +658,124 @@ function checkMixedScope(): ValidationResult {
 }
 
 // ============================================================================
+// Secret Files Check (EPIC E66 / I661)
+// ============================================================================
+
+/**
+ * Check for secret files that should never be committed
+ * Part of I661 — Repo Security Hardening
+ */
+function checkSecretFiles(): ValidationResult {
+  console.log('🔍 Running Secret Files Check...');
+
+  const errors: string[] = [];
+  const foundSecretFiles: string[] = [];
+
+  // Directories to exclude from secret scanning
+  const EXCLUDED_DIRS = [
+    'node_modules',
+    '.git',
+    '.next',
+    'dist',
+    'build',
+    'coverage',
+    'cdk.out',
+    '.worktrees',
+  ];
+
+  function matchesSecretPattern(filename: string): boolean {
+    return SECRET_FILE_PATTERNS.some((pattern) => {
+      // Convert glob pattern to regex
+      const regexPattern = pattern
+        .replace(/\./g, '\\.')
+        .replace(/\*/g, '.*');
+      const regex = new RegExp(`^${regexPattern}$`);
+      return regex.test(filename);
+    });
+  }
+
+  function scanForSecretFiles(dir: string, depth: number = 0): void {
+    if (depth > MAX_SCAN_DEPTH) return;
+    if (!fs.existsSync(dir)) return;
+
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        // Skip excluded directories
+        if (EXCLUDED_DIRS.includes(entry.name)) continue;
+
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          scanForSecretFiles(fullPath, depth + 1);
+        } else if (entry.isFile()) {
+          if (matchesSecretPattern(entry.name)) {
+            const relativePath = path.relative(REPO_ROOT, fullPath);
+            foundSecretFiles.push(relativePath);
+          }
+        }
+      }
+    } catch (error) {
+      // Skip directories we can't read
+      if (error instanceof Error && !error.message?.includes('EACCES')) {
+        console.warn(`  ⚠️  Could not scan directory: ${dir}`);
+      }
+    }
+  }
+
+  // Scan the entire repository
+  scanForSecretFiles(REPO_ROOT);
+
+  if (foundSecretFiles.length > 0) {
+    errors.push(
+      `\n❌ CRITICAL SECURITY VIOLATION: Found ${foundSecretFiles.length} secret file(s):\n` +
+      foundSecretFiles.map((f) => `  - ${f}`).join('\n') +
+      `\n\n` +
+      `Error: Secret files must NEVER be committed to the repository\n` +
+      `\n` +
+      `These files may contain:\n` +
+      `  - API keys, tokens, passwords\n` +
+      `  - Private keys (GitHub App, SSH, etc.)\n` +
+      `  - Environment-specific credentials\n` +
+      `\n` +
+      `IMMEDIATE ACTIONS REQUIRED:\n` +
+      `\n` +
+      `1. DO NOT COMMIT OR PUSH\n` +
+      `\n` +
+      `2. Remove files from working tree:\n` +
+      `   git rm --cached ${foundSecretFiles[0]}\n` +
+      `\n` +
+      `3. Verify secrets are in AWS Secrets Manager:\n` +
+      `   aws secretsmanager list-secrets --filters Key=name,Values=afu9/\n` +
+      `\n` +
+      `4. Check if already in git history:\n` +
+      `   git log --all --name-only -- ${foundSecretFiles[0]}\n` +
+      `   If found in history, see docs/v065/HISTORY_REWRITE.md\n` +
+      `\n` +
+      `5. If secret was exposed, ROTATE IMMEDIATELY:\n` +
+      `   See docs/v065/SECURITY_ROTATION.md\n` +
+      `\n` +
+      `6. Verify .gitignore includes these patterns:\n` +
+      SECRET_FILE_PATTERNS.map((p) => `   ${p}`).join('\n') +
+      `\n\n` +
+      `Related Documentation:\n` +
+      `  - docs/v065/SECURITY_ROTATION.md - Secret rotation procedures\n` +
+      `  - docs/v065/HISTORY_REWRITE.md - History sanitization\n` +
+      `  - docs/v065/SECRET_SCANNING_SETUP.md - Prevention setup\n` +
+      `\n` +
+      `This check is part of I661 (E66) — Repo Security Hardening`
+    );
+
+    console.log(`   ❌ Secret Files Check FAILED (${foundSecretFiles.length} violations)`);
+    return { passed: false, errors };
+  }
+
+  console.log('   ✅ Secret Files Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -618,6 +787,7 @@ async function main() {
   const results = [
     checkRouteMap(),
     checkForbiddenPaths(),
+    checkSecretFiles(),  // NEW: I661 security check
     checkEmptyFolders(),
     checkUnreferencedRoutes(),
     checkMixedScope(),

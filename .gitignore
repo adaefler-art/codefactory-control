@@ -91,11 +91,17 @@ actionlint
 control-center/public/build-metadata.json
 
 # Local secrets / key material (DO NOT COMMIT)
+# I661 (E66) — Repo Security Hardening
 github-app-private-key.pem
 github-app-private-key.pkcs8.pem
 github-app-secret.json
 secret-updated.json
 secret-final.json
+*private-key*.pem
+*private-key*.pkcs8.pem
+*.key
+*.p12
+*.pfx
 
 # Next.js build output
 .next/
