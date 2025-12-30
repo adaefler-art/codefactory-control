@@ -11,7 +11,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "db:migrate": "bash ../scripts/db-migrate.sh",
-    "validate-mcp-catalog": "node ../scripts/validate-mcp-catalog.js"
+    "validate-mcp-catalog": "node ../scripts/validate-mcp-catalog.js",
+    "validate-playbooks": "node ../scripts/validate-playbooks.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
