@@ -1,5 +1,6 @@
 import { MCPServer, Tool, DependencyCheck } from '@afu9/mcp-base/src/server';
 import { DummyExecutorAdapter, ExecutorAdapter } from './adapters/executor';
+import { DatabaseExecutorAdapter } from './adapters/database-executor';
 import { PlaybookManager } from './adapters/playbook-manager';
 import { 
   RunSpec, 
@@ -8,9 +9,10 @@ import {
   Playbook,
 } from './contracts/schemas';
 import { ZodError } from 'zod';
+import { Pool } from 'pg';
 
 /**
- * AFU-9 Runner MCP Server (I631)
+ * AFU-9 Runner MCP Server (I631 + I632)
  * 
  * Provides MCP tools for run management and playbook execution:
  * - run.create: Create a new run from RunSpec
@@ -20,22 +22,25 @@ import { ZodError } from 'zod';
  * - playbook.list: List available playbooks
  * - playbook.get: Get a specific playbook
  * 
- * MVP Scope (I631):
- * - Strict contracts with Zod validation
- * - DummyExecutorAdapter only (no real execution)
- * - No DB persistence (in-memory only)
- * - No UI
- * - No GitHub Runner integration
+ * I631: Strict contracts with Zod validation, DummyExecutorAdapter (in-memory)
+ * I632: DatabaseExecutorAdapter with PostgreSQL persistence (runs ledger)
  */
 export class AFU9RunnerMCPServer extends MCPServer {
   private executor: ExecutorAdapter;
   private playbookManager: PlaybookManager;
+  private pool?: Pool;
 
-  constructor(port: number = 3002) {
+  constructor(port: number = 3002, useDatabase: boolean = false, pool?: Pool) {
     super(port, 'afu9-runner', '0.1.0');
     
-    // Initialize with DummyExecutorAdapter for I631
-    this.executor = new DummyExecutorAdapter();
+    // Initialize executor based on mode
+    if (useDatabase && pool) {
+      this.executor = new DatabaseExecutorAdapter(pool);
+      this.pool = pool;
+    } else {
+      this.executor = new DummyExecutorAdapter();
+    }
+    
     this.playbookManager = new PlaybookManager();
   }
 
@@ -48,13 +53,28 @@ export class AFU9RunnerMCPServer extends MCPServer {
     // Check 1: Service is running
     checks.set('service', { status: 'ok' });
 
-    // Check 2: Executor adapter is ready
+    // Check 2: Database connection (if using database mode)
+    if (this.pool) {
+      try {
+        const client = await this.pool.connect();
+        await client.query('SELECT 1');
+        client.release();
+        checks.set('database', { status: 'ok', message: 'Database connected' });
+      } catch (error) {
+        checks.set('database', { 
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Database connection failed',
+        });
+      }
+    }
+
+    // Check 3: Executor adapter is ready
     checks.set('executor', { 
       status: 'ok',
-      message: `Using ${this.executor.runtime} runtime`,
+      message: `Using ${this.executor.runtime} runtime ${this.pool ? '(database-backed)' : '(in-memory)'}`,
     });
 
-    // Check 3: Playbook manager is ready
+    // Check 4: Playbook manager is ready
     try {
       const playbooks = await this.playbookManager.listPlaybooks();
       checks.set('playbooks', { 
@@ -75,7 +95,11 @@ export class AFU9RunnerMCPServer extends MCPServer {
    * Get required dependencies
    */
   protected getRequiredDependencies(): string[] {
-    return ['service', 'executor'];
+    const deps = ['service', 'executor'];
+    if (this.pool) {
+      deps.push('database');
+    }
+    return deps;
   }
 
   /**
@@ -350,6 +374,40 @@ export class AFU9RunnerMCPServer extends MCPServer {
 // Start server if run directly
 if (require.main === module) {
   const port = parseInt(process.env.PORT || '3002', 10);
-  const server = new AFU9RunnerMCPServer(port);
+  const useDatabase = process.env.USE_DATABASE === 'true';
+  
+  let pool: Pool | undefined;
+  if (useDatabase) {
+    // SSL configuration: enabled via DATABASE_SSL, with certificate validation enforced by default
+    // Set DATABASE_SSL_REJECT_UNAUTHORIZED=false only in development to disable validation
+    const useSSL = process.env.DATABASE_SSL === 'true';
+    const sslConfig = useSSL 
+      ? { 
+          rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' 
+        }
+      : undefined;
+      
+    pool = new Pool({
+      host: process.env.DATABASE_HOST || 'localhost',
+      port: parseInt(process.env.DATABASE_PORT || '5432', 10),
+      database: process.env.DATABASE_NAME || 'afu9',
+      user: process.env.DATABASE_USER || 'postgres',
+      password: process.env.DATABASE_PASSWORD,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+      ssl: sslConfig,
+    });
+
+    pool.on('error', (err) => {
+      console.error('[Database] Unexpected error on idle client', err);
+    });
+
+    console.log('[AFU9Runner] Starting with database-backed persistence');
+  } else {
+    console.log('[AFU9Runner] Starting with in-memory persistence');
+  }
+  
+  const server = new AFU9RunnerMCPServer(port, useDatabase, pool);
   server.start();
 }

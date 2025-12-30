@@ -1,4 +1,5 @@
 import { RunSpec, RunResult, StepResult, Runtime } from '../contracts/schemas';
+import { validateRuntime } from './validation';
 
 /**
  * Executor Adapter Interface
@@ -57,9 +58,7 @@ export class DummyExecutorAdapter implements ExecutorAdapter {
     }
 
     // Validate runtime is supported
-    if (spec.runtime !== 'dummy') {
-      throw new Error(`Runtime ${spec.runtime} not supported by DummyExecutorAdapter. Only 'dummy' runtime is supported in I631.`);
-    }
+    validateRuntime(spec.runtime, this.runtime, 'DummyExecutorAdapter');
 
     // Initialize step results as pending
     const steps: StepResult[] = spec.steps.map(step => ({

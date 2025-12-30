@@ -22,13 +22,21 @@ The full documentation includes:
 
 The AFU-9 MCP Runner provides a Model Context Protocol (MCP) interface for creating, executing, and monitoring workflow runs. This is the MVP skeleton implementation with strict type-safe contracts using Zod.
 
-## Features (I631 Scope)
+## Features
 
-### Contracts
+### I631: Core MCP Server with Contracts
 - **RunSpec**: Input contract for run creation with Zod validation
 - **RunResult**: Output contract for run execution results
 - **Strict typing**: Full TypeScript types generated from Zod schemas
 - **Runtime support**: Extensible runtime types (dummy, github-runner, ecs-task, ssm)
+- **DummyExecutorAdapter**: In-memory execution simulation
+
+### I632: Database Persistence (Runs Ledger)
+- **PostgreSQL persistence**: Runs, steps, and artifacts stored in database
+- **Immutable specs**: Run specs are never modified, re-runs create new entries
+- **Deterministic playbook IDs**: Consistent playbook references
+- **Stdout/stderr capping**: Tails limited to 4000 characters
+- **DatabaseExecutorAdapter**: Full database-backed execution
 
 ### MCP Tools
 1. **run.create**: Create a new run from a RunSpec
@@ -38,19 +46,12 @@ The AFU-9 MCP Runner provides a Model Context Protocol (MCP) interface for creat
 5. **playbook.list**: List available playbooks
 6. **playbook.get**: Get a specific playbook by ID
 
-### DummyExecutorAdapter
-- In-memory execution simulation
-- No actual command execution (MVP)
-- Complete create→execute→read flow
-- No persistence (DynamoDB in I632)
+## Not In Scope (I631/I632)
 
-## Not In Scope (I631)
-
-- ❌ DB persistence (I632)
 - ❌ UI integration (I633)
 - ❌ GitHub Runner Adapter (I641)
-- ❌ Real command execution
-- ❌ Artifact storage
+- ❌ Real command execution (still dummy mode)
+- ❌ Artifact blob storage (metadata only)
 
 ## Installation
 
@@ -60,7 +61,7 @@ npm install
 
 ## Usage
 
-### Start Server
+### Start Server (In-Memory Mode - I631)
 
 ```bash
 # Development
@@ -71,7 +72,38 @@ npm run build
 npm start
 ```
 
+### Start Server (Database Mode - I632)
+
+```bash
+# With environment variables
+USE_DATABASE=true \
+DATABASE_HOST=localhost \
+DATABASE_PORT=5432 \
+DATABASE_NAME=afu9 \
+DATABASE_USER=postgres \
+DATABASE_PASSWORD=yourpassword \
+npm start
+```
+
+Environment variables:
+- `USE_DATABASE`: Set to `true` to enable database persistence
+- `DATABASE_HOST`: PostgreSQL host (default: localhost)
+- `DATABASE_PORT`: PostgreSQL port (default: 5432)
+- `DATABASE_NAME`: Database name (default: afu9)
+- `DATABASE_USER`: Database user (default: postgres)
+- `DATABASE_PASSWORD`: Database password
+- `DATABASE_SSL`: Set to `true` to enable SSL
+
 Server runs on port 3002 by default (configurable via PORT env var).
+
+### Database Schema (I632)
+
+See `database/migrations/026_afu9_runs_ledger.sql` for the complete schema.
+
+**Tables:**
+- `runs`: Run metadata, spec, and status
+- `run_steps`: Individual step execution results
+- `run_artifacts`: Artifact metadata (logs, files)
 
 ### Example: Create and Execute a Run
 
