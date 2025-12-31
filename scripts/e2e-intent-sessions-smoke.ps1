@@ -11,6 +11,10 @@ param(
 
   ,
   [Parameter(Mandatory = $false)]
+  [string]$SmokeKey
+
+  ,
+  [Parameter(Mandatory = $false)]
   [switch]$StrictGapFree
 )
 
@@ -18,6 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:Failed = $false
+$script:SmokeKey = $null
 
 function Write-Pass([string]$Message) {
   Write-Host "PASS: $Message" -ForegroundColor Green
@@ -113,13 +118,25 @@ function Get-SessionIdFromCreateResponse($Json) {
 
 $BaseUrl = Normalize-BaseUrl -Url $BaseUrl
 
+if (-not [string]::IsNullOrWhiteSpace($SmokeKey)) {
+  $script:SmokeKey = $SmokeKey
+} elseif (-not [string]::IsNullOrWhiteSpace($env:AFU9_SMOKE_KEY)) {
+  $script:SmokeKey = $env:AFU9_SMOKE_KEY
+}
+
 Write-Host "=== AFU-9 E2E Smoke: Intent Sessions (Commit 1340724) ===" -ForegroundColor Cyan
 Write-Info "BaseUrl: $BaseUrl"
 Write-Info "UserA:  $UserA"
 Write-Info "UserB:  $UserB"
+if (-not [string]::IsNullOrWhiteSpace($script:SmokeKey)) {
+  Write-Info "SmokeKey: (set)"
+}
 
 $createUrl = "$BaseUrl/api/intent/sessions"
-$getUrlTemplate = "$BaseUrl/api/intent/sessions/{0}"
+  $headers = @{ 'x-afu9-sub' = $UserId; 'accept' = 'application/json' }
+  if (-not [string]::IsNullOrWhiteSpace($script:SmokeKey)) {
+    $headers['x-afu9-smoke-key'] = $script:SmokeKey
+  }
 $appendUrlTemplate = "$BaseUrl/api/intent/sessions/{0}/messages"
 
 # A) Create session as UserA
@@ -172,9 +189,12 @@ $appendUrl = [string]::Format($appendUrlTemplate, $sessionId)
 Write-Info "Running 10 parallel POSTs to /messages (each creates user+assistant message)"
 
 $runOne = {
-  param($i, $url, $user)
+  param($i, $url, $user, $smokeKey)
 
   $headers = @{ 'x-afu9-sub' = $user; 'accept' = 'application/json' }
+  if (-not [string]::IsNullOrWhiteSpace([string]$smokeKey)) {
+    $headers['x-afu9-smoke-key'] = [string]$smokeKey
+  }
   $body = @{ content = "smoke-next-$i-$(New-Guid)" } | ConvertTo-Json -Depth 10
 
   $params = @{ Method = 'POST'; Uri = $url; Headers = $headers; ContentType = 'application/json'; Body = $body }
@@ -233,11 +253,11 @@ $runOne = {
 
 $results = @()
 if ($PSVersionTable.PSVersion.Major -ge 7) {
-  $results = 1..10 | ForEach-Object -Parallel $runOne -ThrottleLimit 10 -ArgumentList $appendUrl, $UserA
+  $results = 1..10 | ForEach-Object -Parallel $runOne -ThrottleLimit 10 -ArgumentList $appendUrl, $UserA, $script:SmokeKey
 } else {
   $jobs = @()
   foreach ($i in 1..10) {
-    $jobs += Start-Job -ScriptBlock $runOne -ArgumentList $i, $appendUrl, $UserA
+    $jobs += Start-Job -ScriptBlock $runOne -ArgumentList $i, $appendUrl, $UserA, $script:SmokeKey
   }
   Wait-Job -Job $jobs | Out-Null
   $results = $jobs | Receive-Job

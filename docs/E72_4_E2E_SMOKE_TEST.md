@@ -59,6 +59,17 @@ This is a minimal HTTP-only E2E smoke test for **Intent Sessions Ownership + rac
   -UserB "smoke-user-b"
 ```
 
+**Stage smoke-auth (no login):**
+
+```powershell
+# Option A: pass explicitly
+.\scripts\e2e-intent-sessions-smoke.ps1 -BaseUrl "https://stage.afu-9.com" -SmokeKey "<key>"
+
+# Option B: use env var fallback
+$env:AFU9_SMOKE_KEY = "<key>"
+.\scripts\e2e-intent-sessions-smoke.ps1 -BaseUrl "https://stage.afu-9.com"
+```
+
 **Expected checks:**
 
 - Create session as UserA -> 200/201 + session id

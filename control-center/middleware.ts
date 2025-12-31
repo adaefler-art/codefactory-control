@@ -93,16 +93,33 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
-  // Optional smoke-auth bypass for a single endpoint.
+  // Optional smoke-auth bypass for a small allowlist of endpoints.
   // Contract:
-  // - Route: GET /api/timeline/chain
+  // - Stage-only (gated by hostname)
   // - Header: X-AFU9-SMOKE-KEY (case-insensitive)
   // - Env gate: AFU9_SMOKE_KEY must be set (otherwise bypass is disabled)
-  if (pathname === '/api/timeline/chain') {
+  // - Allowlist:
+  //   - GET  /api/timeline/chain
+  //   - POST /api/intent/sessions
+  //   - GET  /api/intent/sessions
+  //   - GET  /api/intent/sessions/:id
+  //   - POST /api/intent/sessions/:id/messages
+  {
     const configuredKey = process.env.AFU9_SMOKE_KEY;
     const providedKey = request.headers.get('x-afu9-smoke-key');
+    const isStageHost = hostname === 'stage.afu-9.com';
 
-    if (configuredKey && providedKey === configuredKey) {
+    const isIntentSessionById = /^\/api\/intent\/sessions\/[^/]+$/.test(pathname);
+    const isIntentSessionMessages = /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname);
+
+    const isAllowedSmokeBypass =
+      (request.method === 'GET' && pathname === '/api/timeline/chain') ||
+      (request.method === 'POST' && pathname === '/api/intent/sessions') ||
+      (request.method === 'GET' && pathname === '/api/intent/sessions') ||
+      (request.method === 'GET' && isIntentSessionById) ||
+      (request.method === 'POST' && isIntentSessionMessages);
+
+    if (isStageHost && isAllowedSmokeBypass && configuredKey && providedKey === configuredKey) {
       const response = nextWithRequestId();
       response.headers.set('x-afu9-smoke-auth-used', '1');
       return response;
