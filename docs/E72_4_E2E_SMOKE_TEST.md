@@ -37,6 +37,34 @@ Invoke-RestMethod -Method GET `
   -Uri "$BaseUrl/api/timeline/chain?issueId=$IssueId&sourceSystem=$SourceSystem" `
   -Headers $Headers
 ```
+
+---
+
+# E2E Smoke Test (Intent Sessions)
+
+This is a minimal HTTP-only E2E smoke test for **Intent Sessions Ownership + race-safe seq** (commit `1340724`).
+
+## Endpoints used
+
+- `POST /api/intent/sessions` (create)
+- `GET /api/intent/sessions/<id>` (read by id, ownership-enforced)
+- `POST /api/intent/sessions/<id>/messages` ("next" / seq increment via message append)
+
+## PowerShell (Stage / any base URL)
+
+```powershell
+.\scripts\e2e-intent-sessions-smoke.ps1 `
+  -BaseUrl "https://stage.afu-9.com" `
+  -UserA "smoke-user-a" `
+  -UserB "smoke-user-b"
+```
+
+**Expected checks:**
+
+- Create session as UserA -> 200/201 + session id
+- UserA can GET the session -> 200
+- UserB cannot GET the session -> 404 (anti-enumeration)
+- 10 parallel POSTs to `/messages` -> seq values are unique and gap-free, and each request reserves a consecutive (user,assistant) seq pair
 # E72.4 E2E Smoke Test Documentation
 
 ## Overview
