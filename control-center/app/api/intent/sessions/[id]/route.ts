@@ -13,6 +13,7 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 /**
  * GET /api/intent/sessions/[id]
  * Get session with all messages ordered by seq
+ * Only returns session if it belongs to the authenticated user
  */
 export async function GET(
   request: NextRequest,
@@ -24,6 +25,16 @@ export async function GET(
     const pool = getPool();
     const sessionId = params.id;
     
+    // Get authenticated user ID from middleware
+    const userId = request.headers.get('x-afu9-sub');
+    if (!userId) {
+      return errorResponse('Unauthorized', {
+        status: 401,
+        requestId,
+        details: 'User authentication required',
+      });
+    }
+    
     if (!sessionId) {
       return errorResponse('Session ID required', {
         status: 400,
@@ -31,7 +42,7 @@ export async function GET(
       });
     }
     
-    const result = await getIntentSession(pool, sessionId);
+    const result = await getIntentSession(pool, sessionId, userId);
     
     if (!result.success) {
       if (result.error === 'Session not found') {

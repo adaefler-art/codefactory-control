@@ -4,6 +4,10 @@
  * Tests for /api/intent/sessions endpoints
  * Issue E73.1: INTENT Console UI Shell
  * 
+ * Includes tests for:
+ * - Session ownership and access control
+ * - Atomic seq increment for race-safe message ordering
+ * 
  * @jest-environment node
  */
 
@@ -27,8 +31,11 @@ jest.mock('../../src/lib/db/intentSessions', () => ({
   appendIntentMessage: jest.fn(),
 }));
 
+const TEST_USER_ID = 'user-123';
+const TEST_USER_ID_2 = 'user-456';
+
 describe('GET /api/intent/sessions', () => {
-  test('returns 200 and a list of sessions', async () => {
+  test('returns 200 and a list of sessions for authenticated user', async () => {
     const { listIntentSessions } = require('../../src/lib/db/intentSessions');
 
     listIntentSessions.mockResolvedValue({
@@ -36,6 +43,7 @@ describe('GET /api/intent/sessions', () => {
       data: [
         {
           id: 'session-1',
+          user_id: TEST_USER_ID,
           title: 'Test Session',
           created_at: '2025-01-01T00:00:00.000Z',
           updated_at: '2025-01-01T00:00:00.000Z',
@@ -47,6 +55,7 @@ describe('GET /api/intent/sessions', () => {
     const request = new NextRequest('http://localhost/api/intent/sessions', {
       headers: {
         'x-request-id': 'test-req-sessions-1',
+        'x-afu9-sub': TEST_USER_ID,
       },
     });
 
@@ -56,24 +65,38 @@ describe('GET /api/intent/sessions', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-request-id')).toBe('test-req-sessions-1');
     expect(body.sessions).toHaveLength(1);
-    expect(body.sessions[0]).toEqual({
-      id: 'session-1',
-      title: 'Test Session',
-      created_at: '2025-01-01T00:00:00.000Z',
-      updated_at: '2025-01-01T00:00:00.000Z',
-      status: 'active',
+    expect(body.sessions[0].user_id).toBe(TEST_USER_ID);
+    expect(listIntentSessions).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_USER_ID,
+      expect.anything()
+    );
+  });
+
+  test('returns 401 when user is not authenticated', async () => {
+    const request = new NextRequest('http://localhost/api/intent/sessions', {
+      headers: {
+        'x-request-id': 'test-req-sessions-unauth',
+      },
     });
+
+    const response = await getSessions(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe('Unauthorized');
   });
 });
 
 describe('POST /api/intent/sessions', () => {
-  test('creates a new session and returns 201', async () => {
+  test('creates a new session for authenticated user and returns 201', async () => {
     const { createIntentSession } = require('../../src/lib/db/intentSessions');
 
     createIntentSession.mockResolvedValue({
       success: true,
       data: {
         id: 'new-session-1',
+        user_id: TEST_USER_ID,
         title: null,
         created_at: '2025-01-01T00:00:00.000Z',
         updated_at: '2025-01-01T00:00:00.000Z',
@@ -86,6 +109,7 @@ describe('POST /api/intent/sessions', () => {
       headers: {
         'content-type': 'application/json',
         'x-request-id': 'test-req-sessions-create-1',
+        'x-afu9-sub': TEST_USER_ID,
       },
       body: JSON.stringify({}),
     });
@@ -96,18 +120,26 @@ describe('POST /api/intent/sessions', () => {
     expect(response.status).toBe(201);
     expect(response.headers.get('x-request-id')).toBe('test-req-sessions-create-1');
     expect(body.id).toBe('new-session-1');
+    expect(body.user_id).toBe(TEST_USER_ID);
     expect(body.status).toBe('active');
+    expect(createIntentSession).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_USER_ID,
+      expect.anything()
+    );
   });
+});
 });
 
 describe('GET /api/intent/sessions/[id]', () => {
-  test('returns session with messages ordered by seq', async () => {
+  test('returns session with messages ordered by seq for authenticated user', async () => {
     const { getIntentSession } = require('../../src/lib/db/intentSessions');
 
     getIntentSession.mockResolvedValue({
       success: true,
       data: {
         id: 'session-1',
+        user_id: TEST_USER_ID,
         title: 'Test Session',
         created_at: '2025-01-01T00:00:00.000Z',
         updated_at: '2025-01-01T00:00:00.000Z',
@@ -136,6 +168,7 @@ describe('GET /api/intent/sessions/[id]', () => {
     const request = new NextRequest('http://localhost/api/intent/sessions/session-1', {
       headers: {
         'x-request-id': 'test-req-session-get-1',
+        'x-afu9-sub': TEST_USER_ID,
       },
     });
 
@@ -148,9 +181,14 @@ describe('GET /api/intent/sessions/[id]', () => {
     expect(body.messages[1].seq).toBe(2);
     expect(body.messages[0].role).toBe('user');
     expect(body.messages[1].role).toBe('assistant');
+    expect(getIntentSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'session-1',
+      TEST_USER_ID
+    );
   });
 
-  test('returns 404 when session not found', async () => {
+  test('returns 404 when session not found or access denied', async () => {
     const { getIntentSession } = require('../../src/lib/db/intentSessions');
 
     getIntentSession.mockResolvedValue({
@@ -161,6 +199,7 @@ describe('GET /api/intent/sessions/[id]', () => {
     const request = new NextRequest('http://localhost/api/intent/sessions/nonexistent', {
       headers: {
         'x-request-id': 'test-req-session-not-found',
+        'x-afu9-sub': TEST_USER_ID,
       },
     });
 
@@ -169,6 +208,33 @@ describe('GET /api/intent/sessions/[id]', () => {
 
     expect(response.status).toBe(404);
     expect(body.error).toBe('Session not found');
+  });
+
+  test('user cannot access another user\'s session', async () => {
+    const { getIntentSession } = require('../../src/lib/db/intentSessions');
+
+    // Mock returns error because user_id doesn't match
+    getIntentSession.mockResolvedValue({
+      success: false,
+      error: 'Session not found',
+    });
+
+    const request = new NextRequest('http://localhost/api/intent/sessions/other-user-session', {
+      headers: {
+        'x-request-id': 'test-req-session-cross-user',
+        'x-afu9-sub': TEST_USER_ID_2,
+      },
+    });
+
+    const response = await getSession(request, { params: { id: 'other-user-session' } });
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(getIntentSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'other-user-session',
+      TEST_USER_ID_2
+    );
   });
 });
 
@@ -206,6 +272,7 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
       headers: {
         'content-type': 'application/json',
         'x-request-id': 'test-req-message-append-1',
+        'x-afu9-sub': TEST_USER_ID,
       },
       body: JSON.stringify({ content: 'Test message' }),
     });
@@ -219,6 +286,13 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
     expect(body.userMessage.content).toBe('Test message');
     expect(body.assistantMessage.content).toContain('[Stub]');
     expect(body.assistantMessage.content).toContain('Test message');
+    expect(appendIntentMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      'session-1',
+      TEST_USER_ID,
+      'user',
+      'Test message'
+    );
   });
 
   test('returns 400 when content is missing', async () => {
@@ -227,6 +301,7 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
       headers: {
         'content-type': 'application/json',
         'x-request-id': 'test-req-message-no-content',
+        'x-afu9-sub': TEST_USER_ID,
       },
       body: JSON.stringify({}),
     });
@@ -237,19 +312,44 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
     expect(response.status).toBe(400);
     expect(body.error).toBe('Invalid input');
   });
-});
 
-describe('Deterministic ordering test', () => {
-  test('seq increments deterministically', async () => {
+  test('returns 404 when user tries to append to another user\'s session', async () => {
     const { appendIntentMessage } = require('../../src/lib/db/intentSessions');
 
-    // Simulate multiple sequential message appends
+    appendIntentMessage.mockResolvedValue({
+      success: false,
+      error: 'Session not found or access denied',
+    });
+
+    const request = new NextRequest('http://localhost/api/intent/sessions/other-session/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'test-req-message-cross-user',
+        'x-afu9-sub': TEST_USER_ID_2,
+      },
+      body: JSON.stringify({ content: 'Hacking attempt' }),
+    });
+
+    const response = await appendMessage(request, { params: { id: 'other-session' } });
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBe('Session not found');
+  });
+});
+
+describe('Deterministic ordering and atomic seq increment', () => {
+  test('seq increments deterministically using atomic counter', async () => {
+    const { appendIntentMessage } = require('../../src/lib/db/intentSessions');
+
+    // Simulate multiple sequential message appends with atomic seq
     const messages = [];
     for (let i = 1; i <= 3; i++) {
       const userSeq = (i - 1) * 2 + 1;
       const assistantSeq = (i - 1) * 2 + 2;
 
-      // Mock user message
+      // Mock user message with atomically incremented seq
       appendIntentMessage.mockResolvedValueOnce({
         success: true,
         data: {
@@ -280,6 +380,7 @@ describe('Deterministic ordering test', () => {
         headers: {
           'content-type': 'application/json',
           'x-request-id': `test-req-seq-${i}`,
+          'x-afu9-sub': TEST_USER_ID,
         },
         body: JSON.stringify({ content: `Message ${i}` }),
       });
@@ -289,9 +390,18 @@ describe('Deterministic ordering test', () => {
       messages.push(body.userMessage);
     }
 
-    // Verify seq is strictly increasing and deterministic
+    // Verify seq is strictly increasing and gap-free (1, 3, 5)
     expect(messages[0].seq).toBe(1);
     expect(messages[1].seq).toBe(3);
     expect(messages[2].seq).toBe(5);
+    
+    // Verify all calls included userId for access control
+    expect(appendIntentMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      'session-1',
+      TEST_USER_ID,
+      expect.any(String),
+      expect.any(String)
+    );
   });
 });

@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 
 export interface IntentSession {
   id: string;
+  user_id: string;
   title: string | null;
   created_at: string;
   updated_at: string;
@@ -29,10 +30,11 @@ export interface IntentSessionWithMessages extends IntentSession {
 }
 
 /**
- * List recent INTENT sessions
+ * List recent INTENT sessions for a specific user
  */
 export async function listIntentSessions(
   pool: Pool,
+  userId: string,
   options?: {
     limit?: number;
     offset?: number;
@@ -44,17 +46,18 @@ export async function listIntentSessions(
     const offset = options?.offset || 0;
     
     let query = `
-      SELECT id, title, created_at, updated_at, status
+      SELECT id, user_id, title, created_at, updated_at, status
       FROM intent_sessions
+      WHERE user_id = $1
     `;
-    const params: any[] = [];
+    const params: any[] = [userId];
     
     if (options?.status) {
-      query += ` WHERE status = $1`;
+      query += ` AND status = $2`;
       params.push(options.status);
     }
     
-    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    query += ` ORDER BY created_at DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
     
     const result = await pool.query(query, params);
@@ -63,6 +66,7 @@ export async function listIntentSessions(
       success: true,
       data: result.rows.map(row => ({
         id: row.id,
+        user_id: row.user_id,
         title: row.title,
         created_at: row.created_at.toISOString(),
         updated_at: row.updated_at.toISOString(),
@@ -79,10 +83,11 @@ export async function listIntentSessions(
 }
 
 /**
- * Create a new INTENT session
+ * Create a new INTENT session for a user
  */
 export async function createIntentSession(
   pool: Pool,
+  userId: string,
   data: {
     title?: string;
     status?: 'active' | 'archived';
@@ -90,10 +95,10 @@ export async function createIntentSession(
 ): Promise<{ success: true; data: IntentSession } | { success: false; error: string }> {
   try {
     const result = await pool.query(
-      `INSERT INTO intent_sessions (title, status)
-       VALUES ($1, $2)
-       RETURNING id, title, created_at, updated_at, status`,
-      [data.title || null, data.status || 'active']
+      `INSERT INTO intent_sessions (user_id, title, status)
+       VALUES ($1, $2, $3)
+       RETURNING id, user_id, title, created_at, updated_at, status`,
+      [userId, data.title || null, data.status || 'active']
     );
     
     const row = result.rows[0];
@@ -101,6 +106,7 @@ export async function createIntentSession(
       success: true,
       data: {
         id: row.id,
+        user_id: row.user_id,
         title: row.title,
         created_at: row.created_at.toISOString(),
         updated_at: row.updated_at.toISOString(),
@@ -118,18 +124,20 @@ export async function createIntentSession(
 
 /**
  * Get a session with all messages ordered by seq
+ * Only returns session if it belongs to the specified user
  */
 export async function getIntentSession(
   pool: Pool,
-  sessionId: string
+  sessionId: string,
+  userId: string
 ): Promise<{ success: true; data: IntentSessionWithMessages } | { success: false; error: string }> {
   try {
-    // Get session
+    // Get session with user ownership check
     const sessionResult = await pool.query(
-      `SELECT id, title, created_at, updated_at, status
+      `SELECT id, user_id, title, created_at, updated_at, status
        FROM intent_sessions
-       WHERE id = $1`,
-      [sessionId]
+       WHERE id = $1 AND user_id = $2`,
+      [sessionId, userId]
     );
     
     if (sessionResult.rows.length === 0) {
@@ -152,6 +160,7 @@ export async function getIntentSession(
     
     const session: IntentSessionWithMessages = {
       id: sessionRow.id,
+      user_id: sessionRow.user_id,
       title: sessionRow.title,
       created_at: sessionRow.created_at.toISOString(),
       updated_at: sessionRow.updated_at.toISOString(),
@@ -181,10 +190,16 @@ export async function getIntentSession(
 
 /**
  * Append a message to a session with deterministic seq
+ * 
+ * Uses atomic counter pattern for race-safe seq increment:
+ * - Updates intent_sessions.next_seq atomically via UPDATE ... RETURNING
+ * - Prevents concurrent requests from getting duplicate seq values
+ * - Row-level lock ensures serialized access to the counter
  */
 export async function appendIntentMessage(
   pool: Pool,
   sessionId: string,
+  userId: string,
   role: 'user' | 'assistant' | 'system',
   content: string
 ): Promise<{ success: true; data: IntentMessage } | { success: false; error: string }> {
@@ -193,31 +208,32 @@ export async function appendIntentMessage(
   try {
     await client.query('BEGIN');
     
-    // Get next seq number for this session (using transaction for atomicity)
+    // Atomic counter: get next seq and increment in one operation
+    // FOR UPDATE locks the session row, preventing concurrent seq assignment
     const seqResult = await client.query(
-      `SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq
-       FROM intent_messages
-       WHERE session_id = $1
-       FOR UPDATE`,
-      [sessionId]
+      `UPDATE intent_sessions
+       SET next_seq = next_seq + 1, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2
+       RETURNING next_seq - 1 AS seq`,
+      [sessionId, userId]
     );
     
-    const nextSeq = seqResult.rows[0].next_seq;
+    if (seqResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: 'Session not found or access denied',
+      };
+    }
     
-    // Insert message
+    const nextSeq = seqResult.rows[0].seq;
+    
+    // Insert message with atomic seq
     const result = await client.query(
       `INSERT INTO intent_messages (session_id, role, content, seq)
        VALUES ($1, $2, $3, $4)
        RETURNING id, session_id, role, content, created_at, seq`,
       [sessionId, role, content, nextSeq]
-    );
-    
-    // Update session updated_at
-    await client.query(
-      `UPDATE intent_sessions
-       SET updated_at = NOW()
-       WHERE id = $1`,
-      [sessionId]
     );
     
     // Update title if first user message and no title set

@@ -12,7 +12,7 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 
 /**
  * GET /api/intent/sessions
- * List recent INTENT sessions
+ * List recent INTENT sessions for the authenticated user
  * 
  * Query parameters:
  * - limit: Results per page (default: 50, max: 100)
@@ -25,6 +25,16 @@ export async function GET(request: NextRequest) {
   try {
     const pool = getPool();
     const searchParams = request.nextUrl.searchParams;
+    
+    // Get authenticated user ID from middleware
+    const userId = request.headers.get('x-afu9-sub');
+    if (!userId) {
+      return errorResponse('Unauthorized', {
+        status: 401,
+        requestId,
+        details: 'User authentication required',
+      });
+    }
     
     const limit = Math.min(
       parseInt(searchParams.get('limit') || '50', 10),
@@ -41,7 +51,7 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    const result = await listIntentSessions(pool, {
+    const result = await listIntentSessions(pool, userId, {
       limit,
       offset,
       status: status || undefined,
@@ -73,7 +83,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/intent/sessions
- * Create a new INTENT session
+ * Create a new INTENT session for the authenticated user
  * 
  * Body:
  * - title: string (optional)
@@ -85,6 +95,16 @@ export async function POST(request: NextRequest) {
   try {
     const pool = getPool();
     const body = await request.json();
+    
+    // Get authenticated user ID from middleware
+    const userId = request.headers.get('x-afu9-sub');
+    if (!userId) {
+      return errorResponse('Unauthorized', {
+        status: 401,
+        requestId,
+        details: 'User authentication required',
+      });
+    }
     
     // Validate input
     if (body.status && body.status !== 'active' && body.status !== 'archived') {
@@ -103,7 +123,7 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    const result = await createIntentSession(pool, {
+    const result = await createIntentSession(pool, userId, {
       title: body.title || undefined,
       status: body.status || 'active',
     });

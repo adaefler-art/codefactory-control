@@ -22,6 +22,7 @@ function generateStubResponse(userMessage: string): string {
 /**
  * POST /api/intent/sessions/[id]/messages
  * Append a user message and generate a stub assistant reply
+ * Only allows appending to sessions owned by the authenticated user
  * 
  * Body:
  * - content: string (required) - the user message content
@@ -35,6 +36,16 @@ export async function POST(
   try {
     const pool = getPool();
     const sessionId = params.id;
+    
+    // Get authenticated user ID from middleware
+    const userId = request.headers.get('x-afu9-sub');
+    if (!userId) {
+      return errorResponse('Unauthorized', {
+        status: 401,
+        requestId,
+        details: 'User authentication required',
+      });
+    }
     
     if (!sessionId) {
       return errorResponse('Session ID required', {
@@ -57,11 +68,21 @@ export async function POST(
     const userMessageResult = await appendIntentMessage(
       pool,
       sessionId,
+      userId,
       'user',
       body.content
     );
     
     if (!userMessageResult.success) {
+      // Check if it's an access denied error
+      if (userMessageResult.error === 'Session not found or access denied') {
+        return errorResponse('Session not found', {
+          status: 404,
+          requestId,
+          details: userMessageResult.error,
+        });
+      }
+      
       return errorResponse('Failed to append user message', {
         status: 500,
         requestId,
@@ -74,6 +95,7 @@ export async function POST(
     const assistantMessageResult = await appendIntentMessage(
       pool,
       sessionId,
+      userId,
       'assistant',
       stubResponse
     );
