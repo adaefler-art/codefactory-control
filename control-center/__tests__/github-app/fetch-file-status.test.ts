@@ -10,6 +10,17 @@ describe('fetchGitHubFile status codes', () => {
   it('returns statusCode 500 for GitHub App config errors', async () => {
     const res = await new Promise<any>((resolve, reject) => {
       jest.isolateModules(() => {
+        const priorRepoAllowlist = process.env.GITHUB_REPO_ALLOWLIST;
+        process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+          allowlist: [
+            {
+              owner: 'o',
+              repo: 'r',
+              branches: ['main'],
+            },
+          ],
+        });
+
         jest.doMock('../../src/lib/github-app-auth', () => {
           const actual = jest.requireActual('../../src/lib/github-app-auth');
           return {
@@ -22,7 +33,15 @@ describe('fetchGitHubFile status codes', () => {
 
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { fetchGitHubFile } = require('../../src/lib/github/fetch-file');
-        fetchGitHubFile({ owner: 'o', repo: 'r', path: 'docs/roadmap.md', ref: 'main' }).then(resolve, reject);
+        fetchGitHubFile({ owner: 'o', repo: 'r', path: 'docs/roadmap.md', ref: 'main' })
+          .then(resolve, reject)
+          .finally(() => {
+            if (priorRepoAllowlist === undefined) {
+              delete process.env.GITHUB_REPO_ALLOWLIST;
+            } else {
+              process.env.GITHUB_REPO_ALLOWLIST = priorRepoAllowlist;
+            }
+          });
       });
     });
 
@@ -34,6 +53,17 @@ describe('fetchGitHubFile status codes', () => {
   it('returns statusCode 404 when GitHub reports not found', async () => {
     const res = await new Promise<any>((resolve, reject) => {
       jest.isolateModules(() => {
+        const priorRepoAllowlist = process.env.GITHUB_REPO_ALLOWLIST;
+        process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+          allowlist: [
+            {
+              owner: 'o',
+              repo: 'r',
+              branches: ['main'],
+            },
+          ],
+        });
+
         jest.doMock('../../src/lib/github-app-auth', () => {
           const actual = jest.requireActual('../../src/lib/github-app-auth');
           return {
@@ -53,7 +83,15 @@ describe('fetchGitHubFile status codes', () => {
 
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { fetchGitHubFile } = require('../../src/lib/github/fetch-file');
-        fetchGitHubFile({ owner: 'o', repo: 'r', path: 'missing.md', ref: 'main' }).then(resolve, reject);
+        fetchGitHubFile({ owner: 'o', repo: 'r', path: 'missing.md', ref: 'main' })
+          .then(resolve, reject)
+          .finally(() => {
+            if (priorRepoAllowlist === undefined) {
+              delete process.env.GITHUB_REPO_ALLOWLIST;
+            } else {
+              process.env.GITHUB_REPO_ALLOWLIST = priorRepoAllowlist;
+            }
+          });
       });
     });
 
