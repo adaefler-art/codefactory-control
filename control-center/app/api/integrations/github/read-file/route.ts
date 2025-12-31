@@ -17,16 +17,16 @@
  * - includeSha (optional): Include blob/commit SHA (default: 'true')
  * - includeLineNumbers (optional): Include line numbers array (default: 'true')
  * 
- * Returns:
- * - 200: { meta: ReadFileMeta, content: ReadFileContent }
- * - 400: Invalid parameters (INVALID_PATH, RANGE_INVALID, INVALID_PARAMS)
- * - 403: Repository not allowed by policy (REPO_NOT_ALLOWED)
- * - 413: File too large (FILE_TOO_LARGE)
- * - 415: Binary or unsupported encoding (BINARY_OR_UNSUPPORTED_ENCODING)
- * - 500: GitHub API or internal error (GITHUB_API_ERROR, AUTH_MISCONFIGURED)
+ * Returns unified tool response envelope:
+ * - 200: { success: true, data: ReadFileResult }
+ * - 400: { success: false, error: { code, message, details } } - INVALID_PATH, RANGE_INVALID, INVALID_PARAMS, NOT_A_FILE
+ * - 403: { success: false, error: { code, message, details } } - REPO_NOT_ALLOWED
+ * - 413: { success: false, error: { code, message, details } } - FILE_TOO_LARGE
+ * - 415: { success: false, error: { code, message, details } } - BINARY_OR_UNSUPPORTED_ENCODING
+ * - 500: { success: false, error: { code, message, details } } - GITHUB_API_ERROR, AUTH_MISCONFIGURED
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
   readFile,
@@ -40,6 +40,11 @@ import {
   AuthMisconfiguredError,
   RepoAccessDeniedError,
 } from '@/lib/github/read-file';
+import {
+  ok,
+  failFromError,
+  invalidParamsError,
+} from '@/lib/api/tool-response';
 
 /**
  * Schema for query parameter validation
@@ -96,16 +101,9 @@ export async function GET(request: NextRequest) {
   // Validate parameters
   const validation = QueryParamsSchema.safeParse(rawParams);
   if (!validation.success) {
-    return NextResponse.json(
-      {
-        error: 'Invalid query parameters',
-        code: 'INVALID_PARAMS',
-        details: {
-          errors: validation.error.errors,
-        },
-      },
-      { status: 400 }
-    );
+    return invalidParamsError('Invalid query parameters', {
+      errors: validation.error.errors,
+    });
   }
 
   const params = validation.data;
@@ -129,16 +127,12 @@ export async function GET(request: NextRequest) {
     };
   } else if (params.startLine !== undefined || params.endLine !== undefined) {
     // If only one is provided, return error
-    return NextResponse.json(
+    return invalidParamsError(
+      'Both startLine and endLine must be provided for range requests',
       {
-        error: 'Both startLine and endLine must be provided for range requests',
-        code: 'INVALID_PARAMS',
-        details: {
-          startLine: params.startLine,
-          endLine: params.endLine,
-        },
-      },
-      { status: 400 }
+        startLine: params.startLine,
+        endLine: params.endLine,
+      }
     );
   }
 
@@ -146,126 +140,10 @@ export async function GET(request: NextRequest) {
     // Call readFile function (enforces policy via I711 auth wrapper)
     const result = await readFile(readFileParams);
 
-    // Return result as-is
-    return NextResponse.json(result, { status: 200 });
+    // Return unified success response
+    return ok(result);
   } catch (error: any) {
-    // Handle specific error types with appropriate status codes
-
-    if (error instanceof InvalidPathError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (error instanceof NotAFileError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (error instanceof RangeInvalidError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (error instanceof RepoAccessDeniedError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 403 }
-      );
-    }
-
-    if (error instanceof FileTooLargeError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 413 } // 413 Payload Too Large
-      );
-    }
-
-    if (error instanceof BinaryOrUnsupportedEncodingError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 415 } // 415 Unsupported Media Type
-      );
-    }
-
-    if (error instanceof AuthMisconfiguredError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: 500 }
-      );
-    }
-
-    if (error instanceof GitHubAPIError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-        },
-        { status: error.details?.httpStatus || 500 }
-      );
-    }
-
-    // Zod validation errors (from ReadFileParamsSchema)
-    if (error.name === 'ZodError') {
-      return NextResponse.json(
-        {
-          error: 'Invalid parameters',
-          code: 'INVALID_PARAMS',
-          details: {
-            errors: error.errors,
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    // Generic error handling
-    console.error('[GitHub Read File API] Unexpected error:', error);
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        code: 'INTERNAL_ERROR',
-        details: {
-          owner: params.owner,
-          repo: params.repo,
-          path: params.path,
-        },
-      },
-      { status: 500 }
-    );
+    // Use unified error handling
+    return failFromError(error);
   }
 }
