@@ -129,7 +129,6 @@ describe('POST /api/intent/sessions', () => {
     );
   });
 });
-});
 
 describe('GET /api/intent/sessions/[id]', () => {
   test('returns session with messages ordered by seq for authenticated user', async () => {
