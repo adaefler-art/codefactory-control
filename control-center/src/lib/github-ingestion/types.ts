@@ -76,7 +76,6 @@ export interface IngestionResult {
  */
 export interface IngestIssueResult extends IngestionResult {
   issueNumber: number;
-  labelNodeIds?: string[];
 }
 
 /**
@@ -84,7 +83,6 @@ export interface IngestIssueResult extends IngestionResult {
  */
 export interface IngestPullRequestResult extends IngestionResult {
   prNumber: number;
-  labelNodeIds?: string[];
 }
 
 /**

@@ -214,7 +214,7 @@ describe('GitHub Ingestion', () => {
       expect(result.nodeId).toBe('existing-node-uuid');
     });
 
-    test('ingests labels when present', async () => {
+    test('stores labels in payload_json', async () => {
       const mockIssueData = {
         number: 123,
         title: 'Test Issue',
@@ -238,7 +238,6 @@ describe('GitHub Ingestion', () => {
 
       mockGetNodeByNaturalKey.mockResolvedValue(null);
       
-      // Mock upsertNode for issue
       mockUpsertNode.mockResolvedValueOnce({
         id: 'issue-node-uuid',
         source_system: 'github',
@@ -247,62 +246,30 @@ describe('GitHub Ingestion', () => {
         node_type: 'ISSUE',
         title: 'Test Issue',
         url: 'https://github.com/owner/repo/issues/123',
-        payload_json: {},
+        payload_json: {
+          labels: ['bug', 'enhancement'],
+        },
         lawbook_version: null,
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       });
-
-      // Mock upsertNode for labels
-      mockUpsertNode.mockResolvedValueOnce({
-        id: 'label-node-1',
-        source_system: 'github',
-        source_type: 'label',
-        source_id: 'owner/repo/labels/bug',
-        node_type: 'COMMENT',
-        title: 'bug',
-        url: null,
-        payload_json: { color: 'ff0000', description: 'Bug label' },
-        lawbook_version: null,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      });
-
-      mockUpsertNode.mockResolvedValueOnce({
-        id: 'label-node-2',
-        source_system: 'github',
-        source_type: 'label',
-        source_id: 'owner/repo/labels/enhancement',
-        node_type: 'COMMENT',
-        title: 'enhancement',
-        url: null,
-        payload_json: { color: '00ff00', description: 'Enhancement label' },
-        lawbook_version: null,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      });
-
-      mockCreateEdge.mockResolvedValue({ id: 'edge-uuid-1' });
 
       const result = await ingestIssue(
         { owner: 'owner', repo: 'repo', issueNumber: 123 },
         mockPool
       );
 
-      expect(result.labelNodeIds).toHaveLength(2);
-      expect(result.labelNodeIds).toContain('label-node-1');
-      expect(result.labelNodeIds).toContain('label-node-2');
+      expect(result.nodeId).toBe('issue-node-uuid');
+      expect(result.labelNodeIds).toBeUndefined();
 
-      // Verify labels were upserted
+      // Verify labels are in payload_json
       expect(mockUpsertNode).toHaveBeenCalledWith(
         expect.objectContaining({
-          source_type: 'label',
-          title: 'bug',
+          payload_json: expect.objectContaining({
+            labels: ['bug', 'enhancement'],
+          }),
         })
       );
-
-      // Verify edges were created
-      expect(mockCreateEdge).toHaveBeenCalledTimes(2);
     });
 
     test('throws IssueNotFoundError when issue does not exist', async () => {
@@ -538,7 +505,7 @@ describe('GitHub Ingestion', () => {
   });
 
   describe('ingestLabels', () => {
-    test('ingests repository labels', async () => {
+    test('fetches repository labels metadata', async () => {
       const mockLabelsData = [
         { name: 'bug', color: 'ff0000', description: 'Bug label', url: 'https://api.github.com/repos/owner/repo/labels/bug' },
         { name: 'feature', color: '00ff00', description: 'Feature label', url: 'https://api.github.com/repos/owner/repo/labels/feature' },
@@ -548,59 +515,25 @@ describe('GitHub Ingestion', () => {
         data: mockLabelsData,
       });
 
-      mockGetNodeByNaturalKey.mockResolvedValue(null);
-
-      mockUpsertNode.mockResolvedValueOnce({
-        id: 'label-node-1',
-        source_system: 'github',
-        source_type: 'label',
-        source_id: 'owner/repo/labels/bug',
-        node_type: 'COMMENT',
-        title: 'bug',
-        url: null,
-        payload_json: { name: 'bug', color: 'ff0000', description: 'Bug label' },
-        lawbook_version: null,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      });
-
-      mockUpsertNode.mockResolvedValueOnce({
-        id: 'label-node-2',
-        source_system: 'github',
-        source_type: 'label',
-        source_id: 'owner/repo/labels/feature',
-        node_type: 'COMMENT',
-        title: 'feature',
-        url: null,
-        payload_json: { name: 'feature', color: '00ff00', description: 'Feature label' },
-        lawbook_version: null,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      });
-
       const result = await ingestLabels(
         { owner: 'owner', repo: 'repo' },
         mockPool
       );
 
       expect(result.labelNodes).toHaveLength(2);
-      expect(result.labelNodes[0].nodeId).toBe('label-node-1');
-      expect(result.labelNodes[1].nodeId).toBe('label-node-2');
-
-      // Verify labels were upserted
-      expect(mockUpsertNode).toHaveBeenCalledWith(
-        expect.objectContaining({
-          source_type: 'label',
-          title: 'bug',
-        })
-      );
-
-      expect(mockUpsertNode).toHaveBeenCalledWith(
-        expect.objectContaining({
-          source_type: 'label',
-          title: 'feature',
-        })
-      );
+      expect(result.labelNodes[0]).toMatchObject({
+        name: 'bug',
+        color: 'ff0000',
+        description: 'Bug label',
+      });
+      expect(result.labelNodes[1]).toMatchObject({
+        name: 'feature',
+        color: '00ff00',
+        description: 'Feature label',
+      });
+      
+      // Verify no nodes were created
+      expect(mockUpsertNode).not.toHaveBeenCalled();
     });
   });
 

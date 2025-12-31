@@ -167,36 +167,9 @@ export async function ingestIssue(
     },
   });
 
-  // Ingest labels if present
-  const labelNodeIds: string[] = [];
-  if (issueData.labels && Array.isArray(issueData.labels)) {
-    for (const label of issueData.labels) {
-      if (label && label.name) {
-        const labelSourceId = generateGitHubSourceId(owner, repo, 'labels', label.name);
-        const labelNode = await dao.upsertNode({
-          source_system: 'github',
-          source_type: 'label',
-          source_id: labelSourceId,
-          node_type: 'COMMENT', // Using COMMENT as placeholder (labels don't have dedicated node type)
-          title: label.name,
-          url: null,
-          payload_json: {
-            color: label.color,
-            description: label.description,
-          },
-        });
-        labelNodeIds.push(labelNode.id);
-
-        // Create edge from issue to label
-        await dao.createEdge({
-          from_node_id: node.id,
-          to_node_id: labelNode.id,
-          edge_type: 'ISSUE_HAS_COMMENT', // Using closest available edge type
-          payload_json: { label: true },
-        });
-      }
-    }
-  }
+  // Labels are stored in payload_json (no separate nodes)
+  // This avoids semantic confusion with COMMENT node type
+  // Labels can be queried from payload_json.labels
 
   return {
     nodeId: node.id,
@@ -206,7 +179,6 @@ export async function ingestIssue(
     source_type,
     source_id,
     issueNumber,
-    labelNodeIds: labelNodeIds.length > 0 ? labelNodeIds : undefined,
   };
 }
 
@@ -299,36 +271,9 @@ export async function ingestPullRequest(
     },
   });
 
-  // Ingest labels if present
-  const labelNodeIds: string[] = [];
-  if (prData.labels && Array.isArray(prData.labels)) {
-    for (const label of prData.labels) {
-      if (label && label.name) {
-        const labelSourceId = generateGitHubSourceId(owner, repo, 'labels', label.name);
-        const labelNode = await dao.upsertNode({
-          source_system: 'github',
-          source_type: 'label',
-          source_id: labelSourceId,
-          node_type: 'COMMENT', // Using COMMENT as placeholder
-          title: label.name,
-          url: null,
-          payload_json: {
-            color: label.color,
-            description: label.description,
-          },
-        });
-        labelNodeIds.push(labelNode.id);
-
-        // Create edge from PR to label
-        await dao.createEdge({
-          from_node_id: node.id,
-          to_node_id: labelNode.id,
-          edge_type: 'PR_HAS_COMMENT', // Using closest available edge type
-          payload_json: { label: true },
-        });
-      }
-    }
-  }
+  // Labels are stored in payload_json (no separate nodes)
+  // This avoids semantic confusion with COMMENT node type
+  // Labels can be queried from payload_json.labels
 
   return {
     nodeId: node.id,
@@ -338,7 +283,6 @@ export async function ingestPullRequest(
     source_type,
     source_id,
     prNumber,
-    labelNodeIds: labelNodeIds.length > 0 ? labelNodeIds : undefined,
   };
 }
 
@@ -487,12 +431,14 @@ export async function ingestIssueComments(
 /**
  * Ingest labels for a repository
  * 
- * Note: This ingests all repository labels, not per-issue labels.
- * Per-issue labels are ingested as part of ingestIssue/ingestPullRequest.
+ * Note: This fetches repository-level labels for reference.
+ * Per-issue/PR labels are stored in the issue/PR node's payload_json.
+ * This function returns label metadata without creating separate nodes,
+ * avoiding semantic confusion with existing node types.
  * 
  * @param params - Repository parameters
- * @param pool - Database connection pool
- * @returns Labels ingestion result
+ * @param pool - Database connection pool (unused, kept for API consistency)
+ * @returns Labels data
  * @throws RepoAccessDeniedError if I711 policy denies access
  */
 export async function ingestLabels(
@@ -505,9 +451,6 @@ export async function ingestLabels(
 
   // Get authenticated client (enforces I711 policy)
   const octokit = await createAuthenticatedClient({ owner, repo });
-
-  // Initialize DAO
-  const dao = new TimelineDAO(pool);
 
   // Fetch labels from GitHub
   let labelsData: any[];
@@ -530,48 +473,15 @@ export async function ingestLabels(
     );
   }
 
-  // Ingest each label
-  const labelNodes: any[] = [];
-
-  for (const label of labelsData) {
-    const labelSourceId = generateGitHubSourceId(owner, repo, 'labels', label.name);
-    
-    const wasExisting = await checkIfNodeExists(dao, 'github', 'label', labelSourceId);
-
-    // Upsert label node
-    const labelNode = await dao.upsertNode({
-      source_system: 'github',
-      source_type: 'label',
-      source_id: labelSourceId,
-      node_type: 'COMMENT', // Using COMMENT as placeholder
-      title: label.name,
-      url: null,
-      payload_json: {
-        name: label.name,
-        color: label.color,
-        description: label.description,
-      },
-    });
-
-    // Create source reference
-    await dao.createSource({
-      node_id: labelNode.id,
-      source_kind: 'github_api',
-      ref_json: {
-        url: label.url,
-        fetched_at: fetchedAt,
-      },
-    });
-
-    labelNodes.push({
-      nodeId: labelNode.id,
-      naturalKey: `github:label:${labelSourceId}`,
-      isNew: !wasExisting,
-      source_system: 'github',
-      source_type: 'label',
-      source_id: labelSourceId,
-    });
-  }
+  // Return label data without creating nodes
+  // Labels are better stored as part of issue/PR payload_json
+  const labelNodes: any[] = labelsData.map((label) => ({
+    name: label.name,
+    color: label.color,
+    description: label.description,
+    url: label.url,
+    fetchedAt,
+  }));
 
   return {
     labelNodes,
