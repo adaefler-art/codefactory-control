@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface IntentSession {
   id: string;
@@ -51,7 +52,7 @@ export default function IntentPage() {
 
   const fetchSessions = async () => {
     try {
-      const response = await fetch("/api/intent/sessions", {
+      const response = await fetch(API_ROUTES.intent.sessions.list, {
         credentials: "include",
         cache: "no-store",
       });
@@ -67,7 +68,7 @@ export default function IntentPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/intent/sessions/${sessionId}`, {
+      const response = await fetch(API_ROUTES.intent.sessions.get(sessionId), {
         credentials: "include",
         cache: "no-store",
       });
@@ -83,7 +84,7 @@ export default function IntentPage() {
 
   const createNewSession = async () => {
     try {
-      const response = await fetch("/api/intent/sessions", {
+      const response = await fetch(API_ROUTES.intent.sessions.create, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -118,7 +119,7 @@ export default function IntentPage() {
 
     try {
       const response = await fetch(
-        `/api/intent/sessions/${currentSessionId}/messages`,
+        API_ROUTES.intent.messages.create(currentSessionId),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

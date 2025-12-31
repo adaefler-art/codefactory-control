@@ -245,16 +245,33 @@ describe('Deterministic ordering test', () => {
 
     // Simulate multiple sequential message appends
     const messages = [];
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 3; i++) {
+      const userSeq = (i - 1) * 2 + 1;
+      const assistantSeq = (i - 1) * 2 + 2;
+
+      // Mock user message
       appendIntentMessage.mockResolvedValueOnce({
         success: true,
         data: {
-          id: `msg-${i}`,
+          id: `msg-user-${i}`,
           session_id: 'session-1',
-          role: i % 2 === 1 ? 'user' : 'assistant',
+          role: 'user',
           content: `Message ${i}`,
-          created_at: new Date(Date.now() + i * 1000).toISOString(),
-          seq: i,
+          created_at: new Date(Date.now() + userSeq * 1000).toISOString(),
+          seq: userSeq,
+        },
+      });
+
+      // Mock assistant message
+      appendIntentMessage.mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: `msg-assistant-${i}`,
+          session_id: 'session-1',
+          role: 'assistant',
+          content: `[Stub] I received: "Message ${i}"`,
+          created_at: new Date(Date.now() + assistantSeq * 1000).toISOString(),
+          seq: assistantSeq,
         },
       });
 
@@ -272,9 +289,9 @@ describe('Deterministic ordering test', () => {
       messages.push(body.userMessage);
     }
 
-    // Verify seq is strictly increasing
-    for (let i = 0; i < messages.length - 1; i++) {
-      expect(messages[i + 1].seq).toBe(messages[i].seq + 2); // +2 because assistant message is inserted between
-    }
+    // Verify seq is strictly increasing and deterministic
+    expect(messages[0].seq).toBe(1);
+    expect(messages[1].seq).toBe(3);
+    expect(messages[2].seq).toBe(5);
   });
 });
