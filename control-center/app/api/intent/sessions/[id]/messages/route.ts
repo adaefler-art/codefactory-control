@@ -3,12 +3,15 @@
  * 
  * Append messages to an INTENT session
  * Issue E73.1: INTENT Console UI Shell
+ * Issue E73.2: Sources Panel + used_sources Contract
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { appendIntentMessage } from '@/lib/db/intentSessions';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { UsedSourcesSchema, type UsedSources } from '@/lib/schemas/usedSources';
+import { ZodError } from 'zod';
 
 /**
  * Generate a stub assistant response
@@ -26,6 +29,7 @@ function generateStubResponse(userMessage: string): string {
  * 
  * Body:
  * - content: string (required) - the user message content
+ * - used_sources: UsedSources (optional) - sources for assistant stub response (for testing)
  */
 export async function POST(
   request: NextRequest,
@@ -64,6 +68,23 @@ export async function POST(
       });
     }
     
+    // Validate used_sources if provided (for testing)
+    let validatedUsedSources: UsedSources | null = null;
+    if (body.used_sources) {
+      try {
+        validatedUsedSources = UsedSourcesSchema.parse(body.used_sources);
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return errorResponse('Invalid used_sources', {
+            status: 400,
+            requestId,
+            details: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
+          });
+        }
+        throw error;
+      }
+    }
+    
     // Append user message
     const userMessageResult = await appendIntentMessage(
       pool,
@@ -90,14 +111,15 @@ export async function POST(
       });
     }
     
-    // Generate and append stub assistant response
+    // Generate and append stub assistant response with optional used_sources
     const stubResponse = generateStubResponse(body.content);
     const assistantMessageResult = await appendIntentMessage(
       pool,
       sessionId,
       userId,
       'assistant',
-      stubResponse
+      stubResponse,
+      validatedUsedSources
     );
     
     if (!assistantMessageResult.success) {

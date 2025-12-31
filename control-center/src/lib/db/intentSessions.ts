@@ -3,9 +3,12 @@
  * 
  * Provides functions for managing INTENT sessions and messages.
  * Issue E73.1: INTENT Console UI Shell
+ * Issue E73.2: Sources Panel + used_sources Contract
  */
 
 import { Pool } from 'pg';
+import type { UsedSources } from '../schemas/usedSources';
+import { prepareUsedSourcesForStorage } from '../utils/sourceCanonicalizer';
 
 export interface IntentSession {
   id: string;
@@ -23,6 +26,8 @@ export interface IntentMessage {
   content: string;
   created_at: string;
   seq: number;
+  used_sources?: UsedSources | null;
+  used_sources_hash?: string | null;
 }
 
 export interface IntentSessionWithMessages extends IntentSession {
@@ -151,7 +156,8 @@ export async function getIntentSession(
     
     // Get messages ordered by seq
     const messagesResult = await pool.query(
-      `SELECT id, session_id, role, content, created_at, seq
+      `SELECT id, session_id, role, content, created_at, seq, 
+              used_sources_json, used_sources_hash
        FROM intent_messages
        WHERE session_id = $1
        ORDER BY seq ASC`,
@@ -172,6 +178,8 @@ export async function getIntentSession(
         content: row.content,
         created_at: row.created_at.toISOString(),
         seq: row.seq,
+        used_sources: row.used_sources_json || null,
+        used_sources_hash: row.used_sources_hash || null,
       })),
     };
     
@@ -195,18 +203,35 @@ export async function getIntentSession(
  * - Updates intent_sessions.next_seq atomically via UPDATE ... RETURNING
  * - Prevents concurrent requests from getting duplicate seq values
  * - Row-level lock ensures serialized access to the counter
+ * 
+ * Issue E73.2: Supports optional used_sources for assistant messages only
  */
 export async function appendIntentMessage(
   pool: Pool,
   sessionId: string,
   userId: string,
   role: 'user' | 'assistant' | 'system',
-  content: string
+  content: string,
+  usedSources?: UsedSources | null
 ): Promise<{ success: true; data: IntentMessage } | { success: false; error: string }> {
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
+    
+    // Enforce: only assistant messages can have used_sources
+    if (usedSources && role !== 'assistant') {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: 'used_sources can only be provided for assistant messages',
+      };
+    }
+    
+    // Prepare used_sources for storage (canonicalize + hash)
+    const { canonical, hash } = prepareUsedSourcesForStorage(
+      role === 'assistant' ? usedSources : null
+    );
     
     // Atomic counter: get next seq and increment in one operation
     // FOR UPDATE locks the session row, preventing concurrent seq assignment
@@ -228,12 +253,12 @@ export async function appendIntentMessage(
     
     const nextSeq = seqResult.rows[0].seq;
     
-    // Insert message with atomic seq
+    // Insert message with atomic seq and used_sources
     const result = await client.query(
-      `INSERT INTO intent_messages (session_id, role, content, seq)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, session_id, role, content, created_at, seq`,
-      [sessionId, role, content, nextSeq]
+      `INSERT INTO intent_messages (session_id, role, content, seq, used_sources_json, used_sources_hash)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, session_id, role, content, created_at, seq, used_sources_json, used_sources_hash`,
+      [sessionId, role, content, nextSeq, canonical ? JSON.stringify(canonical) : null, hash]
     );
     
     // Update title if first user message and no title set
@@ -258,6 +283,8 @@ export async function appendIntentMessage(
         content: row.content,
         created_at: row.created_at.toISOString(),
         seq: row.seq,
+        used_sources: row.used_sources_json || null,
+        used_sources_hash: row.used_sources_hash || null,
       },
     };
   } catch (error) {
