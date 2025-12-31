@@ -46,7 +46,7 @@ class RepoAccessDeniedError extends Error {
 // Mock the listTree module before importing the route
 const mockListTree = jest.fn();
 
-jest.mock('../../src/lib/github/list-tree', () => ({
+jest.mock('@/lib/github/list-tree', () => ({
   listTree: mockListTree,
   InvalidPathError,
   TreeTooLargeError,
@@ -98,10 +98,11 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(200);
 
       const body = await response.json();
-      expect(body.items).toHaveLength(2);
-      expect(body.items[0].path).toBe('.github');
-      expect(body.pageInfo.nextCursor).toBeNull();
-      expect(body.meta.ordering).toBe('path_asc');
+      expect(body.success).toBe(true);
+      expect(body.data.items).toHaveLength(2);
+      expect(body.data.items[0].path).toBe('.github');
+      expect(body.data.pageInfo.nextCursor).toBeNull();
+      expect(body.data.meta.ordering).toBe('path_asc');
     });
 
     it('should list subdirectory successfully', async () => {
@@ -137,8 +138,9 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(200);
 
       const body = await response.json();
-      expect(body.items).toHaveLength(1);
-      expect(body.meta.path).toBe('src');
+      expect(body.success).toBe(true);
+      expect(body.data.items).toHaveLength(1);
+      expect(body.data.meta.path).toBe('src');
     });
 
     it('should handle cursor pagination correctly', async () => {
@@ -177,9 +179,10 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(200);
 
       const body = await response.json();
-      expect(body.items).toHaveLength(2);
-      expect(body.items[0].path).toBe('b.txt');
-      expect(body.pageInfo.nextCursor).toBe('eyJsYXN0UGF0aCI6ImMudHh0In0=');
+      expect(body.success).toBe(true);
+      expect(body.data.items).toHaveLength(2);
+      expect(body.data.items[0].path).toBe('b.txt');
+      expect(body.data.pageInfo.nextCursor).toBe('eyJsYXN0UGF0aCI6ImMudHh0In0=');
       
       // Verify listTree was called with cursor
       expect(mockListTree).toHaveBeenCalledWith(
@@ -210,10 +213,11 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(403);
 
       const body = await response.json();
-      expect(body.code).toBe('REPO_NOT_ALLOWED');
-      expect(body.error).toContain('Access denied');
-      expect(body.details.owner).toBe('other-org');
-      expect(body.details.repo).toBe('private-repo');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('REPO_NOT_ALLOWED');
+      expect(body.error.message).toContain('Access denied');
+      expect(body.error.details.owner).toBe('other-org');
+      expect(body.error.details.repo).toBe('private-repo');
     });
 
     it('should return 400 for invalid path', async () => {
@@ -233,8 +237,9 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PATH');
-      expect(body.error).toContain('Invalid path');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PATH');
+      expect(body.error.message).toContain('Invalid path');
     });
 
     it('should return 413 for tree too large', async () => {
@@ -259,8 +264,9 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(413);
 
       const body = await response.json();
-      expect(body.code).toBe('TREE_TOO_LARGE');
-      expect(body.error).toContain('too large');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('TREE_TOO_LARGE');
+      expect(body.error.message).toContain('too large');
     });
 
     it('should return 400 for missing required parameters', async () => {
@@ -274,9 +280,10 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PARAMS');
-      // Zod validation errors are in details.errors
-      expect(body.details).toBeDefined();
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PARAMS');
+      // Zod validation errors are in error.details.errors
+      expect(body.error.details).toBeDefined();
     });
 
     it('should return 404 for GitHub API not found error', async () => {
@@ -299,8 +306,9 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(response.status).toBe(404);
 
       const body = await response.json();
-      expect(body.code).toBe('GITHUB_API_ERROR');
-      expect(body.error).toContain('not found');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('GITHUB_API_ERROR');
+      expect(body.error.message).toContain('not found');
     });
   });
 });

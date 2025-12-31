@@ -8,6 +8,7 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jsdom', // Required for testing React components that use DOM APIs (window, document, etc.)
   moduleNameMapper: {
+    '^octokit$': '<rootDir>/__tests__/__mocks__/octokit.ts',
     '^@/(.*)$': ['<rootDir>/src/$1', '<rootDir>/app/$1'],
   },
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx', 'src/**/*.test.ts', 'src/**/*.test.tsx'],

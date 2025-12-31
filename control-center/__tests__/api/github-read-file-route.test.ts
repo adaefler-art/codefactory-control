@@ -82,7 +82,7 @@ class RepoAccessDeniedError extends Error {
 // Mock the readFile module before importing the route
 const mockReadFile = jest.fn();
 
-jest.mock('../../src/lib/github/read-file', () => ({
+jest.mock('@/lib/github/read-file', () => ({
   readFile: mockReadFile,
   InvalidPathError,
   NotAFileError,
@@ -142,11 +142,12 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(200);
 
       const body = await response.json();
-      expect(body.meta.path).toBe('README.md');
-      expect(body.meta.snippetHash).toBe('8d83ed816445');
-      expect(body.meta.truncated).toBe(false);
-      expect(body.content.text).toContain('CodeFactory');
-      expect(body.content.lines).toHaveLength(3);
+      expect(body.success).toBe(true);
+      expect(body.data.meta.path).toBe('README.md');
+      expect(body.data.meta.snippetHash).toBe('8d83ed816445');
+      expect(body.data.meta.truncated).toBe(false);
+      expect(body.data.content.text).toContain('CodeFactory');
+      expect(body.data.content.lines).toHaveLength(3);
     });
 
     it('should read file with line range successfully', async () => {
@@ -186,9 +187,10 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(200);
 
       const body = await response.json();
-      expect(body.meta.range).toEqual({ startLine: 10, endLine: 15 });
-      expect(body.content.lines[0].n).toBe(10);
-      expect(body.meta.totalLines).toBe(680);
+      expect(body.success).toBe(true);
+      expect(body.data.meta.range).toEqual({ startLine: 10, endLine: 15 });
+      expect(body.data.content.lines[0].n).toBe(10);
+      expect(body.data.meta.totalLines).toBe(680);
     });
   });
 
@@ -212,9 +214,10 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(403);
 
       const body = await response.json();
-      expect(body.code).toBe('REPO_NOT_ALLOWED');
-      expect(body.error).toContain('Access denied');
-      expect(body.details.owner).toBe('unauthorized');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('REPO_NOT_ALLOWED');
+      expect(body.error.message).toContain('Access denied');
+      expect(body.error.details.owner).toBe('unauthorized');
     });
 
     it('should return 400 for invalid path', async () => {
@@ -234,8 +237,9 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PATH');
-      expect(body.error).toContain('Parent directory traversal');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PATH');
+      expect(body.error.message).toContain('Parent directory traversal');
     });
 
     it('should return 400 for invalid range', async () => {
@@ -259,8 +263,9 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('RANGE_INVALID');
-      expect(body.error).toContain('endLine must be >= startLine');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('RANGE_INVALID');
+      expect(body.error.message).toContain('endLine must be >= startLine');
     });
 
     it('should return 415 for binary files', async () => {
@@ -281,8 +286,9 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(415);
 
       const body = await response.json();
-      expect(body.code).toBe('BINARY_OR_UNSUPPORTED_ENCODING');
-      expect(body.error).toContain('binary or has unsupported encoding');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('BINARY_OR_UNSUPPORTED_ENCODING');
+      expect(body.error.message).toContain('binary or has unsupported encoding');
     });
 
     it('should return 413 for files too large', async () => {
@@ -305,8 +311,9 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(413);
 
       const body = await response.json();
-      expect(body.code).toBe('FILE_TOO_LARGE');
-      expect(body.error).toContain('exceeds maximum');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('FILE_TOO_LARGE');
+      expect(body.error.message).toContain('exceeds maximum');
     });
 
     it('should return 400 when only startLine is provided', async () => {
@@ -319,8 +326,9 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PARAMS');
-      expect(body.error).toContain('Both startLine and endLine must be provided');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PARAMS');
+      expect(body.error.message).toContain('Both startLine and endLine must be provided');
     });
   });
 
@@ -335,7 +343,8 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PARAMS');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PARAMS');
     });
 
     it('should return 400 when missing required repo parameter', async () => {
@@ -348,7 +357,8 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PARAMS');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PARAMS');
     });
 
     it('should return 400 when missing required path parameter', async () => {
@@ -361,7 +371,8 @@ describe('E71.3: GitHub Read File API Route', () => {
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.code).toBe('INVALID_PARAMS');
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe('INVALID_PARAMS');
     });
   });
 });

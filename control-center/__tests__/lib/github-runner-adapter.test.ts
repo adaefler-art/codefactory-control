@@ -33,11 +33,23 @@ describe('E64.1: GitHub Runner Adapter', () => {
   let dispatchWorkflow: typeof import('../../src/lib/github-runner/adapter').dispatchWorkflow;
   let pollRun: typeof import('../../src/lib/github-runner/adapter').pollRun;
   let ingestRun: typeof import('../../src/lib/github-runner/adapter').ingestRun;
+  let priorRepoAllowlist: string | undefined;
 
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
     mockPool = { query: jest.fn() } as unknown as Pool;
+
+    priorRepoAllowlist = process.env.GITHUB_REPO_ALLOWLIST;
+    process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+      allowlist: [
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          branches: ['main'],
+        },
+      ],
+    });
     
     // Default mock for installation token
     const { getGitHubInstallationToken } = require('../../src/lib/github-app-auth');
@@ -54,6 +66,14 @@ describe('E64.1: GitHub Runner Adapter', () => {
     dispatchWorkflow = adapter.dispatchWorkflow;
     pollRun = adapter.pollRun;
     ingestRun = adapter.ingestRun;
+  });
+
+  afterEach(() => {
+    if (priorRepoAllowlist === undefined) {
+      delete process.env.GITHUB_REPO_ALLOWLIST;
+    } else {
+      process.env.GITHUB_REPO_ALLOWLIST = priorRepoAllowlist;
+    }
   });
 
   describe('normalizeGitHubRunStatus', () => {
