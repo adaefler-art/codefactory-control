@@ -230,6 +230,17 @@ export const API_ROUTES = {
       status: '/api/integrations/github/status',
     },
   },
+
+  // Timeline (E72.4)
+  timeline: {
+    chain: (issueId: string, sourceSystem?: 'github' | 'afu9') => {
+      const params = new URLSearchParams({ issueId });
+      if (sourceSystem) {
+        params.set('sourceSystem', sourceSystem);
+      }
+      return `/api/timeline/chain?${params.toString()}`;
+    },
+  },
 } as const;
 
 /**
