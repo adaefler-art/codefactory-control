@@ -411,6 +411,12 @@ export class Afu9EcsStack extends cdk.Stack {
       'afu9/llm'
     );
 
+    // Import stage-only smoke key secret (used for Timeline Chain smoke-auth bypass)
+    // Only needed when the staging service is created.
+    const stageSmokeKeySecret = props.stageTargetGroup && createStagingService
+      ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
+      : undefined;
+
     // ========================================
     // Secret Key Validation (Guardrail I-ECS-DB-02)
     // ========================================
@@ -448,6 +454,15 @@ export class Afu9EcsStack extends cdk.Stack {
       [], // No required keys for LLM secret
       'LLM API keys (all optional)'
     );
+
+    if (stageSmokeKeySecret) {
+      validateSecretKeys(
+        this,
+        stageSmokeKeySecret,
+        [],
+        'Stage smoke key'
+      );
+    }
 
     // ========================================
     // ECS Cluster (Shared across environments)
@@ -509,6 +524,9 @@ export class Afu9EcsStack extends cdk.Stack {
     }
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
+    if (stageSmokeKeySecret) {
+      stageSmokeKeySecret.grantRead(taskExecutionRole);
+    }
 
     const taskRoleName = `afu9-ecs-task-role${roleSuffix}`;
 
@@ -727,6 +745,11 @@ export class Afu9EcsStack extends cdk.Stack {
                 DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
                 DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
                 DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+              }
+            : {}),
+          ...(environmentLabel === 'stage' && stageSmokeKeySecret
+            ? {
+                AFU9_SMOKE_KEY: ecs.Secret.fromSecretsManager(stageSmokeKeySecret),
               }
             : {}),
           GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
