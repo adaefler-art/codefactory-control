@@ -29,10 +29,10 @@ describe('GET /api/timeline/chain', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
-    mockGetPool.mockReturnValue({} as any);
+    mockGetPool.mockReturnValue({} as never);
     mockGetTimelineDAO.mockReturnValue({
       listChainForIssue: mockListChainForIssue,
-    } as any);
+    } as never);
   });
 
   it('should return 400 if issueId is missing', async () => {
@@ -72,7 +72,7 @@ describe('GET /api/timeline/chain', () => {
       },
     ];
 
-    const mockEdges: any[] = [];
+    const mockEdges: never[] = [];
 
     mockListChainForIssue.mockResolvedValue({
       nodes: mockNodes,

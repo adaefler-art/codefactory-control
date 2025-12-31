@@ -27,7 +27,7 @@ interface TimelineNode {
   node_type: "ISSUE" | "PR" | "RUN" | "DEPLOY" | "VERDICT" | "ARTIFACT" | "COMMENT";
   title: string | null;
   url: string | null;
-  payload_json: Record<string, any>;
+  payload_json: Record<string, unknown>;
   lawbook_version: string | null;
   created_at: string;
   updated_at: string;
@@ -38,7 +38,7 @@ interface TimelineEdge {
   from_node_id: string;
   to_node_id: string;
   edge_type: string;
-  payload_json: Record<string, any>;
+  payload_json: Record<string, unknown>;
   created_at: string;
 }
 
