@@ -1,35 +1,69 @@
 # E73.1 INTENT Console UI Shell - Implementation Summary
 
 ## Overview
-This implementation adds a minimal but production-quality INTENT Console UI Shell to the Control Center, providing session-based chat with deterministic message ordering and server-side persistence.
+This implementation adds a minimal but production-quality INTENT Console UI Shell to the Control Center, providing session-based chat with deterministic message ordering, server-side persistence, and comprehensive security controls.
+
+## Security Enhancements (Post-Review)
+
+### Session Ownership & Access Control
+- **Database:** Added `user_id VARCHAR(255) NOT NULL` to intent_sessions
+- **Indexing:** Composite index on (user_id, created_at DESC) for efficient user-scoped queries
+- **API Layer:** All routes extract userId from `x-afu9-sub` header (set by middleware)
+- **Database Layer:** All functions require userId parameter
+- **Access Control:**
+  - GET /api/intent/sessions: Returns only sessions where user_id = current user
+  - GET /api/intent/sessions/[id]: Validates user_id matches before returning (404 if not)
+  - POST /api/intent/sessions/[id]/messages: Validates user_id in atomic update
+- **Security Pattern:** Returns 404 (not 403) to prevent session ID enumeration
+
+### Atomic Seq Increment (Race-Safe)
+- **Pattern:** Atomic counter via UPDATE...RETURNING
+- **Implementation:**
+```sql
+UPDATE intent_sessions
+SET next_seq = next_seq + 1, updated_at = NOW()
+WHERE id = $1 AND user_id = $2
+RETURNING next_seq - 1 AS seq
+```
+- **Guarantees:**
+  - Single atomic operation (no race conditions)
+  - Row-level lock prevents concurrent access
+  - User ownership validated in same query
+  - Gap-free, deterministic sequence numbers
+  - No MAX(seq) + 1 pattern (which can race)
+
+### Content Validation
+- **Max Length:** 50,000 characters per message
+- **Non-Empty:** Content must have length > 0
+- **Database Constraint:** `CHECK (length(content) > 0 AND length(content) <= 50000)`
 
 ## Files Changed
 
 ### Database Migration
 - **`database/migrations/030_intent_sessions.sql`**
-  - Creates `intent_sessions` table for managing chat sessions
-  - Creates `intent_messages` table for storing messages with deterministic ordering
+  - Creates `intent_sessions` table with user_id and next_seq atomic counter
+  - Creates `intent_messages` table with content length constraints
   - Adds indexes for performance and unique constraints for data integrity
   - Implements seq-based ordering with unique constraint on (session_id, seq)
 
 ### Database Access Layer
 - **`control-center/src/lib/db/intentSessions.ts`**
-  - `listIntentSessions()` - Lists recent sessions with pagination
-  - `createIntentSession()` - Creates new chat session
-  - `getIntentSession()` - Retrieves session with all messages ordered by seq
-  - `appendIntentMessage()` - Appends message with transaction-based seq increment
+  - `listIntentSessions(pool, userId, options)` - Lists sessions for user only
+  - `createIntentSession(pool, userId, data)` - Creates session owned by user
+  - `getIntentSession(pool, sessionId, userId)` - Gets session with ownership check
+  - `appendIntentMessage(pool, sessionId, userId, role, content)` - Atomic seq increment with ownership validation
   - Includes automatic title generation from first user message
 
 ### API Routes
 - **`control-center/app/api/intent/sessions/route.ts`**
-  - GET /api/intent/sessions - Lists recent sessions
-  - POST /api/intent/sessions - Creates new session
+  - GET /api/intent/sessions - Lists user's sessions (extracts userId from header)
+  - POST /api/intent/sessions - Creates session for authenticated user
   
 - **`control-center/app/api/intent/sessions/[id]/route.ts`**
-  - GET /api/intent/sessions/[id] - Gets session with messages
+  - GET /api/intent/sessions/[id] - Gets session with ownership verification
   
 - **`control-center/app/api/intent/sessions/[id]/messages/route.ts`**
-  - POST /api/intent/sessions/[id]/messages - Appends user message and generates stub assistant reply
+  - POST /api/intent/sessions/[id]/messages - Appends messages with ownership check
   - Includes deterministic stub response generator
 
 ### UI Components
@@ -48,23 +82,44 @@ This implementation adds a minimal but production-quality INTENT Console UI Shel
 
 ### Tests
 - **`control-center/__tests__/api/intent-sessions.test.ts`**
-  - Tests session creation and listing
+  - Tests session creation and listing with user scoping
   - Tests message appending with deterministic seq
   - Tests message retrieval ordered by seq
   - Tests validation and error handling
-  - Verifies concurrency safety via seq ordering
+  - **Security Tests:**
+    - User A cannot access user B's sessions (404)
+    - User B cannot append to user A's session (404)
+    - Unauthenticated requests rejected (401)
+  - **Concurrency Tests:**
+    - Verifies atomic seq increment
+    - Verifies gap-free, deterministic ordering
+
+## Test Results
+
+**All 10 tests passing:**
+1. ✅ GET /api/intent/sessions returns user's sessions only
+2. ✅ GET /api/intent/sessions returns 401 without auth
+3. ✅ POST /api/intent/sessions creates for authenticated user
+4. ✅ GET /api/intent/sessions/[id] returns session with ordered messages
+5. ✅ GET /api/intent/sessions/[id] returns 404 when not found
+6. ✅ GET /api/intent/sessions/[id] prevents cross-user access
+7. ✅ POST messages appends with deterministic seq
+8. ✅ POST messages returns 400 on missing content
+9. ✅ POST messages prevents cross-user append
+10. ✅ Atomic seq increment produces gap-free ordering
 
 ## Key Features
 
 ### Deterministic Persistence
 - Messages stored with monotonically increasing `seq` field
-- Transaction-based seq calculation prevents race conditions
+- Atomic counter prevents race conditions
 - Unique constraint on (session_id, seq) ensures no duplicates
 - Messages always returned in deterministic order via `ORDER BY seq ASC`
 
 ### Security
 - All routes are server-side API routes (no client-side processing)
-- Uses existing auth patterns consistent with AFU-9 admin UI
+- User ownership enforced at DB and API layers
+- Cross-user access prevented with 404 responses
 - Request ID tracking for all API calls
 - Standard error handling and validation
 
@@ -96,7 +151,7 @@ npm run db:migrate
 cd control-center
 npm test
 
-# Run only INTENT tests
+# Run only INTENT tests (10 passing)
 npm test -- __tests__/api/intent-sessions.test.ts
 ```
 
@@ -123,13 +178,21 @@ npm run dev
 ## Database Schema
 
 ### intent_sessions
-| Column     | Type      | Description                           |
-|------------|-----------|---------------------------------------|
-| id         | UUID      | Primary key                           |
-| title      | TEXT      | Session title (auto from 1st message) |
-| created_at | TIMESTAMP | Creation timestamp                    |
-| updated_at | TIMESTAMP | Last update timestamp                 |
-| status     | TEXT      | 'active' or 'archived'                |
+| Column     | Type         | Description                           |
+|------------|--------------|---------------------------------------|
+| id         | UUID         | Primary key                           |
+| user_id    | VARCHAR(255) | Owner (NOT NULL, from x-afu9-sub)     |
+| title      | TEXT         | Session title (auto from 1st message) |
+| created_at | TIMESTAMP    | Creation timestamp                    |
+| updated_at | TIMESTAMP    | Last update timestamp                 |
+| status     | TEXT         | 'active' or 'archived'                |
+| next_seq   | INTEGER      | Atomic counter for message seq        |
+
+**Indexes:**
+- `idx_intent_sessions_user_id` on (user_id)
+- `idx_intent_sessions_created_at` on (created_at DESC)
+- `idx_intent_sessions_status` on (status)
+- `idx_intent_sessions_user_created` on (user_id, created_at DESC)
 
 ### intent_messages
 | Column     | Type      | Description                                |
@@ -137,19 +200,28 @@ npm run dev
 | id         | UUID      | Primary key                                |
 | session_id | UUID      | Foreign key to intent_sessions             |
 | role       | TEXT      | 'user', 'assistant', or 'system'           |
-| content    | TEXT      | Message content                            |
+| content    | TEXT      | Message content (1-50000 chars)            |
 | created_at | TIMESTAMP | Creation timestamp                         |
 | seq        | INTEGER   | Monotonically increasing sequence number   |
 
 **Constraints:**
 - UNIQUE (session_id, seq) - Ensures deterministic ordering
 - CHECK role IN ('user', 'assistant', 'system')
+- CHECK length(content) > 0 AND length(content) <= 50000
 - CHECK status IN ('active', 'archived')
+- ON DELETE CASCADE when session deleted
+
+**Indexes:**
+- `idx_intent_messages_session_id` on (session_id)
+- `idx_intent_messages_created_at` on (created_at)
+- `idx_intent_messages_session_seq` on (session_id, seq)
 
 ## API Endpoints
 
 ### GET /api/intent/sessions
-List recent INTENT sessions.
+List recent INTENT sessions for authenticated user.
+
+**Authentication:** Required (x-afu9-sub header)
 
 **Query Parameters:**
 - `limit` - Results per page (default: 50, max: 100)
@@ -162,6 +234,7 @@ List recent INTENT sessions.
   "sessions": [
     {
       "id": "uuid",
+      "user_id": "user-123",
       "title": "First message preview...",
       "created_at": "2025-01-01T00:00:00.000Z",
       "updated_at": "2025-01-01T00:00:00.000Z",
@@ -175,7 +248,9 @@ List recent INTENT sessions.
 ```
 
 ### POST /api/intent/sessions
-Create a new INTENT session.
+Create a new INTENT session for authenticated user.
+
+**Authentication:** Required (x-afu9-sub header)
 
 **Body:**
 ```json
@@ -188,12 +263,15 @@ Create a new INTENT session.
 **Response:** Session object (201 Created)
 
 ### GET /api/intent/sessions/[id]
-Get a session with all messages ordered by seq.
+Get a session with all messages ordered by seq. Only returns if user owns session.
+
+**Authentication:** Required (x-afu9-sub header)
 
 **Response:**
 ```json
 {
   "id": "uuid",
+  "user_id": "user-123",
   "title": "Session title",
   "created_at": "2025-01-01T00:00:00.000Z",
   "updated_at": "2025-01-01T00:00:00.000Z",
@@ -220,7 +298,9 @@ Get a session with all messages ordered by seq.
 ```
 
 ### POST /api/intent/sessions/[id]/messages
-Append a user message and generate stub assistant reply.
+Append a user message and generate stub assistant reply. Only allowed for session owner.
+
+**Authentication:** Required (x-afu9-sub header)
 
 **Body:**
 ```json
@@ -251,25 +331,16 @@ Append a user message and generate stub assistant reply.
 }
 ```
 
-## Testing
-
-All tests pass with 7 test cases covering:
-1. Session listing with pagination
-2. Session creation
-3. Session retrieval with messages in seq order
-4. 404 handling for non-existent sessions
-5. Message appending with deterministic seq
-6. Input validation (400 on missing content)
-7. Multi-message seq ordering verification
-
 ## Acceptance Criteria ✓
 
 - [x] /intent works end-to-end locally: create session → chat → persistence survives reload
 - [x] Deterministic ordering via seq and DB constraints
-- [x] Tests green: `npm test -- __tests__/api/intent-sessions.test.ts`
-- [x] Build green: `npm run build`
+- [x] Tests green: `npm test -- __tests__/api/intent-sessions.test.ts` (10/10 passing)
+- [x] Build green: `npm run build` (successful)
 - [x] No external LLM calls - stub response only
 - [x] Security: server routes only, consistent auth patterns
+- [x] **User ownership:** Sessions scoped to authenticated user
+- [x] **Race-safe seq:** Atomic counter pattern prevents concurrent issues
 - [x] Minimal UI, clean and usable
 
 ## Next Steps (Out of Scope for E73.1)
