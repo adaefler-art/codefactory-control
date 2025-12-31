@@ -25,3 +25,116 @@ if (typeof globalThis.crypto === 'undefined') {
 	const nodeCrypto = require('crypto');
 	globalThis.crypto = nodeCrypto.webcrypto;
 }
+
+// Next.js (next/server) expects Fetch API globals (Request/Response/Headers).
+// Jest's Node environment may not provide these depending on runtime/version.
+// Keep this minimal: enough for middleware imports + basic response assertions.
+if (typeof globalThis.Headers === 'undefined') {
+	class MinimalHeaders {
+		constructor(init = undefined) {
+			this._map = new Map();
+			if (init instanceof MinimalHeaders) {
+				init.forEach((value, key) => this.set(key, value));
+			} else if (init && typeof init === 'object') {
+				for (const [key, value] of Object.entries(init)) {
+					this.set(key, String(value));
+				}
+			}
+		}
+
+		_normalizeName(name) {
+			return String(name).toLowerCase();
+		}
+
+		get(name) {
+			return this._map.get(this._normalizeName(name)) ?? null;
+		}
+
+		set(name, value) {
+			this._map.set(this._normalizeName(name), String(value));
+		}
+
+		append(name, value) {
+			const key = this._normalizeName(name);
+			const existing = this._map.get(key);
+			this._map.set(key, existing ? `${existing}, ${String(value)}` : String(value));
+		}
+
+		has(name) {
+			return this._map.has(this._normalizeName(name));
+		}
+
+		delete(name) {
+			this._map.delete(this._normalizeName(name));
+		}
+
+		forEach(callback) {
+			for (const [key, value] of this._map.entries()) {
+				callback(value, key, this);
+			}
+		}
+
+		[Symbol.iterator]() {
+			return this._map.entries();
+		}
+	}
+
+	// @ts-expect-error - assign polyfill
+	globalThis.Headers = MinimalHeaders;
+}
+
+if (typeof globalThis.Request === 'undefined') {
+	class MinimalRequest {
+		constructor(input, init = undefined) {
+			this.url = typeof input === 'string' ? input : String(input?.url ?? input);
+			this.method = String(init?.method ?? 'GET');
+			// @ts-expect-error - Headers polyfill exists above
+			this.headers = new globalThis.Headers(init?.headers ?? undefined);
+			this.body = init?.body;
+		}
+
+		clone() {
+			return new MinimalRequest(this.url, {
+				method: this.method,
+				headers: this.headers,
+				body: this.body,
+			});
+		}
+	}
+
+	// @ts-expect-error - assign polyfill
+	globalThis.Request = MinimalRequest;
+}
+
+if (typeof globalThis.Response === 'undefined') {
+	class MinimalResponse {
+		constructor(body = null, init = undefined) {
+			this.body = body;
+			this.status = Number(init?.status ?? 200);
+			// @ts-expect-error - Headers polyfill exists above
+			this.headers = new globalThis.Headers(init?.headers ?? undefined);
+		}
+
+		static json(data, init = undefined) {
+			const headersInit = init?.headers && typeof init.headers === 'object' ? init.headers : undefined;
+			// @ts-expect-error - Headers polyfill exists above
+			const headers = new globalThis.Headers(headersInit ?? undefined);
+			if (!headers.get('content-type')) {
+				headers.set('content-type', 'application/json');
+			}
+			return new MinimalResponse(JSON.stringify(data), {
+				...(init ?? {}),
+				headers,
+			});
+		}
+
+		static redirect(url, status = 302) {
+			// @ts-expect-error - Headers polyfill exists above
+			const headers = new globalThis.Headers({ location: String(url) });
+			return new MinimalResponse(null, { status, headers });
+		}
+	}
+
+	// @ts-expect-error - assign polyfill
+	globalThis.Response = MinimalResponse;
+}
