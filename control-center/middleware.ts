@@ -93,6 +93,22 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
+  // Optional smoke-auth bypass for a single endpoint.
+  // Contract:
+  // - Route: GET /api/timeline/chain
+  // - Header: X-AFU9-SMOKE-KEY (case-insensitive)
+  // - Env gate: AFU9_SMOKE_KEY must be set (otherwise bypass is disabled)
+  if (pathname === '/api/timeline/chain') {
+    const configuredKey = process.env.AFU9_SMOKE_KEY;
+    const providedKey = request.headers.get('x-afu9-smoke-key');
+
+    if (configuredKey && providedKey === configuredKey) {
+      const response = nextWithRequestId();
+      response.headers.set('x-afu9-smoke-auth-used', '1');
+      return response;
+    }
+  }
+
   // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
   // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
   if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
