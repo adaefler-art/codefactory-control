@@ -78,7 +78,8 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.code).toBe('INVALID_PARAMS');
+      expect(data.success).toBe(false);
+      expect(data.error.code).toBe('INVALID_PARAMS');
     });
 
     it('should return 400 for missing repo', async () => {
@@ -91,7 +92,8 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.code).toBe('INVALID_PARAMS');
+      expect(data.success).toBe(false);
+      expect(data.error.code).toBe('INVALID_PARAMS');
     });
 
     it('should return 400 for missing query', async () => {
@@ -104,7 +106,8 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.code).toBe('INVALID_PARAMS');
+      expect(data.success).toBe(false);
+      expect(data.error.code).toBe('INVALID_PARAMS');
     });
 
     it('should accept valid parameters', async () => {
@@ -255,7 +258,8 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data).toEqual(mockResult);
+      expect(data.success).toBe(true);
+      expect(data.data).toEqual(mockResult);
     });
 
     it('should handle pagination cursor', async () => {
@@ -314,8 +318,8 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.code).toBe('QUERY_INVALID');
-      expect(data.error).toBeTruthy();
+      expect(data.error.code).toBe('QUERY_INVALID');
+      expect(data.error.message).toBeTruthy();
     });
 
     it('should return 403 for RepoAccessDeniedError', async () => {
@@ -335,7 +339,7 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(403);
-      expect(data.code).toBe('REPO_NOT_ALLOWED');
+      expect(data.error.code).toBe('REPO_NOT_ALLOWED');
     });
 
     it('should return 403 for RateLimitError', async () => {
@@ -356,8 +360,8 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(403);
-      expect(data.code).toBe('RATE_LIMIT_EXCEEDED');
-      expect(data.details.retryAfter).toBe(60);
+      expect(data.error.code).toBe('RATE_LIMIT_EXCEEDED');
+      expect(data.error.details.retryAfter).toBe(60);
     });
 
     it('should return appropriate status for GitHubAPIError', async () => {
@@ -378,7 +382,7 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.code).toBe('GITHUB_API_ERROR');
+      expect(data.error.code).toBe('GITHUB_API_ERROR');
     });
 
     it('should return 500 for GitHubAPIError without httpStatus', async () => {
@@ -398,7 +402,7 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.code).toBe('GITHUB_API_ERROR');
+      expect(data.error.code).toBe('GITHUB_API_ERROR');
     });
 
     it('should return 500 for unexpected errors', async () => {
@@ -413,7 +417,7 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.code).toBe('INTERNAL_ERROR');
+      expect(data.error.code).toBe('INTERNAL_ERROR');
     });
 
     it('should handle Zod validation errors', async () => {
@@ -432,7 +436,7 @@ describe('GitHub Search Code API Route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.code).toBe('INVALID_PARAMS');
+      expect(data.error.code).toBe('INVALID_PARAMS');
     });
   });
 
