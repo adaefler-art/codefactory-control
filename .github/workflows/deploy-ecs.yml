@@ -1090,16 +1090,32 @@ jobs:
           ALB_DNS_NAME: ${{ steps.alb-dns.outputs.alb_dns_name }}
           READY_HOST: ${{ steps.target.outputs.ready_host }}
         run: |
-          $target = if ($env:ALB_DNS_NAME) { $env:ALB_DNS_NAME } else { $env:READY_HOST }
+          $ErrorActionPreference = 'Stop'
+
+          # Prefer probing the public host so TLS SNI/cert matches.
+          $target = if ($env:READY_HOST) { $env:READY_HOST } else { $env:ALB_DNS_NAME }
+          if (-not $target) { Write-Error "Readiness probe has no target (READY_HOST/ALB_DNS_NAME empty)"; exit 1 }
+
           $uri = "https://$target/api/ready"
-          $readyHost = $env:READY_HOST
-          Write-Host "Probing readiness at $uri (Host: $readyHost)"
+          Write-Host "Probing readiness at $uri"
+
+          $lastError = $null
           for ($i = 1; $i -le 30; $i++) {
             try {
-              $resp = Invoke-WebRequest -Uri $uri -Headers @{ Host = $readyHost } -UseBasicParsing -TimeoutSec 10
-              if ($resp.StatusCode -eq 200) { Write-Host "Ready (attempt $i)"; break }
-            } catch {}
-            if ($i -eq 30) { Write-Error "Readiness probe failed after $i attempts"; exit 1 }
+              $resp = Invoke-WebRequest -Uri $uri -TimeoutSec 10
+              if ($resp.StatusCode -eq 200) {
+                Write-Host "Ready (attempt $i)"
+                break
+              }
+              $lastError = "Non-200: $($resp.StatusCode)"
+            } catch {
+              $lastError = $_.Exception.Message
+            }
+
+            if ($i -eq 30) {
+              Write-Error "Readiness probe failed after $i attempts. Last error: $lastError"
+              exit 1
+            }
             Start-Sleep -Seconds 5
           }
 
