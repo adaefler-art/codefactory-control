@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { verifyGitHubSignature } from '@/lib/webhooks/signature';
 import { recordGitHubWebhookDelivery } from '@/lib/webhooks/persistence';
-import { getGitHubWebhookSecret, postGitHubIssueComment } from '@/lib/github-app-auth';
+import { getGitHubWebhookSecret } from '@/lib/github-app-auth';
+import { postGitHubIssueComment } from '@/lib/github/auth-wrapper';
 
 export async function handleGitHubWebhook(rawBody: Buffer, headers: Headers): Promise<Response> {
   const signature = headers.get('x-hub-signature-256');
