@@ -7,9 +7,11 @@ param(
   [string]$UserA = "smoke-user-a",
 
   [Parameter(Mandatory = $false)]
-  [string]$UserB = "smoke-user-b"
+  [string]$UserB = "smoke-user-b",
 
-  ,
+  [Parameter(Mandatory = $false)]
+  [string]$SmokeKey = "",
+
   [Parameter(Mandatory = $false)]
   [switch]$StrictGapFree
 )
@@ -54,6 +56,9 @@ function Invoke-Afu9Api {
   )
 
   $headers = @{ 'x-afu9-sub' = $UserId; 'accept' = 'application/json' }
+  if (-not [string]::IsNullOrWhiteSpace($script:SmokeKey)) {
+    $headers['x-afu9-smoke-key'] = $script:SmokeKey
+  }
 
   $params = @{ Method = $Method; Uri = $Url; Headers = $headers }
 
@@ -79,7 +84,7 @@ function Invoke-Afu9Api {
   } catch {
     $ex = $_.Exception
 
-    if ($null -ne $ex.Response) {
+    if ($null -ne $ex -and ($ex.PSObject.Properties.Name -contains 'Response') -and $null -ne $ex.Response) {
       try {
         $status = [int]$ex.Response.StatusCode
         $reader = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
@@ -112,6 +117,17 @@ function Get-SessionIdFromCreateResponse($Json) {
 }
 
 $BaseUrl = Normalize-BaseUrl -Url $BaseUrl
+
+if ([string]::IsNullOrWhiteSpace($UserA) -or [string]::IsNullOrWhiteSpace($UserB)) {
+  Write-Fail 'UserA/UserB must be set (non-empty)'
+  exit 1
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SmokeKey)) {
+  $script:SmokeKey = $SmokeKey
+} elseif (-not [string]::IsNullOrWhiteSpace($env:AFU9_SMOKE_KEY)) {
+  $script:SmokeKey = $env:AFU9_SMOKE_KEY
+}
 
 Write-Host "=== AFU-9 E2E Smoke: Intent Sessions (Commit 1340724) ===" -ForegroundColor Cyan
 Write-Info "BaseUrl: $BaseUrl"
