@@ -96,6 +96,7 @@ export async function ingestRun(
   const { runId } = validated;
 
   const dao = new TimelineDAO(pool);
+  const fetchedAt = new Date().toISOString(); // Consistent timestamp for this ingestion operation
 
   try {
     // Fetch run from database
@@ -147,7 +148,7 @@ export async function ingestRun(
       ref_json: {
         table: 'runs',
         id: run.id,
-        fetched_at: new Date().toISOString(),
+        fetched_at: fetchedAt,
       },
       sha256: computeSha256(JSON.stringify(run)),
       content_hash: null,
@@ -195,7 +196,7 @@ export async function ingestRun(
         ref_json: {
           table: 'run_steps',
           id: step.id,
-          fetched_at: new Date().toISOString(),
+          fetched_at: fetchedAt,
         },
         sha256: computeSha256(JSON.stringify(step)),
         content_hash: null,
@@ -244,9 +245,9 @@ export async function ingestRun(
         ref_json: {
           table: 'run_artifacts',
           id: artifact.id,
-          fetched_at: new Date().toISOString(),
+          fetched_at: fetchedAt,
         },
-        sha256: artifact.sha256 || computeSha256(JSON.stringify(artifact)),
+        sha256: computeSha256(JSON.stringify(artifact)),
         content_hash: null,
       });
     }
@@ -319,6 +320,7 @@ export async function ingestDeploy(
   const { deployId } = validated;
 
   const dao = new TimelineDAO(pool);
+  const fetchedAt = new Date().toISOString(); // Consistent timestamp for this ingestion operation
 
   try {
     // Fetch deploy event from database
@@ -367,7 +369,7 @@ export async function ingestDeploy(
       ref_json: {
         table: 'deploy_events',
         id: deploy.id,
-        fetched_at: new Date().toISOString(),
+        fetched_at: fetchedAt,
       },
       sha256: computeSha256(JSON.stringify(deploy)),
       content_hash: null,
@@ -416,6 +418,7 @@ export async function ingestVerdict(
   const { verdictId } = validated;
 
   const dao = new TimelineDAO(pool);
+  const fetchedAt = new Date().toISOString(); // Consistent timestamp for this ingestion operation
 
   try {
     // Fetch verdict from database with policy snapshot (for lawbook version)
@@ -473,7 +476,7 @@ export async function ingestVerdict(
       ref_json: {
         table: 'verdicts',
         id: verdict.id,
-        fetched_at: new Date().toISOString(),
+        fetched_at: fetchedAt,
       },
       sha256: computeSha256(JSON.stringify(verdict)),
       content_hash: null,
@@ -525,6 +528,7 @@ export async function ingestVerification(
   const { reportId } = validated;
 
   const dao = new TimelineDAO(pool);
+  const fetchedAt = new Date().toISOString(); // Consistent timestamp for this ingestion operation
 
   try {
     // Fetch verification report from database (deploy_status_snapshots)
@@ -571,7 +575,7 @@ export async function ingestVerification(
       ref_json: {
         table: 'deploy_status_snapshots',
         id: report.id,
-        fetched_at: new Date().toISOString(),
+        fetched_at: fetchedAt,
       },
       sha256: computeSha256(JSON.stringify(report)),
       content_hash: null,
