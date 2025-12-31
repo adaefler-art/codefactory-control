@@ -72,7 +72,7 @@ Implemented deterministic source processing:
 - **Stable Sorting**: Sources sorted by kind, then kind-specific fields
 - **Deduplication**: Exact duplicates removed using JSON stringification
 - **SHA256 Hashing**: Canonical JSON hashed for efficient lookups
-- **Idempotency**: Same sources in different order → same hash
+- **Idempotency**: Same sources in different order -> same hash
 
 **Key Functions**:
 - `canonicalizeUsedSources(sources)`: Returns sorted, deduplicated array

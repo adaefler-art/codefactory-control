@@ -128,16 +128,16 @@ Then open browser to: `http://localhost:3000/intent`
 ### Manual Test Checklist
 
 1. **Session Creation**
-   - [ ] Click "New Session" → session created
+   - [ ] Click "New Session" -> session created
    - [ ] Session appears in sidebar
 
 2. **Message Sending**
-   - [ ] Send a message → user message appears
+   - [ ] Send a message -> user message appears
    - [ ] Assistant stub response appears
 
 3. **Sources Panel** (requires DB with sources)
    - [ ] Assistant messages show source badge
-   - [ ] Click message → sources panel shows
+   - [ ] Click message -> sources panel shows
    - [ ] Panel is collapsible
    - [ ] Sources render with correct icons
 

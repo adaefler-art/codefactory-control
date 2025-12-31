@@ -11,7 +11,7 @@
 Successfully implemented the `used_sources` contract for INTENT Console, enabling evidence-based AI reasoning through:
 
 - **4 Source Types**: file_snippet, github_issue, github_pr, afu9_artifact
-- **Deterministic Hashing**: SHA256-based canonicalization ensures same sources → same hash
+- **Deterministic Hashing**: SHA256-based canonicalization ensures same sources -> same hash
 - **Zod Validation**: Type-safe API with runtime schema validation
 - **UI Panel**: Collapsible sources panel with color-coded source types
 - **Comprehensive Tests**: 100% coverage of canonicalization, API, and edge cases
@@ -341,7 +341,7 @@ be4fbe5 Initial plan
 ## Acceptance Criteria ✅
 
 - ✅ Sources panel renders and persists used_sources
-- ✅ Deterministic hashing (same sources → same hash)
+- ✅ Deterministic hashing (same sources -> same hash)
 - ✅ No full content leaks (only refs/hashes)
 - ✅ Tests passing (pending validation run)
 - ✅ Build successful (pending validation run)
