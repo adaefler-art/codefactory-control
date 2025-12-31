@@ -241,6 +241,18 @@ export const API_ROUTES = {
       return `/api/timeline/chain?${params.toString()}`;
     },
   },
+
+  // INTENT Console (E73.1)
+  intent: {
+    sessions: {
+      list: '/api/intent/sessions',
+      create: '/api/intent/sessions',
+      get: (id: string) => `/api/intent/sessions/${id}`,
+    },
+    messages: {
+      create: (sessionId: string) => `/api/intent/sessions/${sessionId}/messages`,
+    },
+  },
 } as const;
 
 /**
