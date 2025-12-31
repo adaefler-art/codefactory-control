@@ -80,8 +80,24 @@ describe('Middleware Authentication Logic', () => {
 
     expect(
       shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/deploy/status',
+        hostname: 'stage.afu-9.com',
+      })
+    ).toBe(true);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
         method: 'POST',
         pathname: '/api/integrations/github/status',
+        hostname: 'stage.afu-9.com',
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'POST',
+        pathname: '/api/deploy/status',
         hostname: 'stage.afu-9.com',
       })
     ).toBe(false);
@@ -103,6 +119,14 @@ describe('Middleware Authentication Logic', () => {
         hostname: 'prod.afu-9.com',
       })
     ).toBe(false);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/deploy/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(false);
   });
 
   test('Public status endpoint allow rule supports AFU9_PUBLIC_STATUS_ENDPOINTS=true', () => {
@@ -118,8 +142,24 @@ describe('Middleware Authentication Logic', () => {
 
     expect(
       shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/deploy/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(true);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
         method: 'POST',
         pathname: '/api/integrations/github/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(false);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'POST',
+        pathname: '/api/deploy/status',
         hostname: 'prod.afu-9.com',
       })
     ).toBe(false);
