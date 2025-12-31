@@ -1,5 +1,9 @@
 # GitHub Search Code API - PowerShell Examples
 # Reference: I714 (E71.4) - Tool searchCode
+# 
+# UNIFIED RESPONSE FORMAT:
+# Success: { success: true, data: { items, pageInfo, meta } }
+# Error: { success: false, error: { code, message, details } }
 
 # Base URL (adjust for your environment)
 $BaseUrl = "http://localhost:3000"
@@ -21,9 +25,13 @@ $response = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-Write-Host "Found $($response.items.Count) results"
-$response.items | ForEach-Object {
-    Write-Host "- $($_.path) (score: $($_.score), hash: $($_.match.previewHash))"
+if ($response.success) {
+    Write-Host "Found $($response.data.items.Count) results"
+    $response.data.items | ForEach-Object {
+        Write-Host "- $($_.path) (score: $($_.score), hash: $($_.match.previewHash))"
+    }
+} else {
+    Write-Host "Error: $($response.error.code) - $($response.error.message)" -ForegroundColor Red
 }
 
 # ============================================
@@ -43,7 +51,9 @@ $response = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-Write-Host "Found $($response.items.Count) results in control-center/src/lib/github/"
+if ($response.success) {
+    Write-Host "Found $($response.data.items.Count) results in control-center/src/lib/github/"
+}
 
 # ============================================
 # Example 3: Search with File Globs
@@ -62,7 +72,9 @@ $response = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-Write-Host "Found $($response.items.Count) TypeScript files containing 'interface'"
+if ($response.success) {
+    Write-Host "Found $($response.data.items.Count) TypeScript files containing 'interface'"
+}
 
 # ============================================
 # Example 4: Pagination
@@ -82,19 +94,23 @@ $page1 = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-Write-Host "Page 1: $($page1.items.Count) results"
-Write-Host "Has next page: $($null -ne $page1.pageInfo.nextCursor)"
+if ($page1.success) {
+    Write-Host "Page 1: $($page1.data.items.Count) results"
+    Write-Host "Has next page: $($null -ne $page1.data.pageInfo.nextCursor)"
 
-# Second page (if available)
-if ($page1.pageInfo.nextCursor) {
-    $params.cursor = $page1.pageInfo.nextCursor
-    
-    $page2 = Invoke-RestMethod `
-        -Uri "$BaseUrl$ApiPath" `
-        -Method GET `
-        -Body $params
-    
-    Write-Host "Page 2: $($page2.items.Count) results"
+    # Second page (if available)
+    if ($page1.data.pageInfo.nextCursor) {
+        $params.cursor = $page1.data.pageInfo.nextCursor
+        
+        $page2 = Invoke-RestMethod `
+            -Uri "$BaseUrl$ApiPath" `
+            -Method GET `
+            -Body $params
+        
+        if ($page2.success) {
+            Write-Host "Page 2: $($page2.data.items.Count) results"
+        }
+    }
 }
 
 # ============================================
@@ -118,8 +134,10 @@ $response = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-Write-Host "Found $($response.items.Count) results with all filters"
-Write-Host "Branch warning: $($response.meta.branchWarning)"
+if ($response.success) {
+    Write-Host "Found $($response.data.items.Count) results with all filters"
+    Write-Host "Branch warning: $($response.data.meta.branchWarning)"
+}
 
 # ============================================
 # Example 6: Inspect Result Metadata
@@ -138,8 +156,8 @@ $response = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-if ($response.items.Count -gt 0) {
-    $item = $response.items[0]
+if ($response.success -and $response.data.items.Count -gt 0) {
+    $item = $response.data.items[0]
     
     Write-Host "Result Details:"
     Write-Host "  Path: $($item.path)"
@@ -148,12 +166,12 @@ if ($response.items.Count -gt 0) {
     Write-Host "  Preview length: $($item.match.preview.Length)"
     Write-Host "  Preview SHA-256: $($item.match.previewSha256)"
     Write-Host "  Preview short hash: $($item.match.previewHash)"
+    
+    Write-Host "`nMetadata:"
+    Write-Host "  Generated at: $($response.data.meta.generatedAt)"
+    Write-Host "  Ordering: $($response.data.meta.ordering)"
+    Write-Host "  Branch effective: $($response.data.meta.branchEffective)"
 }
-
-Write-Host "`nMetadata:"
-Write-Host "  Generated at: $($response.meta.generatedAt)"
-Write-Host "  Ordering: $($response.meta.ordering)"
-Write-Host "  Branch effective: $($response.meta.branchEffective)"
 
 # ============================================
 # Example 7: Error Handling
@@ -168,14 +186,19 @@ try {
         query = "a"  # Too short
     }
     
-    Invoke-RestMethod `
+    $response = Invoke-RestMethod `
         -Uri "$BaseUrl$ApiPath" `
         -Method GET `
         -Body $params
+    
+    if (-not $response.success) {
+        Write-Host "Error: $($response.error.code) - $($response.error.message)" -ForegroundColor Red
+        Write-Host "Details: $($response.error.details | ConvertTo-Json -Depth 2)"
+    }
 }
 catch {
     $error = $_.ErrorDetails.Message | ConvertFrom-Json
-    Write-Host "Error: $($error.code) - $($error.error)" -ForegroundColor Red
+    Write-Host "Error: $($error.error.code) - $($error.error.message)" -ForegroundColor Red
 }
 
 # Repository not allowed
@@ -186,14 +209,18 @@ try {
         query = "test"
     }
     
-    Invoke-RestMethod `
+    $response = Invoke-RestMethod `
         -Uri "$BaseUrl$ApiPath" `
         -Method GET `
         -Body $params
+    
+    if (-not $response.success) {
+        Write-Host "Error: $($response.error.code) - $($response.error.message)" -ForegroundColor Red
+    }
 }
 catch {
     $error = $_.ErrorDetails.Message | ConvertFrom-Json
-    Write-Host "Error: $($error.code) - $($error.error)" -ForegroundColor Red
+    Write-Host "Error: $($error.error.code) - $($error.error.message)" -ForegroundColor Red
 }
 
 # ============================================
@@ -213,15 +240,17 @@ $response = Invoke-RestMethod `
     -Method GET `
     -Body $params
 
-$results = $response.items | Select-Object `
-    path, `
-    sha, `
-    score, `
-    @{Name='previewHash'; Expression={$_.match.previewHash}}, `
-    @{Name='preview'; Expression={$_.match.preview}}
+if ($response.success) {
+    $results = $response.data.items | Select-Object `
+        path, `
+        sha, `
+        score, `
+        @{Name='previewHash'; Expression={$_.match.previewHash}}, `
+        @{Name='preview'; Expression={$_.match.preview}}
 
-$results | Export-Csv -Path "search-results.csv" -NoTypeInformation
-Write-Host "Exported $($results.Count) results to search-results.csv"
+    $results | Export-Csv -Path "search-results.csv" -NoTypeInformation
+    Write-Host "Exported $($results.Count) results to search-results.csv"
+}
 
 # ============================================
 # Example 9: Collect All Pages
@@ -248,10 +277,15 @@ do {
         -Method GET `
         -Body $params
     
-    $allItems += $response.items
-    $cursor = $response.pageInfo.nextCursor
-    
-    Write-Host "Fetched page: $($response.items.Count) items, Total: $($allItems.Count)"
+    if ($response.success) {
+        $allItems += $response.data.items
+        $cursor = $response.data.pageInfo.nextCursor
+        
+        Write-Host "Fetched page: $($response.data.items.Count) items, Total: $($allItems.Count)"
+    } else {
+        Write-Host "Error: $($response.error.code) - $($response.error.message)" -ForegroundColor Red
+        break
+    }
     
 } while ($cursor)
 
