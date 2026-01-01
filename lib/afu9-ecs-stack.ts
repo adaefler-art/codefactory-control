@@ -411,9 +411,12 @@ export class Afu9EcsStack extends cdk.Stack {
       'afu9/llm'
     );
 
-    // Import stage-only smoke key secret (used for Timeline Chain smoke-auth bypass)
-    // Only needed when the staging service is created.
-    const stageSmokeKeySecret = props.stageTargetGroup && createStagingService
+    // Import stage-only smoke key secret (used for stage smoke-auth bypass)
+    // Needed for both:
+    // - standalone staging environment deployments
+    // - shared-cluster deployments that also create a staging service
+    const shouldIncludeStageSmokeKey = environment === ENVIRONMENT.STAGE || (!!props.stageTargetGroup && createStagingService);
+    const stageSmokeKeySecret = shouldIncludeStageSmokeKey
       ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
       : undefined;
 
