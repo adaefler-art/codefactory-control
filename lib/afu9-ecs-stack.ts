@@ -699,6 +699,7 @@ export class Afu9EcsStack extends cdk.Stack {
       deployEnvValue: string,
       environmentLabel: string,
       appNodeEnvValue: string,
+      serviceNameValue: string,
     ): ecs.FargateTaskDefinition => {
       const td = new ecs.FargateTaskDefinition(this, id, {
         family: 'afu9-control-center',
@@ -715,6 +716,15 @@ export class Afu9EcsStack extends cdk.Stack {
       const buildTime = this.node.tryGetContext('build-time') || process.env.BUILD_TIME || 'unknown';
 
       // Control Center container
+      const deployEnvLower = deployEnvValue.toLowerCase();
+      const environmentLower = environmentLabel.toLowerCase();
+      const serviceNameLower = serviceNameValue.toLowerCase();
+      const isProdLike = deployEnvLower === 'production' || environmentLower === 'prod' || serviceNameLower === 'afu9-control-center';
+      const isStagingLike =
+        deployEnvLower === 'staging' ||
+        environmentLower === 'stage' ||
+        serviceNameLower.endsWith('-staging');
+      const shouldInjectSmokeKey = !!smokeKeySecret && !isProdLike && isStagingLike;
       const cc = td.addContainer('control-center', {
         image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, tag),
         containerName: 'control-center',
@@ -755,6 +765,11 @@ export class Afu9EcsStack extends cdk.Stack {
                 DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
               }
             : {}),
+          ...(shouldInjectSmokeKey
+            ? {
+                AFU9_SMOKE_KEY: ecs.Secret.fromSecretsManager(smokeKeySecret),
+              }
+            : {}),
           GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
           GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
           GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
@@ -777,10 +792,6 @@ export class Afu9EcsStack extends cdk.Stack {
           startPeriod: cdk.Duration.seconds(120),
         },
       });
-
-      if (environmentLabel === 'stage' && smokeKeySecret) {
-        cc.addSecret('AFU9_SMOKE_KEY', ecs.Secret.fromSecretsManager(smokeKeySecret));
-      }
 
       cc.addPortMappings({
         containerPort: 3000,
@@ -889,7 +900,7 @@ export class Afu9EcsStack extends cdk.Stack {
       return td;
     };
 
-    const taskDefinition = createTaskDefinition('TaskDefinition', resolvedImageTag, deployEnv, environment, appNodeEnv);
+    const taskDefinition = createTaskDefinition('TaskDefinition', resolvedImageTag, deployEnv, environment, appNodeEnv, serviceName);
 
     // Primary (prod or single-env) service
     this.service = new ecs.FargateService(this, 'Service', {
@@ -932,6 +943,7 @@ export class Afu9EcsStack extends cdk.Stack {
         'staging',
         'stage',
         'staging',
+        'afu9-control-center-staging',
       );
 
       this.stageService = new ecs.FargateService(this, 'StageService', {
