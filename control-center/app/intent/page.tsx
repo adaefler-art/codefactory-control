@@ -34,6 +34,10 @@ export default function IntentPage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportedPackId, setExportedPackId] = useState<string | null>(null);
+  const [exportedPackHash, setExportedPackHash] = useState<string | null>(null);
+  const [exportedPackCreatedAt, setExportedPackCreatedAt] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch sessions on mount
@@ -152,6 +156,57 @@ export default function IntentPage() {
     }
   };
 
+  const exportContextPack = async () => {
+    if (!currentSessionId) return;
+
+    setIsExporting(true);
+    setError(null);
+
+    try {
+      // Generate context pack
+      const response = await fetch(
+        API_ROUTES.intent.sessions.contextPack(currentSessionId),
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+      
+      const packData = await safeFetch(response);
+      
+      // Store pack metadata for display
+      setExportedPackId(packData.id);
+      setExportedPackHash(packData.pack_hash);
+      setExportedPackCreatedAt(packData.created_at);
+      
+      // Trigger download
+      const downloadUrl = API_ROUTES.intent.contextPacks.get(packData.id);
+      const downloadResponse = await fetch(downloadUrl, {
+        credentials: "include",
+      });
+      
+      if (!downloadResponse.ok) {
+        throw new Error("Failed to download context pack");
+      }
+      
+      // Create blob and download
+      const blob = await downloadResponse.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `context-pack-${currentSessionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Failed to export context pack:", err);
+      setError(formatErrorMessage(err));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -204,14 +259,43 @@ export default function IntentPage() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <h1 className="text-xl font-semibold text-gray-900">
-            {currentSessionId
-              ? getSessionTitle(sessions.find((s) => s.id === currentSessionId) || { title: null } as IntentSession)
-              : "INTENT Console"}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Session-based chat interface for INTENT steering
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {currentSessionId
+                  ? getSessionTitle(sessions.find((s) => s.id === currentSessionId) || { title: null } as IntentSession)
+                  : "INTENT Console"}
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Session-based chat interface for INTENT steering
+              </p>
+            </div>
+            
+            {/* Export Context Pack Button */}
+            {currentSessionId && (
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  onClick={exportContextPack}
+                  disabled={isExporting}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                >
+                  {isExporting ? "Exporting..." : "Export Context Pack"}
+                </button>
+                
+                {exportedPackHash && exportedPackCreatedAt && (
+                  <div className="text-xs text-gray-500">
+                    <span title={exportedPackHash}>
+                      Hash: {exportedPackHash.substring(0, 12)}...
+                    </span>
+                    {" • "}
+                    <span>
+                      {formatTimestamp(exportedPackCreatedAt)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Messages */}
