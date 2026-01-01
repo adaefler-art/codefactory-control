@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 
 interface McpServer {
   name: string;
+  displayName: string;
   endpoint: string;
+  port: number;
+  toolCount: number;
   healthy: boolean;
   error?: string;
 }
@@ -62,13 +65,23 @@ export default function SettingsPage() {
 
         if (mcpResponse.ok) {
           const serversObj = mcpData.servers || {};
-          const serversArray = Object.entries(serversObj).map(([name, health]) => {
-            const healthData = health as { status?: string; endpoint?: string; error?: string };
+          const serversArray = Object.entries(serversObj).map(([name, serverData]) => {
+            const data = serverData as { 
+              status?: string; 
+              endpoint?: string; 
+              displayName?: string; 
+              port?: number; 
+              toolCount?: number; 
+              error?: string;
+            };
             return {
               name,
-              endpoint: healthData.endpoint || `http://localhost:${3001 + Object.keys(serversObj).indexOf(name)}`,
-              healthy: healthData.status === 'ok',
-              error: healthData.error,
+              displayName: data.displayName || name.charAt(0).toUpperCase() + name.slice(1),
+              endpoint: data.endpoint || `http://localhost:${data.port || 3001}`,
+              port: data.port || 3001,
+              toolCount: data.toolCount || 0,
+              healthy: data.status === 'ok',
+              error: data.error,
             };
           });
           setMcpServers(serversArray);
@@ -210,7 +223,7 @@ export default function SettingsPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-gray-200">MCP Server</h2>
                   <p className="text-sm text-gray-400 mt-1">
-                    Überblick über konfigurierte MCP-Server und deren Status
+                    Catalog-driven Übersicht über konfigurierte MCP-Server und deren Status
                   </p>
                 </div>
               </div>
@@ -223,30 +236,33 @@ export default function SettingsPage() {
                       className="p-6 hover:bg-gray-900/70 transition-colors"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-medium text-gray-200">
-                              {server.name.charAt(0).toUpperCase() + server.name.slice(1)}
-                            </h3>
-                            <span
-                              className={`text-xs px-2 py-1 rounded ${
-                                server.healthy
-                                  ? "bg-green-900/30 text-green-400"
-                                  : "bg-red-900/30 text-red-400"
-                              }`}
-                            >
-                              {server.healthy ? "Healthy" : "Unhealthy"}
-                            </span>
-                          </div>
-                          <div className="text-sm text-gray-400 font-mono">
-                            Endpoint: {server.endpoint}
-                          </div>
-                          {server.error && (
-                            <div className="mt-2 text-sm text-red-400">
-                              Error: {server.error}
-                            </div>
-                          )}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-lg font-medium text-gray-200">
+                            {server.displayName}
+                          </h3>
+                          <span
+                            className={`text-xs px-2 py-1 rounded ${
+                              server.healthy
+                                ? "bg-green-900/30 text-green-400"
+                                : "bg-red-900/30 text-red-400"
+                            }`}
+                          >
+                            {server.healthy ? "Healthy" : "Unhealthy"}
+                          </span>
                         </div>
+                        <div className="text-sm text-gray-400 font-mono mb-1">
+                          Endpoint: {server.endpoint}
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          Port: {server.port} • Tools: {server.toolCount}
+                        </div>
+                        {server.error && (
+                          <div className="mt-2 text-sm text-red-400">
+                            Error: {server.error}
+                          </div>
+                        )}
+                      </div>
                         <div>
                           <div
                             className={`w-3 h-3 rounded-full ${
