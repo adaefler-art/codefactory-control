@@ -247,7 +247,7 @@ describe('Canonical-ID Resolver', () => {
 
       // Verify search query
       expect(mockSearchIssuesAndPullRequests).toHaveBeenCalledWith({
-        q: 'repo:adaefler-art/codefactory-control is:issue "CR-2026-01-01-001"',
+        q: 'repo:adaefler-art/codefactory-control is:issue in:title,body "CR-2026-01-01-001"',
         per_page: 100,
       });
     });

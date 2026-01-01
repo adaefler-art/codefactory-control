@@ -235,8 +235,8 @@ async function searchIssuesForCanonicalId(input: ResolveCanonicalIdInput): Promi
   const octokit = await createAuthenticatedClient({ owner, repo });
 
   // Search for issues containing the canonical ID
-  // We search in title and body to catch both markers
-  const searchQuery = `repo:${owner}/${repo} is:issue "${canonicalId}"`;
+  // We search explicitly in title and body to catch both markers (precise scoping for false-positive safety)
+  const searchQuery = `repo:${owner}/${repo} is:issue in:title,body "${canonicalId}"`;
 
   try {
     const response = await octokit.rest.search.issuesAndPullRequests({
