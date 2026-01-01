@@ -476,6 +476,8 @@ jobs:
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
           echo "should_migrate=${SHOULD_MIGRATE}"
 
+          SMOKE_KEY_SECRET_ARN="arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G"
+
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
             echo "❌ DEPLOY_EVENTS_TOKEN secret is missing" >&2
             exit 1
@@ -587,6 +589,39 @@ jobs:
              ) |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
              task-def.json > new-task-def.json
+
+          # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
+          # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
+          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+            jq --arg smoke_arn "${SMOKE_KEY_SECRET_ARN}" '
+              .containerDefinitions |= map(
+                if .name == "control-center" then
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_arn}])
+                else . end
+              )
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+
+            if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
+              echo "❌ AFU9_SMOKE_KEY not injected for staging task definition" >&2
+              exit 1
+            fi
+          else
+            # Safety: prod must never receive the stage smoke key.
+            jq '
+              .containerDefinitions |= map(
+                if .name == "control-center" then
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")))
+                else . end
+              )
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+
+            if jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
+              echo "❌ AFU9_SMOKE_KEY present in production task definition" >&2
+              exit 1
+            fi
+          fi
 
           if jq -re '.. | select(type=="string" and test("/master"))' new-task-def.json >/dev/null; then
             echo "❌ Detected legacy '/master' reference in task definition; aborting." >&2
