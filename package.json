@@ -46,7 +46,8 @@
     "source-map-support": "^0.5.21",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "zod": "^4.2.1"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.950.0",
@@ -60,6 +61,4 @@
     "minimist": "^1.2.8",
     "octokit": "^4.0.0"
   }
-
-
 }
