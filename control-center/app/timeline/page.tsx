@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface TimelineIssue {
   id: string;
@@ -18,7 +19,7 @@ export default function TimelinePage() {
   useEffect(() => {
     async function fetchIssues() {
       try {
-        const response = await fetch("/api/issues", { credentials: "include" });
+        const response = await fetch(API_ROUTES.issues.list, { credentials: "include" });
         const data = await response.json();
         
         if (response.ok) {

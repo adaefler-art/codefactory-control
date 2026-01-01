@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface McpServer {
   name: string;
@@ -60,7 +61,7 @@ export default function SettingsPage() {
     async function fetchData() {
       try {
         // Fetch MCP health
-        const mcpResponse = await fetch("/api/mcp/health", { credentials: "include" });
+        const mcpResponse = await fetch(API_ROUTES.health.mcp, { credentials: "include" });
         const mcpData = await mcpResponse.json();
 
         if (mcpResponse.ok) {
@@ -88,7 +89,7 @@ export default function SettingsPage() {
         }
 
         // Fetch repositories
-        const repoResponse = await fetch("/api/repositories", { credentials: "include" });
+        const repoResponse = await fetch(API_ROUTES.repositories.list, { credentials: "include" });
         const repoData = await repoResponse.json();
 
         if (repoResponse.ok) {
@@ -96,7 +97,7 @@ export default function SettingsPage() {
         }
 
         // Fetch system configuration
-        const configResponse = await fetch("/api/system/config", { credentials: "include" });
+        const configResponse = await fetch(API_ROUTES.system.config, { credentials: "include" });
         const configData = await configResponse.json();
 
         if (configResponse.ok) {
@@ -122,7 +123,7 @@ export default function SettingsPage() {
     }
 
     try {
-      const response = await fetch("/api/repositories", {
+      const response = await fetch(API_ROUTES.repositories.create, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -150,7 +151,7 @@ export default function SettingsPage() {
     }
 
     try {
-      const response = await fetch(`/api/repositories/${id}`, {
+      const response = await fetch(API_ROUTES.repositories.delete(id), {
         method: "DELETE",
         credentials: "include",
       });
@@ -169,7 +170,7 @@ export default function SettingsPage() {
 
   const handleToggleRepository = async (id: string, enabled: boolean) => {
     try {
-      const response = await fetch(`/api/repositories/${id}`, {
+      const response = await fetch(API_ROUTES.repositories.update(id), {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
