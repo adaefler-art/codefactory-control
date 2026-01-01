@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    // Get both versions
-    const fromResult = await getCrVersion(pool, fromId);
+    // Get both versions with ownership check
+    const fromResult = await getCrVersion(pool, fromId, userId);
     if (!fromResult.success) {
       return errorResponse(`From version not found: ${fromResult.error}`, {
         status: 404,
@@ -52,10 +52,18 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    const toResult = await getCrVersion(pool, toId);
+    const toResult = await getCrVersion(pool, toId, userId);
     if (!toResult.success) {
       return errorResponse(`To version not found: ${toResult.error}`, {
         status: 404,
+        requestId,
+      });
+    }
+    
+    // Verify both versions belong to the same session
+    if (fromResult.data.session_id !== toResult.data.session_id) {
+      return errorResponse('Versions must belong to the same session', {
+        status: 400,
         requestId,
       });
     }

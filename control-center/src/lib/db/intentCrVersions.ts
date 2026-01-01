@@ -222,23 +222,42 @@ export async function listCrVersions(
 }
 
 /**
- * Get a specific CR version by ID
+ * Get a specific CR version by ID with ownership verification
  * 
  * @param pool Database pool
  * @param versionId Version ID
+ * @param userId User ID (for ownership check)
  * @returns Full version data including CR JSON
  */
 export async function getCrVersion(
   pool: Pool,
-  versionId: string
+  versionId: string,
+  userId?: string
 ): Promise<{ success: true; data: IntentCrVersion } | { success: false; error: string }> {
   try {
-    const result = await pool.query(
-      `SELECT id, session_id, created_at, cr_json, cr_hash, cr_version
-       FROM intent_cr_versions
-       WHERE id = $1`,
-      [versionId]
-    );
+    let query: string;
+    let params: any[];
+    
+    if (userId) {
+      // Join with session to verify ownership
+      query = `
+        SELECT v.id, v.session_id, v.created_at, v.cr_json, v.cr_hash, v.cr_version
+        FROM intent_cr_versions v
+        JOIN intent_sessions s ON s.id = v.session_id
+        WHERE v.id = $1 AND s.user_id = $2
+      `;
+      params = [versionId, userId];
+    } else {
+      // No ownership check (for internal use)
+      query = `
+        SELECT id, session_id, created_at, cr_json, cr_hash, cr_version
+        FROM intent_cr_versions
+        WHERE id = $1
+      `;
+      params = [versionId];
+    }
+    
+    const result = await pool.query(query, params);
     
     if (result.rows.length === 0) {
       return {

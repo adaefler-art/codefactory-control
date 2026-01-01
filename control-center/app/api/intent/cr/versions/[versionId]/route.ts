@@ -41,7 +41,7 @@ export async function GET(
       });
     }
     
-    const result = await getCrVersion(pool, versionId);
+    const result = await getCrVersion(pool, versionId, userId);
     
     if (!result.success) {
       if (result.error === 'Version not found') {

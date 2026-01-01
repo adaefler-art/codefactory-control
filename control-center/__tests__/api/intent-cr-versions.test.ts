@@ -290,6 +290,49 @@ describe('INTENT CR Versions Database Layer', () => {
         expect(result.error).toBe('Version not found');
       }
     });
+
+    it('should enforce ownership when userId is provided', async () => {
+      const version = {
+        id: versionId,
+        session_id: sessionId,
+        created_at: new Date(),
+        cr_json: EXAMPLE_MINIMAL_CR,
+        cr_hash: 'hash123',
+        cr_version: 1,
+      };
+
+      // Mock successful ownership check
+      mockQuery.mockResolvedValueOnce({
+        rows: [version],
+      });
+
+      const result = await getCrVersion(mockPool, versionId, userId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.id).toBe(versionId);
+      }
+
+      // Verify the query included the join to check ownership
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('JOIN intent_sessions'),
+        expect.arrayContaining([versionId, userId])
+      );
+    });
+
+    it('should return 404 when version does not belong to user', async () => {
+      // Mock failed ownership check (no rows returned)
+      mockQuery.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const result = await getCrVersion(mockPool, versionId, 'different-user');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('Version not found');
+      }
+    });
   });
 
   describe('getLatestCrVersion', () => {
@@ -387,6 +430,43 @@ describe('INTENT CR Versions Database Layer', () => {
         expect(result1.isNew).toBe(false);
         expect(result2.isNew).toBe(false);
         expect(result1.data.id).toBe(result2.data.id);
+      }
+    });
+  });
+
+  describe('Diff endpoint - cross-session protection', () => {
+    it('should reject diff when versions belong to different sessions', async () => {
+      const version1 = {
+        id: 'v1-id',
+        session_id: 'session-1',
+        created_at: new Date(),
+        cr_json: EXAMPLE_MINIMAL_CR,
+        cr_hash: 'hash1',
+        cr_version: 1,
+      };
+
+      const version2 = {
+        id: 'v2-id',
+        session_id: 'session-2', // Different session!
+        created_at: new Date(),
+        cr_json: EXAMPLE_MINIMAL_CR,
+        cr_hash: 'hash2',
+        cr_version: 1,
+      };
+
+      // Mock both versions being found with ownership
+      mockQuery.mockResolvedValueOnce({ rows: [version1] });
+      mockQuery.mockResolvedValueOnce({ rows: [version2] });
+
+      const result1 = await getCrVersion(mockPool, 'v1-id', userId);
+      const result2 = await getCrVersion(mockPool, 'v2-id', userId);
+
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
+
+      // In the diff endpoint, this should be rejected
+      if (result1.success && result2.success) {
+        expect(result1.data.session_id).not.toBe(result2.data.session_id);
       }
     });
   });

@@ -292,4 +292,41 @@ describe('CR Diff Utility', () => {
       expect(diff.operations[0].path).toBe('/nested/field');
     });
   });
+
+  describe('Determinism - Repeated runs', () => {
+    it('should produce identical diff arrays for 5 repeated runs', () => {
+      const modifiedCr = {
+        ...EXAMPLE_MINIMAL_CR,
+        title: 'Modified Title',
+        motivation: 'Updated motivation',
+        evidence: [
+          ...EXAMPLE_MINIMAL_CR.evidence,
+          {
+            kind: 'user_validation',
+            details: 'Additional evidence',
+          },
+        ],
+      };
+
+      const toVersion = {
+        id: 'v2',
+        cr_json: modifiedCr,
+        cr_hash: 'hash2',
+        cr_version: 2,
+      };
+
+      // Run diff 5 times
+      const results = [];
+      for (let i = 0; i < 5; i++) {
+        const diff = computeCrDiff(baseVersion, toVersion);
+        results.push(JSON.stringify(diff));
+      }
+
+      // All results should be identical
+      const firstResult = results[0];
+      for (let i = 1; i < 5; i++) {
+        expect(results[i]).toBe(firstResult);
+      }
+    });
+  });
 });
