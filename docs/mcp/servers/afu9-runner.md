@@ -2,7 +2,7 @@
 
 **Canonical Server Name:** `afu9-runner`  
 **Contract Version:** `0.6.0`  
-**Port:** `3002` (default)
+**Port:** `3002` (standalone default), `3004` (ECS task)
 
 ## Overview
 

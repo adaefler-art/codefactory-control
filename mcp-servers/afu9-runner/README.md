@@ -2,7 +2,7 @@
 
 **Canonical Server Name:** `afu9-runner`  
 **Contract Version:** `0.6.0`  
-**Port:** `3002` (default)
+**Port:** `3002` (standalone default), `3004` (ECS task)
 
 MCP Server for AFU-9 run management and execution (Issue I631 / E63.1).
 
@@ -95,6 +95,8 @@ Environment variables:
 - `DATABASE_SSL`: Set to `true` to enable SSL
 
 Server runs on port 3002 by default (configurable via PORT env var).
+
+When deployed as an optional sidecar container in the AFU-9 ECS task, the runner uses port 3004 (to avoid conflict with `mcp-deploy` on 3002).
 
 ### Database Schema (I632)
 

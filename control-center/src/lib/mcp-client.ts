@@ -43,6 +43,16 @@ const DEFAULT_SERVERS: MCPServerConfig[] = [
     backoffMultiplier: 2,
   },
   {
+    name: 'afu9-runner',
+    endpoint: process.env.MCP_RUNNER_ENDPOINT || 'http://localhost:3004',
+    enabled: true,
+    healthCheckUrl: 'http://localhost:3004/health',
+    timeoutMs: 30000,
+    maxRetries: 2,
+    retryDelayMs: 1000,
+    backoffMultiplier: 2,
+  },
+  {
     name: 'observability',
     endpoint: process.env.MCP_OBSERVABILITY_ENDPOINT || 'http://localhost:3003',
     enabled: true,
