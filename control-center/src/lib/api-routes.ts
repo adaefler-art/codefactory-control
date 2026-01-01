@@ -242,7 +242,7 @@ export const API_ROUTES = {
     },
   },
 
-  // INTENT Console (E73.1, E73.3, E73.4)
+  // INTENT Console (E73.1, E73.3, E73.4, E74.3)
   intent: {
     sessions: {
       list: '/api/intent/sessions',
@@ -257,6 +257,11 @@ export const API_ROUTES = {
     contextPacks: {
       get: (id: string) => `/api/intent/context-packs/${id}`,
       byHash: (hash: string) => `/api/intent/context-packs/by-hash/${hash}`,
+    },
+    cr: {
+      get: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
+      save: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
+      validate: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr/validate`,
     },
   },
 } as const;
