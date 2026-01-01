@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, FormEvent } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 import { API_ROUTES } from "@/lib/api-routes";
 import { SourcesPanel, SourcesBadge } from "./components/SourcesPanel";
+import CrEditor from "./components/CrEditor";
 import type { UsedSources } from "@/lib/schemas/usedSources";
 
 interface IntentSession {
@@ -51,6 +52,7 @@ export default function IntentPage() {
   const [showPacksDrawer, setShowPacksDrawer] = useState(false);
   const [contextPacks, setContextPacks] = useState<ContextPackMetadata[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
+  const [showCrDrawer, setShowCrDrawer] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch sessions on mount
@@ -336,6 +338,14 @@ export default function IntentPage() {
             {/* Export Context Pack Button */}
             {currentSessionId && (
               <div className="flex items-center gap-3">
+                {/* CR Button */}
+                <button
+                  onClick={() => setShowCrDrawer(!showCrDrawer)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors text-sm font-medium"
+                >
+                  {showCrDrawer ? "Hide CR" : "Change Request"}
+                </button>
+                
                 {/* View Context Packs Button */}
                 <button
                   onClick={() => {
@@ -552,6 +562,13 @@ export default function IntentPage() {
           <SourcesPanel sources={messageToShow?.used_sources} />
         );
       })()}
+      
+      {/* CR Drawer */}
+      {showCrDrawer && currentSessionId && (
+        <div className="w-[600px] border-l border-gray-200 flex flex-col">
+          <CrEditor sessionId={currentSessionId} />
+        </div>
+      )}
     </div>
   );
 }
