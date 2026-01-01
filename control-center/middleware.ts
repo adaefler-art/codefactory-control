@@ -70,6 +70,14 @@ function clearCookie(response: NextResponse, name: string) {
   });
 }
 
+function isSmokeBypass(request: NextRequest): boolean {
+  const smokeKey = process.env.AFU9_SMOKE_KEY;
+  const providedSmokeKey = request.headers.get('x-afu9-smoke-key');
+
+  if (!smokeKey || !providedSmokeKey) return false;
+  return providedSmokeKey.trim() === smokeKey.trim();
+}
+
 /**
  * Middleware to protect routes and verify authentication
  * 
@@ -98,11 +106,9 @@ export async function middleware(request: NextRequest) {
   // - Header: X-AFU9-SMOKE-KEY (case-insensitive)
   // - Env gate: AFU9_SMOKE_KEY must be set (otherwise bypass is disabled)
   // - Host gate: staging only (stage.afu-9.com)
-  const smokeKey = process.env.AFU9_SMOKE_KEY;
-  const providedSmokeKey = request.headers.get('x-afu9-smoke-key');
   const isStagingHost = getStageFromHostname(hostname) === 'staging';
 
-  if (isStagingHost && smokeKey && providedSmokeKey === smokeKey) {
+  if (isStagingHost && isSmokeBypass(request)) {
     const allowlisted =
       (request.method === 'GET' && pathname === '/api/timeline/chain') ||
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
