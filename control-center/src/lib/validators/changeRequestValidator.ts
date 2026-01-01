@@ -85,13 +85,38 @@ export const ERROR_CODES = {
 /**
  * Check if path contains forbidden patterns
  * 
+ * Allowed: Relative POSIX paths with forward slashes (e.g., "control-center/src/lib/x.ts")
+ * 
  * Forbidden patterns:
- * - ".." (directory traversal)
- * - "\\" (backslashes - use forward slashes)
+ * - ".." as a path segment (directory traversal)
+ * - "\\" (backslashes - use forward slashes only)
  * - Absolute paths (starting with /)
+ * - Drive-letter absolute paths (e.g., "C:\\" or "C:/")
  */
 function hasForbiddenPathPattern(path: string): boolean {
-  return path.includes('..') || path.includes('\\') || path.startsWith('/');
+  // Reject paths starting with / (absolute POSIX paths)
+  if (path.startsWith('/')) {
+    return true;
+  }
+  
+  // Reject paths containing backslashes
+  if (path.includes('\\')) {
+    return true;
+  }
+  
+  // Reject drive-letter absolute paths (e.g., "C:/" or "C:\")
+  if (/^[a-zA-Z]:/.test(path)) {
+    return true;
+  }
+  
+  // Reject ".." as a path segment (directory traversal)
+  // Split by / and check each segment
+  const segments = path.split('/');
+  if (segments.some(segment => segment === '..')) {
+    return true;
+  }
+  
+  return false;
 }
 
 /**
@@ -329,8 +354,15 @@ export function validateChangeRequest(
 }
 
 /**
- * Sort errors deterministically by path, then by code
- * Ensures stable, predictable error ordering
+ * Sort errors deterministically for stable, predictable output
+ * 
+ * Sorting order (total ordering):
+ * 1. path (alphabetically)
+ * 2. code (alphabetically)
+ * 3. severity (error before warn)
+ * 4. message (alphabetically)
+ * 
+ * This ensures repeated runs produce identical error arrays.
  */
 function sortErrors(errors: ValidationError[]): ValidationError[] {
   return [...errors].sort((a, b) => {
@@ -339,6 +371,14 @@ function sortErrors(errors: ValidationError[]): ValidationError[] {
     if (pathCompare !== 0) return pathCompare;
 
     // Then by code
-    return a.code.localeCompare(b.code);
+    const codeCompare = a.code.localeCompare(b.code);
+    if (codeCompare !== 0) return codeCompare;
+    
+    // Then by severity (error before warn)
+    const severityCompare = a.severity.localeCompare(b.severity);
+    if (severityCompare !== 0) return severityCompare;
+    
+    // Finally by message (for total ordering)
+    return a.message.localeCompare(b.message);
   });
 }

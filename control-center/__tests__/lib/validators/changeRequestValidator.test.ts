@@ -308,6 +308,134 @@ describe('validateChangeRequest', () => {
         expect(pathErrors.some(e => e.path === '/changes/files/1/path')).toBe(true);
         expect(pathErrors.some(e => e.path === '/changes/files/2/path')).toBe(true);
       });
+
+      it('should accept valid POSIX relative paths with forward slashes', () => {
+        const cr: ChangeRequest = {
+          ...EXAMPLE_MINIMAL_CR,
+          changes: {
+            files: [
+              {
+                path: 'control-center/src/lib/x.ts',
+                changeType: 'create',
+              },
+              {
+                path: 'src/app/api/route.ts',
+                changeType: 'modify',
+              },
+              {
+                path: 'README.md',
+                changeType: 'modify',
+              },
+            ],
+          },
+        };
+
+        const result = validateChangeRequest(cr);
+
+        expect(result.ok).toBe(true);
+        expect(result.errors.some(e => e.code === ERROR_CODES.CR_PATH_INVALID)).toBe(false);
+      });
+
+      it('should reject path with ".." as segment even if not at start', () => {
+        const cr: ChangeRequest = {
+          ...EXAMPLE_MINIMAL_CR,
+          changes: {
+            files: [
+              {
+                path: 'src/../etc/passwd',
+                changeType: 'modify',
+              },
+            ],
+          },
+        };
+
+        const result = validateChangeRequest(cr);
+
+        expect(result.ok).toBe(false);
+        expect(result.errors.some(e => 
+          e.code === ERROR_CODES.CR_PATH_INVALID && e.path === '/changes/files/0/path'
+        )).toBe(true);
+      });
+
+      it('should accept paths containing ".." as substring but not segment', () => {
+        const cr: ChangeRequest = {
+          ...EXAMPLE_MINIMAL_CR,
+          changes: {
+            files: [
+              {
+                path: 'src/file..ts',
+                changeType: 'create',
+              },
+              {
+                path: 'path/to/..file.txt',
+                changeType: 'create',
+              },
+            ],
+          },
+        };
+
+        const result = validateChangeRequest(cr);
+
+        expect(result.ok).toBe(true);
+        expect(result.errors.some(e => e.code === ERROR_CODES.CR_PATH_INVALID)).toBe(false);
+      });
+
+      it('should reject absolute POSIX path starting with /', () => {
+        const cr: ChangeRequest = {
+          ...EXAMPLE_MINIMAL_CR,
+          changes: {
+            files: [
+              {
+                path: '/etc/passwd',
+                changeType: 'modify',
+              },
+            ],
+          },
+        };
+
+        const result = validateChangeRequest(cr);
+
+        expect(result.ok).toBe(false);
+        expect(result.errors.some(e => e.code === ERROR_CODES.CR_PATH_INVALID)).toBe(true);
+      });
+
+      it('should reject Windows-style paths with backslashes', () => {
+        const cr: ChangeRequest = {
+          ...EXAMPLE_MINIMAL_CR,
+          changes: {
+            files: [
+              {
+                path: 'a\\b',
+                changeType: 'create',
+              },
+            ],
+          },
+        };
+
+        const result = validateChangeRequest(cr);
+
+        expect(result.ok).toBe(false);
+        expect(result.errors.some(e => e.code === ERROR_CODES.CR_PATH_INVALID)).toBe(true);
+      });
+
+      it('should reject drive-letter absolute paths', () => {
+        const cr: ChangeRequest = {
+          ...EXAMPLE_MINIMAL_CR,
+          changes: {
+            files: [
+              {
+                path: 'C:/Windows/System32',
+                changeType: 'modify',
+              },
+            ],
+          },
+        };
+
+        const result = validateChangeRequest(cr);
+
+        expect(result.ok).toBe(false);
+        expect(result.errors.some(e => e.code === ERROR_CODES.CR_PATH_INVALID)).toBe(true);
+      });
     });
 
     describe('Minimum counts', () => {
@@ -457,6 +585,69 @@ describe('validateChangeRequest', () => {
         const prevPath = result1.errors[i - 1].path;
         const currPath = result1.errors[i].path;
         expect(prevPath.localeCompare(currPath)).toBeLessThanOrEqual(0);
+      }
+    });
+
+    it('should return warnings in stable sorted order', () => {
+      const result1 = validateChangeRequest(EXAMPLE_MINIMAL_CR);
+      const result2 = validateChangeRequest(EXAMPLE_MINIMAL_CR);
+
+      expect(result1.warnings).toEqual(result2.warnings);
+    });
+
+    it('should produce identical error arrays on repeated runs (total ordering)', () => {
+      const invalidCR = {
+        ...EXAMPLE_MINIMAL_CR,
+        title: 'a'.repeat(121),
+        motivation: 'a'.repeat(5001),
+        changes: {
+          files: [
+            {
+              path: '../bad.ts',
+              changeType: 'create' as const,
+            },
+            {
+              path: 'another\\bad.ts',
+              changeType: 'create' as const,
+            },
+          ],
+        },
+      };
+
+      const results = Array.from({ length: 5 }, () => validateChangeRequest(invalidCR));
+
+      // All results should be identical
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i].errors).toEqual(results[0].errors);
+        expect(results[i].warnings).toEqual(results[0].warnings);
+      }
+
+      // Verify total ordering: path -> code -> severity -> message
+      const errors = results[0].errors;
+      for (let i = 1; i < errors.length; i++) {
+        const prev = errors[i - 1];
+        const curr = errors[i];
+        
+        const pathCmp = prev.path.localeCompare(curr.path);
+        if (pathCmp !== 0) {
+          expect(pathCmp).toBeLessThan(0);
+          continue;
+        }
+        
+        const codeCmp = prev.code.localeCompare(curr.code);
+        if (codeCmp !== 0) {
+          expect(codeCmp).toBeLessThanOrEqual(0);
+          continue;
+        }
+        
+        const severityCmp = prev.severity.localeCompare(curr.severity);
+        if (severityCmp !== 0) {
+          expect(severityCmp).toBeLessThanOrEqual(0);
+          continue;
+        }
+        
+        const msgCmp = prev.message.localeCompare(curr.message);
+        expect(msgCmp).toBeLessThanOrEqual(0);
       }
     });
 
