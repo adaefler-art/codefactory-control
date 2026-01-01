@@ -216,6 +216,18 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-request-id')).toBeTruthy();
     });
 
+    test('env has trailing newline/spaces, header matches after trim -> bypass on staging host', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret\n';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/timeline/chain',
+        headers: { 'x-afu9-smoke-key': '  secret  ' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+    });
+
     test('env set, correct header but non-staging host -> still 401', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
       const request = makeRequest({
@@ -243,6 +255,19 @@ describe('Middleware Authentication Logic', () => {
   describe('Smoke-auth bypass allowlist for Intent Sessions (staging only)', () => {
     test('stage + correct key + POST /api/intent/sessions => bypass active', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/intent/sessions',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+    });
+
+    test('stage + key matches after trim + POST /api/intent/sessions => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret\n';
       const request = makeRequest({
         url: 'https://stage.afu-9.com/api/intent/sessions',
         method: 'POST',
