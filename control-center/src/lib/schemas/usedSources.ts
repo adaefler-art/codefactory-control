@@ -75,7 +75,7 @@ export const AFU9ArtifactSourceSchema = z.object({
   artifactType: z.string().min(1),
   artifactId: z.string().min(1),
   sha256: z.string().optional(),
-  ref: z.record(z.unknown()).optional(), // Flexible object for artifact metadata
+  ref: z.record(z.string(), z.unknown()).optional(), // Flexible object for artifact metadata
 });
 
 export type AFU9ArtifactSource = z.infer<typeof AFU9ArtifactSourceSchema>;
