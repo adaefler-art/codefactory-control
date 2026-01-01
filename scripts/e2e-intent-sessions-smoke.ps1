@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $false)]
   [string]$BaseUrl = "https://stage.afu-9.com",
@@ -7,9 +7,11 @@ param(
   [string]$UserA = "smoke-user-a",
 
   [Parameter(Mandatory = $false)]
-  [string]$UserB = "smoke-user-b"
+  [string]$UserB = "smoke-user-b",
 
-  ,
+  [Parameter(Mandatory = $false)]
+  [string]$SmokeKey = $null,
+
   [Parameter(Mandatory = $false)]
   [switch]$StrictGapFree
 )
@@ -54,6 +56,7 @@ function Invoke-Afu9Api {
   )
 
   $headers = @{ 'x-afu9-sub' = $UserId; 'accept' = 'application/json' }
+  if (-not [string]::IsNullOrWhiteSpace($SmokeKey)) { $headers['x-afu9-smoke-key'] = $SmokeKey }
 
   $params = @{ Method = $Method; Uri = $Url; Headers = $headers }
 
@@ -79,7 +82,7 @@ function Invoke-Afu9Api {
   } catch {
     $ex = $_.Exception
 
-    if ($null -ne $ex.Response) {
+    if ($null -ne $ex -and ($ex.PSObject.Properties.Name -contains 'Response') -and $null -ne $ex.Response) {
       try {
         $status = [int]$ex.Response.StatusCode
         $reader = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
@@ -117,6 +120,13 @@ Write-Host "=== AFU-9 E2E Smoke: Intent Sessions (Commit 1340724) ===" -Foregrou
 Write-Info "BaseUrl: $BaseUrl"
 Write-Info "UserA:  $UserA"
 Write-Info "UserB:  $UserB"
+
+if ([string]::IsNullOrWhiteSpace($SmokeKey)) { $SmokeKey = $env:AFU9_SMOKE_KEY }
+if ([string]::IsNullOrWhiteSpace($SmokeKey)) {
+  Write-Info "SmokeAuth: disabled (no key)"
+} else {
+  Write-Info "SmokeAuth: enabled"
+}
 
 $createUrl = "$BaseUrl/api/intent/sessions"
 $getUrlTemplate = "$BaseUrl/api/intent/sessions/{0}"
@@ -172,9 +182,10 @@ $appendUrl = [string]::Format($appendUrlTemplate, $sessionId)
 Write-Info "Running 10 parallel POSTs to /messages (each creates user+assistant message)"
 
 $runOne = {
-  param($i, $url, $user)
+  param($i, $url, $user, $smokeKey)
 
   $headers = @{ 'x-afu9-sub' = $user; 'accept' = 'application/json' }
+  if (-not [string]::IsNullOrWhiteSpace($smokeKey)) { $headers['x-afu9-smoke-key'] = $smokeKey }
   $body = @{ content = "smoke-next-$i-$(New-Guid)" } | ConvertTo-Json -Depth 10
 
   $params = @{ Method = 'POST'; Uri = $url; Headers = $headers; ContentType = 'application/json'; Body = $body }
@@ -212,7 +223,7 @@ $runOne = {
 
     try {
       $ex = $_.Exception
-      if ($null -ne $ex.Response) {
+      if ($null -ne $ex -and ($ex.PSObject.Properties.Name -contains 'Response') -and $null -ne $ex.Response) {
         try { $status = [int]$ex.Response.StatusCode } catch { }
         try {
           $reader = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
@@ -233,11 +244,11 @@ $runOne = {
 
 $results = @()
 if ($PSVersionTable.PSVersion.Major -ge 7) {
-  $results = 1..10 | ForEach-Object -Parallel $runOne -ThrottleLimit 10 -ArgumentList $appendUrl, $UserA
+  $results = 1..10 | ForEach-Object -Parallel $runOne -ThrottleLimit 10 -ArgumentList $appendUrl, $UserA, $SmokeKey
 } else {
   $jobs = @()
   foreach ($i in 1..10) {
-    $jobs += Start-Job -ScriptBlock $runOne -ArgumentList $i, $appendUrl, $UserA
+    $jobs += Start-Job -ScriptBlock $runOne -ArgumentList $i, $appendUrl, $UserA, $SmokeKey
   }
   Wait-Job -Job $jobs | Out-Null
   $results = $jobs | Receive-Job
@@ -300,3 +311,5 @@ if (-not $script:Failed) {
 
 Write-Host "=== RESULT: FAIL ===" -ForegroundColor Red
 exit 1
+
+
