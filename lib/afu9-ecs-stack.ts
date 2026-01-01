@@ -415,9 +415,14 @@ export class Afu9EcsStack extends cdk.Stack {
     // Needed for both:
     // - standalone staging environment deployments
     // - shared-cluster deployments that also create a staging service
-    const shouldIncludeStageSmokeKey = environment === ENVIRONMENT.STAGE || (!!props.stageTargetGroup && createStagingService);
-    const stageSmokeKeySecret = shouldIncludeStageSmokeKey
-      ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
+    const shouldIncludeStageSmokeKey =
+      environment === ENVIRONMENT.STAGE || (!!props.stageTargetGroup && createStagingService);
+    const smokeKeySecret = shouldIncludeStageSmokeKey
+      ? secretsmanager.Secret.fromSecretCompleteArn(
+          this,
+          'StageSmokeKey',
+          'arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G'
+        )
       : undefined;
 
     // ========================================
@@ -458,10 +463,10 @@ export class Afu9EcsStack extends cdk.Stack {
       'LLM API keys (all optional)'
     );
 
-    if (stageSmokeKeySecret) {
+    if (smokeKeySecret) {
       validateSecretKeys(
         this,
-        stageSmokeKeySecret,
+        smokeKeySecret,
         [],
         'Stage smoke key'
       );
@@ -527,8 +532,8 @@ export class Afu9EcsStack extends cdk.Stack {
     }
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
-    if (stageSmokeKeySecret) {
-      stageSmokeKeySecret.grantRead(taskExecutionRole);
+    if (smokeKeySecret) {
+      smokeKeySecret.grantRead(taskExecutionRole);
     }
 
     const taskRoleName = `afu9-ecs-task-role${roleSuffix}`;
@@ -750,11 +755,6 @@ export class Afu9EcsStack extends cdk.Stack {
                 DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
               }
             : {}),
-          ...(environmentLabel === 'stage' && stageSmokeKeySecret
-            ? {
-                AFU9_SMOKE_KEY: ecs.Secret.fromSecretsManager(stageSmokeKeySecret),
-              }
-            : {}),
           GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
           GITHUB_OWNER: ecs.Secret.fromSecretsManager(githubSecret, 'owner'),
           GITHUB_REPO: ecs.Secret.fromSecretsManager(githubSecret, 'repo'),
@@ -777,6 +777,10 @@ export class Afu9EcsStack extends cdk.Stack {
           startPeriod: cdk.Duration.seconds(120),
         },
       });
+
+      if (environmentLabel === 'stage' && smokeKeySecret) {
+        cc.addSecret('AFU9_SMOKE_KEY', ecs.Secret.fromSecretsManager(smokeKeySecret));
+      }
 
       cc.addPortMappings({
         containerPort: 3000,
