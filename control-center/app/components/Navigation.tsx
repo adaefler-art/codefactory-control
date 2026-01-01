@@ -10,11 +10,11 @@ export default function Navigation() {
   const router = useRouter();
 
   const navItems = [
-    { href: "/workflows", label: "Workflows" },
-    { href: "/agents", label: "Agents" },
+    { href: "/intent", label: "INTENT" },
+    { href: "/timeline", label: "Timeline" },
     { href: "/issues", label: "Issues" },
     { href: "/lawbook", label: "Lawbook" },
-    { href: "/ninefold", label: "Ninefold" },
+    { href: "/operate", label: "Operate" },
     { href: "/settings", label: "Settings" },
   ];
 
@@ -45,7 +45,7 @@ export default function Navigation() {
           {/* Logo/Branding */}
           <div className="flex items-center">
             <Link
-              href="/"
+              href="/intent"
               className="text-xl font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
             >
               AFU-9 Control Center
