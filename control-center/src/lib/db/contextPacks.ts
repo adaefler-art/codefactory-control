@@ -13,7 +13,7 @@
 
 import { Pool } from 'pg';
 import { createHash } from 'crypto';
-import type { ContextPack, ContextPackRecord } from '../schemas/contextPack';
+import type { ContextPack, ContextPackRecord, ContextPackMetadata } from '../schemas/contextPack';
 import { CONTEXT_PACK_VERSION } from '../schemas/contextPack';
 import type { IntentSessionWithMessages } from './intentSessions';
 import { getIntentSession } from './intentSessions';
@@ -185,40 +185,44 @@ export async function generateContextPack(
       };
     }
     
-    // Check if pack with same hash already exists for this session
-    const existingResult = await pool.query(
-      `SELECT id, session_id, created_at, pack_json, pack_hash, version
-       FROM intent_context_packs
-       WHERE session_id = $1 AND pack_hash = $2
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [sessionId, packHash]
-    );
-    
-    if (existingResult.rows.length > 0) {
-      // Return existing pack (idempotency)
-      const row = existingResult.rows[0];
-      return {
-        success: true,
-        data: {
-          id: row.id,
-          session_id: row.session_id,
-          created_at: row.created_at.toISOString(),
-          pack_json: row.pack_json,
-          pack_hash: row.pack_hash,
-          version: row.version,
-        },
-      };
-    }
-    
-    // Insert new pack
+    // Insert new pack using INSERT...ON CONFLICT DO NOTHING pattern
+    // This ensures immutability: no UPDATE operations, only INSERT
+    // Issue E73.4: Immutability enforcement
     const insertResult = await pool.query(
       `INSERT INTO intent_context_packs (session_id, pack_json, pack_hash, version)
        VALUES ($1, $2, $3, $4)
+       ON CONFLICT (pack_hash, session_id) DO NOTHING
        RETURNING id, session_id, created_at, pack_json, pack_hash, version`,
       [sessionId, packJson, packHash, CONTEXT_PACK_VERSION]
     );
     
+    // If ON CONFLICT triggered (no rows returned), fetch existing pack
+    if (insertResult.rows.length === 0) {
+      const existingResult = await pool.query(
+        `SELECT id, session_id, created_at, pack_json, pack_hash, version
+         FROM intent_context_packs
+         WHERE session_id = $1 AND pack_hash = $2
+         LIMIT 1`,
+        [sessionId, packHash]
+      );
+      
+      if (existingResult.rows.length > 0) {
+        const row = existingResult.rows[0];
+        return {
+          success: true,
+          data: {
+            id: row.id,
+            session_id: row.session_id,
+            created_at: row.created_at.toISOString(),
+            pack_json: row.pack_json,
+            pack_hash: row.pack_hash,
+            version: row.version,
+          },
+        };
+      }
+    }
+    
+    // Return newly inserted pack
     const row = insertResult.rows[0];
     return {
       success: true,
@@ -333,6 +337,123 @@ export async function listContextPacks(
     };
   } catch (error) {
     console.error('[DB] Error listing context packs:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * List context packs metadata for a session (without full pack_json)
+ * 
+ * Returns metadata only to avoid large payloads in list responses.
+ * Issue E73.4: Retrieval UX - metadata-only responses
+ * 
+ * @param pool Database pool
+ * @param sessionId Session UUID
+ * @param userId User ID for ownership check (via session)
+ * @param limit Maximum number of packs to return (default: 50)
+ * @returns List of context pack metadata or error
+ */
+export async function listContextPacksMetadata(
+  pool: Pool,
+  sessionId: string,
+  userId: string,
+  limit: number = 50
+): Promise<{ success: true; data: ContextPackMetadata[] } | { success: false; error: string }> {
+  try {
+    // First verify session ownership
+    const sessionResult = await getIntentSession(pool, sessionId, userId);
+    
+    if (!sessionResult.success) {
+      return {
+        success: false,
+        error: sessionResult.error,
+      };
+    }
+    
+    // Get metadata only (extract counts from pack_json without returning full JSON)
+    // IMPORTANT: Do not select pack_json column to ensure metadata-only response
+    const result = await pool.query(
+      `SELECT id, session_id, created_at, pack_hash, version,
+              (pack_json->'derived'->>'messageCount')::int as message_count,
+              (pack_json->'derived'->>'sourcesCount')::int as sources_count
+       FROM intent_context_packs
+       WHERE session_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [sessionId, limit]
+    );
+    
+    return {
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        session_id: row.session_id,
+        created_at: row.created_at.toISOString(),
+        pack_hash: row.pack_hash,
+        version: row.version,
+        message_count: row.message_count,
+        sources_count: row.sources_count,
+      })),
+    };
+  } catch (error) {
+    console.error('[DB] Error listing context packs metadata:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Get a context pack by hash
+ * 
+ * Optional: lookup by hash for deduplication/verification purposes
+ * Issue E73.4: Optional retrieval by hash
+ * 
+ * @param pool Database pool
+ * @param packHash Context pack hash (SHA256)
+ * @param userId User ID for ownership check (via session)
+ * @returns Context pack record or error
+ */
+export async function getContextPackByHash(
+  pool: Pool,
+  packHash: string,
+  userId: string
+): Promise<{ success: true; data: ContextPackRecord } | { success: false; error: string }> {
+  try {
+    const result = await pool.query(
+      `SELECT icp.id, icp.session_id, icp.created_at, icp.pack_json, icp.pack_hash, icp.version
+       FROM intent_context_packs icp
+       JOIN intent_sessions s ON s.id = icp.session_id
+       WHERE icp.pack_hash = $1 AND s.user_id = $2
+       LIMIT 1`,
+      [packHash, userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: 'Context pack not found',
+      };
+    }
+    
+    const row = result.rows[0];
+    return {
+      success: true,
+      data: {
+        id: row.id,
+        session_id: row.session_id,
+        created_at: row.created_at.toISOString(),
+        pack_json: row.pack_json,
+        pack_hash: row.pack_hash,
+        version: row.version,
+      },
+    };
+  } catch (error) {
+    console.error('[DB] Error getting context pack by hash:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

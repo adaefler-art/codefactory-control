@@ -69,6 +69,7 @@ export function jsonResponse<T>(
 export interface ErrorResponseData {
   error: string;
   details?: string;
+  code?: string;
   requestId?: string;
   timestamp: string;
 }
@@ -82,6 +83,7 @@ export function errorResponse(
     status?: number;
     requestId?: string;
     details?: string;
+    code?: string;
     timestamp?: string;
   }
 ): NextResponse<ErrorResponseData> {
@@ -92,6 +94,10 @@ export function errorResponse(
   
   if (options?.details) {
     responseData.details = options.details;
+  }
+  
+  if (options?.code) {
+    responseData.code = options.code;
   }
   
   if (options?.requestId) {
