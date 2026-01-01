@@ -242,15 +242,19 @@ export const API_ROUTES = {
     },
   },
 
-  // INTENT Console (E73.1)
+  // INTENT Console (E73.1, E73.3)
   intent: {
     sessions: {
       list: '/api/intent/sessions',
       create: '/api/intent/sessions',
       get: (id: string) => `/api/intent/sessions/${id}`,
+      contextPack: (id: string) => `/api/intent/sessions/${id}/context-pack`,
     },
     messages: {
       create: (sessionId: string) => `/api/intent/sessions/${sessionId}/messages`,
+    },
+    contextPacks: {
+      get: (id: string) => `/api/intent/context-packs/${id}`,
     },
   },
 } as const;

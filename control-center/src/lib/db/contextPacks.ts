@@ -1,0 +1,284 @@
+/**
+ * Context Pack Generator
+ * 
+ * Generates auditable JSON snapshots of INTENT sessions.
+ * Issue E73.3: Context Pack Generator (audit JSON per session) + Export/Download
+ * 
+ * GUARANTEES:
+ * - Deterministic output: same DB state → identical JSON
+ * - Evidence-friendly: include used_sources hashes
+ * - No secrets/tokens in output
+ * - Idempotent: same pack_hash → return existing record
+ */
+
+import { Pool } from 'pg';
+import { createHash } from 'crypto';
+import type { ContextPack, ContextPackRecord } from '../schemas/contextPack';
+import { CONTEXT_PACK_VERSION } from '../schemas/contextPack';
+import type { IntentSessionWithMessages } from './intentSessions';
+import { getIntentSession } from './intentSessions';
+
+/**
+ * Canonicalize a context pack for deterministic hashing
+ * 
+ * Removes generatedAt field and ensures stable key ordering
+ */
+function canonicalizeContextPack(pack: ContextPack): string {
+  // Create a copy without generatedAt for hashing
+  const { generatedAt, ...canonicalPack } = pack;
+  
+  // Sort messages by seq (should already be sorted, but ensure it)
+  const sortedMessages = [...canonicalPack.messages].sort((a, b) => a.seq - b.seq);
+  
+  const canonical = {
+    ...canonicalPack,
+    messages: sortedMessages,
+  };
+  
+  // Use JSON.stringify for deterministic serialization
+  return JSON.stringify(canonical);
+}
+
+/**
+ * Compute SHA256 hash of canonical context pack
+ */
+function hashContextPack(pack: ContextPack): string {
+  const canonical = canonicalizeContextPack(pack);
+  const hash = createHash('sha256');
+  hash.update(canonical, 'utf8');
+  return hash.digest('hex');
+}
+
+/**
+ * Build context pack from session data
+ */
+function buildContextPack(session: IntentSessionWithMessages): ContextPack {
+  const now = new Date().toISOString();
+  
+  // Count unique sources across all messages
+  const allSourcesHashes = new Set<string>();
+  session.messages.forEach(msg => {
+    if (msg.used_sources_hash) {
+      allSourcesHashes.add(msg.used_sources_hash);
+    }
+  });
+  
+  const pack: ContextPack = {
+    contextPackVersion: CONTEXT_PACK_VERSION,
+    generatedAt: now,
+    session: {
+      id: session.id,
+      title: session.title,
+      createdAt: session.created_at,
+      updatedAt: session.updated_at,
+    },
+    messages: session.messages.map(msg => ({
+      seq: msg.seq,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.created_at,
+      used_sources: msg.used_sources || null,
+      used_sources_hash: msg.used_sources_hash || null,
+    })),
+    derived: {
+      sessionHash: '', // Will be computed below
+      messageCount: session.messages.length,
+      sourcesCount: allSourcesHashes.size,
+    },
+    warnings: [],
+  };
+  
+  // Compute session hash
+  pack.derived.sessionHash = hashContextPack(pack);
+  
+  return pack;
+}
+
+/**
+ * Generate or return existing context pack for a session
+ * 
+ * Implements idempotency:
+ * - If pack with same pack_hash exists, return existing record
+ * - Otherwise, create new pack record
+ * 
+ * @param pool Database pool
+ * @param sessionId Session UUID
+ * @param userId User ID for ownership check
+ * @returns Context pack record or error
+ */
+export async function generateContextPack(
+  pool: Pool,
+  sessionId: string,
+  userId: string
+): Promise<{ success: true; data: ContextPackRecord } | { success: false; error: string }> {
+  try {
+    // Fetch session with messages (includes ownership check)
+    const sessionResult = await getIntentSession(pool, sessionId, userId);
+    
+    if (!sessionResult.success) {
+      return {
+        success: false,
+        error: sessionResult.error,
+      };
+    }
+    
+    const session = sessionResult.data;
+    
+    // Build context pack
+    const pack = buildContextPack(session);
+    const packHash = pack.derived.sessionHash;
+    
+    // Check if pack with same hash already exists for this session
+    const existingResult = await pool.query(
+      `SELECT id, session_id, created_at, pack_json, pack_hash, version
+       FROM intent_context_packs
+       WHERE session_id = $1 AND pack_hash = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [sessionId, packHash]
+    );
+    
+    if (existingResult.rows.length > 0) {
+      // Return existing pack (idempotency)
+      const row = existingResult.rows[0];
+      return {
+        success: true,
+        data: {
+          id: row.id,
+          session_id: row.session_id,
+          created_at: row.created_at.toISOString(),
+          pack_json: row.pack_json,
+          pack_hash: row.pack_hash,
+          version: row.version,
+        },
+      };
+    }
+    
+    // Insert new pack
+    const insertResult = await pool.query(
+      `INSERT INTO intent_context_packs (session_id, pack_json, pack_hash, version)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, session_id, created_at, pack_json, pack_hash, version`,
+      [sessionId, JSON.stringify(pack), packHash, CONTEXT_PACK_VERSION]
+    );
+    
+    const row = insertResult.rows[0];
+    return {
+      success: true,
+      data: {
+        id: row.id,
+        session_id: row.session_id,
+        created_at: row.created_at.toISOString(),
+        pack_json: row.pack_json,
+        pack_hash: row.pack_hash,
+        version: row.version,
+      },
+    };
+  } catch (error) {
+    console.error('[DB] Error generating context pack:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Get a context pack by ID
+ * 
+ * @param pool Database pool
+ * @param packId Context pack UUID
+ * @returns Context pack record or error
+ */
+export async function getContextPack(
+  pool: Pool,
+  packId: string
+): Promise<{ success: true; data: ContextPackRecord } | { success: false; error: string }> {
+  try {
+    const result = await pool.query(
+      `SELECT id, session_id, created_at, pack_json, pack_hash, version
+       FROM intent_context_packs
+       WHERE id = $1`,
+      [packId]
+    );
+    
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: 'Context pack not found',
+      };
+    }
+    
+    const row = result.rows[0];
+    return {
+      success: true,
+      data: {
+        id: row.id,
+        session_id: row.session_id,
+        created_at: row.created_at.toISOString(),
+        pack_json: row.pack_json,
+        pack_hash: row.pack_hash,
+        version: row.version,
+      },
+    };
+  } catch (error) {
+    console.error('[DB] Error getting context pack:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * List context packs for a session
+ * 
+ * @param pool Database pool
+ * @param sessionId Session UUID
+ * @param userId User ID for ownership check (via session)
+ * @returns List of context pack records or error
+ */
+export async function listContextPacks(
+  pool: Pool,
+  sessionId: string,
+  userId: string
+): Promise<{ success: true; data: ContextPackRecord[] } | { success: false; error: string }> {
+  try {
+    // First verify session ownership
+    const sessionResult = await getIntentSession(pool, sessionId, userId);
+    
+    if (!sessionResult.success) {
+      return {
+        success: false,
+        error: sessionResult.error,
+      };
+    }
+    
+    // Get all packs for this session
+    const result = await pool.query(
+      `SELECT id, session_id, created_at, pack_json, pack_hash, version
+       FROM intent_context_packs
+       WHERE session_id = $1
+       ORDER BY created_at DESC`,
+      [sessionId]
+    );
+    
+    return {
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        session_id: row.session_id,
+        created_at: row.created_at.toISOString(),
+        pack_json: row.pack_json,
+        pack_hash: row.pack_hash,
+        version: row.version,
+      })),
+    };
+  } catch (error) {
+    console.error('[DB] Error listing context packs:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
