@@ -27,10 +27,15 @@ import { UsedSourcesSchema } from './usedSources';
 export const ACTIVE_CONTEXT_PACK_VERSIONS = ['0.7.0'] as const;
 
 /**
+ * Allowed version type for Zod validation
+ */
+type AllowedVersion = typeof ACTIVE_CONTEXT_PACK_VERSIONS[number];
+
+/**
  * Context Pack Version
  * Current version: 0.7.0
  */
-export const CONTEXT_PACK_VERSION = '0.7.0' as const;
+export const CONTEXT_PACK_VERSION: AllowedVersion = '0.7.0';
 
 /**
  * Session metadata in context pack
@@ -75,7 +80,7 @@ export type ContextPackDerived = z.infer<typeof ContextPackDerivedSchema>;
  * Issue E73.4: Enforces version validation via Zod enum
  */
 export const ContextPackSchema = z.object({
-  contextPackVersion: z.enum(ACTIVE_CONTEXT_PACK_VERSIONS),
+  contextPackVersion: z.enum(ACTIVE_CONTEXT_PACK_VERSIONS as unknown as [string, ...string[]]),
   generatedAt: z.string().datetime(), // ISO 8601
   session: ContextPackSessionSchema,
   messages: z.array(ContextPackMessageSchema),

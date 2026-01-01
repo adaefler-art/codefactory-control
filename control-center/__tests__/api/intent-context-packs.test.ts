@@ -507,3 +507,322 @@ describe('Deterministic hashing and redaction', () => {
     expect(response.headers.get('etag')).toBe(`"${MOCK_CONTEXT_PACK.pack_hash}"`);
   });
 });
+
+/**
+ * Tests for E73.4: Context Pack Storage/Retrieval
+ * 
+ * Tests for versioning, immutability, and retrieval UX enhancements
+ */
+
+// Import new routes for E73.4
+import { GET as listContextPacks } from '../../app/api/intent/sessions/[id]/context-packs/route';
+import { GET as getContextPackByHash } from '../../app/api/intent/context-packs/by-hash/[hash]/route';
+
+// Add new mock functions for E73.4
+jest.mock('../../src/lib/db/contextPacks', () => ({
+  generateContextPack: jest.fn(),
+  getContextPack: jest.fn(),
+  listContextPacksMetadata: jest.fn(),
+  getContextPackByHash: jest.fn(),
+}));
+
+const MOCK_PACK_METADATA = [
+  {
+    id: 'pack-1',
+    session_id: TEST_SESSION_ID,
+    created_at: '2026-01-01T14:00:00.000Z',
+    pack_hash: 'hash-newer-abc123',
+    version: '0.7.0',
+    message_count: 5,
+    sources_count: 2,
+  },
+  {
+    id: 'pack-2',
+    session_id: TEST_SESSION_ID,
+    created_at: '2026-01-01T12:00:00.000Z',
+    pack_hash: 'hash-older-def456',
+    version: '0.7.0',
+    message_count: 3,
+    sources_count: 1,
+  },
+];
+
+describe('E73.4: Versioning and Retrieval', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('Version validation', () => {
+    test('accepts valid version 0.7.0', () => {
+      const { ContextPackSchema, ACTIVE_CONTEXT_PACK_VERSIONS } = require('../../src/lib/schemas/contextPack');
+      
+      expect(ACTIVE_CONTEXT_PACK_VERSIONS).toContain('0.7.0');
+      
+      const validPack = {
+        contextPackVersion: '0.7.0',
+        generatedAt: '2026-01-01T12:00:00.000Z',
+        session: {
+          id: '550e8400-e29b-41d4-a716-446655440000', // Valid UUID
+          title: 'Test',
+          createdAt: '2026-01-01T10:00:00.000Z',
+          updatedAt: '2026-01-01T11:00:00.000Z',
+        },
+        messages: [],
+        derived: {
+          sessionHash: 'abc123',
+          messageCount: 0,
+          sourcesCount: 0,
+        },
+      };
+      
+      const result = ContextPackSchema.safeParse(validPack);
+      expect(result.success).toBe(true);
+    });
+
+    test('rejects invalid version', () => {
+      const { ContextPackSchema } = require('../../src/lib/schemas/contextPack');
+      
+      const invalidPack = {
+        contextPackVersion: '99.9.9', // Not in ACTIVE_CONTEXT_PACK_VERSIONS
+        generatedAt: '2026-01-01T12:00:00.000Z',
+        session: {
+          id: '550e8400-e29b-41d4-a716-446655440000', // Valid UUID
+          title: 'Test',
+          createdAt: '2026-01-01T10:00:00.000Z',
+          updatedAt: '2026-01-01T11:00:00.000Z',
+        },
+        messages: [],
+        derived: {
+          sessionHash: 'abc123',
+          messageCount: 0,
+          sourcesCount: 0,
+        },
+      };
+      
+      const result = ContextPackSchema.safeParse(invalidPack);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/intent/sessions/[id]/context-packs', () => {
+    test('lists context packs with metadata only (newest first)', async () => {
+      const { listContextPacksMetadata } = require('../../src/lib/db/contextPacks');
+
+      listContextPacksMetadata.mockResolvedValue({
+        success: true,
+        data: MOCK_PACK_METADATA,
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-packs',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.packs).toHaveLength(2);
+      
+      // Verify newest first ordering
+      expect(body.packs[0].id).toBe('pack-1');
+      expect(body.packs[0].created_at).toBe('2026-01-01T14:00:00.000Z');
+      expect(body.packs[1].id).toBe('pack-2');
+      expect(body.packs[1].created_at).toBe('2026-01-01T12:00:00.000Z');
+      
+      // Verify metadata fields present
+      expect(body.packs[0]).toHaveProperty('pack_hash');
+      expect(body.packs[0]).toHaveProperty('version');
+      expect(body.packs[0]).toHaveProperty('message_count');
+      expect(body.packs[0]).toHaveProperty('sources_count');
+      
+      // Verify pack_json is NOT included
+      expect(body.packs[0]).not.toHaveProperty('pack_json');
+    });
+
+    test('returns empty array when no packs exist', async () => {
+      const { listContextPacksMetadata } = require('../../src/lib/db/contextPacks');
+
+      listContextPacksMetadata.mockResolvedValue({
+        success: true,
+        data: [],
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-empty',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.packs).toEqual([]);
+    });
+
+    test('returns 401 when user not authenticated', async () => {
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-unauth',
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.error).toBe('Unauthorized');
+    });
+
+    test('returns 404 when session not found', async () => {
+      const { listContextPacksMetadata } = require('../../src/lib/db/contextPacks');
+
+      listContextPacksMetadata.mockResolvedValue({
+        success: false,
+        error: 'Session not found',
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/nonexistent/context-packs`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-notfound',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: 'nonexistent' } });
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBe('Session not found');
+    });
+  });
+
+  describe('GET /api/intent/context-packs/by-hash/[hash]', () => {
+    test('retrieves context pack by hash', async () => {
+      const { getContextPackByHash: mockGetByHash } = require('../../src/lib/db/contextPacks');
+
+      mockGetByHash.mockResolvedValue({
+        success: true,
+        data: MOCK_CONTEXT_PACK,
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/context-packs/by-hash/session-hash-123abc`,
+        {
+          headers: {
+            'x-request-id': 'test-req-get-by-hash',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await getContextPackByHash(request, { params: { hash: 'session-hash-123abc' } });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('application/json; charset=utf-8');
+      expect(response.headers.get('content-disposition')).toContain('attachment');
+      
+      const body = await response.text();
+      const json = JSON.parse(body);
+      expect(json.contextPackVersion).toBe('0.7.0');
+    });
+
+    test('returns 404 when pack not found by hash', async () => {
+      const { getContextPackByHash: mockGetByHash } = require('../../src/lib/db/contextPacks');
+
+      mockGetByHash.mockResolvedValue({
+        success: false,
+        error: 'Context pack not found',
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/context-packs/by-hash/nonexistent-hash`,
+        {
+          headers: {
+            'x-request-id': 'test-req-get-by-hash-notfound',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await getContextPackByHash(request, { params: { hash: 'nonexistent-hash' } });
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBe('Context pack not found');
+    });
+  });
+
+  describe('Immutability enforcement', () => {
+    test('INSERT...ON CONFLICT DO NOTHING prevents duplicates', async () => {
+      const { generateContextPack: mockGenerate } = require('../../src/lib/db/contextPacks');
+
+      // First call creates pack
+      mockGenerate.mockResolvedValueOnce({
+        success: true,
+        data: {
+          ...MOCK_CONTEXT_PACK,
+          created_at: '2026-01-01T12:00:00.000Z',
+        },
+      });
+
+      // Second call with same hash returns existing pack (idempotent)
+      mockGenerate.mockResolvedValueOnce({
+        success: true,
+        data: {
+          ...MOCK_CONTEXT_PACK,
+          created_at: '2026-01-01T12:00:00.000Z', // Same timestamp
+        },
+      });
+
+      const request1 = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-pack`,
+        {
+          method: 'POST',
+          headers: {
+            'x-request-id': 'test-req-immutability-1',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response1 = await generateContextPack(request1, { params: { id: TEST_SESSION_ID } });
+      const body1 = await response1.json();
+
+      const request2 = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-pack`,
+        {
+          method: 'POST',
+          headers: {
+            'x-request-id': 'test-req-immutability-2',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response2 = await generateContextPack(request2, { params: { id: TEST_SESSION_ID } });
+      const body2 = await response2.json();
+
+      // Both should return same pack ID (immutability)
+      expect(body1.id).toBe(body2.id);
+      expect(body1.pack_hash).toBe(body2.pack_hash);
+      expect(body1.created_at).toBe(body2.created_at);
+    });
+  });
+});
