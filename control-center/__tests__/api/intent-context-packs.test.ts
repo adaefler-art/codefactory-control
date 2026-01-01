@@ -31,6 +31,7 @@ jest.mock('../../src/lib/db/intentSessions', () => ({
 const TEST_USER_ID = 'user-123';
 const TEST_SESSION_ID = 'session-abc-123';
 const TEST_PACK_ID = 'pack-def-456';
+const TEST_PACK_HASH = 'a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456'; // Valid SHA256 hex
 
 const MOCK_CONTEXT_PACK = {
   id: TEST_PACK_ID,
@@ -74,13 +75,13 @@ const MOCK_CONTEXT_PACK = {
       },
     ],
     derived: {
-      sessionHash: 'session-hash-123abc',
+      sessionHash: TEST_PACK_HASH,
       messageCount: 2,
       sourcesCount: 1,
     },
     warnings: [],
   },
-  pack_hash: 'session-hash-123abc',
+  pack_hash: TEST_PACK_HASH,
   version: '0.7.0',
 };
 
@@ -113,7 +114,7 @@ describe('POST /api/intent/sessions/[id]/context-pack', () => {
 
     expect(response.status).toBe(201);
     expect(body.id).toBe(TEST_PACK_ID);
-    expect(body.pack_hash).toBe('session-hash-123abc');
+    expect(body.pack_hash).toBe(TEST_PACK_HASH);
     expect(body.version).toBe('0.7.0');
     expect(mockGenerate).toHaveBeenCalledWith(
       expect.anything(),
@@ -212,7 +213,7 @@ describe('POST /api/intent/sessions/[id]/context-pack', () => {
     // Both requests should return same pack ID and hash
     expect(body1.id).toBe(body2.id);
     expect(body1.pack_hash).toBe(body2.pack_hash);
-    expect(body1.pack_hash).toBe('session-hash-123abc');
+    expect(body1.pack_hash).toBe(TEST_PACK_HASH);
   });
 });
 
@@ -426,7 +427,7 @@ describe('Deterministic hashing and redaction', () => {
 
     // Hashes should be identical despite different created_at
     expect(hash1).toBe(hash2);
-    expect(hash1).toBe('session-hash-123abc');
+    expect(hash1).toBe(TEST_PACK_HASH);
   });
 
   test('size cap - returns 413 when context pack exceeds maximum size', async () => {
@@ -711,6 +712,130 @@ describe('E73.4: Versioning and Retrieval', () => {
       expect(response.status).toBe(404);
       expect(body.error).toBe('Session not found');
     });
+
+    test('respects limit query parameter', async () => {
+      const { listContextPacksMetadata } = require('../../src/lib/db/contextPacks');
+
+      listContextPacksMetadata.mockResolvedValue({
+        success: true,
+        data: MOCK_PACK_METADATA.slice(0, 1), // Return only 1 pack
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs?limit=1`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-limit',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(listContextPacksMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        TEST_SESSION_ID,
+        TEST_USER_ID,
+        1 // Verify limit is passed
+      );
+    });
+
+    test('uses default limit of 50 when not specified', async () => {
+      const { listContextPacksMetadata } = require('../../src/lib/db/contextPacks');
+
+      listContextPacksMetadata.mockResolvedValue({
+        success: true,
+        data: MOCK_PACK_METADATA,
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-default-limit',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+
+      expect(response.status).toBe(200);
+      expect(listContextPacksMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        TEST_SESSION_ID,
+        TEST_USER_ID,
+        50 // Default limit
+      );
+    });
+
+    test('caps limit at 100 maximum', async () => {
+      const { listContextPacksMetadata } = require('../../src/lib/db/contextPacks');
+
+      listContextPacksMetadata.mockResolvedValue({
+        success: true,
+        data: MOCK_PACK_METADATA,
+      });
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs?limit=200`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-max-limit',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+
+      expect(response.status).toBe(200);
+      expect(listContextPacksMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        TEST_SESSION_ID,
+        TEST_USER_ID,
+        100 // Capped at max
+      );
+    });
+
+    test('returns 400 for invalid limit parameter', async () => {
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs?limit=invalid`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-invalid-limit',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('Invalid limit parameter');
+    });
+
+    test('returns 400 for negative limit parameter', async () => {
+      const request = new NextRequest(
+        `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-packs?limit=-1`,
+        {
+          headers: {
+            'x-request-id': 'test-req-list-negative-limit',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await listContextPacks(request, { params: { id: TEST_SESSION_ID } });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('Invalid limit parameter');
+    });
   });
 
   describe('GET /api/intent/context-packs/by-hash/[hash]', () => {
@@ -723,7 +848,7 @@ describe('E73.4: Versioning and Retrieval', () => {
       });
 
       const request = new NextRequest(
-        `http://localhost/api/intent/context-packs/by-hash/session-hash-123abc`,
+        `http://localhost/api/intent/context-packs/by-hash/${TEST_PACK_HASH}`,
         {
           headers: {
             'x-request-id': 'test-req-get-by-hash',
@@ -732,7 +857,7 @@ describe('E73.4: Versioning and Retrieval', () => {
         }
       );
 
-      const response = await getContextPackByHash(request, { params: { hash: 'session-hash-123abc' } });
+      const response = await getContextPackByHash(request, { params: { hash: TEST_PACK_HASH } });
 
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toBe('application/json; charset=utf-8');
@@ -751,8 +876,11 @@ describe('E73.4: Versioning and Retrieval', () => {
         error: 'Context pack not found',
       });
 
+      // Use a valid SHA256 hash format that doesn't exist
+      const nonexistentHash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+
       const request = new NextRequest(
-        `http://localhost/api/intent/context-packs/by-hash/nonexistent-hash`,
+        `http://localhost/api/intent/context-packs/by-hash/${nonexistentHash}`,
         {
           headers: {
             'x-request-id': 'test-req-get-by-hash-notfound',
@@ -761,11 +889,52 @@ describe('E73.4: Versioning and Retrieval', () => {
         }
       );
 
-      const response = await getContextPackByHash(request, { params: { hash: 'nonexistent-hash' } });
+      const response = await getContextPackByHash(request, { params: { hash: nonexistentHash } });
       const body = await response.json();
 
       expect(response.status).toBe(404);
       expect(body.error).toBe('Context pack not found');
+    });
+
+    test('returns 400 for invalid hash format (not SHA256)', async () => {
+      const request = new NextRequest(
+        `http://localhost/api/intent/context-packs/by-hash/invalid-short-hash`,
+        {
+          headers: {
+            'x-request-id': 'test-req-invalid-hash',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await getContextPackByHash(request, { params: { hash: 'invalid-short-hash' } });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('Invalid hash format');
+      expect(body.code).toBe('INVALID_HASH_FORMAT');
+      expect(body.details).toContain('SHA256');
+    });
+
+    test('returns 400 for hash with invalid characters', async () => {
+      const invalidHash = 'z'.repeat(64); // Valid length but invalid characters
+
+      const request = new NextRequest(
+        `http://localhost/api/intent/context-packs/by-hash/${invalidHash}`,
+        {
+          headers: {
+            'x-request-id': 'test-req-invalid-chars',
+            'x-afu9-sub': TEST_USER_ID,
+          },
+        }
+      );
+
+      const response = await getContextPackByHash(request, { params: { hash: invalidHash } });
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('Invalid hash format');
+      expect(body.code).toBe('INVALID_HASH_FORMAT');
     });
   });
 

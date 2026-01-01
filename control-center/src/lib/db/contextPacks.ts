@@ -353,12 +353,14 @@ export async function listContextPacks(
  * @param pool Database pool
  * @param sessionId Session UUID
  * @param userId User ID for ownership check (via session)
+ * @param limit Maximum number of packs to return (default: 50)
  * @returns List of context pack metadata or error
  */
 export async function listContextPacksMetadata(
   pool: Pool,
   sessionId: string,
-  userId: string
+  userId: string,
+  limit: number = 50
 ): Promise<{ success: true; data: ContextPackMetadata[] } | { success: false; error: string }> {
   try {
     // First verify session ownership
@@ -372,14 +374,16 @@ export async function listContextPacksMetadata(
     }
     
     // Get metadata only (extract counts from pack_json without returning full JSON)
+    // IMPORTANT: Do not select pack_json column to ensure metadata-only response
     const result = await pool.query(
       `SELECT id, session_id, created_at, pack_hash, version,
               (pack_json->'derived'->>'messageCount')::int as message_count,
               (pack_json->'derived'->>'sourcesCount')::int as sources_count
        FROM intent_context_packs
        WHERE session_id = $1
-       ORDER BY created_at DESC`,
-      [sessionId]
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [sessionId, limit]
     );
     
     return {

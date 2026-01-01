@@ -11,6 +11,16 @@ import { getContextPackByHash } from '@/lib/db/contextPacks';
 import { getRequestId, errorResponse } from '@/lib/api/response-helpers';
 
 /**
+ * Validate SHA256 hash format (64 hexadecimal characters)
+ * 
+ * @param hash Hash string to validate
+ * @returns true if valid SHA256 hex, false otherwise
+ */
+function isValidSHA256Hash(hash: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(hash);
+}
+
+/**
  * GET /api/intent/context-packs/by-hash/[hash]
  * Download context pack by hash as JSON
  * 
@@ -40,6 +50,16 @@ export async function GET(
       return errorResponse('Pack hash required', {
         status: 400,
         requestId,
+      });
+    }
+    
+    // Validate hash format (SHA256 = 64 hex characters)
+    if (!isValidSHA256Hash(packHash)) {
+      return errorResponse('Invalid hash format', {
+        status: 400,
+        requestId,
+        details: 'Hash must be a valid SHA256 hex string (64 characters)',
+        code: 'INVALID_HASH_FORMAT',
       });
     }
     
