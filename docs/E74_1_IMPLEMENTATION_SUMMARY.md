@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implemented the ChangeRequest JSON Schema v1 as a deterministic contract for turning INTENT conversations into implementable work.
+Implemented the ChangeRequest JSON Schema v1 as a deterministic, strict contract for turning INTENT conversations into implementable work.
 
 ## Location
 
@@ -11,31 +11,44 @@ Implemented the ChangeRequest JSON Schema v1 as a deterministic contract for tur
 
 ## Exported Types and Functions
 
-- `ChangeRequestSchema` - Main Zod schema for CR validation
+- `ChangeRequestSchema` - Main Zod schema for CR validation (strict mode enabled)
 - `ChangeRequest` - TypeScript type inferred from schema
-- `canonicalizeChangeRequest(cr)` - Function to canonicalize CR for stable hashing
+- `canonicalizeChangeRequest(cr)` - Function to canonicalize CR object with sorted evidence
+- `canonicalizeChangeRequestToJSON(cr)` - Function to serialize CR to canonical JSON string with stable key ordering
 - `EXAMPLE_MINIMAL_CR` - Example minimal valid CR JSON
+- `ACTIVE_CR_VERSIONS` - Registry of allowed schema versions
 - All sub-schemas (scope, targets, changes, tests, risks, rollout, etc.)
 
 ## Schema Version
 
 - Current version: **0.7.0**
-- Active versions: `['0.7.0']`
+- Active versions registry: `ACTIVE_CR_VERSIONS = ['0.7.0']`
+- Version validation enforced via `z.enum(ACTIVE_CR_VERSIONS)`
 
 ## Key Features
+
+### Strict Mode
+- ✅ Schema uses `.strict()` - no additional properties allowed
+- ✅ Rejects any CR with unknown fields
 
 ### Required Fields (enforced by schema)
 - ✅ `acceptanceCriteria` - minimum 1 entry
 - ✅ `tests.required` - minimum 1 entry
 - ✅ `evidence` - minimum 1 entry (reuses `UsedSourcesSchema`)
 - ✅ Valid `changeType` enum: `create`, `modify`, `delete`
+- ✅ Valid `crVersion` - must be in `ACTIVE_CR_VERSIONS`
 
 ### Canonical Serialization
-- Evidence array is sorted deterministically for hashing
-- User-provided order preserved for:
+- **Evidence array** is sorted deterministically for hashing (by kind, then key fields)
+- **Object keys** are sorted alphabetically (recursively) for deterministic JSON strings
+- **User-provided order** preserved for:
   - `acceptanceCriteria`
   - `tests.required`, `tests.addedOrUpdated`, `tests.manual`
   - `rollout.steps`
+
+### Two Canonicalization Functions
+1. `canonicalizeChangeRequest(cr)` - Returns CR object with sorted evidence
+2. `canonicalizeChangeRequestToJSON(cr)` - Returns canonical JSON string with stable key ordering for hashing/comparison
 
 ### Evidence Integration
 - Reuses `UsedSourcesSchema` from existing `usedSources.ts`
@@ -143,7 +156,7 @@ npm run repo:verify
 
 ## Test Coverage
 
-22 tests covering:
+29 tests covering:
 - ✅ Minimal valid CR validation
 - ✅ Full CR with all optional fields
 - ✅ Rejection of missing `acceptanceCriteria`
@@ -154,26 +167,41 @@ npm run repo:verify
 - ✅ Canonical serialization stability
 - ✅ Evidence ordering (deterministic sort)
 - ✅ Preservation of user order for AC/tests/rollout
+- ✅ **NEW**: Canonical JSON string generation with stable key ordering
+- ✅ **NEW**: Version validation (allowed vs disallowed versions)
+- ✅ **NEW**: Strict mode enforcement (rejects unknown properties)
 
 ## Usage Example
 
 \`\`\`typescript
-import { ChangeRequestSchema, canonicalizeChangeRequest, EXAMPLE_MINIMAL_CR } from '@/lib/schemas/changeRequest';
+import { 
+  ChangeRequestSchema, 
+  canonicalizeChangeRequest, 
+  canonicalizeChangeRequestToJSON,
+  EXAMPLE_MINIMAL_CR,
+  ACTIVE_CR_VERSIONS
+} from '@/lib/schemas/changeRequest';
 
-// Validate a CR
+// Validate a CR (strict mode enforced)
 const cr = ChangeRequestSchema.parse(crData);
 
-// Canonicalize for hashing
+// Canonicalize for hashing (object with sorted evidence)
 const canonical = canonicalizeChangeRequest(cr);
 
-// Use the example
-console.log(EXAMPLE_MINIMAL_CR);
+// Get canonical JSON string (sorted keys + evidence)
+const canonicalJSON = canonicalizeChangeRequestToJSON(cr);
+
+// Hash the canonical JSON
+const hash = sha256(canonicalJSON);
+
+// Check active versions
+console.log(ACTIVE_CR_VERSIONS); // ['0.7.0']
 \`\`\`
 
 ## Acceptance Criteria - COMPLETE ✅
 
 - ✅ CR schema exists, versioned (0.7.0), strict, with required fields
-- ✅ Tests green: 22/22 tests passing
+- ✅ Tests green: **29/29 tests passing** (was 22, added 7 new tests)
 - ✅ Schema includes all required fields:
   - ✅ Canonical ID
   - ✅ Acceptance Criteria (min 1)
@@ -182,6 +210,16 @@ console.log(EXAMPLE_MINIMAL_CR);
   - ✅ Rollout
   - ✅ Evidence (min 1)
 - ✅ Canonical serialization with stable evidence ordering
+- ✅ **NEW**: Canonical JSON string generation with recursive key sorting
+- ✅ **NEW**: Strict mode enabled (`.strict()`)
+- ✅ **NEW**: Version registry (`ACTIVE_CR_VERSIONS`) with validation
 - ✅ Reuses existing `UsedSourcesSchema` for evidence
 - ✅ Example minimal valid CR provided
 - ✅ PowerShell commands documented
+- ✅ **NEW**: Output file moved to `docs/` directory
+
+## Build Status
+
+- ✅ **Tests**: 29/29 passing for CR schema
+- ⚠️ **Full test suite**: 5 test suites failing (pre-existing, unrelated to CR schema - missing `@codefactory/verdict-engine`)
+- ⚠️ **Build**: Fails due to pre-existing issue (missing `@codefactory/verdict-engine`), not related to CR schema changes

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Successfully implemented the ChangeRequest JSON Schema v1 as a deterministic, strict Zod schema with comprehensive tests and documentation.
+Successfully implemented the ChangeRequest JSON Schema v1 as a deterministic, strict Zod schema with comprehensive tests, canonical JSON serialization, and documentation.
 
 ## Deliverables
 
@@ -10,6 +10,8 @@ Successfully implemented the ChangeRequest JSON Schema v1 as a deterministic, st
 **Location**: `control-center/src/lib/schemas/changeRequest.ts`
 
 - ✅ Versioned schema (crVersion: "0.7.0")
+- ✅ **NEW**: Strict mode enabled (`.strict()`)
+- ✅ **NEW**: Version registry (`ACTIVE_CR_VERSIONS = ['0.7.0']`)
 - ✅ All required fields with validation:
   - `canonicalId`, `title`, `motivation`
   - `scope` (summary, inScope, outOfScope)
@@ -24,28 +26,39 @@ Successfully implemented the ChangeRequest JSON Schema v1 as a deterministic, st
   - `metadata` (createdAt, createdBy, tags, kpiTargets)
 
 ### 2. Canonical Serialization
-**Function**: `canonicalizeChangeRequest(cr: ChangeRequest): ChangeRequest`
+**Two functions for different use cases**:
 
-- ✅ Deterministic evidence sorting (by kind, then key fields)
-- ✅ Preserves user order for AC, tests, rollout steps
-- ✅ Non-mutating (returns new object)
+1. `canonicalizeChangeRequest(cr: ChangeRequest): ChangeRequest`
+   - ✅ Deterministic evidence sorting (by kind, then key fields)
+   - ✅ Preserves user order for AC, tests, rollout steps
+   - ✅ Non-mutating (returns new object)
+
+2. **NEW**: `canonicalizeChangeRequestToJSON(cr: ChangeRequest): string`
+   - ✅ Produces canonical JSON string with stable key ordering (recursive)
+   - ✅ Alphabetically sorted object keys
+   - ✅ Deterministic output for hashing/comparison
+   - ✅ Same semantic input always produces identical JSON string
 
 ### 3. Tests
 **Location**: `control-center/__tests__/lib/schemas/changeRequest.test.ts`
 
-- ✅ 22 tests, all passing
+- ✅ **29 tests** (was 22, added 7 new tests), all passing
 - ✅ Validates minimal and full CR examples
 - ✅ Enforces required field validation
 - ✅ Tests enum validations
 - ✅ Verifies canonical serialization stability
+- ✅ **NEW**: Tests canonical JSON string determinism
+- ✅ **NEW**: Tests version validation (allowed vs disallowed)
+- ✅ **NEW**: Tests strict mode (rejects unknown properties)
 
 ### 4. Documentation
-**Location**: `docs/E74_1_IMPLEMENTATION_SUMMARY.md`
+**Location**: `docs/E74_1_IMPLEMENTATION_SUMMARY.md` and `docs/E74_1_OUTPUT.md`
 
 - ✅ Complete schema documentation
 - ✅ Example minimal valid CR JSON
-- ✅ Usage examples
+- ✅ Usage examples for both canonicalization functions
 - ✅ PowerShell commands
+- ✅ **NEW**: Moved from root to `docs/` directory
 
 ## Example Minimal Valid CR
 
@@ -125,7 +138,7 @@ npm --prefix control-center test -- changeRequest.test.ts
 npm --prefix control-center test
 
 # Note: Some pre-existing test failures exist (unrelated to CR schema)
-# CR schema tests: 22/22 passing ✅
+# CR schema tests: 29/29 passing ✅
 \`\`\`
 
 ### Build
@@ -169,15 +182,25 @@ npm run repo:verify
     ✓ should preserve user order for tests
     ✓ should preserve user order for rollout steps
     ✓ should not mutate original CR
+  canonicalizeChangeRequestToJSON
+    ✓ should produce identical JSON for semantically identical CRs with different key orders
+    ✓ should produce deterministic JSON with sorted object keys
+  Version Validation
+    ✓ should accept allowed CR version
+    ✓ should reject disallowed CR version
+    ✓ should have active versions registry
+  Strict Mode
+    ✓ should reject CR with additional unknown properties
+    ✓ should accept CR with exactly the defined properties
 
 Test Suites: 1 passed, 1 total
-Tests:       22 passed, 22 total
+Tests:       29 passed, 29 total
 \`\`\`
 
 ## Acceptance Criteria - ALL MET ✅
 
 1. ✅ CR schema exists, versioned (0.7.0), strict, with required fields
-2. ✅ Tests green: 22/22 tests passing
+2. ✅ Tests green: **29/29 tests passing** (added 7 new tests)
 3. ✅ Schema includes all required components:
    - ✅ Canonical ID
    - ✅ Acceptance Criteria (enforced min 1)
@@ -186,8 +209,12 @@ Tests:       22 passed, 22 total
    - ✅ Rollout with steps and rollback plan
    - ✅ Evidence (enforced min 1, reuses UsedSourcesSchema)
 4. ✅ Canonical serialization implemented with stable evidence ordering
-5. ✅ Example minimal valid CR provided
-6. ✅ PowerShell commands documented and verified
+5. ✅ **NEW**: Canonical JSON string generation with recursive key sorting
+6. ✅ **NEW**: Strict mode enabled (`.strict()`)
+7. ✅ **NEW**: Version registry validation
+8. ✅ Example minimal valid CR provided
+9. ✅ PowerShell commands documented and verified
+10. ✅ **NEW**: Documentation moved to `docs/` directory
 
 ## Files Changed
 

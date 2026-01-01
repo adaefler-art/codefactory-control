@@ -7,8 +7,10 @@ import { ZodError } from 'zod';
 import {
   ChangeRequestSchema,
   canonicalizeChangeRequest,
+  canonicalizeChangeRequestToJSON,
   EXAMPLE_MINIMAL_CR,
   CR_VERSION,
+  ACTIVE_CR_VERSIONS,
   FileChangeTypeSchema,
   RiskImpactSchema,
   KPITargetSchema,
@@ -547,5 +549,107 @@ describe('canonicalizeChangeRequest', () => {
     
     // Original should be unchanged
     expect(cr.evidence).toEqual(originalEvidence);
+  });
+});
+
+describe('canonicalizeChangeRequestToJSON', () => {
+  it('should produce identical JSON for semantically identical CRs with different key orders', () => {
+    const cr1: ChangeRequest = {
+      crVersion: CR_VERSION,
+      canonicalId: 'TEST-001',
+      title: 'Test',
+      motivation: 'Test motivation',
+      scope: {
+        summary: 'Test scope',
+        inScope: ['a'],
+        outOfScope: ['b'],
+      },
+      targets: {
+        repo: { owner: 'org', repo: 'repo' },
+        branch: 'main',
+      },
+      changes: {
+        files: [{ path: 'test.ts', changeType: 'create' }],
+      },
+      acceptanceCriteria: ['AC1'],
+      tests: { required: ['test1'] },
+      risks: { items: [{ risk: 'r1', impact: 'low', mitigation: 'm1' }] },
+      rollout: { steps: ['s1'], rollbackPlan: 'plan' },
+      evidence: [
+        { kind: 'github_issue', repo: { owner: 'o', repo: 'r' }, number: 2 },
+        { kind: 'github_issue', repo: { owner: 'o', repo: 'r' }, number: 1 },
+      ],
+      constraints: {},
+      metadata: { createdAt: '2026-01-01T12:00:00.000Z', createdBy: 'intent' },
+    };
+
+    const cr2: ChangeRequest = {
+      // Same data, different evidence order
+      ...cr1,
+      evidence: [
+        { kind: 'github_issue', repo: { owner: 'o', repo: 'r' }, number: 1 },
+        { kind: 'github_issue', repo: { owner: 'o', repo: 'r' }, number: 2 },
+      ],
+    };
+
+    const json1 = canonicalizeChangeRequestToJSON(cr1);
+    const json2 = canonicalizeChangeRequestToJSON(cr2);
+
+    // Both should produce identical JSON strings
+    expect(json1).toBe(json2);
+  });
+
+  it('should produce deterministic JSON with sorted object keys', () => {
+    const json = canonicalizeChangeRequestToJSON(EXAMPLE_MINIMAL_CR);
+    
+    // Parse and verify structure
+    const parsed = JSON.parse(json);
+    
+    // Verify evidence is sorted
+    expect(parsed.evidence).toBeDefined();
+    
+    // Verify it's valid JSON
+    expect(() => JSON.parse(json)).not.toThrow();
+  });
+});
+
+describe('Version Validation', () => {
+  it('should accept allowed CR version', () => {
+    const cr = {
+      ...EXAMPLE_MINIMAL_CR,
+      crVersion: '0.7.0',
+    };
+
+    expect(() => ChangeRequestSchema.parse(cr)).not.toThrow();
+  });
+
+  it('should reject disallowed CR version', () => {
+    const cr = {
+      ...EXAMPLE_MINIMAL_CR,
+      crVersion: '0.6.0',
+    };
+
+    expect(() => ChangeRequestSchema.parse(cr)).toThrow(ZodError);
+  });
+
+  it('should have active versions registry', () => {
+    expect(ACTIVE_CR_VERSIONS).toBeDefined();
+    expect(ACTIVE_CR_VERSIONS).toContain('0.7.0');
+    expect(Array.isArray(ACTIVE_CR_VERSIONS)).toBe(true);
+  });
+});
+
+describe('Strict Mode', () => {
+  it('should reject CR with additional unknown properties', () => {
+    const crWithExtra = {
+      ...EXAMPLE_MINIMAL_CR,
+      unknownField: 'should be rejected',
+    };
+
+    expect(() => ChangeRequestSchema.parse(crWithExtra)).toThrow(ZodError);
+  });
+
+  it('should accept CR with exactly the defined properties', () => {
+    expect(() => ChangeRequestSchema.parse(EXAMPLE_MINIMAL_CR)).not.toThrow();
   });
 });

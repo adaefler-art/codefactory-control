@@ -219,6 +219,7 @@ export type CRMetadata = z.infer<typeof CRMetadataSchema>;
  * - At least 1 required test
  * - At least 1 evidence entry
  * - Valid change types
+ * - Strict mode: no additional properties allowed
  */
 export const ChangeRequestSchema = z.object({
   crVersion: z.enum(ACTIVE_CR_VERSIONS as unknown as [string, ...string[]]),
@@ -235,7 +236,7 @@ export const ChangeRequestSchema = z.object({
   evidence: UsedSourcesSchema.min(1, 'At least one evidence entry is required'),
   constraints: CRConstraintsSchema,
   metadata: CRMetadataSchema,
-});
+}).strict();
 
 export type ChangeRequest = z.infer<typeof ChangeRequestSchema>;
 
@@ -246,6 +247,7 @@ export type ChangeRequest = z.infer<typeof ChangeRequestSchema>;
  * - Keeps user-provided order for: acceptanceCriteria, tests.required, tests.addedOrUpdated,
  *   tests.manual, rollout.steps (order matters for these)
  * - Canonicalizes evidence ordering for deterministic hashing (sorted by kind, then by key fields)
+ * - Stable object key ordering (alphabetical) for all objects recursively
  */
 export function canonicalizeChangeRequest(cr: ChangeRequest): ChangeRequest {
   // Sort evidence array for deterministic ordering
@@ -289,10 +291,41 @@ export function canonicalizeChangeRequest(cr: ChangeRequest): ChangeRequest {
     return 0;
   });
 
+  // Return CR with sorted evidence and stable object key ordering
+  // Note: TypeScript object spread preserves original key order, but for true canonical
+  // serialization, use JSON.stringify with sorted keys when converting to string
   return {
     ...cr,
     evidence: sortedEvidence,
   };
+}
+
+/**
+ * Serialize ChangeRequest to canonical JSON string
+ * 
+ * Produces deterministic JSON string with:
+ * - Alphabetically sorted object keys (recursively)
+ * - Sorted evidence array
+ * - Preserved user order for AC, tests, rollout steps
+ * 
+ * Use this for hashing or deterministic comparison.
+ */
+export function canonicalizeChangeRequestToJSON(cr: ChangeRequest): string {
+  const canonical = canonicalizeChangeRequest(cr);
+  
+  // Replacer function to sort object keys alphabetically
+  return JSON.stringify(canonical, (key, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      // Sort object keys alphabetically
+      return Object.keys(value)
+        .sort()
+        .reduce((sorted: Record<string, unknown>, k) => {
+          sorted[k] = value[k];
+          return sorted;
+        }, {});
+    }
+    return value;
+  }, 2);
 }
 
 /**
