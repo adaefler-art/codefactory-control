@@ -241,10 +241,12 @@ async function searchIssuesForCanonicalId(input: ResolveCanonicalIdInput): Promi
   try {
     const response = await octokit.rest.search.issuesAndPullRequests({
       q: searchQuery,
-      per_page: 100, // Get up to 100 results
+      per_page: 100, // Get up to 100 results (pagination not needed: canonical IDs should be unique)
     });
 
     // Filter out pull requests (we only want issues)
+    // The GitHub API search endpoint returns both issues and PRs
+    // We identify PRs by checking for the pull_request property (present on PRs, absent on issues)
     const issues = response.data.items.filter((item) => !item.pull_request);
 
     return issues.map((issue) => ({
@@ -320,7 +322,7 @@ export async function resolveCanonicalId(
 
   // Validate input
   if (!canonicalId || typeof canonicalId !== 'string' || !canonicalId.trim()) {
-    throw new CanonicalIdResolverError('canonicalId must be a non-empty string');
+    throw new CanonicalIdResolverError('canonicalId must be a non-empty string (whitespace-only strings are not allowed)');
   }
 
   // Search for issues (with policy enforcement via auth-wrapper)
@@ -347,9 +349,8 @@ export async function resolveCanonicalId(
     return { mode: 'not_found' };
   }
 
-  // Prefer body marker matches over title marker matches
-  const bodyMatches = matches.filter((m) => m.matchedBy === 'body');
-  const selectedMatch = bodyMatches.length > 0 ? bodyMatches[0] : matches[0];
+  // Select preferred match (body marker preferred over title marker)
+  const selectedMatch = selectPreferredMatch(matches);
 
   // Return found result
   return {
@@ -358,6 +359,28 @@ export async function resolveCanonicalId(
     issueUrl: selectedMatch.issue.html_url,
     matchedBy: selectedMatch.matchedBy,
   };
+}
+
+/**
+ * Select the preferred match from a list of matches
+ * 
+ * **Preference Order:**
+ * 1. Body marker matches (more reliable, less likely to be manually edited)
+ * 2. Title marker matches (fallback)
+ * 
+ * Returns first body match if any exist, otherwise first title match.
+ * 
+ * @param matches - Array of matched issues with matchedBy indicator
+ * @returns Selected match based on preference order
+ */
+function selectPreferredMatch(
+  matches: Array<{
+    issue: { number: number; title: string; body: string | null; html_url: string; state: string };
+    matchedBy: MatchedBy;
+  }>
+): typeof matches[number] {
+  const bodyMatches = matches.filter((m) => m.matchedBy === 'body');
+  return bodyMatches.length > 0 ? bodyMatches[0] : matches[0];
 }
 
 // ========================================
