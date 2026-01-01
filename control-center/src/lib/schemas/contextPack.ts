@@ -3,22 +3,34 @@
  * 
  * Defines the auditable JSON snapshot structure for INTENT sessions.
  * Issue E73.3: Context Pack Generator (audit JSON per session) + Export/Download
+ * Issue E73.4: Context Pack Storage/Retrieval (versioning, immutable snapshots)
  * 
  * NON-NEGOTIABLES:
  * - Deterministic output: same DB state → identical JSON
  * - Evidence-friendly: include used_sources hashes and references
  * - No secrets/tokens in output
  * - Context packs are immutable snapshots
+ * - Versioning: contextPackVersion stored and queryable
  */
 
 import { z } from 'zod';
 import { UsedSourcesSchema } from './usedSources';
 
 /**
+ * Active Context Pack Schema Versions
+ * 
+ * Registry of allowed schema versions for governance-grade immutability.
+ * Only these versions are accepted when generating or validating context packs.
+ * 
+ * Issue E73.4: Versioning rules enforcement
+ */
+export const ACTIVE_CONTEXT_PACK_VERSIONS = ['0.7.0'] as const;
+
+/**
  * Context Pack Version
  * Current version: 0.7.0
  */
-export const CONTEXT_PACK_VERSION = '0.7.0';
+export const CONTEXT_PACK_VERSION = '0.7.0' as const;
 
 /**
  * Session metadata in context pack
@@ -59,9 +71,11 @@ export type ContextPackDerived = z.infer<typeof ContextPackDerivedSchema>;
 
 /**
  * Complete Context Pack schema
+ * 
+ * Issue E73.4: Enforces version validation via Zod enum
  */
 export const ContextPackSchema = z.object({
-  contextPackVersion: z.string(),
+  contextPackVersion: z.enum(ACTIVE_CONTEXT_PACK_VERSIONS),
   generatedAt: z.string().datetime(), // ISO 8601
   session: ContextPackSessionSchema,
   messages: z.array(ContextPackMessageSchema),
@@ -81,6 +95,22 @@ export interface ContextPackRecord {
   pack_json: ContextPack;
   pack_hash: string;
   version: string;
+}
+
+/**
+ * Context Pack Metadata (without full pack_json)
+ * 
+ * Used for list responses to avoid sending large pack_json payloads.
+ * Issue E73.4: Retrieval UX - metadata-only responses
+ */
+export interface ContextPackMetadata {
+  id: string;
+  session_id: string;
+  created_at: string;
+  pack_hash: string;
+  version: string;
+  message_count?: number;
+  sources_count?: number;
 }
 
 /**

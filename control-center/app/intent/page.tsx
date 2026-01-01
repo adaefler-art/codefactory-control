@@ -25,6 +25,16 @@ interface IntentMessage {
   used_sources_hash?: string | null;
 }
 
+interface ContextPackMetadata {
+  id: string;
+  session_id: string;
+  created_at: string;
+  pack_hash: string;
+  version: string;
+  message_count?: number;
+  sources_count?: number;
+}
+
 export default function IntentPage() {
   const [sessions, setSessions] = useState<IntentSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -38,6 +48,9 @@ export default function IntentPage() {
   const [exportedPackId, setExportedPackId] = useState<string | null>(null);
   const [exportedPackHash, setExportedPackHash] = useState<string | null>(null);
   const [exportedPackCreatedAt, setExportedPackCreatedAt] = useState<string | null>(null);
+  const [showPacksDrawer, setShowPacksDrawer] = useState(false);
+  const [contextPacks, setContextPacks] = useState<ContextPackMetadata[]>([]);
+  const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch sessions on mount
@@ -207,6 +220,55 @@ export default function IntentPage() {
     }
   };
 
+  const fetchContextPacks = async () => {
+    if (!currentSessionId) return;
+    
+    setIsLoadingPacks(true);
+    try {
+      const response = await fetch(
+        API_ROUTES.intent.sessions.contextPacks(currentSessionId),
+        {
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+      const data = await safeFetch(response);
+      setContextPacks(data.packs || []);
+    } catch (err) {
+      console.error("Failed to fetch context packs:", err);
+      setError(formatErrorMessage(err));
+    } finally {
+      setIsLoadingPacks(false);
+    }
+  };
+
+  const downloadContextPack = async (packId: string) => {
+    try {
+      const downloadUrl = API_ROUTES.intent.contextPacks.get(packId);
+      const downloadResponse = await fetch(downloadUrl, {
+        credentials: "include",
+      });
+      
+      if (!downloadResponse.ok) {
+        throw new Error("Failed to download context pack");
+      }
+      
+      // Create blob and download
+      const blob = await downloadResponse.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `context-pack-${packId}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Failed to download context pack:", err);
+      setError(formatErrorMessage(err));
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -273,29 +335,107 @@ export default function IntentPage() {
             
             {/* Export Context Pack Button */}
             {currentSessionId && (
-              <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-3">
+                {/* View Context Packs Button */}
                 <button
-                  onClick={exportContextPack}
-                  disabled={isExporting}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  onClick={() => {
+                    setShowPacksDrawer(!showPacksDrawer);
+                    if (!showPacksDrawer) {
+                      fetchContextPacks();
+                    }
+                  }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm font-medium"
                 >
-                  {isExporting ? "Exporting..." : "Export Context Pack"}
+                  {showPacksDrawer ? "Hide Packs" : "View Packs"}
                 </button>
                 
-                {exportedPackHash && exportedPackCreatedAt && (
-                  <div className="text-xs text-gray-500">
-                    <span title={exportedPackHash}>
-                      Hash: {exportedPackHash.substring(0, 12)}...
-                    </span>
-                    {" • "}
-                    <span>
-                      {formatTimestamp(exportedPackCreatedAt)}
-                    </span>
-                  </div>
-                )}
+                {/* Export (Generate) Button */}
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    onClick={exportContextPack}
+                    disabled={isExporting}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  >
+                    {isExporting ? "Exporting..." : "Export Context Pack"}
+                  </button>
+                  
+                  {exportedPackHash && exportedPackCreatedAt && (
+                    <div className="text-xs text-gray-500">
+                      <span title={exportedPackHash}>
+                        Hash: {exportedPackHash.substring(0, 12)}...
+                      </span>
+                      {" • "}
+                      <span>
+                        {formatTimestamp(exportedPackCreatedAt)}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
+          
+          {/* Context Packs Drawer */}
+          {showPacksDrawer && currentSessionId && (
+            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">Context Packs</h3>
+                <button
+                  onClick={fetchContextPacks}
+                  disabled={isLoadingPacks}
+                  className="text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                >
+                  {isLoadingPacks ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
+              
+              {isLoadingPacks ? (
+                <div className="text-center text-sm text-gray-500 py-4">
+                  Loading packs...
+                </div>
+              ) : contextPacks.length === 0 ? (
+                <div className="text-center text-sm text-gray-500 py-4">
+                  No context packs yet. Click "Export Context Pack" to create one.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {contextPacks.map((pack) => (
+                    <div
+                      key={pack.id}
+                      className="bg-white p-3 rounded border border-gray-200 hover:shadow-sm transition-shadow"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-mono text-gray-600" title={pack.pack_hash}>
+                              {pack.pack_hash.substring(0, 12)}...
+                            </span>
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                              v{pack.version}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {formatTimestamp(pack.created_at)}
+                          </div>
+                          {pack.message_count !== undefined && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {pack.message_count} messages • {pack.sources_count || 0} sources
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => downloadContextPack(pack.id)}
+                          className="ml-3 px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                        >
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Messages */}
