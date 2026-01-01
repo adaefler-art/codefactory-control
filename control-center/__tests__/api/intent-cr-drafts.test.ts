@@ -355,4 +355,114 @@ describe('INTENT CR Drafts Database Layer', () => {
       }
     });
   });
+
+  describe('Deterministic validation', () => {
+    it('should return identical results for repeated validation of same CR', async () => {
+      // First validation
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: sessionId }],
+      });
+      mockQuery.mockResolvedValueOnce({
+        rows: [{
+          id: 'draft-1',
+          session_id: sessionId,
+          created_at: new Date(),
+          updated_at: new Date(),
+          cr_json: EXAMPLE_MINIMAL_CR,
+          cr_hash: 'test-hash-1',
+          status: 'valid',
+        }],
+      });
+
+      const result1 = await validateAndSaveCrDraft(mockPool, sessionId, userId, EXAMPLE_MINIMAL_CR);
+
+      // Second validation of same CR
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: sessionId }],
+      });
+      mockQuery.mockResolvedValueOnce({
+        rows: [{
+          id: 'draft-2',
+          session_id: sessionId,
+          created_at: new Date(),
+          updated_at: new Date(),
+          cr_json: EXAMPLE_MINIMAL_CR,
+          cr_hash: 'test-hash-2',
+          status: 'valid',
+        }],
+      });
+
+      const result2 = await validateAndSaveCrDraft(mockPool, sessionId, userId, EXAMPLE_MINIMAL_CR);
+
+      // Validation results should be identical
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
+      
+      if (result1.success && result2.success) {
+        // Validation output should be identical
+        expect(result1.validation.ok).toBe(result2.validation.ok);
+        expect(result1.validation.errors).toEqual(result2.validation.errors);
+        expect(result1.validation.warnings).toEqual(result2.validation.warnings);
+        
+        // Hash from validator should be identical
+        expect(result1.validation.meta.hash).toBe(result2.validation.meta.hash);
+      }
+    });
+  });
+
+  describe('Ownership enforcement (negative tests)', () => {
+    it('should reject getCrDraft for session not owned by user', async () => {
+      const wrongUserId = 'different-user';
+      
+      // Mock session ownership check failing
+      mockQuery.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const result = await getCrDraft(mockPool, sessionId, wrongUserId);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('Session not found or access denied');
+      }
+
+      // Verify the ownership check query was called with correct params
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('SELECT id FROM intent_sessions WHERE id = $1 AND user_id = $2'),
+        [sessionId, wrongUserId]
+      );
+    });
+
+    it('should reject saveCrDraft for session not owned by user', async () => {
+      const wrongUserId = 'different-user';
+      
+      // Mock session ownership check failing
+      mockQuery.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const result = await saveCrDraft(mockPool, sessionId, wrongUserId, EXAMPLE_MINIMAL_CR);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('Session not found or access denied');
+      }
+    });
+
+    it('should reject validateAndSaveCrDraft for session not owned by user', async () => {
+      const wrongUserId = 'different-user';
+      
+      // Mock session ownership check failing
+      mockQuery.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const result = await validateAndSaveCrDraft(mockPool, sessionId, wrongUserId, EXAMPLE_MINIMAL_CR);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('Session not found or access denied');
+      }
+    });
+  });
 });
