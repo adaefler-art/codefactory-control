@@ -201,6 +201,10 @@ describe('Middleware Authentication Logic', () => {
 
       const response = await middleware(request);
       expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-stage')).toBe('staging');
+      expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
     });
 
     test('env set, correct header -> bypass (NextResponse.next) on staging host', async () => {
@@ -213,6 +217,9 @@ describe('Middleware Authentication Logic', () => {
       const response = await middleware(request);
       expect(response.status).toBe(200);
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-stage')).toBe('staging');
+      expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('1');
       expect(response.headers.get('x-request-id')).toBeTruthy();
     });
 
@@ -249,6 +256,9 @@ describe('Middleware Authentication Logic', () => {
 
       const response = await middleware(request);
       expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-stage')).toBe('staging');
+      expect(response.headers.get('x-afu9-smoke-env-present')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('0');
     });
   });
 
@@ -264,6 +274,9 @@ describe('Middleware Authentication Logic', () => {
       const response = await middleware(request);
       expect(response.status).toBe(200);
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-stage')).toBe('staging');
+      expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('1');
     });
 
     test('stage + key matches after trim + POST /api/intent/sessions => bypass active', async () => {

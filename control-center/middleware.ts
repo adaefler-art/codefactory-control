@@ -78,6 +78,23 @@ function isSmokeBypass(request: NextRequest): boolean {
   return providedSmokeKey.trim() === smokeKey.trim();
 }
 
+function maybeAttachSmokeDebugHeaders(
+  response: NextResponse,
+  request: NextRequest,
+  detectedStage: string
+): NextResponse {
+  const providedSmokeKey = request.headers.get('x-afu9-smoke-key');
+  if (!providedSmokeKey) return response;
+
+  const envPresent = Boolean(process.env.AFU9_SMOKE_KEY);
+  const keyMatch = isSmokeBypass(request);
+
+  response.headers.set('x-afu9-smoke-stage', detectedStage);
+  response.headers.set('x-afu9-smoke-env-present', envPresent ? '1' : '0');
+  response.headers.set('x-afu9-smoke-key-match', keyMatch ? '1' : '0');
+  return response;
+}
+
 /**
  * Middleware to protect routes and verify authentication
  * 
@@ -106,7 +123,8 @@ export async function middleware(request: NextRequest) {
   // - Header: X-AFU9-SMOKE-KEY (case-insensitive)
   // - Env gate: AFU9_SMOKE_KEY must be set (otherwise bypass is disabled)
   // - Host gate: staging only (stage.afu-9.com)
-  const isStagingHost = getStageFromHostname(hostname) === 'staging';
+  const detectedStage = getStageFromHostname(hostname);
+  const isStagingHost = detectedStage === 'staging' || hostname.toLowerCase().startsWith('stage.');
 
   if (isStagingHost && isSmokeBypass(request)) {
     const allowlisted =
@@ -118,7 +136,7 @@ export async function middleware(request: NextRequest) {
     if (allowlisted) {
       const response = nextWithRequestId();
       response.headers.set('x-afu9-smoke-auth-used', '1');
-      return response;
+      return maybeAttachSmokeDebugHeaders(response, request, detectedStage);
     }
   }
 
@@ -177,6 +195,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
+      maybeAttachSmokeDebugHeaders(response, request, detectedStage);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_refresh_only' });
       return response;
     }
@@ -209,6 +228,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
+      maybeAttachSmokeDebugHeaders(response, request, detectedStage);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_missing' });
       return response;
     } else {
