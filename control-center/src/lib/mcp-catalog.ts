@@ -35,8 +35,9 @@ export interface MCPCatalog {
  */
 export function loadMCPCatalog(): MCPCatalog | null {
   try {
-    // Catalog is at repo root: docs/mcp/catalog.json
-    const catalogPath = path.join(process.cwd(), '..', 'docs', 'mcp', 'catalog.json');
+    // Catalog path can be overridden via environment variable
+    const catalogPath = process.env.MCP_CATALOG_PATH || 
+      path.join(process.cwd(), '..', 'docs', 'mcp', 'catalog.json');
     
     if (!fs.existsSync(catalogPath)) {
       console.warn('[MCP Catalog] Catalog file not found at:', catalogPath);

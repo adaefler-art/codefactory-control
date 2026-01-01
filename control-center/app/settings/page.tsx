@@ -77,9 +77,9 @@ export default function SettingsPage() {
             };
             return {
               name,
-              displayName: data.displayName || name.charAt(0).toUpperCase() + name.slice(1),
-              endpoint: data.endpoint || `http://localhost:${data.port || 3001}`,
-              port: data.port || 3001,
+              displayName: data.displayName || name,
+              endpoint: data.endpoint || '',
+              port: data.port || 0,
               toolCount: data.toolCount || 0,
               healthy: data.status === 'ok',
               error: data.error,

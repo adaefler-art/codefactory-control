@@ -11,7 +11,7 @@
 import { NextResponse } from 'next/server';
 import { getMCPClient } from '../../../../src/lib/mcp-client';
 import { factoryMetrics } from '../../../../src/lib/factory-metrics';
-import { getMCPServersFromCatalog } from '../../../../src/lib/mcp-catalog';
+import { getMCPServersFromCatalog, loadMCPCatalog } from '../../../../src/lib/mcp-catalog';
 
 export async function GET() {
   try {
@@ -22,6 +22,7 @@ export async function GET() {
     
     // Load server definitions from catalog
     const catalogServers = getMCPServersFromCatalog();
+    const catalog = loadMCPCatalog();
 
     const healthMap: Record<string, any> = {};
     
@@ -34,7 +35,7 @@ export async function GET() {
         endpoint: server.endpoint,
         displayName: server.displayName,
         port: server.port,
-        toolCount: server.tools.length,
+        toolCount: server.tools?.length || 0,
         timestamp: health?.timestamp || new Date().toISOString(),
         error: health?.error,
       };
@@ -65,7 +66,7 @@ export async function GET() {
     return NextResponse.json({
       status: allHealthy ? 'healthy' : 'degraded',
       servers: healthMap,
-      catalogVersion: catalogServers.length > 0 ? '0.6.0' : 'unknown',
+      catalogVersion: catalog?.catalogVersion || 'unknown',
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
