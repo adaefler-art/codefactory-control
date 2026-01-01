@@ -3,11 +3,42 @@
  * 
  * This script runs before the Next.js build process.
  * It generates build metadata for display in the application.
+ * It also ensures workspace dependencies are built.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+
+// Build workspace dependencies
+function buildWorkspaceDependencies() {
+  const packagesDir = path.join(__dirname, '..', 'packages');
+  const packages = ['deploy-memory', 'verdict-engine'];
+  
+  console.log('Building workspace dependencies...');
+  
+  for (const pkg of packages) {
+    const pkgPath = path.join(packagesDir, pkg);
+    const distPath = path.join(pkgPath, 'dist');
+    
+    // Check if package exists and doesn't have dist folder
+    if (fs.existsSync(pkgPath) && !fs.existsSync(distPath)) {
+      console.log(`  Building @codefactory/${pkg}...`);
+      try {
+        // Build the package
+        execSync('npm run build', { 
+          cwd: pkgPath, 
+          stdio: 'inherit'
+        });
+        console.log(`  ✓ Built @codefactory/${pkg}`);
+      } catch (error) {
+        console.warn(`  Warning: Failed to build @codefactory/${pkg}:`, error.message);
+      }
+    } else if (fs.existsSync(distPath)) {
+      console.log(`  ✓ @codefactory/${pkg} already built`);
+    }
+  }
+}
 
 // Generate build metadata
 function generateBuildMetadata() {
@@ -47,6 +78,7 @@ function generateBuildMetadata() {
 
 // Run prebuild tasks
 try {
+  buildWorkspaceDependencies();
   generateBuildMetadata();
   console.log('✓ Pre-build checks passed');
 } catch (error) {
