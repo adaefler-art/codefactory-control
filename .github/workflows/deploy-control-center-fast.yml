@@ -192,6 +192,8 @@ jobs:
           IMAGE_TAG="${TAG_PREFIX}-${{ github.sha }}"
           IMAGE_URI="${REPO_URI}:${IMAGE_TAG}"
 
+          SMOKE_KEY_SECRET_ARN="arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G"
+
           echo "Target: cluster=${CLUSTER} service=${SERVICE}"
           echo "Image:  ${IMAGE_URI}"
 
@@ -225,6 +227,36 @@ jobs:
             )
             | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
           ' task-def.json > new-task-def.json
+
+          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+            jq --arg smoke_arn "${SMOKE_KEY_SECRET_ARN}" '
+              .containerDefinitions |= map(
+                if .name == "control-center" then
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_arn}])
+                else . end
+              )
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+
+            if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
+              echo "❌ AFU9_SMOKE_KEY not injected for staging task definition" >&2
+              exit 1
+            fi
+          else
+            jq '
+              .containerDefinitions |= map(
+                if .name == "control-center" then
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")))
+                else . end
+              )
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+
+            if jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
+              echo "❌ AFU9_SMOKE_KEY present in production task definition" >&2
+              exit 1
+            fi
+          fi
 
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://new-task-def.json \
