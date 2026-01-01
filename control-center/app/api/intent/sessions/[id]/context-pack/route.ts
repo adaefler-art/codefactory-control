@@ -53,6 +53,15 @@ export async function POST(
         });
       }
       
+      // Handle size limit error with specific status code
+      if ('code' in result && result.code === 'CONTEXT_PACK_TOO_LARGE') {
+        return errorResponse(result.error, {
+          status: 413, // Payload Too Large
+          requestId,
+          details: result.error,
+        });
+      }
+      
       return errorResponse('Failed to generate context pack', {
         status: 500,
         requestId,

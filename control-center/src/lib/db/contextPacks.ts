@@ -19,9 +19,43 @@ import type { IntentSessionWithMessages } from './intentSessions';
 import { getIntentSession } from './intentSessions';
 
 /**
+ * Maximum size for context pack JSON (2 MB)
+ * Prevents excessive memory usage and storage bloat
+ */
+const MAX_PACK_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+/**
+ * Stable JSON serialization with sorted keys
+ * 
+ * Ensures deterministic output regardless of key insertion order
+ */
+function stableStringify(obj: any): string {
+  if (obj === null || obj === undefined) {
+    return JSON.stringify(obj);
+  }
+  
+  if (typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(item => stableStringify(item)).join(',') + ']';
+  }
+  
+  // Sort object keys alphabetically
+  const sortedKeys = Object.keys(obj).sort();
+  const pairs = sortedKeys.map(key => {
+    const value = stableStringify(obj[key]);
+    return JSON.stringify(key) + ':' + value;
+  });
+  
+  return '{' + pairs.join(',') + '}';
+}
+
+/**
  * Canonicalize a context pack for deterministic hashing
  * 
- * Removes generatedAt field and ensures stable key ordering
+ * Removes generatedAt and created_at fields, ensures stable key ordering
  */
 function canonicalizeContextPack(pack: ContextPack): string {
   // Create a copy without generatedAt for hashing
@@ -30,13 +64,24 @@ function canonicalizeContextPack(pack: ContextPack): string {
   // Sort messages by seq (should already be sorted, but ensure it)
   const sortedMessages = [...canonicalPack.messages].sort((a, b) => a.seq - b.seq);
   
+  // Remove created_at from session to avoid timestamp drift in hash
+  const { createdAt, updatedAt, ...sessionWithoutTimestamps } = canonicalPack.session;
+  
   const canonical = {
     ...canonicalPack,
-    messages: sortedMessages,
+    session: {
+      ...sessionWithoutTimestamps,
+      // Keep only stable identifiers
+    },
+    messages: sortedMessages.map(msg => {
+      // Remove createdAt from messages for hash stability
+      const { createdAt: msgCreatedAt, ...msgWithoutTimestamp } = msg;
+      return msgWithoutTimestamp;
+    }),
   };
   
-  // Use JSON.stringify for deterministic serialization
-  return JSON.stringify(canonical);
+  // Use stable stringify for deterministic serialization
+  return stableStringify(canonical);
 }
 
 /**
@@ -110,7 +155,7 @@ export async function generateContextPack(
   pool: Pool,
   sessionId: string,
   userId: string
-): Promise<{ success: true; data: ContextPackRecord } | { success: false; error: string }> {
+): Promise<{ success: true; data: ContextPackRecord } | { success: false; error: string; code?: string }> {
   try {
     // Fetch session with messages (includes ownership check)
     const sessionResult = await getIntentSession(pool, sessionId, userId);
@@ -127,6 +172,18 @@ export async function generateContextPack(
     // Build context pack
     const pack = buildContextPack(session);
     const packHash = pack.derived.sessionHash;
+    
+    // Validate size before storage
+    const packJson = JSON.stringify(pack);
+    const packSizeBytes = Buffer.byteLength(packJson, 'utf8');
+    
+    if (packSizeBytes > MAX_PACK_SIZE_BYTES) {
+      return {
+        success: false,
+        error: `Context pack exceeds maximum size of ${MAX_PACK_SIZE_BYTES / (1024 * 1024)} MB (current: ${(packSizeBytes / (1024 * 1024)).toFixed(2)} MB)`,
+        code: 'CONTEXT_PACK_TOO_LARGE',
+      };
+    }
     
     // Check if pack with same hash already exists for this session
     const existingResult = await pool.query(
@@ -159,7 +216,7 @@ export async function generateContextPack(
       `INSERT INTO intent_context_packs (session_id, pack_json, pack_hash, version)
        VALUES ($1, $2, $3, $4)
        RETURNING id, session_id, created_at, pack_json, pack_hash, version`,
-      [sessionId, JSON.stringify(pack), packHash, CONTEXT_PACK_VERSION]
+      [sessionId, packJson, packHash, CONTEXT_PACK_VERSION]
     );
     
     const row = insertResult.rows[0];

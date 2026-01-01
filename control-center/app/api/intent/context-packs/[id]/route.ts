@@ -69,13 +69,16 @@ export async function GET(
     
     // Return JSON for download
     const json = JSON.stringify(pack.pack_json, null, 2);
-    const filename = `context-pack-${pack.session_id}-${pack.created_at.replace(/[:.]/g, '-')}.json`;
+    const hash12 = pack.pack_hash.substring(0, 12);
+    const filename = `context-pack-${pack.session_id}-${hash12}.json`;
     
     return new NextResponse(json, {
       status: 200,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'ETag': `"${pack.pack_hash}"`,
         'x-request-id': requestId,
       },
     });

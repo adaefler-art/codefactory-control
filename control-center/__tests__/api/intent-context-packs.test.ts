@@ -256,7 +256,7 @@ describe('GET /api/intent/context-packs/[id]', () => {
     const response = await downloadContextPack(request, { params: { id: TEST_PACK_ID } });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(response.headers.get('content-type')).toBe('application/json; charset=utf-8');
     expect(response.headers.get('content-disposition')).toContain('attachment');
     expect(response.headers.get('content-disposition')).toContain('context-pack');
 
@@ -371,5 +371,139 @@ describe('Deterministic hashing and redaction', () => {
     expect(pack.derived).toHaveProperty('sourcesCount');
     expect(pack.derived.messageCount).toBe(2);
     expect(pack.derived.sourcesCount).toBe(1);
+  });
+
+  test('hash stability - same session unchanged produces identical pack_hash', async () => {
+    const { generateContextPack: mockGenerate } = require('../../src/lib/db/contextPacks');
+
+    // First generation
+    mockGenerate.mockResolvedValueOnce({
+      success: true,
+      data: {
+        ...MOCK_CONTEXT_PACK,
+        created_at: '2026-01-01T12:00:00.000Z',
+      },
+    });
+
+    const request1 = new NextRequest(
+      `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-pack`,
+      {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-req-hash-stability-1',
+          'x-afu9-sub': TEST_USER_ID,
+        },
+      }
+    );
+
+    const response1 = await generateContextPack(request1, { params: { id: TEST_SESSION_ID } });
+    const body1 = await response1.json();
+    const hash1 = body1.pack_hash;
+
+    // Second generation (should return same pack due to idempotency)
+    mockGenerate.mockResolvedValueOnce({
+      success: true,
+      data: {
+        ...MOCK_CONTEXT_PACK,
+        created_at: '2026-01-01T12:05:00.000Z', // Different timestamp
+      },
+    });
+
+    const request2 = new NextRequest(
+      `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-pack`,
+      {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-req-hash-stability-2',
+          'x-afu9-sub': TEST_USER_ID,
+        },
+      }
+    );
+
+    const response2 = await generateContextPack(request2, { params: { id: TEST_SESSION_ID } });
+    const body2 = await response2.json();
+    const hash2 = body2.pack_hash;
+
+    // Hashes should be identical despite different created_at
+    expect(hash1).toBe(hash2);
+    expect(hash1).toBe('session-hash-123abc');
+  });
+
+  test('size cap - returns 413 when context pack exceeds maximum size', async () => {
+    const { generateContextPack: mockGenerate } = require('../../src/lib/db/contextPacks');
+
+    mockGenerate.mockResolvedValue({
+      success: false,
+      error: 'Context pack exceeds maximum size of 2 MB (current: 2.50 MB)',
+      code: 'CONTEXT_PACK_TOO_LARGE',
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/intent/sessions/${TEST_SESSION_ID}/context-pack`,
+      {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-req-size-cap',
+          'x-afu9-sub': TEST_USER_ID,
+        },
+      }
+    );
+
+    const response = await generateContextPack(request, { params: { id: TEST_SESSION_ID } });
+    const body = await response.json();
+
+    expect(response.status).toBe(413); // Payload Too Large
+    expect(body.error).toContain('exceeds maximum size');
+  });
+
+  test('download response has correct headers for evidence', async () => {
+    const { getContextPack: mockGet } = require('../../src/lib/db/contextPacks');
+    const { getIntentSession: mockGetSession } = require('../../src/lib/db/intentSessions');
+
+    mockGet.mockResolvedValue({
+      success: true,
+      data: MOCK_CONTEXT_PACK,
+    });
+
+    mockGetSession.mockResolvedValue({
+      success: true,
+      data: {
+        id: TEST_SESSION_ID,
+        user_id: TEST_USER_ID,
+        title: 'Test Session',
+        created_at: '2026-01-01T10:00:00.000Z',
+        updated_at: '2026-01-01T11:00:00.000Z',
+        status: 'active',
+        messages: [],
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/intent/context-packs/${TEST_PACK_ID}`,
+      {
+        headers: {
+          'x-request-id': 'test-req-evidence-headers',
+          'x-afu9-sub': TEST_USER_ID,
+        },
+      }
+    );
+
+    const response = await downloadContextPack(request, { params: { id: TEST_PACK_ID } });
+
+    // Verify Content-Type
+    expect(response.headers.get('content-type')).toBe('application/json; charset=utf-8');
+    
+    // Verify Content-Disposition includes session ID and hash12
+    const disposition = response.headers.get('content-disposition');
+    expect(disposition).toContain('attachment');
+    expect(disposition).toContain(TEST_SESSION_ID);
+    const hash12 = MOCK_CONTEXT_PACK.pack_hash.substring(0, 12);
+    expect(disposition).toContain(hash12);
+    
+    // Verify Cache-Control: no-store
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    
+    // Verify ETag
+    expect(response.headers.get('etag')).toBe(`"${MOCK_CONTEXT_PACK.pack_hash}"`);
   });
 });
