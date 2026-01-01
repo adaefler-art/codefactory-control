@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 import { API_ROUTES } from "@/lib/api-routes";
+import { SourcesPanel, SourcesBadge } from "./components/SourcesPanel";
+import type { UsedSources } from "@/lib/schemas/usedSources";
 
 interface IntentSession {
   id: string;
@@ -19,6 +21,8 @@ interface IntentMessage {
   content: string;
   created_at: string;
   seq: number;
+  used_sources?: UsedSources | null;
+  used_sources_hash?: string | null;
 }
 
 export default function IntentPage() {
@@ -29,6 +33,7 @@ export default function IntentPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch sessions on mount
@@ -232,15 +237,35 @@ export default function IntentPage() {
             <div
               key={message.id}
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+              onClick={() => {
+                // Select message to show sources in panel
+                if (message.role === "assistant" && message.used_sources && message.used_sources.length > 0) {
+                  setSelectedMessageId(message.id);
+                }
+              }}
             >
               <div
                 className={`max-w-2xl rounded-lg px-4 py-3 ${
                   message.role === "user"
                     ? "bg-blue-600 text-white"
                     : "bg-white border border-gray-200 text-gray-900"
+                } ${
+                  message.role === "assistant" && message.used_sources && message.used_sources.length > 0
+                    ? "cursor-pointer hover:shadow-md transition-shadow"
+                    : ""
+                } ${
+                  selectedMessageId === message.id ? "ring-2 ring-blue-500" : ""
                 }`}
               >
                 <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                
+                {/* Sources badge for assistant messages */}
+                {message.role === "assistant" && message.used_sources && message.used_sources.length > 0 && (
+                  <div className="mt-2">
+                    <SourcesBadge count={message.used_sources.length} />
+                  </div>
+                )}
+                
                 <div
                   className={`text-xs mt-2 ${
                     message.role === "user" ? "text-blue-100" : "text-gray-500"
@@ -292,6 +317,17 @@ export default function IntentPage() {
           </form>
         </div>
       </div>
+
+      {/* Sources Panel */}
+      {(() => {
+        const selectedMessage = messages.find(m => m.id === selectedMessageId);
+        const latestAssistantMessage = messages.filter(m => m.role === 'assistant').reverse()[0];
+        const messageToShow = selectedMessage || latestAssistantMessage;
+        
+        return (
+          <SourcesPanel sources={messageToShow?.used_sources} />
+        );
+      })()}
     </div>
   );
 }
