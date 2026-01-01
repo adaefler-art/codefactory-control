@@ -8,9 +8,13 @@ This document describes a minimal smoke test for the Timeline Chain API.
 
 ## Optional Smoke-Auth (Stage-only via ENV)
 
-The Control Center middleware supports a **single-endpoint** smoke-auth bypass for:
+The Control Center middleware supports a **staging-only** smoke-auth bypass allowlist for:
 
 - `GET /api/timeline/chain`
+- `GET /api/intent/sessions`
+- `POST /api/intent/sessions`
+- `GET /api/intent/sessions/<id>`
+- `POST /api/intent/sessions/<id>/messages`
 
 **Contract**
 
@@ -56,7 +60,8 @@ This is a minimal HTTP-only E2E smoke test for **Intent Sessions Ownership + rac
 .\scripts\e2e-intent-sessions-smoke.ps1 `
   -BaseUrl "https://stage.afu-9.com" `
   -UserA "smoke-user-a" `
-  -UserB "smoke-user-b"
+  -UserB "smoke-user-b" `
+  -SmokeKey $env:AFU9_SMOKE_KEY
 ```
 
 **Expected checks:**
