@@ -398,3 +398,80 @@ export async function queryByIssueWithCursor(
     };
   }
 }
+
+/**
+ * Query audit records by owner/repo/issue_number
+ *
+ * Returns records ordered by created_at DESC.
+ *
+ * @param pool Database pool
+ * @param owner GitHub repo owner
+ * @param repo GitHub repo name
+ * @param issueNumber GitHub issue number
+ * @param options Optional pagination
+ * @returns List of audit records
+ */
+export async function queryByIssue(
+  pool: Pool,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  options?: {
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ success: true; data: CrGithubIssueAuditRecord[] } | { success: false; error: string }> {
+  try {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+
+    const result = await pool.query(
+      `SELECT 
+        id,
+        canonical_id,
+        session_id,
+        cr_version_id,
+        cr_hash,
+        lawbook_version,
+        owner,
+        repo,
+        issue_number,
+        action,
+        rendered_issue_hash,
+        used_sources_hash,
+        created_at,
+        result_json
+      FROM cr_github_issue_audit
+      WHERE owner = $1 AND repo = $2 AND issue_number = $3
+      ORDER BY created_at DESC
+      LIMIT $4 OFFSET $5`,
+      [owner, repo, issueNumber, limit, offset]
+    );
+
+    return {
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        canonical_id: row.canonical_id,
+        session_id: row.session_id,
+        cr_version_id: row.cr_version_id,
+        cr_hash: row.cr_hash,
+        lawbook_version: row.lawbook_version,
+        owner: row.owner,
+        repo: row.repo,
+        issue_number: row.issue_number,
+        action: row.action,
+        rendered_issue_hash: row.rendered_issue_hash,
+        used_sources_hash: row.used_sources_hash,
+        created_at: row.created_at.toISOString(),
+        result_json: row.result_json,
+      })),
+    };
+  } catch (error) {
+    console.error('[DB] Error querying audit records by issue:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
