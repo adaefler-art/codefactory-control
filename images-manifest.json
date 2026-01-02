@@ -1,0 +1,73 @@
+{
+  "$schema": "./images-manifest-schema.json",
+  "version": "1.0.0",
+  "metadata": {
+    "description": "Canonical image manifest for AFU-9 ECS deployments (E7.0.2)",
+    "purpose": "Single source of truth ensuring deterministic build/push/deploy chains"
+  },
+  "images": [
+    {
+      "id": "control-center",
+      "name": "afu9/control-center",
+      "dockerfile": "control-center/Dockerfile",
+      "context": ".",
+      "buildArgs": [
+        "BUILD_VERSION",
+        "BUILD_COMMIT_HASH",
+        "BUILD_ENV",
+        "BUILD_TIMESTAMP"
+      ],
+      "required": true,
+      "taskDefContainerName": "control-center",
+      "healthCheck": "/api/ready"
+    },
+    {
+      "id": "mcp-github",
+      "name": "afu9/mcp-github",
+      "dockerfile": "mcp-servers/github/Dockerfile",
+      "context": "mcp-servers",
+      "buildArgs": [],
+      "required": true,
+      "taskDefContainerName": "mcp-github",
+      "healthCheck": "/health"
+    },
+    {
+      "id": "mcp-deploy",
+      "name": "afu9/mcp-deploy",
+      "dockerfile": "mcp-servers/deploy/Dockerfile",
+      "context": "mcp-servers",
+      "buildArgs": [],
+      "required": true,
+      "taskDefContainerName": "mcp-deploy",
+      "healthCheck": "/health"
+    },
+    {
+      "id": "mcp-observability",
+      "name": "afu9/mcp-observability",
+      "dockerfile": "mcp-servers/observability/Dockerfile",
+      "context": "mcp-servers",
+      "buildArgs": [],
+      "required": true,
+      "taskDefContainerName": "mcp-observability",
+      "healthCheck": "/health"
+    }
+  ],
+  "ecrRepositories": [
+    "afu9/control-center",
+    "afu9/mcp-github",
+    "afu9/mcp-deploy",
+    "afu9/mcp-observability"
+  ],
+  "tagging": {
+    "strategy": "git-sha",
+    "prefixes": {
+      "production": "prod",
+      "staging": "stage"
+    },
+    "alwaysTag": [
+      "{prefix}-{full_sha}",
+      "{prefix}-{short_sha}",
+      "{prefix}-latest"
+    ]
+  }
+}

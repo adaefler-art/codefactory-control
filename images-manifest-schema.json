@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://afu-9.com/schemas/images-manifest.json",
+  "title": "AFU-9 Image Manifest",
+  "description": "Schema for the canonical image manifest ensuring deterministic deployments",
+  "type": "object",
+  "required": ["version", "metadata", "images", "ecrRepositories", "tagging"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Manifest schema version",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["description", "purpose"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        }
+      }
+    },
+    "images": {
+      "type": "array",
+      "description": "List of container images that must be built and pushed",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "dockerfile", "context", "required", "taskDefContainerName"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this image",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "name": {
+            "type": "string",
+            "description": "ECR repository name (e.g., afu9/control-center)"
+          },
+          "dockerfile": {
+            "type": "string",
+            "description": "Path to Dockerfile relative to repo root"
+          },
+          "context": {
+            "type": "string",
+            "description": "Build context path relative to repo root"
+          },
+          "buildArgs": {
+            "type": "array",
+            "description": "List of build argument names",
+            "items": {
+              "type": "string"
+            }
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this image must be built for every deploy"
+          },
+          "taskDefContainerName": {
+            "type": "string",
+            "description": "Container name in ECS task definition"
+          },
+          "healthCheck": {
+            "type": "string",
+            "description": "Health check endpoint path"
+          }
+        }
+      }
+    },
+    "ecrRepositories": {
+      "type": "array",
+      "description": "List of ECR repository names that must exist",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "tagging": {
+      "type": "object",
+      "required": ["strategy", "prefixes", "alwaysTag"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["git-sha", "semantic-version"],
+          "description": "Tagging strategy to use"
+        },
+        "prefixes": {
+          "type": "object",
+          "required": ["production", "staging"],
+          "properties": {
+            "production": {
+              "type": "string"
+            },
+            "staging": {
+              "type": "string"
+            }
+          }
+        },
+        "alwaysTag": {
+          "type": "array",
+          "description": "Tag patterns to always apply (supports {prefix}, {full_sha}, {short_sha})",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

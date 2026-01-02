@@ -1278,6 +1278,27 @@ jobs:
             Start-Sleep -Seconds 5
           }
 
+      - name: Post-Deploy Image Verification (E7.0.2)
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          GIT_SHA: ${{ github.sha }}
+          ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
+          ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          echo "🔍 Running Post-Deploy Image Verification (E7.0.2)"
+          echo "Verifying running task definition uses only images from this deploy..."
+          echo ""
+          
+          # Verify that the deployed task definition contains ONLY images
+          # from the current deploy (no mixed/stale references)
+          npx ts-node scripts/post-deploy-image-verification.ts
+          
+          echo ""
+          echo "✅ Verification passed - task definition matches deploy"
+
       - name: Record deploy event (internal)
         shell: bash
         env:
