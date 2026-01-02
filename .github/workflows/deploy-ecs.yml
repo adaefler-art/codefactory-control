@@ -517,11 +517,47 @@ jobs:
           echo "should_migrate=${SHOULD_MIGRATE}"
 
           SMOKE_KEY_SECRET_ID=""
+          SMOKE_KEY_VALUE_FROM=""
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            # Inject by secret name (avoids requiring Secrets Manager DescribeSecret at deploy time).
-            # ECS Secrets Manager integration accepts secret name as valueFrom.
+            # Canonical identifier (must appear in this workflow for repo invariants).
+            # Note: ECS `valueFrom` treats non-ARN strings as SSM Parameter Store names.
+            # To inject from Secrets Manager, we resolve the secret ARN by name at deploy time.
             SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
             echo "Using stage smoke key secret id: ${SMOKE_KEY_SECRET_ID}"
+
+            # Prefer Secrets Manager (resolved by name, no hardcoded suffix ARN in repo).
+            set +e
+            SMOKE_KEY_VALUE_FROM=$(aws secretsmanager describe-secret \
+              --secret-id "${SMOKE_KEY_SECRET_ID}" \
+              --region "${{ env.AWS_REGION }}" \
+              --query 'ARN' \
+              --output text 2>smoke-key.describe.err)
+            SMOKE_KEY_DESCRIBE_RC=$?
+            set -e
+
+            if [ "${SMOKE_KEY_DESCRIBE_RC}" -ne 0 ]; then
+              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SMOKE_KEY_SECRET_ID}" >&2
+              echo "   This deploy must NOT fall back to SSM (it causes ECS to treat the identifier as an SSM parameter name)." >&2
+              echo "   AWS CLI error:" >&2
+              cat smoke-key.describe.err >&2 || true
+              echo "   Remedy:" >&2
+              echo "   - Ensure the secret exists in Secrets Manager (name: ${SMOKE_KEY_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
+              echo "   - Ensure the deploy role can call secretsmanager:DescribeSecret" >&2
+              exit 1
+            fi
+
+            if [ -z "${SMOKE_KEY_VALUE_FROM:-}" ] || [ "${SMOKE_KEY_VALUE_FROM}" = "None" ]; then
+              echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_KEY_SECRET_ID})." >&2
+              echo "   Expected a secret named exactly: ${SMOKE_KEY_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
+              exit 1
+            fi
+
+            if ! echo "${SMOKE_KEY_VALUE_FROM}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ Resolved smoke key valueFrom is not a Secrets Manager ARN: ${SMOKE_KEY_VALUE_FROM}" >&2
+              exit 1
+            fi
+
+            echo "Using Secrets Manager ARN for smoke key (resolved by name): ${SMOKE_KEY_VALUE_FROM}"
           fi
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
@@ -711,7 +747,7 @@ jobs:
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            jq --arg smoke_value_from "${SMOKE_KEY_SECRET_ID}" '
+            jq --arg smoke_value_from "${SMOKE_KEY_VALUE_FROM}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
                   .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_value_from}])
@@ -719,6 +755,13 @@ jobs:
               )
             ' new-task-def.json > new-task-def.tmp.json
             mv new-task-def.tmp.json new-task-def.json
+
+            INJECTED_SMOKE_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY") | .valueFrom' new-task-def.json | head -n 1)
+            echo "Injected AFU9_SMOKE_KEY valueFrom: ${INJECTED_SMOKE_VALUE_FROM}"
+            if [ -z "${INJECTED_SMOKE_VALUE_FROM:-}" ] || ! echo "${INJECTED_SMOKE_VALUE_FROM}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ AFU9_SMOKE_KEY injection is not a Secrets Manager ARN; refusing to deploy." >&2
+              exit 1
+            fi
 
             if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
               echo "❌ AFU9_SMOKE_KEY not injected for staging task definition" >&2
