@@ -226,3 +226,8 @@ export async function validateAndSaveCrDraft(
     };
   }
 }
+
+/**
+ * Alias for getCrDraft for consistency with getLatestCrVersion
+ */
+export const getLatestCrDraft = getCrDraft;
