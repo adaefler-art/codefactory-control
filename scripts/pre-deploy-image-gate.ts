@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 /**
- * Pre-Deploy Image Gate (E7.0.2)
+ * Pre-Deploy Image Gate (E7.0.2 - Hardened)
  * 
  * Purpose: Pre-deployment check ensuring all images from the manifest are:
  *   1. Built and pushed to ECR
@@ -12,7 +12,7 @@
  * that haven't been built or pushed.
  * 
  * Environment variables:
- *   DEPLOY_ENV - Required: "staging" or "production"
+ *   DEPLOY_ENV - Required: "staging"/"stage" or "production"/"prod"
  *   GIT_SHA - Required: Full git commit SHA
  *   AWS_REGION - Optional: AWS region (default: eu-central-1)
  *   SKIP_IMAGE_GATE - Optional: Set to "true" to skip (NOT recommended)
@@ -23,9 +23,16 @@
  *   2 - Usage error or missing env vars
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import { loadManifest } from './validate-image-manifest';
+import {
+  normalizeEnvironment,
+  generateAllTags,
+  computeImageTag,
+  getDeployImages,
+  type ImageManifest,
+  type ImageDefinition
+} from './lib/image-matrix';
 
 // AWS SDK is optional - script can run in two modes:
 // 1. With AWS SDK: actually check ECR repositories and images
@@ -42,7 +49,8 @@ try {
 interface ImageRef {
   id: string;
   name: string;
-  tags: string[];
+  primaryTag: string;  // Full SHA tag for deterministic verification
+  allTags: string[];   // All variant tags (short SHA, latest)
   required: boolean;
 }
 
@@ -55,40 +63,29 @@ function getRequiredEnvVar(name: string): string {
   return value;
 }
 
-function resolveTagPrefix(deployEnv: string): string {
-  if (deployEnv === 'production') {
-    return 'prod';
-  } else if (deployEnv === 'staging') {
-    return 'stage';
-  } else {
-    console.error(`❌ Invalid DEPLOY_ENV: ${deployEnv}. Must be "staging" or "production".`);
-    process.exit(2);
-  }
-}
-
-function generateTags(manifest: any, tagPrefix: string, gitSha: string): string[] {
-  const shortSha = gitSha.substring(0, 7);
+function buildImageReferences(
+  manifest: ImageManifest,
+  deployEnv: string,
+  gitSha: string,
+  features?: Record<string, boolean>
+): ImageRef[] {
+  // Normalize environment to handle aliases (prod/production, stage/staging)
+  const normalizedEnv = normalizeEnvironment(deployEnv);
   
-  return manifest.tagging.alwaysTag.map((pattern: string) => {
-    return pattern
-      .replace('{prefix}', tagPrefix)
-      .replace('{full_sha}', gitSha)
-      .replace('{short_sha}', shortSha);
-  });
-}
+  // Get images for this deploy (filters by environment and features)
+  const deployImages = getDeployImages(manifest, normalizedEnv, features);
+  
+  // Generate tags for all images
+  const allTags = generateAllTags(manifest, normalizedEnv, gitSha);
+  const primaryTag = computeImageTag(manifest, normalizedEnv, gitSha);
 
-function buildImageReferences(manifest: any, deployEnv: string, gitSha: string): ImageRef[] {
-  const tagPrefix = resolveTagPrefix(deployEnv);
-  const tags = generateTags(manifest, tagPrefix, gitSha);
-
-  return manifest.images
-    .filter((img: any) => img.required)
-    .map((img: any) => ({
-      id: img.id,
-      name: img.name,
-      tags,
-      required: img.required
-    }));
+  return deployImages.map((img: ImageDefinition) => ({
+    id: img.id,
+    name: img.name,
+    primaryTag,
+    allTags,
+    required: img.required
+  }));
 }
 
 async function checkEcrRepository(repoName: string): Promise<boolean> {
@@ -180,26 +177,46 @@ async function validateImages(imageRefs: ImageRef[]): Promise<string[]> {
   
   for (const imageRef of imageRefs) {
     console.log(`\n  Image: ${imageRef.id} (${imageRef.name})`);
+    console.log(`    Primary tag: ${imageRef.primaryTag}`);
     
-    let anyTagFound = false;
-    for (const tag of imageRef.tags) {
-      try {
-        const exists = await checkImageExists(imageRef.name, tag);
-        if (exists) {
-          console.log(`    ✅ Tag found: ${tag}`);
-          anyTagFound = true;
-        } else {
-          console.log(`    ⚠️  Tag not found: ${tag}`);
+    // Check primary tag (full SHA - most deterministic)
+    try {
+      const primaryExists = await checkImageExists(imageRef.name, imageRef.primaryTag);
+      if (primaryExists) {
+        console.log(`    ✅ Primary tag found: ${imageRef.primaryTag}`);
+      } else {
+        console.error(`    ❌ Primary tag NOT found: ${imageRef.primaryTag}`);
+        if (imageRef.required) {
+          errors.push(
+            `Required image ${imageRef.id} missing primary tag: ${imageRef.primaryTag}`
+          );
         }
-      } catch (error: any) {
-        console.error(`    ❌ Error checking tag ${tag}: ${error.message}`);
+      }
+    } catch (error: any) {
+      console.error(`    ❌ Error checking primary tag: ${error.message}`);
+      if (imageRef.required) {
+        errors.push(
+          `Failed to verify required image ${imageRef.id}: ${error.message}`
+        );
       }
     }
-
-    // For required images, at least one tag must exist
-    if (imageRef.required && !anyTagFound) {
-      errors.push(`Required image ${imageRef.id} has no pushed tags: ${imageRef.tags.join(', ')}`);
-      console.error(`  ❌ REQUIRED image missing: ${imageRef.id}`);
+    
+    // Also check other tags (informational - don't fail on these)
+    const otherTags = imageRef.allTags.filter(t => t !== imageRef.primaryTag);
+    if (otherTags.length > 0) {
+      console.log(`    Other tags: ${otherTags.join(', ')}`);
+      for (const tag of otherTags) {
+        try {
+          const exists = await checkImageExists(imageRef.name, tag);
+          if (exists) {
+            console.log(`      ✓ ${tag}`);
+          } else {
+            console.log(`      ⚠  ${tag} (not found but optional)`);
+          }
+        } catch (error: any) {
+          console.log(`      ⚠  ${tag} (error: ${error.message})`);
+        }
+      }
     }
   }
 
@@ -241,7 +258,11 @@ async function main() {
   console.log('📦 Required images for this deploy:');
   imageRefs.forEach(ref => {
     console.log(`  - ${ref.id} (${ref.name})`);
-    console.log(`    Tags: ${ref.tags.join(', ')}`);
+    console.log(`    Primary tag: ${ref.primaryTag}`);
+    if (ref.allTags.length > 1) {
+      const otherTags = ref.allTags.filter(t => t !== ref.primaryTag);
+      console.log(`    Other tags: ${otherTags.join(', ')}`);
+    }
   });
   console.log();
 
@@ -290,4 +311,5 @@ if (require.main === module) {
   main();
 }
 
-export { buildImageReferences, resolveTagPrefix, generateTags };
+// Export functions for use by post-deploy verification
+export { buildImageReferences };

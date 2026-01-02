@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 /**
- * Post-Deploy Image Verification (E7.0.2)
+ * Post-Deploy Image Verification (E7.0.2 - Hardened)
  * 
  * Purpose: Verify that the running ECS task definition contains ONLY images
  * from the current deploy (no mixed/stale image references).
@@ -10,7 +10,7 @@
  * while others run new images.
  * 
  * Environment variables:
- *   DEPLOY_ENV - Required: "staging" or "production"
+ *   DEPLOY_ENV - Required: "staging"/"stage" or "production"/"prod"
  *   GIT_SHA - Required: Full git commit SHA
  *   ECS_CLUSTER - Required: ECS cluster name
  *   ECS_SERVICE - Required: ECS service name
@@ -24,7 +24,13 @@
 
 import * as path from 'path';
 import { loadManifest } from './validate-image-manifest';
-import { resolveTagPrefix, generateTags } from './pre-deploy-image-gate';
+import {
+  normalizeEnvironment,
+  computeImageTag,
+  getDeployImages,
+  parseImageUri as parseImageUriFromLib,
+  type ImageManifest
+} from './lib/image-matrix';
 
 // AWS SDK for ECS
 let ecsClient: any = null;
@@ -52,37 +58,6 @@ function getRequiredEnvVar(name: string): string {
     process.exit(2);
   }
   return value;
-}
-
-function parseImageUri(imageUri: string): { repository: string; tag: string } {
-  // Format: account.dkr.ecr.region.amazonaws.com/repo-name:tag
-  const parts = imageUri.split(':');
-  if (parts.length !== 2) {
-    throw new Error(`Invalid image URI format: ${imageUri} (expected format: registry/repo:tag)`);
-  }
-  
-  const tag = parts[1];
-  const repoFullPath = parts[0];
-  
-  // Extract just the repo name (e.g., "afu9/control-center")
-  // Expected format: account.dkr.ecr.region.amazonaws.com/repo-name
-  const repoParts = repoFullPath.split('/');
-  
-  if (repoParts.length < 2) {
-    throw new Error(
-      `Invalid repository path in image URI: ${imageUri} ` +
-      `(expected format: registry/repo:tag, got ${repoParts.length} parts)`
-    );
-  }
-  
-  // Skip ECR registry part (first element), join remaining parts for multi-part repo names
-  const repository = repoParts.slice(1).join('/');
-  
-  if (!repository) {
-    throw new Error(`Could not extract repository name from image URI: ${imageUri}`);
-  }
-  
-  return { repository, tag };
 }
 
 async function getCurrentTaskDefinition(cluster: string, service: string): Promise<any> {
@@ -136,16 +111,46 @@ function extractContainerImages(taskDef: any): ContainerImage[] {
   return images;
 }
 
+function extractContainerImages(taskDef: any): ContainerImage[] {
+  const images: ContainerImage[] = [];
+  
+  for (const container of taskDef.containerDefinitions || []) {
+    const imageUri = container.image;
+    const parsed = parseImageUriFromLib(imageUri);
+    
+    images.push({
+      containerName: container.name,
+      image: imageUri,
+      repository: parsed.repository,
+      tag: parsed.tag
+    });
+  }
+  
+  return images;
+}
+
 function validateImageTags(
   containerImages: ContainerImage[],
-  manifest: any,
-  expectedTags: string[]
+  manifest: ImageManifest,
+  deployEnv: string,
+  gitSha: string
 ): string[] {
   const errors: string[] = [];
-  const expectedTagSet = new Set(expectedTags);
+  
+  // Normalize environment and compute expected primary tag
+  const normalizedEnv = normalizeEnvironment(deployEnv);
+  const expectedPrimaryTag = computeImageTag(manifest, normalizedEnv, gitSha);
+  
+  // Get images that should be in this deploy
+  const expectedImages = getDeployImages(manifest, normalizedEnv);
+  const expectedImageMap = new Map(
+    expectedImages.map(img => [img.taskDefContainerName, img])
+  );
 
   console.log('\n🔍 Validating container images...\n');
+  console.log(`Expected primary tag: ${expectedPrimaryTag}\n`);
 
+  // Validate each container in the task definition
   for (const containerImg of containerImages) {
     console.log(`  Container: ${containerImg.containerName}`);
     console.log(`    Image: ${containerImg.image}`);
@@ -153,12 +158,15 @@ function validateImageTags(
     console.log(`    Tag: ${containerImg.tag}`);
 
     // Find corresponding image in manifest
-    const manifestImage = manifest.images.find(
-      (img: any) => img.taskDefContainerName === containerImg.containerName
-    );
+    const manifestImage = expectedImageMap.get(containerImg.containerName);
 
     if (!manifestImage) {
-      console.warn(`    ⚠️  Warning: Container not found in manifest`);
+      // Container in TaskDef but not in manifest for this deploy
+      errors.push(
+        `Unexpected container "${containerImg.containerName}" found in TaskDef ` +
+        `but not in manifest for ${deployEnv} deploy`
+      );
+      console.error(`    ❌ Unexpected container (not in manifest for this environment)`);
       continue;
     }
 
@@ -172,15 +180,28 @@ function validateImageTags(
       continue;
     }
 
-    // Check if tag is one of the expected tags
-    if (!expectedTagSet.has(containerImg.tag)) {
+    // Check if tag matches the expected primary tag (full SHA)
+    if (containerImg.tag !== expectedPrimaryTag) {
       errors.push(
-        `Container ${containerImg.containerName}: unexpected tag "${containerImg.tag}". ` +
-        `Expected one of: ${expectedTags.join(', ')}`
+        `Container ${containerImg.containerName}: tag mismatch. ` +
+        `Expected ${expectedPrimaryTag}, got ${containerImg.tag}`
       );
-      console.error(`    ❌ Tag not in expected set`);
+      console.error(`    ❌ Tag mismatch (expected: ${expectedPrimaryTag})`);
     } else {
-      console.log(`    ✅ Tag matches expected set`);
+      console.log(`    ✅ Tag matches expected deploy`);
+    }
+    
+    // Remove from expected set (to detect missing containers later)
+    expectedImageMap.delete(containerImg.containerName);
+  }
+  
+  // Check for missing containers (in manifest but not in TaskDef)
+  for (const [containerName, imgDef] of expectedImageMap.entries()) {
+    if (imgDef.required) {
+      errors.push(
+        `Required container "${containerName}" from manifest not found in TaskDef`
+      );
+      console.error(`\n  ❌ Missing required container: ${containerName}`);
     }
   }
 
@@ -188,7 +209,7 @@ function validateImageTags(
 }
 
 async function main() {
-  console.log('🔍 Post-Deploy Image Verification (E7.0.2)\n');
+  console.log('🔍 Post-Deploy Image Verification (E7.0.2 - Hardened)\n');
 
   // Load required environment variables
   const deployEnv = getRequiredEnvVar('DEPLOY_ENV');
@@ -213,14 +234,6 @@ async function main() {
   const manifest = loadManifest(manifestPath);
   console.log(`✓ Manifest loaded (version ${manifest.version})\n`);
 
-  // Generate expected tags for this deploy
-  const tagPrefix = resolveTagPrefix(deployEnv);
-  const expectedTags = generateTags(manifest, tagPrefix, gitSha);
-  
-  console.log('📦 Expected image tags for this deploy:');
-  expectedTags.forEach(tag => console.log(`  - ${tag}`));
-  console.log();
-
   try {
     // Get current task definition from ECS
     const taskDef = await getCurrentTaskDefinition(cluster, service);
@@ -234,7 +247,7 @@ async function main() {
     });
 
     // Validate images match expected tags
-    const errors = validateImageTags(containerImages, manifest, expectedTags);
+    const errors = validateImageTags(containerImages, manifest, deployEnv, gitSha);
 
     // Summary
     console.log('\n' + '='.repeat(60));
