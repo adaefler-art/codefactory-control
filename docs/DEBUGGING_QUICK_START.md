@@ -31,7 +31,7 @@ Just let it work! When `deploy-ecs.yml` fails:
 
 ```bash
 # Set your GitHub token
-export GITHUB_TOKEN="ghp_your_token_here"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 
 # Analyze latest failure
 node scripts/analyze-workflow-failure.js --latest-failure

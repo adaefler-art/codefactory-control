@@ -51,13 +51,13 @@ Store secrets in AWS Secrets Manager before deployment:
 # GitHub Personal Access Token
 aws secretsmanager create-secret \
   --name /afu9/github/token \
-  --secret-string '{"token":"ghp_your_token_here"}' \
+   --secret-string '{"token":"<YOUR_GITHUB_TOKEN>"}' \
   --region eu-central-1
 
 # OpenAI API Key
 aws secretsmanager create-secret \
   --name /afu9/openai/api-key \
-  --secret-string '{"apiKey":"sk-your_key_here"}' \
+   --secret-string '{"apiKey":"<YOUR_OPENAI_API_KEY>"}' \
   --region eu-central-1
 
 # Database Credentials

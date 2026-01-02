@@ -498,7 +498,7 @@ logger.info('User authenticated', { userId: 'user-123' });
 // Schlecht ❌
 logger.info('User authenticated', { 
   userId: 'user-123',
-  token: 'ghp_...',
+  token: '<REDACTED_GITHUB_TOKEN>',
   password: '...'
 });
 ```

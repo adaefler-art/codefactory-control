@@ -132,12 +132,12 @@ AWS_ACCOUNT_ID=123456789012
 AWS_REGION=eu-central-1
 
 # GitHub Credentials
-GITHUB_TOKEN=ghp_your_token_here
+GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>
 GITHUB_OWNER=your-org
 GITHUB_REPO=your-repo
 
 # LLM API Keys
-OPENAI_API_KEY=sk-your-key-here
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
 
 # Database (will be auto-generated if using Secrets Manager)
 # DB_PASSWORD=random-secure-password

@@ -502,7 +502,7 @@ curl http://${ALB_DNS}/api/ready | jq .
 aws secretsmanager create-secret \
   --name afu9/github \
   --secret-string '{
-    "token": "ghp_DEIN_GITHUB_TOKEN",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }' \
@@ -512,7 +512,7 @@ aws secretsmanager create-secret \
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_DEIN_GITHUB_TOKEN",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }' \
@@ -534,9 +534,9 @@ aws ecs update-service \
 aws secretsmanager create-secret \
   --name afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-DEIN_OPENAI_KEY",
-    "anthropic_api_key": "sk-ant-DEIN_ANTHROPIC_KEY",
-    "deepseek_api_key": "DEIN_DEEPSEEK_KEY"
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>",
+    "deepseek_api_key": "<YOUR_DEEPSEEK_API_KEY>"
   }' \
   --region ${AWS_REGION}
 
@@ -544,9 +544,9 @@ aws secretsmanager create-secret \
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-DEIN_OPENAI_KEY",
-    "anthropic_api_key": "sk-ant-DEIN_ANTHROPIC_KEY",
-    "deepseek_api_key": "DEIN_DEEPSEEK_KEY"
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>",
+    "deepseek_api_key": "<YOUR_DEEPSEEK_API_KEY>"
   }' \
   --region ${AWS_REGION}
 

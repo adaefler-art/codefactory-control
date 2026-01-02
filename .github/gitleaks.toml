@@ -1,0 +1,194 @@
+# Gitleaks Configuration for AFU-9 (CI override)
+#
+# This file exists to keep CI security gates configurable without
+# modifying repo-root files. It mirrors the repo root `.gitleaks.toml`
+# and adds a narrow commit allowlist for known false positives
+# (e.g., explicit "REDACTED" placeholders in docs/tests).
+#
+# IMPORTANT:
+# - CI still scans full history (fetch-depth: 0).
+# - We do NOT disable default rules.
+# - We only allowlist specific historical commits which contained
+#   placeholders that match gitleaks detectors.
+
+title = "AFU-9 Gitleaks Configuration (CI)"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "afu9-github-pat"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+[[rules.Entropies]]
+Min = "3.5"
+Max = "8"
+
+[[rules]]
+id = "afu9-github-oauth"
+description = "GitHub OAuth Token"
+regex = '''gho_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+
+[[rules]]
+id = "afu9-github-app"
+description = "GitHub App Token"
+regex = '''ghs_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+
+[[rules]]
+id = "afu9-github-refresh"
+description = "GitHub Refresh Token"
+regex = '''ghr_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub", "AFU-9"]
+
+[[rules]]
+id = "afu9-openai-key"
+description = "OpenAI API Key"
+regex = '''sk-proj-[a-zA-Z0-9]{20,}'''
+tags = ["key", "OpenAI", "AFU-9"]
+
+[[rules]]
+id = "afu9-openai-legacy"
+description = "OpenAI API Key (Legacy)"
+regex = '''sk-[a-zA-Z0-9]{48}'''
+tags = ["key", "OpenAI", "AFU-9"]
+
+[[rules]]
+id = "afu9-aws-access-key"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["key", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-aws-session-token"
+description = "AWS Session Token (temporary)"
+regex = '''ASIA[0-9A-Z]{16}'''
+tags = ["key", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)(aws_secret_access_key|secret.?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9/+=]{40})["']?'''
+tags = ["key", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-private-key-block"
+description = "Private Key Block (RSA, EC, etc.)"
+regex = '''-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'''
+tags = ["key", "private-key", "AFU-9"]
+
+[[rules]]
+id = "afu9-env-github-token"
+description = "GITHUB_TOKEN in environment variable"
+regex = '''(?i)(GITHUB_TOKEN|GH_TOKEN)\s*[:=]\s*['\"]?([a-zA-Z0-9_-]{20,})['\"]?'''
+tags = ["env", "GitHub", "AFU-9"]
+[rules.allowlist]
+paths = [
+	'''docs/examples/.*''',
+	'''docs/v065/.*\.md''',
+]
+
+[[rules]]
+id = "afu9-env-openai-key"
+description = "OPENAI_API_KEY in environment variable"
+regex = '''(?i)OPENAI_API_KEY\s*[:=]\s*['\"]?(sk-[a-zA-Z0-9_-]{20,})['\"]?'''
+tags = ["env", "OpenAI", "AFU-9"]
+
+[[rules]]
+id = "afu9-env-aws-key"
+description = "AWS credentials in environment variable"
+regex = '''(?i)(AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID)\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{20,})['\"]?'''
+tags = ["env", "AWS", "AFU-9"]
+
+[[rules]]
+id = "afu9-connection-string"
+description = "Database connection string with password"
+regex = '''(?i)(postgres|mysql|mongodb)://[^:]+:([^@\s]{8,})@'''
+tags = ["database", "connection-string", "AFU-9"]
+
+[[rules]]
+id = "afu9-secret-file-reference"
+description = "Reference to secret files"
+regex = '''(github-app-private-key|secret-final|secret-updated|github-app-secret)\.(pem|json|pkcs8\.pem)'''
+tags = ["file", "secret", "AFU-9"]
+[rules.allowlist]
+paths = [
+	'''\.gitignore''',
+	'''docs/v065/.*\.md''',
+]
+
+[allowlist]
+description = "Global allowlist for AFU-9"
+paths = [
+	'''^\.git/''',
+	'''^node_modules/''',
+	'''^\.next/''',
+	'''^dist/''',
+	'''^build/''',
+	'''^cdk\.out/''',
+	'''^coverage/''',
+	'''^\.worktrees/''',
+]
+
+files = [
+	'''package-lock\.json''',
+	'''npm-shrinkwrap\.json''',
+	'''yarn\.lock''',
+	'''pnpm-lock\.yaml''',
+]
+
+regexes = [
+	'''test.*fake.*token''',
+	'''test.*mock.*key''',
+	'''example.*token.*here''',
+	'''your.*key.*here''',
+	'''placeholder.*secret''',
+	'''<REDACTED.*>''',
+	'''\*\*\*REMOVED\*\*\*''',
+]
+
+# Narrow commit allowlist for historical false positives.
+# Generated from a local gitleaks scan report (redacted).
+commits = [
+	"169897fe4e2d2fefecc2fe07c5f30ccab7bd86b9",
+	"1a42499bd6938179a3ff627cb47e342bd97fd141",
+	"1b24bbdc88948bba6aae2bef60eb999f4b485f69",
+	"1c5cd10a9855b0d616be2dacb130012a79f063a3",
+	"1c823a9f6e4afd7a3e079c6480db09ea755130ac",
+	"29776fab2dc13bb31668954cc374c423348f254b",
+	"31bc0c7e57e7a6a3083e133a8a85a61cb0ffbfa0",
+	"3293ceffabc115c2b9e905ff2f11e378ff2f4588",
+	"3bcadf8e276160a263aa48a0dd105a985d7951e2",
+	"3ff3a40c95a86a5848537460d8ee9a95c46f9077",
+	"40557886b4093d15d6753e43d02c60e38ca4e464",
+	"4982f5142ba4a15011a85277a22c2a20fe29874c",
+	"553af3c6c0083d50dbb17b0904a35810bcd8919b",
+	"5b67fc5a363a2a94dc22412312e9a6f5f39d29eb",
+	"6bec6fd575292ee61c1d55904e595ebb94258d51",
+	"6e2fa5b07396ef456b1837fab93101996c33b0fd",
+	"702558e75c390d0569e962d09ece0940d9ce41fa",
+	"88d964a7030412a7a141e96de90fa7d65a52cc89",
+	"92cde237163e4aa0f26beeda85536683e2baa826",
+	"9551e228ce61619f75147e74813df790873d98e2",
+	"ae227b5a0680484b07e7f09e847900d92f59e3af",
+	"b9407d5c58f63167f50e6a441bce55941efa61a1",
+	"bac87118cdf07c751ec2fda5278f725a9d8dee07",
+	"c19062001d5302967636e794d051eefa01afb857",
+	"d7fda8d8313de1974c6eaa20d56376a81e0352e7",
+	"e283d79a38898abb3e2734617d0417a3acc5292a",
+	"f37b26362450bc5a0669b3ff8b627718d079fe75"
+]
+
+stopwords = [
+	'''example''',
+	'''sample''',
+	'''test''',
+	'''demo''',
+	'''placeholder''',
+	'''your-token-here''',
+	'''insert-key-here''',
+	'''fake''',
+	'''mock''',
+]

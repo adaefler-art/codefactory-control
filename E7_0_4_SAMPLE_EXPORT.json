@@ -1,0 +1,1136 @@
+{
+  "ok": true,
+  "catalog": {
+    "version": "1.0.0",
+    "lastUpdated": "2026-01-02",
+    "totalFlags": 25
+  },
+  "effective": {
+    "timestamp": "2026-01-02T13:45:10.487Z",
+    "environment": "development",
+    "values": [
+      {
+        "key": "GIT_SHA",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "GIT_SHA",
+          "type": "string",
+          "description": "Git commit SHA of the deployed build",
+          "riskClass": "low",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "build",
+          "tags": [
+            "build",
+            "metadata"
+          ]
+        }
+      },
+      {
+        "key": "BUILD_TIME",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "BUILD_TIME",
+          "type": "string",
+          "description": "ISO timestamp when the build was created",
+          "riskClass": "low",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "build",
+          "tags": [
+            "build",
+            "metadata"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_ID",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_ID",
+          "type": "string",
+          "description": "GitHub App ID for server-to-server authentication",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_PRIVATE_KEY_PEM",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_PRIVATE_KEY_PEM",
+          "type": "string",
+          "description": "GitHub App private key (PEM format) - loaded from Secrets Manager",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_WEBHOOK_SECRET",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_WEBHOOK_SECRET",
+          "type": "string",
+          "description": "GitHub App webhook secret for signature verification",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_OWNER",
+        "value": "adaefler-art",
+        "source": "environment",
+        "expectedType": "string",
+        "actualType": "string",
+        "isSet": true,
+        "isMissing": false,
+        "config": {
+          "key": "GITHUB_OWNER",
+          "type": "string",
+          "description": "Default GitHub organization/owner for operations",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "config"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_REPO",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "GITHUB_REPO",
+          "type": "string",
+          "description": "Default GitHub repository name",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "config"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_REPO_ALLOWLIST",
+        "value": null,
+        "source": "missing",
+        "expectedType": "json",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "GITHUB_REPO_ALLOWLIST",
+          "type": "json",
+          "description": "JSON allowlist for repositories accessible via GitHub App",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "security",
+            "policy"
+          ]
+        }
+      },
+      {
+        "key": "OPENAI_API_KEY",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "OPENAI_API_KEY",
+          "type": "string",
+          "description": "OpenAI API key for GPT models",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "llm",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "ANTHROPIC_API_KEY",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "ANTHROPIC_API_KEY",
+          "type": "string",
+          "description": "Anthropic API key for Claude models",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "llm",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "DEEPSEEK_API_KEY",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DEEPSEEK_API_KEY",
+          "type": "string",
+          "description": "DeepSeek API key",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "llm",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "AWS_REGION",
+        "value": "eu-central-1",
+        "source": "environment",
+        "expectedType": "string",
+        "actualType": "string",
+        "isSet": true,
+        "isMissing": false,
+        "config": {
+          "key": "AWS_REGION",
+          "type": "string",
+          "description": "AWS region for services (Secrets Manager, ECS, RDS)",
+          "riskClass": "high",
+          "defaultValue": "eu-central-1",
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "aws",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_ENABLED",
+        "value": false,
+        "source": "default",
+        "expectedType": "boolean",
+        "actualType": "boolean",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_ENABLED",
+          "type": "boolean",
+          "description": "Enable/disable database connectivity checks",
+          "riskClass": "medium",
+          "defaultValue": false,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "feature-toggle"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_HOST",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_HOST",
+          "type": "string",
+          "description": "PostgreSQL database host",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_PORT",
+        "value": 5432,
+        "source": "default",
+        "expectedType": "number",
+        "actualType": "number",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_PORT",
+          "type": "number",
+          "description": "PostgreSQL database port",
+          "riskClass": "medium",
+          "defaultValue": 5432,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_NAME",
+        "value": "afu9",
+        "source": "default",
+        "expectedType": "string",
+        "actualType": "string",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_NAME",
+          "type": "string",
+          "description": "PostgreSQL database name",
+          "riskClass": "medium",
+          "defaultValue": "afu9",
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_USER",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_USER",
+          "type": "string",
+          "description": "PostgreSQL database user",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_PASSWORD",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_PASSWORD",
+          "type": "string",
+          "description": "PostgreSQL database password",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "NODE_ENV",
+        "value": "development",
+        "source": "environment",
+        "expectedType": "string",
+        "actualType": "string",
+        "isSet": true,
+        "isMissing": false,
+        "config": {
+          "key": "NODE_ENV",
+          "type": "string",
+          "description": "Node.js environment (development, production)",
+          "riskClass": "high",
+          "defaultValue": "development",
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "app",
+            "environment"
+          ]
+        }
+      },
+      {
+        "key": "PORT",
+        "value": 3000,
+        "source": "default",
+        "expectedType": "number",
+        "actualType": "number",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "PORT",
+          "type": "number",
+          "description": "HTTP server port",
+          "riskClass": "low",
+          "defaultValue": 3000,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "app",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "NEXT_PUBLIC_APP_URL",
+        "value": "http://localhost:3000",
+        "source": "default",
+        "expectedType": "string",
+        "actualType": "string",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "NEXT_PUBLIC_APP_URL",
+          "type": "string",
+          "description": "Public URL for the application (used for self-health checks)",
+          "riskClass": "medium",
+          "defaultValue": "http://localhost:3000",
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "app",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "AFU9_DEBUG_MODE",
+        "value": true,
+        "source": "environment",
+        "expectedType": "boolean",
+        "actualType": "boolean",
+        "isSet": true,
+        "isMissing": false,
+        "config": {
+          "key": "AFU9_DEBUG_MODE",
+          "type": "boolean",
+          "description": "Enable verbose debug logging for workflows, agents, and MCP calls",
+          "riskClass": "low",
+          "defaultValue": false,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "feature-flag",
+            "debug",
+            "observability"
+          ]
+        }
+      },
+      {
+        "key": "MCP_GITHUB_ENDPOINT",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "MCP_GITHUB_ENDPOINT",
+          "type": "string",
+          "description": "MCP GitHub server endpoint URL",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "mcp",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "MCP_DEPLOY_ENDPOINT",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "MCP_DEPLOY_ENDPOINT",
+          "type": "string",
+          "description": "MCP Deploy server endpoint URL",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "mcp",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "MCP_OBSERVABILITY_ENDPOINT",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "MCP_OBSERVABILITY_ENDPOINT",
+          "type": "string",
+          "description": "MCP Observability server endpoint URL",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "mcp",
+            "infrastructure"
+          ]
+        }
+      }
+    ],
+    "missing": [
+      {
+        "key": "GIT_SHA",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "GIT_SHA",
+          "type": "string",
+          "description": "Git commit SHA of the deployed build",
+          "riskClass": "low",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "build",
+          "tags": [
+            "build",
+            "metadata"
+          ]
+        }
+      },
+      {
+        "key": "BUILD_TIME",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "BUILD_TIME",
+          "type": "string",
+          "description": "ISO timestamp when the build was created",
+          "riskClass": "low",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "build",
+          "tags": [
+            "build",
+            "metadata"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_ID",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_ID",
+          "type": "string",
+          "description": "GitHub App ID for server-to-server authentication",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_PRIVATE_KEY_PEM",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_PRIVATE_KEY_PEM",
+          "type": "string",
+          "description": "GitHub App private key (PEM format) - loaded from Secrets Manager",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_WEBHOOK_SECRET",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_WEBHOOK_SECRET",
+          "type": "string",
+          "description": "GitHub App webhook secret for signature verification",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_REPO",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "GITHUB_REPO",
+          "type": "string",
+          "description": "Default GitHub repository name",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "config"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_REPO_ALLOWLIST",
+        "value": null,
+        "source": "missing",
+        "expectedType": "json",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "GITHUB_REPO_ALLOWLIST",
+          "type": "json",
+          "description": "JSON allowlist for repositories accessible via GitHub App",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "security",
+            "policy"
+          ]
+        }
+      },
+      {
+        "key": "OPENAI_API_KEY",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "OPENAI_API_KEY",
+          "type": "string",
+          "description": "OpenAI API key for GPT models",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "llm",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "ANTHROPIC_API_KEY",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "ANTHROPIC_API_KEY",
+          "type": "string",
+          "description": "Anthropic API key for Claude models",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "llm",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "DEEPSEEK_API_KEY",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DEEPSEEK_API_KEY",
+          "type": "string",
+          "description": "DeepSeek API key",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "llm",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_HOST",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_HOST",
+          "type": "string",
+          "description": "PostgreSQL database host",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_USER",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_USER",
+          "type": "string",
+          "description": "PostgreSQL database user",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "DATABASE_PASSWORD",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "DATABASE_PASSWORD",
+          "type": "string",
+          "description": "PostgreSQL database password",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "database",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "MCP_GITHUB_ENDPOINT",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "MCP_GITHUB_ENDPOINT",
+          "type": "string",
+          "description": "MCP GitHub server endpoint URL",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "mcp",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "MCP_DEPLOY_ENDPOINT",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "MCP_DEPLOY_ENDPOINT",
+          "type": "string",
+          "description": "MCP Deploy server endpoint URL",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "mcp",
+            "infrastructure"
+          ]
+        }
+      },
+      {
+        "key": "MCP_OBSERVABILITY_ENDPOINT",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": false,
+        "config": {
+          "key": "MCP_OBSERVABILITY_ENDPOINT",
+          "type": "string",
+          "description": "MCP Observability server endpoint URL",
+          "riskClass": "medium",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": false,
+          "source": "runtime",
+          "tags": [
+            "mcp",
+            "infrastructure"
+          ]
+        }
+      }
+    ],
+    "missingRequired": [
+      {
+        "key": "GITHUB_APP_ID",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_ID",
+          "type": "string",
+          "description": "GitHub App ID for server-to-server authentication",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_PRIVATE_KEY_PEM",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_PRIVATE_KEY_PEM",
+          "type": "string",
+          "description": "GitHub App private key (PEM format) - loaded from Secrets Manager",
+          "riskClass": "critical",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth",
+            "secret"
+          ]
+        }
+      },
+      {
+        "key": "GITHUB_APP_WEBHOOK_SECRET",
+        "value": null,
+        "source": "missing",
+        "expectedType": "string",
+        "actualType": "null",
+        "isSet": false,
+        "isMissing": true,
+        "config": {
+          "key": "GITHUB_APP_WEBHOOK_SECRET",
+          "type": "string",
+          "description": "GitHub App webhook secret for signature verification",
+          "riskClass": "high",
+          "defaultValue": null,
+          "allowedEnvironments": [
+            "all"
+          ],
+          "required": true,
+          "source": "runtime",
+          "tags": [
+            "github",
+            "auth",
+            "secret"
+          ]
+        }
+      }
+    ],
+    "summary": {
+      "total": 25,
+      "set": 4,
+      "missing": 16,
+      "missingRequired": 3,
+      "fromBuild": 0,
+      "fromEnv": 4,
+      "fromDefault": 5
+    }
+  }
+}

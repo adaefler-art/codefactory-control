@@ -22,7 +22,7 @@ This will automatically create all 6 milestones and 13 issues.
 
 ```bash
 # Set your GitHub Personal Access Token
-export GITHUB_TOKEN="ghp_your_token_here"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 
 # Run the import
 npm run import-v04-issues

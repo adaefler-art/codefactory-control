@@ -212,7 +212,7 @@ gitleaks protect --config .gitleaks.toml --staged --verbose
     ░    gitleaks
 
 Finding:     GitHub Personal Access Token
-Secret:      ghp_xxxx... (redacted)
+Secret:      <REDACTED_GITHUB_TOKEN>
 File:        path/to/file.ext
 Commit:      abc123def456
 ```

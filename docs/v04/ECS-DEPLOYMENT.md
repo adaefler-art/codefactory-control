@@ -211,7 +211,7 @@ After deployment, update the placeholder secrets in AWS Secrets Manager:
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_your_github_token_here",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "your-github-org",
     "repo": "your-repo-name"
   }' \
@@ -228,7 +228,7 @@ aws secretsmanager update-secret \
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-your-openai-key-here"
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>"
   }' \
   --region eu-central-1
 ```

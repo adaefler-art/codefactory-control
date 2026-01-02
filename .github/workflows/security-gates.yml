@@ -31,6 +31,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .github/gitleaks.toml
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Uncomment for Gitleaks Pro
         # EVIDENCE (I661/E66): This action runs 'gitleaks detect' which scans:
         # - Entire git history (all commits, all branches) when fetch-depth: 0

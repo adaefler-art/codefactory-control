@@ -214,6 +214,7 @@ export const API_ROUTES = {
   // System
   system: {
     config: '/api/system/config',
+    flagsEnv: '/api/system/flags-env',
     buildInfo: '/api/build-info',
     buildMetadata: '/api/build-metadata',
     metrics: '/api/metrics',

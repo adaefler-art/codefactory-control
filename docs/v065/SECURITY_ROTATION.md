@@ -93,7 +93,7 @@ Secrets are injected as environment variables in runtime:
 const githubToken = process.env.GITHUB_TOKEN;
 
 // BAD: Never hardcode secrets
-const githubToken = "ghp_xxxxxxxxxxxxx"; // ❌ NEVER DO THIS
+const githubToken = "<REDACTED_GITHUB_TOKEN>"; // ❌ NEVER DO THIS
 ```
 
 ### .env Files
@@ -179,7 +179,7 @@ aws sso login --profile afu9
 # Create .env.local in control-center directory
 cd control-center
 cat > .env.local << EOF
-GITHUB_TOKEN=ghp_your_new_token_here
+GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>
 GITHUB_APP_ID=your_app_id
 GITHUB_APP_INSTALLATION_ID=your_installation_id
 EOF

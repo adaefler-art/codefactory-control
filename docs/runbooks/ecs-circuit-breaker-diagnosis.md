@@ -570,7 +570,7 @@ echo "Task IP: ${TASK_IP}"
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_YOUR_GITHUB_TOKEN_HERE",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }' \
@@ -578,7 +578,7 @@ aws secretsmanager update-secret \
 aws secretsmanager create-secret \
   --name afu9/github \
   --secret-string '{
-    "token": "ghp_YOUR_GITHUB_TOKEN_HERE",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }' \
@@ -600,16 +600,16 @@ aws ecs update-service \
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-YOUR_OPENAI_KEY",
-    "anthropic_api_key": "sk-ant-YOUR_ANTHROPIC_KEY",
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>",
     "deepseek_api_key": "YOUR_DEEPSEEK_KEY"
   }' \
   --region ${AWS_REGION} 2>&1 || \
 aws secretsmanager create-secret \
   --name afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-YOUR_OPENAI_KEY",
-    "anthropic_api_key": "sk-ant-YOUR_ANTHROPIC_KEY",
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>",
     "deepseek_api_key": "YOUR_DEEPSEEK_KEY"
   }' \
   --region ${AWS_REGION}

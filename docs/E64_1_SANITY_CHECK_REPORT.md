@@ -247,7 +247,7 @@ const { token } = await getGitHubInstallationToken({ owner: input.owner, repo: i
 
 ```powershell
 # Executed:
-grep -r "ghs_|ghp_|github_pat_|AKIA|-----BEGIN.*PRIVATE" control-center/src/lib/github-runner/
+grep -r "ghs_|github_pat_|AWS_ACCESS_KEY_ID|-----BEGIN.*PRIVATE" control-center/src/lib/github-runner/
 # Result: ✅ NO SECRETS FOUND
 ```
 

@@ -381,15 +381,19 @@ export async function middleware(request: NextRequest) {
   }
 
   // Authentication and authorization successful
-  // Add downstream context propagation headers
-  const response = nextWithRequestId();
-  response.headers.set('x-afu9-sub', userSub);
-  response.headers.set('x-afu9-stage', requiredStage);
-  response.headers.set('x-afu9-groups', userGroups?.join(',') || '');
+  // Add downstream context propagation headers to request for route handlers
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-request-id', requestId);
+  requestHeaders.set('x-afu9-sub', userSub);
+  requestHeaders.set('x-afu9-stage', requiredStage);
+  requestHeaders.set('x-afu9-groups', userGroups?.join(',') || '');
   if (AFU9_DEBUG_AUTH) {
-    response.headers.set('x-afu9-auth-debug', '1');
-    response.headers.set('x-afu9-auth-via', verifiedVia || 'unknown');
+    requestHeaders.set('x-afu9-auth-debug', '1');
+    requestHeaders.set('x-afu9-auth-via', verifiedVia || 'unknown');
   }
+  
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('x-request-id', requestId);
 
   return response;
 }

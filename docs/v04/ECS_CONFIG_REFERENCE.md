@@ -218,7 +218,7 @@ Always injected:
 
 ```json
 {
-  "token": "ghp_xxxxxxxxxxxxxxxxxxxxx",
+  "token": "<REDACTED_GITHUB_TOKEN>",
   "owner": "adaefler-art",
   "repo": "codefactory-control"
 }
@@ -230,9 +230,9 @@ Always injected:
 
 ```json
 {
-  "openai_api_key": "sk-xxxxxxxxxxxxxxxxxxxxx",
-  "anthropic_api_key": "sk-ant-xxxxxxxxxxxxxxxxxxxxx",
-  "deepseek_api_key": "sk-xxxxxxxxxxxxxxxxxxxxx"
+  "openai_api_key": "<REDACTED_OPENAI_API_KEY>",
+  "anthropic_api_key": "<REDACTED_ANTHROPIC_API_KEY>",
+  "deepseek_api_key": "<REDACTED_DEEPSEEK_API_KEY>"
 }
 ```
 
