@@ -1290,6 +1290,26 @@ jobs:
           echo ""
           echo "✅ Verification passed - task definition matches deploy"
 
+      - name: MCP Catalog Verification Gate (E7.0.3)
+        shell: bash
+        env:
+          MCP_VERIFY_ENDPOINT: https://${{ steps.target.outputs.ready_host }}/api/mcp/verify
+          MCP_VERIFY_TIMEOUT_MS: '60000'
+        run: |
+          set -euo pipefail
+          echo "🔍 Running MCP Catalog Verification Gate (E7.0.3)"
+          echo "Verifying catalog matches runtime MCP server configuration..."
+          echo "Endpoint: ${MCP_VERIFY_ENDPOINT}"
+          echo ""
+          
+          # Verify that the MCP catalog is consistent with runtime configuration
+          # This prevents false-green scenarios where health checks pass but
+          # catalog references wrong endpoints/ports
+          npx ts-node scripts/mcp-catalog-verify-gate.ts
+          
+          echo ""
+          echo "✅ MCP catalog verification passed"
+
       - name: Record deploy event (internal)
         shell: bash
         env:
