@@ -85,7 +85,7 @@ export interface Afu9EcsConfig {
  * Deploys AFU-9 Control Center and MCP servers on ECS Fargate:
  * - ECR repositories for all container images
  * - ECS Cluster with Container Insights
- * - ECS Task Definition with 4 containers (control-center + 3 MCP servers)
+ * - ECS Task Definition with 5 containers (control-center + 4 MCP servers)
  * - ECS Fargate Service with auto-scaling and health checks
  * - IAM roles and policies for task execution and application
  * - CloudWatch log groups for centralized logging
@@ -300,6 +300,7 @@ export class Afu9EcsStack extends cdk.Stack {
   public readonly mcpGithubRepo: ecr.IRepository;
   public readonly mcpDeployRepo: ecr.IRepository;
   public readonly mcpObservabilityRepo: ecr.IRepository;
+  public readonly mcpRunnerRepo: ecr.IRepository;
   public readonly domainName?: string;
 
   constructor(scope: Construct, id: string, props: Afu9EcsStackProps) {
@@ -376,6 +377,12 @@ export class Afu9EcsStack extends cdk.Stack {
       this,
       'McpObservabilityRepo',
       'afu9/mcp-observability'
+    );
+
+    this.mcpRunnerRepo = ecr.Repository.fromRepositoryName(
+      this,
+      'McpRunnerRepo',
+      'afu9/mcp-runner'
     );
 
     // ========================================
@@ -678,6 +685,12 @@ export class Afu9EcsStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    const mcpRunnerLogGroup = new logs.LogGroup(this, 'McpRunnerLogGroup', {
+      logGroupName: '/ecs/afu9/mcp-runner',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // ========================================
     // ECS Task Definition
     // ========================================
@@ -750,9 +763,11 @@ export class Afu9EcsStack extends cdk.Stack {
           MCP_GITHUB_ENDPOINT: 'http://localhost:3001',
           MCP_DEPLOY_ENDPOINT: 'http://localhost:3002',
           MCP_OBSERVABILITY_ENDPOINT: 'http://localhost:3003',
+          MCP_RUNNER_ENDPOINT: 'http://localhost:3004',
           MCP_GITHUB_URL: 'http://127.0.0.1:3001',
           MCP_DEPLOY_URL: 'http://127.0.0.1:3002',
           MCP_OBSERVABILITY_URL: 'http://127.0.0.1:3003',
+          MCP_RUNNER_URL: 'http://127.0.0.1:3004',
           ...(domainName ? { AFU9_COOKIE_DOMAIN: `.${domainName}` } : {}),
         },
         secrets: {
@@ -895,6 +910,50 @@ export class Afu9EcsStack extends cdk.Stack {
         containerPort: 3003,
         protocol: ecs.Protocol.TCP,
         name: 'mcp-observability-http',
+      });
+
+      const rn = td.addContainer('mcp-runner', {
+        image: ecs.ContainerImage.fromEcrRepository(this.mcpRunnerRepo, tag),
+        containerName: 'mcp-runner',
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: 'mcp-runner',
+          logGroup: mcpRunnerLogGroup,
+        }),
+        environment: {
+          NODE_ENV: appNodeEnvValue,
+          DEPLOY_ENV: deployEnvValue,
+          PORT: '3004',
+          USE_DATABASE: enableDatabase ? 'true' : 'false',
+          DATABASE_SSL: 'true',
+        },
+        secrets: {
+          ...(dbSecret
+            ? {
+                DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, 'host'),
+                DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, 'port'),
+                DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, 'database'),
+                DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
+                DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+              }
+            : {}),
+        },
+        essential: true,
+        healthCheck: {
+          command: [
+            'CMD-SHELL',
+            "node -e \"require('http').get('http://127.0.0.1:3004/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\"",
+          ],
+          interval: cdk.Duration.seconds(30),
+          timeout: cdk.Duration.seconds(5),
+          retries: 3,
+          startPeriod: cdk.Duration.seconds(60),
+        },
+      });
+
+      rn.addPortMappings({
+        containerPort: 3004,
+        protocol: ecs.Protocol.TCP,
+        name: 'mcp-runner-http',
       });
 
       return td;
@@ -1048,6 +1107,12 @@ export class Afu9EcsStack extends cdk.Stack {
       value: this.mcpObservabilityRepo.repositoryUri,
       description: 'ECR repository URI for MCP Observability Server',
       exportName: 'Afu9EcrMcpObservabilityRepo',
+    });
+
+    new cdk.CfnOutput(this, 'EcrMcpRunnerRepo', {
+      value: this.mcpRunnerRepo.repositoryUri,
+      description: 'ECR repository URI for MCP Runner Server',
+      exportName: 'Afu9EcrMcpRunnerRepo',
     });
 
     new cdk.CfnOutput(this, 'TaskRoleArn', {

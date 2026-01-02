@@ -679,8 +679,8 @@
       "name": "afu9-runner",
       "displayName": "AFU-9 Runner",
       "contractVersion": "0.6.0",
-      "port": 3002,
-      "endpoint": "http://localhost:3002",
+      "port": 3004,
+      "endpoint": "http://localhost:3004",
       "description": "MCP server for AFU-9 run management and execution (I631 MVP)",
       "tools": [
         {

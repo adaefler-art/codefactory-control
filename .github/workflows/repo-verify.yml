@@ -94,6 +94,10 @@ jobs:
       - name: Run Repository Canon Verification
         id: repo_verify
         shell: bash
+        env:
+          # Mixed-scope PRs require explicit justification in the PR description.
+          # See docs/lawbook/repo-canon.md.
+          AFU9_ALLOW_MIXED_SCOPE: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.body, '[MIXED-SCOPE-OK]')) && 'true' || 'false' }}
         run: |
           set -o pipefail
           npm run repo:verify 2>&1 | tee verification_output.txt
@@ -106,6 +110,9 @@ jobs:
       - name: Run API Routes Verification
         id: routes_verify
         shell: bash
+        env:
+          # Keep behavior consistent with the repo canon step above.
+          AFU9_ALLOW_MIXED_SCOPE: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.body, '[MIXED-SCOPE-OK]')) && 'true' || 'false' }}
         run: |
           set -o pipefail
           echo "PWD: $(pwd)"

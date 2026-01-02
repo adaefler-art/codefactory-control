@@ -9,6 +9,7 @@ const MCP_SERVERS = [
   { name: 'mcp-github', url: process.env.MCP_GITHUB_URL || 'http://127.0.0.1:3001' },
   { name: 'mcp-deploy', url: process.env.MCP_DEPLOY_URL || 'http://127.0.0.1:3002' },
   { name: 'mcp-observability', url: process.env.MCP_OBSERVABILITY_URL || 'http://127.0.0.1:3003' },
+  { name: 'mcp-runner', url: process.env.MCP_RUNNER_URL || 'http://127.0.0.1:3004' },
 ] as const;
 
 const SELF_PROPELLING_WORKFLOW_PATH = path.join(

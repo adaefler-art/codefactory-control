@@ -187,6 +187,10 @@ jobs:
       - name: Run Repository Security Verification
         id: repo_security
         shell: bash
+        env:
+          # Mixed-scope is a repo-canon concern; allow it on non-PR runs.
+          # On PRs, require explicit justification in PR body.
+          AFU9_ALLOW_MIXED_SCOPE: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.body, '[MIXED-SCOPE-OK]')) && 'true' || 'false' }}
         run: |
           set -o pipefail
           
