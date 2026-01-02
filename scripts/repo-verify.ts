@@ -188,15 +188,16 @@ function checkDeployEcsWorkflowInvariants(): ValidationResult {
     errors.push(
       `\n❌ deploy-ecs.yml pins a suffixed stage smoke-key ARN.\n` +
       `The staging smoke key MUST be resolved by secret name (afu9/stage/smoke-key), not by a rotated suffix ARN.\n` +
-      `Remedy: use aws secretsmanager describe-secret --secret-id "afu9/stage/smoke-key" to fetch ARN at deploy time.\n`
+      `Remedy: inject Secrets Manager by secret name (valueFrom: "afu9/stage/smoke-key") and avoid suffix-pinned ARNs.\n`
     );
   }
 
-  const mustResolveByName = /--secret-id\s+"afu9\/stage\/smoke-key"/m;
-  if (!mustResolveByName.test(content)) {
+  // Ensure the canonical secret name is used somewhere in the workflow (e.g., valueFrom).
+  const mustReferenceCanonicalName = /"afu9\/stage\/smoke-key"/m;
+  if (!mustReferenceCanonicalName.test(content)) {
     errors.push(
-      `\n❌ deploy-ecs.yml does not resolve the staging smoke key by secret name.\n` +
-      `Expected to find a describe-secret lookup for secret-id "afu9/stage/smoke-key".\n`
+      `\n❌ deploy-ecs.yml does not reference the canonical staging smoke key secret name.\n` +
+      `Expected to find \"afu9/stage/smoke-key\" used for staging smoke key injection (valueFrom).\n`
     );
   }
 
