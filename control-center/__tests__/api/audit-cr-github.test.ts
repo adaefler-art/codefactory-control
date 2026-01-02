@@ -2,10 +2,12 @@
  * Tests for GET /api/audit/cr-github
  * 
  * Validates:
- * 1. Query by canonical ID
- * 2. Query by owner/repo/issue
- * 3. Pagination parameters
- * 4. Error handling for missing/invalid parameters
+ * 1. Authentication and authorization
+ * 2. Query by canonical ID
+ * 3. Query by owner/repo/issue
+ * 4. Cursor-based pagination
+ * 5. Repo allowlist enforcement
+ * 6. Error handling
  * 
  * @jest-environment node
  */
@@ -13,27 +15,163 @@
 import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/audit/cr-github/route';
 import * as crGithubIssueAudit from '../../src/lib/db/crGithubIssueAudit';
+import * as authWrapper from '../../src/lib/github/auth-wrapper';
 
 // Mock dependencies
 jest.mock('../../src/lib/db/crGithubIssueAudit');
+jest.mock('../../src/lib/github/auth-wrapper');
 jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({})),
 }));
 
-const mockQueryCrGithubIssueAudit = crGithubIssueAudit.queryCrGithubIssueAudit as jest.MockedFunction<
-  typeof crGithubIssueAudit.queryCrGithubIssueAudit
+const mockQueryCrGithubIssueAuditWithCursor = crGithubIssueAudit.queryCrGithubIssueAuditWithCursor as jest.MockedFunction<
+  typeof crGithubIssueAudit.queryCrGithubIssueAuditWithCursor
 >;
-const mockQueryByIssue = crGithubIssueAudit.queryByIssue as jest.MockedFunction<
-  typeof crGithubIssueAudit.queryByIssue
+const mockQueryByIssueWithCursor = crGithubIssueAudit.queryByIssueWithCursor as jest.MockedFunction<
+  typeof crGithubIssueAudit.queryByIssueWithCursor
+>;
+const mockIsRepoAllowed = authWrapper.isRepoAllowed as jest.MockedFunction<
+  typeof authWrapper.isRepoAllowed
 >;
 
 describe('GET /api/audit/cr-github', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: allow all repos (can be overridden per test)
+    mockIsRepoAllowed.mockReturnValue(true);
   });
   
   // ========================================
-  // A) Query by Canonical ID
+  // A) Authentication Tests
+  // ========================================
+  
+  describe('Authentication', () => {
+    test('returns 401 when x-afu9-sub header is missing', async () => {
+      const req = new NextRequest(
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST'
+      );
+      
+      const res = await GET(req);
+      
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error).toContain('Unauthorized');
+      expect(body.details).toContain('Authentication required');
+    });
+    
+    test('succeeds with valid x-afu9-sub header', async () => {
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
+        success: true,
+        data: [],
+      });
+      
+      const req = new NextRequest(
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
+      );
+      
+      const res = await GET(req);
+      
+      expect(res.status).toBe(200);
+    });
+  });
+  
+  // ========================================
+  // B) Authorization (Repo Allowlist) Tests
+  // ========================================
+  
+  describe('Repo allowlist enforcement', () => {
+    test('returns 403 when querying non-allowed repo directly', async () => {
+      mockIsRepoAllowed.mockReturnValue(false);
+      
+      const req = new NextRequest(
+        'http://localhost/api/audit/cr-github?owner=forbidden&repo=repo&issueNumber=1',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
+      );
+      
+      const res = await GET(req);
+      
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toContain('Access denied');
+      expect(body.details).toContain('not in the allowlist');
+    });
+    
+    test('filters out non-allowed repos when querying by canonical ID', async () => {
+      // Mock: return mixed allowed/disallowed repos
+      const mockRecords = [
+        {
+          id: 'audit-1',
+          canonical_id: 'CR-TEST',
+          session_id: null,
+          cr_version_id: null,
+          cr_hash: 'hash1',
+          lawbook_version: null,
+          owner: 'allowed-org',
+          repo: 'allowed-repo',
+          issue_number: 1,
+          action: 'create' as const,
+          rendered_issue_hash: 'hash2',
+          used_sources_hash: null,
+          created_at: '2026-01-02T10:00:00Z',
+          result_json: { url: 'https://github.com/...', labelsApplied: [] },
+        },
+        {
+          id: 'audit-2',
+          canonical_id: 'CR-TEST',
+          session_id: null,
+          cr_version_id: null,
+          cr_hash: 'hash3',
+          lawbook_version: null,
+          owner: 'forbidden-org',
+          repo: 'forbidden-repo',
+          issue_number: 2,
+          action: 'create' as const,
+          rendered_issue_hash: 'hash4',
+          used_sources_hash: null,
+          created_at: '2026-01-02T09:00:00Z',
+          result_json: { url: 'https://github.com/...', labelsApplied: [] },
+        },
+      ];
+      
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
+        success: true,
+        data: mockRecords,
+      });
+      
+      // Mock allowlist check: only allow first repo
+      mockIsRepoAllowed.mockImplementation((owner, repo) => 
+        owner === 'allowed-org' && repo === 'allowed-repo'
+      );
+      
+      const req = new NextRequest(
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
+      );
+      
+      const res = await GET(req);
+      
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].owner).toBe('allowed-org');
+    });
+  });
+  
+  // ========================================
+  // C) Query by Canonical ID
   // ========================================
   
   describe('Query by canonical ID', () => {
@@ -57,13 +195,18 @@ describe('GET /api/audit/cr-github', () => {
         },
       ];
       
-      mockQueryCrGithubIssueAudit.mockResolvedValue({
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
         success: true,
         data: mockRecords,
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-2026-01-02-001'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-2026-01-02-001',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -73,10 +216,10 @@ describe('GET /api/audit/cr-github', () => {
       expect(body.success).toBe(true);
       expect(body.data).toHaveLength(1);
       expect(body.data[0].canonical_id).toBe('CR-2026-01-02-001');
-      expect(body.pagination).toEqual({
+      expect(body.pagination).toMatchObject({
         limit: 50,
-        offset: 0,
         count: 1,
+        hasMore: false,
       });
       
       expect(mockQueryCrGithubIssueAudit).toHaveBeenCalledWith(

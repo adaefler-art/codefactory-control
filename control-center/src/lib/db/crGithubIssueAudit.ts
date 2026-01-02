@@ -184,53 +184,82 @@ export async function queryCrGithubIssueAudit(
 }
 
 /**
- * Query audit records by owner/repo/issue_number
+ * Query audit records by canonical ID with cursor-based pagination
  * 
- * Returns all audit records for a specific GitHub issue, ordered by created_at DESC.
+ * Returns records ordered by created_at DESC, id DESC for deterministic ordering.
  * 
  * @param pool Database pool
- * @param owner GitHub repo owner
- * @param repo GitHub repo name
- * @param issueNumber GitHub issue number
- * @param options Optional pagination
+ * @param canonicalId CR canonical ID
+ * @param options Pagination options with cursor
  * @returns List of audit records
  */
-export async function queryByIssue(
+export async function queryCrGithubIssueAuditWithCursor(
   pool: Pool,
-  owner: string,
-  repo: string,
-  issueNumber: number,
+  canonicalId: string,
   options?: {
     limit?: number;
-    offset?: number;
+    before?: string; // Format: "timestamp:id"
   }
 ): Promise<{ success: true; data: CrGithubIssueAuditRecord[] } | { success: false; error: string }> {
   try {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
+    const limit = options?.limit || 51; // Fetch one extra to determine hasMore
     
-    const result = await pool.query(
-      `SELECT 
-        id,
-        canonical_id,
-        session_id,
-        cr_version_id,
-        cr_hash,
-        lawbook_version,
-        owner,
-        repo,
-        issue_number,
-        action,
-        rendered_issue_hash,
-        used_sources_hash,
-        created_at,
-        result_json
-      FROM cr_github_issue_audit
-      WHERE owner = $1 AND repo = $2 AND issue_number = $3
-      ORDER BY created_at DESC
-      LIMIT $4 OFFSET $5`,
-      [owner, repo, issueNumber, limit, offset]
-    );
+    let query: string;
+    let params: any[];
+    
+    if (options?.before) {
+      // Parse cursor: "timestamp:id"
+      const [beforeTimestamp, beforeId] = options.before.split(':');
+      
+      query = `
+        SELECT 
+          id,
+          canonical_id,
+          session_id,
+          cr_version_id,
+          cr_hash,
+          lawbook_version,
+          owner,
+          repo,
+          issue_number,
+          action,
+          rendered_issue_hash,
+          used_sources_hash,
+          created_at,
+          result_json
+        FROM cr_github_issue_audit
+        WHERE canonical_id = $1 
+          AND (created_at, id) < ($2, $3)
+        ORDER BY created_at DESC, id DESC
+        LIMIT $4
+      `;
+      params = [canonicalId, beforeTimestamp, beforeId, limit];
+    } else {
+      query = `
+        SELECT 
+          id,
+          canonical_id,
+          session_id,
+          cr_version_id,
+          cr_hash,
+          lawbook_version,
+          owner,
+          repo,
+          issue_number,
+          action,
+          rendered_issue_hash,
+          used_sources_hash,
+          created_at,
+          result_json
+        FROM cr_github_issue_audit
+        WHERE canonical_id = $1
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2
+      `;
+      params = [canonicalId, limit];
+    }
+    
+    const result = await pool.query(query, params);
     
     return {
       success: true,
@@ -252,7 +281,117 @@ export async function queryByIssue(
       })),
     };
   } catch (error) {
-    console.error('[DB] Error querying audit records by issue:', error);
+    console.error('[DB] Error querying audit records with cursor:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Query audit records by owner/repo/issue_number with cursor-based pagination
+ * 
+ * Returns records ordered by created_at DESC, id DESC for deterministic ordering.
+ * 
+ * @param pool Database pool
+ * @param owner GitHub repo owner
+ * @param repo GitHub repo name
+ * @param issueNumber GitHub issue number
+ * @param options Pagination options with cursor
+ * @returns List of audit records
+ */
+export async function queryByIssueWithCursor(
+  pool: Pool,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  options?: {
+    limit?: number;
+    before?: string; // Format: "timestamp:id"
+  }
+): Promise<{ success: true; data: CrGithubIssueAuditRecord[] } | { success: false; error: string }> {
+  try {
+    const limit = options?.limit || 51; // Fetch one extra to determine hasMore
+    
+    let query: string;
+    let params: any[];
+    
+    if (options?.before) {
+      // Parse cursor: "timestamp:id"
+      const [beforeTimestamp, beforeId] = options.before.split(':');
+      
+      query = `
+        SELECT 
+          id,
+          canonical_id,
+          session_id,
+          cr_version_id,
+          cr_hash,
+          lawbook_version,
+          owner,
+          repo,
+          issue_number,
+          action,
+          rendered_issue_hash,
+          used_sources_hash,
+          created_at,
+          result_json
+        FROM cr_github_issue_audit
+        WHERE owner = $1 AND repo = $2 AND issue_number = $3
+          AND (created_at, id) < ($4, $5)
+        ORDER BY created_at DESC, id DESC
+        LIMIT $6
+      `;
+      params = [owner, repo, issueNumber, beforeTimestamp, beforeId, limit];
+    } else {
+      query = `
+        SELECT 
+          id,
+          canonical_id,
+          session_id,
+          cr_version_id,
+          cr_hash,
+          lawbook_version,
+          owner,
+          repo,
+          issue_number,
+          action,
+          rendered_issue_hash,
+          used_sources_hash,
+          created_at,
+          result_json
+        FROM cr_github_issue_audit
+        WHERE owner = $1 AND repo = $2 AND issue_number = $3
+        ORDER BY created_at DESC, id DESC
+        LIMIT $4
+      `;
+      params = [owner, repo, issueNumber, limit];
+    }
+    
+    const result = await pool.query(query, params);
+    
+    return {
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        canonical_id: row.canonical_id,
+        session_id: row.session_id,
+        cr_version_id: row.cr_version_id,
+        cr_hash: row.cr_hash,
+        lawbook_version: row.lawbook_version,
+        owner: row.owner,
+        repo: row.repo,
+        issue_number: row.issue_number,
+        action: row.action,
+        rendered_issue_hash: row.rendered_issue_hash,
+        used_sources_hash: row.used_sources_hash,
+        created_at: row.created_at.toISOString(),
+        result_json: row.result_json,
+      })),
+    };
+  } catch (error) {
+    console.error('[DB] Error querying audit records by issue with cursor:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

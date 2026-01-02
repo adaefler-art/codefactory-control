@@ -32,9 +32,17 @@ CREATE TABLE cr_github_issue_audit (
 CREATE INDEX idx_cr_github_issue_audit_canonical_id 
 ON cr_github_issue_audit(canonical_id, created_at DESC);
 
+-- Cursor-based pagination index for canonical_id queries
+CREATE INDEX idx_cr_github_issue_audit_canonical_cursor 
+ON cr_github_issue_audit(canonical_id, created_at DESC, id DESC);
+
 -- Query by repo + issue number
 CREATE INDEX idx_cr_github_issue_audit_repo_issue 
 ON cr_github_issue_audit(owner, repo, issue_number);
+
+-- Cursor-based pagination index for repo/issue queries
+CREATE INDEX idx_cr_github_issue_audit_repo_issue_cursor 
+ON cr_github_issue_audit(owner, repo, issue_number, created_at DESC, id DESC);
 
 -- Query by session
 CREATE INDEX idx_cr_github_issue_audit_session 
