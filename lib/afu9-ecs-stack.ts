@@ -524,10 +524,9 @@ export class Afu9EcsStack extends cdk.Stack {
         sid: 'Afu9SsmParametersRead',
         effect: iam.Effect.ALLOW,
         actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
-        resources: [
-          `arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/afu9/*`,
-          `arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/aws/reference/secretsmanager/*`,
-        ],
+        // Note: ECS uses SSM GetParameters for task secret injection; IAM evaluation is against '*'
+        // (as surfaced in AccessDenied errors), so this action cannot be reliably ARN-scoped.
+        resources: ['*'],
       })
     );
 
