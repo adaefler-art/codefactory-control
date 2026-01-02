@@ -31,7 +31,7 @@ run_negative_test() {
   
   # Run the guardrail and capture exit code
   set +e
-  output=$(ts-node "$GUARDRAIL_SCRIPT" 2>&1)
+  output=$(npx ts-node "$GUARDRAIL_SCRIPT" 2>&1)
   actual_exit_code=$?
   set -e
   
