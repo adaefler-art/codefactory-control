@@ -44,6 +44,7 @@ export const ERROR_CODES = {
   GITHUB_API_ERROR: 'GITHUB_API_ERROR',
   ISSUE_CREATE_FAILED: 'ISSUE_CREATE_FAILED',
   ISSUE_UPDATE_FAILED: 'ISSUE_UPDATE_FAILED',
+  ISSUE_ALREADY_EXISTS: 'ISSUE_ALREADY_EXISTS',
 } as const;
 
 /**
@@ -128,10 +129,36 @@ export async function createOrUpdateFromCR(cr: ChangeRequest): Promise<CreateOrU
   // Step 4: Render issue
   const rendered = renderCRAsIssue(cr);
   
-  // Step 5: Create or update issue
+  // Step 5: Create or update issue (with race-safe retry logic)
   if (resolveResult.mode === 'not_found') {
-    // Create new issue
-    return await createIssue(owner, repo, cr, rendered);
+    // Create new issue (with race-safe fallback)
+    try {
+      return await createIssue(owner, repo, cr, rendered);
+    } catch (error) {
+      // If create failed due to duplicate/race condition, retry resolve + update
+      if (error instanceof IssueCreatorError && error.code === ERROR_CODES.ISSUE_CREATE_FAILED) {
+        // Check if the error indicates a duplicate or constraint violation
+        const errorMessage = error.details && typeof error.details === 'object' && 'error' in error.details
+          ? String((error.details as any).error?.message || '')
+          : '';
+        
+        // GitHub might return errors about duplicates or validation failures that indicate race
+        const isDuplicateOrRace = errorMessage.toLowerCase().includes('duplicate') ||
+                                   errorMessage.toLowerCase().includes('already exists') ||
+                                   errorMessage.toLowerCase().includes('validation failed');
+        
+        if (isDuplicateOrRace) {
+          // Race condition detected: resolve again and update instead
+          const retryResolve = await resolveCanonicalId(resolveInput);
+          if (retryResolve.mode === 'found') {
+            return await updateIssue(owner, repo, cr, rendered, retryResolve.issueNumber!);
+          }
+        }
+      }
+      
+      // Re-throw if not a race condition
+      throw error;
+    }
   } else {
     // Update existing issue
     return await updateIssue(owner, repo, cr, rendered, resolveResult.issueNumber!);

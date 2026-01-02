@@ -50,12 +50,14 @@ export async function POST(
     const sessionId = params.id;
     
     // Get authenticated user ID from middleware
+    // Middleware validates JWT and sets x-afu9-sub header with verified user sub
+    // If header is missing, middleware didn't authenticate (fail-closed)
     const userId = request.headers.get('x-afu9-sub');
     if (!userId) {
       return errorResponse('Unauthorized', {
         status: 401,
         requestId,
-        details: 'User authentication required',
+        details: 'Authentication required - no verified user context',
       });
     }
     
@@ -63,6 +65,7 @@ export async function POST(
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
+        details: 'sessionId path parameter is required',
       });
     }
     
@@ -74,7 +77,11 @@ export async function POST(
         body = JSON.parse(text);
       }
     } catch (parseError) {
-      // Ignore parse errors for empty/invalid body
+      return errorResponse('Invalid JSON in request body', {
+        status: 400,
+        requestId,
+        details: parseError instanceof Error ? parseError.message : 'JSON parse error',
+      });
     }
     
     // Step 1: Load latest CR (prefer committed version, fallback to draft)
@@ -94,9 +101,28 @@ export async function POST(
       result = await createOrUpdateFromCR(cr);
     } catch (error) {
       if (error instanceof IssueCreatorError) {
+        // Map error codes to HTTP status codes
+        let status: number;
+        switch (error.code) {
+          case 'CR_INVALID':
+            status = 422; // Unprocessable Entity for validation errors
+            break;
+          case 'REPO_ACCESS_DENIED':
+            status = 403; // Forbidden
+            break;
+          case 'GITHUB_API_ERROR':
+            status = 502; // Bad Gateway - upstream GitHub API error
+            break;
+          case 'ISSUE_CREATE_FAILED':
+          case 'ISSUE_UPDATE_FAILED':
+            status = 502; // Bad Gateway - upstream GitHub API error
+            break;
+          default:
+            status = 500; // Internal Server Error
+        }
+        
         return errorResponse(error.message, {
-          status: error.code === 'CR_INVALID' ? 400 : 
-                  error.code === 'REPO_ACCESS_DENIED' ? 403 : 500,
+          status,
           requestId,
           details: {
             code: error.code,

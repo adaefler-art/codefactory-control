@@ -468,4 +468,91 @@ describe('GitHub Issue Creator', () => {
       }
     });
   });
+
+  describe('Race Condition Handling', () => {
+    test('handles race condition when create fails due to duplicate issue', async () => {
+      // First resolve: not found
+      mockResolveCanonicalId.mockResolvedValueOnce({ mode: 'not_found' });
+      
+      // Create attempt fails with duplicate error
+      mockCreateIssue.mockRejectedValueOnce(
+        new Error('Validation Failed: {"errors":[{"message":"already exists"}]}')
+      );
+      
+      // Second resolve after race detected: found
+      mockResolveCanonicalId.mockResolvedValueOnce({
+        mode: 'found',
+        issueNumber: 400,
+        issueUrl: 'https://github.com/adaefler-art/codefactory-control/issues/400',
+        matchedBy: 'body',
+      });
+      
+      // Update succeeds
+      mockGetIssue.mockResolvedValue({
+        data: {
+          number: 400,
+          labels: [{ name: 'afu9' }, { name: 'v0.7' }],
+        },
+      });
+      
+      mockUpdateIssue.mockResolvedValue({
+        data: {
+          number: 400,
+          html_url: 'https://github.com/adaefler-art/codefactory-control/issues/400',
+        },
+      });
+      
+      const result = await createOrUpdateFromCR(sampleCR);
+      
+      // Should fall back to update
+      expect(result.mode).toBe('updated');
+      expect(result.issueNumber).toBe(400);
+      
+      // Verify retry resolve was called
+      expect(mockResolveCanonicalId).toHaveBeenCalledTimes(2);
+    });
+
+    test('re-throws error if create fails without race condition indicator', async () => {
+      mockResolveCanonicalId.mockResolvedValue({ mode: 'not_found' });
+      
+      // Create fails with non-race error
+      mockCreateIssue.mockRejectedValue(new Error('Network timeout'));
+      
+      await expect(createOrUpdateFromCR(sampleCR)).rejects.toThrow(IssueCreatorError);
+      
+      // Should not retry resolve
+      expect(mockResolveCanonicalId).toHaveBeenCalledTimes(1);
+    });
+
+    test('handles race condition with "duplicate" error message', async () => {
+      mockResolveCanonicalId.mockResolvedValueOnce({ mode: 'not_found' });
+      
+      mockCreateIssue.mockRejectedValueOnce(
+        new Error('duplicate key value violates unique constraint')
+      );
+      
+      mockResolveCanonicalId.mockResolvedValueOnce({
+        mode: 'found',
+        issueNumber: 500,
+        issueUrl: 'https://github.com/adaefler-art/codefactory-control/issues/500',
+        matchedBy: 'body',
+      });
+      
+      mockGetIssue.mockResolvedValue({
+        data: { number: 500, labels: [] },
+      });
+      
+      mockUpdateIssue.mockResolvedValue({
+        data: {
+          number: 500,
+          html_url: 'https://github.com/adaefler-art/codefactory-control/issues/500',
+        },
+      });
+      
+      const result = await createOrUpdateFromCR(sampleCR);
+      
+      expect(result.mode).toBe('updated');
+      expect(result.issueNumber).toBe(500);
+    });
+  });
 });
