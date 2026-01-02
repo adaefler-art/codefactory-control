@@ -98,24 +98,6 @@ function extractContainerImages(taskDef: any): ContainerImage[] {
   
   for (const container of taskDef.containerDefinitions || []) {
     const imageUri = container.image;
-    const { repository, tag } = parseImageUri(imageUri);
-    
-    images.push({
-      containerName: container.name,
-      image: imageUri,
-      repository,
-      tag
-    });
-  }
-  
-  return images;
-}
-
-function extractContainerImages(taskDef: any): ContainerImage[] {
-  const images: ContainerImage[] = [];
-  
-  for (const container of taskDef.containerDefinitions || []) {
-    const imageUri = container.image;
     const parsed = parseImageUriFromLib(imageUri);
     
     images.push({
@@ -283,4 +265,4 @@ if (require.main === module) {
   main();
 }
 
-export { parseImageUri, extractContainerImages, validateImageTags };
+export { extractContainerImages, validateImageTags };
