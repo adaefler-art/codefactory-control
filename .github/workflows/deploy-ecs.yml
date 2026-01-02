@@ -433,6 +433,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Pre-Deploy Image Gate (E7.0.2)
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          GIT_SHA: ${{ github.sha }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          echo "🔒 Running Pre-Deploy Image Gate (E7.0.2)"
+          echo "Validating all images are built and pushed to ECR..."
+          echo ""
+          
+          # Validate image manifest structure
+          echo "📋 Step 1: Validating image manifest..."
+          npx ts-node scripts/validate-image-manifest.ts
+          echo ""
+          
+          # Check that all required images exist in ECR with correct tags
+          echo "🔍 Step 2: Checking ECR repositories and images..."
+          npx ts-node scripts/pre-deploy-image-gate.ts
+          
+          echo ""
+          echo "✅ Image gate passed - all images ready for deployment"
+
       - name: Deploy Provenance (hard gate)
         id: provenance
         shell: bash
@@ -1179,6 +1203,27 @@ jobs:
             }
             Start-Sleep -Seconds 5
           }
+
+      - name: Post-Deploy Image Verification (E7.0.2)
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          GIT_SHA: ${{ github.sha }}
+          ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
+          ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          echo "🔍 Running Post-Deploy Image Verification (E7.0.2)"
+          echo "Verifying running task definition uses only images from this deploy..."
+          echo ""
+          
+          # Verify that the deployed task definition contains ONLY images
+          # from the current deploy (no mixed/stale references)
+          npx ts-node scripts/post-deploy-image-verification.ts
+          
+          echo ""
+          echo "✅ Verification passed - task definition matches deploy"
 
       - name: Record deploy event (internal)
         shell: bash
