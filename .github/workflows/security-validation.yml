@@ -11,6 +11,7 @@ on:
     paths:
       - 'lib/**/*.ts'
       - 'scripts/validate-iam-policies.ts'
+      - 'scripts/validate-secrets-scope.ts'
       - '.github/workflows/security-validation.yml'
   push:
     branches:
@@ -72,6 +73,60 @@ jobs:
           echo "- Task Execution Role (ECS infrastructure)" >> $GITHUB_STEP_SUMMARY
           echo "- Task Role (application runtime)" >> $GITHUB_STEP_SUMMARY
           echo "- GitHub Actions Deploy Role (CI/CD)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 See full validation output in workflow logs" >> $GITHUB_STEP_SUMMARY
+
+  validate-secrets-scope:
+    name: Validate Secrets Scope (E7.0.5)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Secrets Scope Validation
+        id: validate_secrets_scope
+        shell: bash
+        run: |
+          npm run validate-secrets-scope 2>&1 | tee scope_validation_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE
+
+      - name: Secrets Scope Check Summary
+        if: always()
+        run: |
+          echo "## 🔒 Secrets Scope Validation Results (E7.0.5)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.validate_secrets_scope.outputs.exit_code }}" == "0" ]; then
+            echo "✅ **Secrets scope validation PASSED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Secrets scope validation FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cross-Environment Protection:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ No production resources accessing stage secrets" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ No staging resources accessing production secrets" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ Environment isolation maintained" >> $GITHUB_STEP_SUMMARY
+          echo "- ✓ Security/governance smells prevented" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Validation Rules:" >> $GITHUB_STEP_SUMMARY
+          echo "- Production resources → \`afu9/prod/*\` secrets only" >> $GITHUB_STEP_SUMMARY
+          echo "- Staging resources → \`afu9/stage/*\` secrets only" >> $GITHUB_STEP_SUMMARY
+          echo "- Legacy shared secrets → \`afu9/{database,github,llm}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📋 See full validation output in workflow logs" >> $GITHUB_STEP_SUMMARY
 

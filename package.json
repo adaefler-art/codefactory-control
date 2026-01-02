@@ -17,9 +17,10 @@
     "destroy": "cdk destroy",
     "validate-secrets": "ts-node scripts/validate-secrets.ts",
     "validate-iam": "ts-node scripts/validate-iam-policies.ts",
+    "validate-secrets-scope": "ts-node scripts/validate-secrets-scope.ts",
     "validate:diff": "ts-node scripts/validate-cdk-diff.ts",
     "determinism:check": "ts-node scripts/deploy-determinism-check.ts",
-    "security:check": "npm run validate-iam && npm run repo:verify",
+    "security:check": "npm run validate-iam && npm run validate-secrets-scope && npm run repo:verify",
     "security:scan": "npm run repo:verify",
     "repo:verify": "ts-node scripts/repo-verify.ts",
     "routes:verify": "node scripts/verify-routes.js",
@@ -29,6 +30,7 @@
     "precommit:gate": "node scripts/precommit-gate.mjs",
     "import-v04-issues": "ts-node scripts/import-afu9-v04-issues.ts",
     "test": "jest",
+    "test-secrets-scope": "ts-node scripts/test-secrets-scope.ts",
     "prepare": "husky"
   },
   "devDependencies": {
