@@ -16,6 +16,9 @@ import { resolveCanonicalId, type ResolveCanonicalIdInput } from './canonical-id
 import { renderCRAsIssue, generateLabelsForNewIssue, mergeLabelsForUpdate, type RenderedIssue } from './issue-renderer';
 import { createAuthenticatedClient, type GitHubAuthRequest } from './auth-wrapper';
 import type { ChangeRequest } from '../schemas/changeRequest';
+import { canonicalizeChangeRequestToJSON } from '../schemas/changeRequest';
+import { hashUsedSources } from '../utils/sourceCanonicalizer';
+import { createHash } from 'crypto';
 
 /**
  * Result of create or update operation
@@ -33,6 +36,12 @@ export interface CreateOrUpdateResult {
   renderedHash: string;
   /** Labels applied to issue */
   labelsApplied: string[];
+  /** SHA256 hash of canonical CR JSON (for audit trail) */
+  crHash: string;
+  /** Lawbook version from CR constraints (for audit trail) */
+  lawbookVersion: string | null;
+  /** SHA256 hash of used_sources from CR evidence (for audit trail) */
+  usedSourcesHash: string | null;
 }
 
 /**
@@ -98,7 +107,16 @@ export async function createOrUpdateFromCR(cr: ChangeRequest): Promise<CreateOrU
   // Step 2: Extract repo/owner from CR
   const { owner, repo } = cr.targets.repo;
   
-  // Step 3: Resolve canonical issue (with policy enforcement)
+  // Step 3: Compute audit fields from CR
+  const crHash = createHash('sha256')
+    .update(canonicalizeChangeRequestToJSON(cr), 'utf8')
+    .digest('hex');
+  const lawbookVersion = cr.constraints?.lawbookVersion || null;
+  const usedSourcesHash = cr.evidence && cr.evidence.length > 0
+    ? hashUsedSources(cr.evidence)
+    : null;
+  
+  // Step 4: Resolve canonical issue (with policy enforcement)
   const resolveInput: ResolveCanonicalIdInput = {
     owner,
     repo,
@@ -126,14 +144,14 @@ export async function createOrUpdateFromCR(cr: ChangeRequest): Promise<CreateOrU
     );
   }
   
-  // Step 4: Render issue
+  // Step 5: Render issue
   const rendered = renderCRAsIssue(cr);
   
-  // Step 5: Create or update issue (with race-safe retry logic)
+  // Step 6: Create or update issue (with race-safe retry logic)
   if (resolveResult.mode === 'not_found') {
     // Create new issue (with race-safe fallback)
     try {
-      return await createIssue(owner, repo, cr, rendered);
+      return await createIssue(owner, repo, cr, rendered, crHash, lawbookVersion, usedSourcesHash);
     } catch (error) {
       // If create failed due to duplicate/race condition, retry resolve + update
       if (error instanceof IssueCreatorError && error.code === ERROR_CODES.ISSUE_CREATE_FAILED) {
@@ -151,7 +169,7 @@ export async function createOrUpdateFromCR(cr: ChangeRequest): Promise<CreateOrU
           // Race condition detected: resolve again and update instead
           const retryResolve = await resolveCanonicalId(resolveInput);
           if (retryResolve.mode === 'found') {
-            return await updateIssue(owner, repo, cr, rendered, retryResolve.issueNumber!);
+            return await updateIssue(owner, repo, cr, rendered, retryResolve.issueNumber!, crHash, lawbookVersion, usedSourcesHash);
           }
         }
       }
@@ -161,7 +179,7 @@ export async function createOrUpdateFromCR(cr: ChangeRequest): Promise<CreateOrU
     }
   } else {
     // Update existing issue
-    return await updateIssue(owner, repo, cr, rendered, resolveResult.issueNumber!);
+    return await updateIssue(owner, repo, cr, rendered, resolveResult.issueNumber!, crHash, lawbookVersion, usedSourcesHash);
   }
 }
 
@@ -172,7 +190,10 @@ async function createIssue(
   owner: string,
   repo: string,
   cr: ChangeRequest,
-  rendered: RenderedIssue
+  rendered: RenderedIssue,
+  crHash: string,
+  lawbookVersion: string | null,
+  usedSourcesHash: string | null
 ): Promise<CreateOrUpdateResult> {
   // Get authenticated client (with policy enforcement)
   const octokit = await createAuthenticatedClient({ owner, repo });
@@ -197,6 +218,9 @@ async function createIssue(
       canonicalId: cr.canonicalId,
       renderedHash: rendered.renderedHash,
       labelsApplied: labels,
+      crHash,
+      lawbookVersion,
+      usedSourcesHash,
     };
   } catch (error) {
     throw new IssueCreatorError(
@@ -215,7 +239,10 @@ async function updateIssue(
   repo: string,
   cr: ChangeRequest,
   rendered: RenderedIssue,
-  issueNumber: number
+  issueNumber: number,
+  crHash: string,
+  lawbookVersion: string | null,
+  usedSourcesHash: string | null
 ): Promise<CreateOrUpdateResult> {
   // Get authenticated client (with policy enforcement)
   const octokit = await createAuthenticatedClient({ owner, repo });
@@ -252,6 +279,9 @@ async function updateIssue(
       canonicalId: cr.canonicalId,
       renderedHash: rendered.renderedHash,
       labelsApplied: labels,
+      crHash,
+      lawbookVersion,
+      usedSourcesHash,
     };
   } catch (error) {
     throw new IssueCreatorError(

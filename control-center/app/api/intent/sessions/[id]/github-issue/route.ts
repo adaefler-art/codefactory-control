@@ -3,11 +3,12 @@
  * 
  * Create or update a GitHub issue from the latest CR in an INTENT session.
  * Issue E75.2: Create/Update Issue via GitHub App
+ * Issue E75.4: Audit Trail for CR → GitHub Issue generation
  * 
  * NON-NEGOTIABLES:
  * - Loads latest committed CR version (I744) OR latest valid draft (I743)
  * - Calls createOrUpdateFromCR for idempotent issue creation/update
- * - Stores audit record of operation
+ * - Stores audit record of operation (I754)
  * - Returns structured result with mode/issueNumber/url
  */
 
@@ -16,23 +17,9 @@ import { getPool } from '@/lib/db';
 import { getLatestCrVersion } from '@/lib/db/intentCrVersions';
 import { getLatestCrDraft } from '@/lib/db/intentCrDrafts';
 import { createOrUpdateFromCR, IssueCreatorError } from '@/lib/github/issue-creator';
+import { insertAuditRecord } from '@/lib/db/crGithubIssueAudit';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import type { ChangeRequest } from '@/lib/schemas/changeRequest';
-
-/**
- * Audit log entry for issue creation/update
- */
-interface IssueCreationAudit {
-  sessionId: string;
-  userId: string;
-  mode: 'created' | 'updated';
-  issueNumber: number;
-  issueUrl: string;
-  canonicalId: string;
-  renderedHash: string;
-  labelsApplied: string[];
-  timestamp: string;
-}
 
 /**
  * POST /api/intent/sessions/[id]/github-issue
@@ -135,13 +122,31 @@ export async function POST(
       throw error;
     }
     
-    // Step 3: Store audit record
-    await storeAuditRecord(pool, {
-      sessionId,
-      userId,
-      ...result,
-      timestamp: new Date().toISOString(),
+    // Step 3: Store audit record (fail-safe: errors are logged but don't block response)
+    const warnings: string[] = [];
+    const auditResult = await insertAuditRecord(pool, {
+      canonical_id: result.canonicalId,
+      session_id: sessionId,
+      cr_version_id: null, // TODO: capture cr_version_id if available from loadLatestCR
+      cr_hash: result.crHash,
+      lawbook_version: result.lawbookVersion,
+      owner: cr.targets.repo.owner,
+      repo: cr.targets.repo.repo,
+      issue_number: result.issueNumber,
+      action: result.mode,
+      rendered_issue_hash: result.renderedHash,
+      used_sources_hash: result.usedSourcesHash,
+      result_json: {
+        url: result.url,
+        labelsApplied: result.labelsApplied,
+      },
     });
+    
+    if (!auditResult.success) {
+      // Log error but don't fail the request
+      console.error('[API] Failed to insert audit record:', auditResult.error);
+      warnings.push('Audit record insertion failed - operation succeeded but may not be auditable');
+    }
     
     // Step 4: Return result
     return jsonResponse(
@@ -155,6 +160,7 @@ export async function POST(
           renderedHash: result.renderedHash,
           labelsApplied: result.labelsApplied,
         },
+        warnings: warnings.length > 0 ? warnings : undefined,
       },
       { requestId }
     );
@@ -210,24 +216,4 @@ async function loadLatestCR(
   }
   
   return null;
-}
-
-/**
- * Store audit record of issue creation/update
- * 
- * For now, just log to console. In I754, we'll add proper audit table.
- */
-async function storeAuditRecord(pool: any, audit: IssueCreationAudit): Promise<void> {
-  console.log('[AUDIT] GitHub Issue Creation/Update:', {
-    sessionId: audit.sessionId,
-    userId: audit.userId,
-    mode: audit.mode,
-    issueNumber: audit.issueNumber,
-    canonicalId: audit.canonicalId,
-    timestamp: audit.timestamp,
-  });
-  
-  // TODO (I754): Store in audit table
-  // For now, we just log. Future implementation will insert into:
-  // intent_github_issue_audit (session_id, user_id, mode, issue_number, ...)
 }
