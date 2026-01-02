@@ -686,31 +686,26 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
 
     const controlCenterLogGroup = new logs.LogGroup(this, 'ControlCenterLogGroup', {
-      logGroupName: '/ecs/afu9/control-center',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpGithubLogGroup = new logs.LogGroup(this, 'McpGithubLogGroup', {
-      logGroupName: '/ecs/afu9/mcp-github',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpDeployLogGroup = new logs.LogGroup(this, 'McpDeployLogGroup', {
-      logGroupName: '/ecs/afu9/mcp-deploy',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpObservabilityLogGroup = new logs.LogGroup(this, 'McpObservabilityLogGroup', {
-      logGroupName: '/ecs/afu9/mcp-observability',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const mcpRunnerLogGroup = new logs.LogGroup(this, 'McpRunnerLogGroup', {
-      logGroupName: '/ecs/afu9/mcp-runner',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
