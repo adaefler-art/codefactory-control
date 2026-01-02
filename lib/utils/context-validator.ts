@@ -24,6 +24,11 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     default: true,
     deprecated: ['enableDatabase'],
   },
+  'afu9-require-explicit-environment': {
+    type: 'boolean',
+    description: 'Fail closed when CDK context "environment" is not explicitly provided',
+    default: true,
+  },
   'afu9-enable-https': {
     type: 'boolean',
     description: 'Enable HTTPS and DNS stack deployment',
