@@ -425,11 +425,7 @@ export class Afu9EcsStack extends cdk.Stack {
     const shouldIncludeStageSmokeKey =
       environment === ENVIRONMENT.STAGE || (!!props.stageTargetGroup && createStagingService);
     const smokeKeySecret = shouldIncludeStageSmokeKey
-      ? secretsmanager.Secret.fromSecretCompleteArn(
-          this,
-          'StageSmokeKey',
-          'arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G'
-        )
+      ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
       : undefined;
 
     // ========================================
@@ -541,6 +537,20 @@ export class Afu9EcsStack extends cdk.Stack {
     llmSecret.grantRead(taskExecutionRole);
     if (smokeKeySecret) {
       smokeKeySecret.grantRead(taskExecutionRole);
+
+      // Explicit least-privilege statement for the staging smoke-key secret.
+      // Requirement: allow ECS *execution role* to inject AFU9_SMOKE_KEY via Secrets Manager.
+      // Rotation-safe: Secrets Manager appends a random suffix to the secret ARN.
+      taskExecutionRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'StageSmokeKeyRead',
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+          resources: [
+            `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:afu9/stage/smoke-key-*`,
+          ],
+        })
+      );
     }
 
     const taskRoleName = `afu9-ecs-task-role${roleSuffix}`;
@@ -937,7 +947,7 @@ export class Afu9EcsStack extends cdk.Stack {
               }
             : {}),
         },
-        essential: true,
+        essential: false,
         healthCheck: {
           command: [
             'CMD-SHELL',

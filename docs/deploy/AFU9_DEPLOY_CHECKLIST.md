@@ -38,6 +38,7 @@ It exists to prevent recurring, expensive deployment failures.
 - [ ] ECS service is correct (afu9-control-center / -staging)
 - [ ] No implicit env switching
 - [ ] Staging service existence matches intent
+- [ ] Multi-env deploys: `-c afu9-multi-env=true` and staging-only deploy uses `Afu9EcsStageStack` (not `Afu9EcsProdStack`)
 
 ---
 
@@ -51,6 +52,11 @@ It exists to prevent recurring, expensive deployment failures.
   - username
   - password
 - [ ] Secrets are injected via ECS (no runtime GetSecretValue)
+- [ ] Staging smoke bypass key uses secret name `afu9/stage/smoke-key` (no suffix-pinned ARN) and is never present in prod task defs
+
+## C1. MCP Sidecars
+
+- [ ] If runner is enabled: image `afu9/mcp-runner:${TAG_PREFIX}-...` is built/pushed and task definition references the correct env tag
 
 ---
 

@@ -195,6 +195,28 @@ npx cdk deploy Afu9EcsStageStack Afu9EcsProdStack -c afu9-domain=afu-9.com -c af
 npx cdk deploy Afu9RoutingStack -c afu9-domain=afu-9.com -c afu9-multi-env=true --require-approval never
 ```
 
+If you want to deploy **staging only** in multi-env mode (and avoid any chance of touching prod), deploy only the stage stack:
+
+```bash
+npx cdk deploy Afu9EcsStageStack -c afu9-domain=afu-9.com -c afu9-multi-env=true --require-approval never
+```
+
+## MCP runner image (build context)
+
+The runner Dockerfile expects the build context to be `./mcp-servers`.
+
+Local build (from repo root):
+
+```bash
+docker build -f mcp-servers/afu9-runner/Dockerfile mcp-servers
+```
+
+PowerShell helper (from repo root):
+
+```powershell
+./scripts/build-mcp-runner.ps1 -TagPrefix stage -TagSuffix latest
+```
+
 ### Post-deploy verification (both modes)
 
 ```bash
