@@ -71,11 +71,16 @@ export async function GET(request: NextRequest) {
     if (canonicalId) {
       result = await queryCrGithubIssueAudit(pool, canonicalId, { limit, offset });
     } else {
+      // These values are guaranteed to be non-null by validation above
+      const ownerValue = owner as string;
+      const repoValue = repo as string;
+      const issueNumberValue = parseInt(issueNumber as string, 10);
+      
       result = await queryByIssue(
         pool,
-        owner!,
-        repo!,
-        parseInt(issueNumber!, 10),
+        ownerValue,
+        repoValue,
+        issueNumberValue,
         { limit, offset }
       );
     }
