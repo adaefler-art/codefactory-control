@@ -516,6 +516,21 @@ export class Afu9EcsStack extends cdk.Stack {
       ],
     });
 
+    // Allow ECS *execution role* to resolve task secrets from SSM Parameter Store.
+    // Required when any container definition uses SSM-backed secrets (ECS calls ssm:GetParameters).
+    // Scoped to AFU-9 parameter namespaces and AWS Secrets Manager SSM reference namespace.
+    taskExecutionRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'Afu9SsmParametersRead',
+        effect: iam.Effect.ALLOW,
+        actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
+        resources: [
+          `arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/afu9/*`,
+          `arn:aws:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter/aws/reference/secretsmanager/*`,
+        ],
+      })
+    );
+
     // Grant access to secrets for injecting them as environment variables
     // Justification: ECS needs to read secrets to inject them into containers at startup
     if (dbSecret) {
