@@ -496,10 +496,10 @@ Target Tracking Scaling Policy:
 ```json
 {
   "afu9/github": {
-    "token": "ghp_xxxxxxxxxxxxxxxxxxxx",
+    "token": "<REDACTED_GITHUB_TOKEN>",
     "app_id": "123456",
     "private_key": "__REDACTED_PEM__",
-    "webhook_secret": "whs_xxxxxxxxxxxxxxxxx"
+    "webhook_secret": "<REDACTED_WEBHOOK_SECRET>"
   },
   "afu9/database": {
     "host": "afu9-db.xxxx.eu-central-1.rds.amazonaws.com",
@@ -509,8 +509,8 @@ Target Tracking Scaling Policy:
     "password": "xxxxxxxxxxxxxxxxxx"
   },
   "afu9/llm": {
-    "anthropic_api_key": "sk-ant-api03-xxxxxxxxxx",
-    "openai_api_key": "sk-xxxxxxxxxxxxxxxxxx"
+    "anthropic_api_key": "<REDACTED_ANTHROPIC_API_KEY>",
+    "openai_api_key": "<REDACTED_OPENAI_API_KEY>"
   },
   "afu9/mcp": {
     "shared_secret": "xxxxxxxxxxxxxxxxxx"

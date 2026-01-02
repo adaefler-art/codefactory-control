@@ -35,7 +35,7 @@ Updated from PAT-based to GitHub App configuration:
 
 **Removed:**
 ```bash
-GITHUB_TOKEN=ghp_your_token_here  # PAT
+GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>  # PAT
 ```
 
 **Added:**

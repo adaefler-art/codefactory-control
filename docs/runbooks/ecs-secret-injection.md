@@ -325,7 +325,7 @@ aws ecs describe-task-definition \
 aws secretsmanager create-secret \
   --name afu9/github \
   --secret-string '{
-    "token": "ghp_YOUR_GITHUB_TOKEN",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }' \
@@ -443,7 +443,7 @@ Required keys: `token`, `owner`, `repo`
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_YOUR_GITHUB_TOKEN",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }' \

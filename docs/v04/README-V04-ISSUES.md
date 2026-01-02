@@ -32,7 +32,7 @@ AFU-9 v0.4 focuses on operational excellence and deployment stability with 6 EPI
 
 ```bash
 # Set your GitHub token
-export GITHUB_TOKEN="ghp_your_token_here"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 
 # Run the import script
 npm run import-v04-issues
@@ -42,7 +42,7 @@ npm run import-v04-issues
 
 ```bash
 # Set your GitHub token
-export GITHUB_TOKEN="ghp_your_token_here"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 
 # Run with ts-node
 ts-node scripts/import-afu9-v04-issues.ts
@@ -53,7 +53,7 @@ ts-node scripts/import-afu9-v04-issues.ts
 To import into a different repository, set these environment variables:
 
 ```bash
-export GITHUB_TOKEN="ghp_your_token_here"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 export GITHUB_OWNER="your-org"
 export GITHUB_REPO="your-repo"
 npm run import-v04-issues

@@ -86,9 +86,9 @@ git filter-repo --path secrets/ --invert-paths
 ```bash
 # Create a replacements file
 cat > /tmp/replacements.txt << 'EOF'
-ghp_oldtoken123456789==><REDACTED_GITHUB_TOKEN>
-sk-proj-oldopenaikey==><REDACTED_OPENAI_KEY>
-AKIAIOSFODNN7EXAMPLE==><REDACTED_AWS_KEY>
+<REDACTED_GITHUB_TOKEN_OLD>==><REDACTED_GITHUB_TOKEN>
+<REDACTED_OPENAI_KEY_OLD>==><REDACTED_OPENAI_KEY>
+<REDACTED_AWS_ACCESS_KEY_ID_OLD>==><REDACTED_AWS_ACCESS_KEY_ID>
 EOF
 
 # Apply text replacements
@@ -127,9 +127,9 @@ java -jar bfg.jar --delete-folders secrets
 ```bash
 # Create a file with secrets to replace
 cat > /tmp/secrets.txt << 'EOF'
-ghp_oldtoken123456789
-sk-proj-oldopenaikey
-AKIAIOSFODNN7EXAMPLE
+<REDACTED_GITHUB_TOKEN_OLD>
+<REDACTED_OPENAI_KEY_OLD>
+<REDACTED_AWS_ACCESS_KEY_ID_OLD>
 EOF
 
 # Replace secrets with ***REMOVED***
@@ -168,9 +168,9 @@ git log --all --name-only --pretty=format: -- "*.pem" | sort -u
 git log --all --name-only --pretty=format: -- ".env.local" | sort -u
 
 # Search for specific secret patterns in commits
-git log --all -S "ghp_" --source --all
-git log --all -S "sk-proj-" --source --all
-git log --all -S "AKIA" --source --all
+git log --all -S "<GITHUB_TOKEN_PREFIX>" --source --all
+git log --all -S "<OPENAI_KEY_PREFIX>" --source --all
+git log --all -S "<AWS_ACCESS_KEY_PREFIX>" --source --all
 ```
 
 ### 3. Perform History Rewrite
@@ -308,7 +308,7 @@ git log --all --name-only --pretty=format: -- \
 # Should be empty
 
 # Search for secret strings in content
-git log --all -S "ghp_" --source --all | wc -l
+git log --all -S "<GITHUB_TOKEN_PREFIX>" --source --all | wc -l
 # Should be 0
 ```
 

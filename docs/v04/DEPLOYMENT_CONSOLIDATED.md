@@ -621,7 +621,7 @@ Stack is in UPDATE_ROLLBACK_COMPLETE state and can not be updated
    ```bash
    aws secretsmanager put-secret-value \
      --secret-id afu9/github \
-     --secret-string '{"GITHUB_TOKEN":"ghp_..."}'
+     --secret-string '{"GITHUB_TOKEN":"<YOUR_GITHUB_TOKEN>"}'
    ```
 
 3. **See [SECRET_VALIDATION.md](SECRET_VALIDATION.md) for details**

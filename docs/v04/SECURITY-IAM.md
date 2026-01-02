@@ -359,7 +359,7 @@ Created by `Afu9EcsStack` with placeholder values.
 
 ```json
 {
-  "token": "ghp_...",
+  "token": "<REDACTED_GITHUB_TOKEN>",
   "owner": "your-github-org",
   "repo": "your-repo"
 }
@@ -370,7 +370,7 @@ Created by `Afu9EcsStack` with placeholder values.
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_your_real_token",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "your-org",
     "repo": "your-repo"
   }'
@@ -399,8 +399,8 @@ Created by `Afu9EcsStack` with placeholder values.
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-your-openai-key",
-    "anthropic_api_key": "sk-ant-api03-your-anthropic-key"
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>"
   }'
 ```
 

@@ -37,7 +37,7 @@ This package contains everything needed to import 6 EPICs (as GitHub milestones)
 
 ```bash
 # Option A: TypeScript (requires GitHub token)
-export GITHUB_TOKEN="ghp_your_token_here"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 npm run import-v04-issues
 
 # Option B: Bash (requires gh CLI)

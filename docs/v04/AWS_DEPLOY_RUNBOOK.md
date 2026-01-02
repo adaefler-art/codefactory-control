@@ -365,7 +365,7 @@ Configure secrets in AWS Secrets Manager. The ECS stack creates placeholder secr
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_your_github_personal_access_token",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "adaefler-art",
     "repo": "codefactory-control"
   }'
@@ -384,9 +384,9 @@ aws secretsmanager get-secret-value --secret-id afu9/github \
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-your-openai-key",
-    "anthropic_api_key": "sk-ant-your-anthropic-key",
-    "deepseek_api_key": "sk-your-deepseek-key"
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>",
+    "deepseek_api_key": "<YOUR_DEEPSEEK_API_KEY>"
   }'
 ```
 

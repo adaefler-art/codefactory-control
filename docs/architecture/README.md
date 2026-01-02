@@ -152,7 +152,7 @@ All sensitive data is stored in AWS Secrets Manager:
 ```json
 {
   "afu9/github": {
-    "token": "ghp_...",
+    "token": "<REDACTED_GITHUB_TOKEN>",
     "app_id": "...",
     "private_key": "..."
   },
@@ -164,8 +164,8 @@ All sensitive data is stored in AWS Secrets Manager:
     "password": "..."
   },
   "afu9/llm": {
-    "openai_api_key": "sk-...",
-    "anthropic_api_key": "sk-ant-..."
+    "openai_api_key": "<REDACTED_LLM_KEY>",
+    "anthropic_api_key": "<REDACTED_LLM_KEY>"
   }
 }
 ```

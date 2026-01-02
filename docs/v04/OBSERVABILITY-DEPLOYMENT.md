@@ -75,7 +75,7 @@ Update the placeholder secrets created during ECS stack deployment:
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_YOUR_GITHUB_TOKEN",
+    "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "your-github-org",
     "repo": "your-repository"
   }' \
@@ -96,8 +96,8 @@ aws secretsmanager update-secret \
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-YOUR_OPENAI_KEY",
-    "anthropic_api_key": "sk-ant-api03-YOUR_ANTHROPIC_KEY"
+    "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+    "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>"
   }' \
   --region eu-central-1
 ```

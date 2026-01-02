@@ -678,7 +678,7 @@ npx cdk deploy Afu9EcsStack --context environment=staging
 ```json
 {
   "github": {
-    "token": "ghp_...",
+      "token": "<REDACTED_GITHUB_TOKEN>",
     "webhook_secret": "..."
   },
   "database": {

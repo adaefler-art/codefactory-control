@@ -199,11 +199,11 @@ curl http://localhost:3000/api/mcp/health
 
 ```bash
 # OpenAI Configuration
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
 OPENAI_MODEL=gpt-4o-mini
 
 # GitHub Configuration
-GITHUB_TOKEN=ghp_...
+GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>
 
 # MCP Server Endpoints (optional, defaults to localhost)
 MCP_GITHUB_ENDPOINT=http://localhost:3001

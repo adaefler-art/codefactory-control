@@ -990,6 +990,7 @@ jobs:
 
           CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
           SERVICE="${{ steps.target.outputs.ecs_service }}"
+          EXPECTED_TASK_DEF="${{ steps.task-def.outputs.new_task_def_arn }}"
           REGION="${{ env.AWS_REGION }}"
 
           # The default AWS waiter can fail with exit code 255 without useful context.
@@ -1002,6 +1003,7 @@ jobs:
           echo "Cluster: ${CLUSTER}"
           echo "Service: ${SERVICE}"
           echo "Region:  ${REGION}"
+          echo "Expected task definition: ${EXPECTED_TASK_DEF}"
           echo "Timeout: ${TIMEOUT_SECONDS}s (interval=${INTERVAL_SECONDS}s)"
 
           while true; do
@@ -1029,13 +1031,57 @@ jobs:
             RUNNING=$(echo "$SERVICE_JSON" | jq -r '.services[0].runningCount // 0')
             DESIRED=$(echo "$SERVICE_JSON" | jq -r '.services[0].desiredCount // 0')
             STATUS=$(echo "$SERVICE_JSON" | jq -r '.services[0].status // "UNKNOWN"')
+            CURRENT_TASK_DEF=$(echo "$SERVICE_JSON" | jq -r '.services[0].taskDefinition // ""')
             PRIMARY_ROLLOUT=$(echo "$SERVICE_JSON" | jq -r '(.services[0].deployments // []) | map(select(.status=="PRIMARY"))[0].rolloutState // "UNKNOWN"')
             PRIMARY_REASON=$(echo "$SERVICE_JSON" | jq -r '(.services[0].deployments // []) | map(select(.status=="PRIMARY"))[0].rolloutStateReason // ""')
 
-            echo "[${ELAPSED}s] status=${STATUS} running=${RUNNING} desired=${DESIRED} primaryRollout=${PRIMARY_ROLLOUT} ${PRIMARY_REASON}"
+            echo "[${ELAPSED}s] status=${STATUS} running=${RUNNING} desired=${DESIRED} primaryRollout=${PRIMARY_ROLLOUT} taskDef=${CURRENT_TASK_DEF} ${PRIMARY_REASON}"
+
+            # Fail fast if ECS has stabilized on a different task definition than we requested.
+            # This usually indicates circuit-breaker rollback or an update that was ignored.
+            if [ -n "${EXPECTED_TASK_DEF}" ] && [ -n "${CURRENT_TASK_DEF}" ] && [ "${CURRENT_TASK_DEF}" != "${EXPECTED_TASK_DEF}" ]; then
+              echo "❌ ECS service is using a different task definition than expected (rollback/partial deploy suspected)." >&2
+              echo "   expected=${EXPECTED_TASK_DEF}" >&2
+              echo "   current=${CURRENT_TASK_DEF}" >&2
+
+              echo "\n=== Deployments ===" >&2
+              echo "$SERVICE_JSON" | jq -r '.services[0].deployments' >&2 || true
+
+              echo "\n=== Recent service events (latest 30) ===" >&2
+              echo "$SERVICE_JSON" | jq -r '.services[0].events[0:30][]? | "- [\(.createdAt)] \(.message)"' >&2 || true
+
+              echo "\n=== Stopped tasks (up to 10) ===" >&2
+              STOPPED=$(aws ecs list-tasks \
+                --cluster "${CLUSTER}" \
+                --service-name "${SERVICE}" \
+                --desired-status STOPPED \
+                --max-results 10 \
+                --region "${REGION}" \
+                --output json || true)
+              echo "${STOPPED}" | jq '.' >&2 || true
+
+              TASK_ARNS=$(echo "${STOPPED}" | jq -r '.taskArns[]?')
+              if [ -n "${TASK_ARNS}" ]; then
+                echo "\n=== Stopped task details (stop reasons) ===" >&2
+                aws ecs describe-tasks \
+                  --cluster "${CLUSTER}" \
+                  --tasks ${TASK_ARNS} \
+                  --region "${REGION}" \
+                  --output json | jq -r '.tasks[] | "task=\(.taskArn) stoppedReason=\(.stoppedReason // "")\n" + (.containers[] | "  - \(.name): exitCode=\(.exitCode // "null") reason=\(.reason // "")")' >&2 || true
+              fi
+
+              exit 1
+            fi
 
             if [ "${STATUS}" = "ACTIVE" ] && [ "${RUNNING}" = "${DESIRED}" ] && [ "${PRIMARY_ROLLOUT}" = "COMPLETED" ]; then
-              echo "✅ Service appears stable"
+              if [ -n "${EXPECTED_TASK_DEF}" ] && [ -n "${CURRENT_TASK_DEF}" ] && [ "${CURRENT_TASK_DEF}" != "${EXPECTED_TASK_DEF}" ]; then
+                echo "❌ Service is stable but not on the expected task definition" >&2
+                echo "   expected=${EXPECTED_TASK_DEF}" >&2
+                echo "   current=${CURRENT_TASK_DEF}" >&2
+                exit 1
+              fi
+
+              echo "✅ Service appears stable on expected task definition"
               break
             fi
 

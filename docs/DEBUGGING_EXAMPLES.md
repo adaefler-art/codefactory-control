@@ -54,7 +54,7 @@ This document provides practical examples for using the AFU-9 Automated Workflow
 
 ```bash
 # Set your GitHub token
-export GITHUB_TOKEN="ghp_your_personal_access_token"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 
 # Analyze the latest failed deployment
 node scripts/analyze-workflow-failure.js --latest-failure --verbose
@@ -112,7 +112,7 @@ Found latest failed run: 9876543210
 
 ```bash
 # Analyze specific run
-export GITHUB_TOKEN="ghp_your_token"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 node scripts/analyze-workflow-failure.js --run-id 1234567890
 
 # Create a GitHub issue for the team
@@ -134,7 +134,7 @@ node scripts/analyze-workflow-failure.js --run-id 1234567890 --create-issue
 #!/bin/bash
 # analyze-recent-failures.sh
 
-export GITHUB_TOKEN="ghp_your_token"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 
 # Get last 5 failed workflow runs
 gh api repos/adaefler-art/codefactory-control/actions/workflows/deploy-ecs.yml/runs \
@@ -335,7 +335,7 @@ gh run list --workflow=debug-deploy-failures.yml --limit 5
 gh run view <run-id> --log
 
 # Test the analysis script locally
-export GITHUB_TOKEN="ghp_your_token"
+export GITHUB_TOKEN="<YOUR_GITHUB_TOKEN>"
 node scripts/analyze-workflow-failure.js --latest-failure --verbose 2>&1 | tee debug-output.log
 ```
 

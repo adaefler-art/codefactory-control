@@ -97,14 +97,14 @@ For local development, secrets can be loaded from environment variables as a fal
 2. Edit `.env` and add your credentials:
    ```bash
    # GitHub Configuration
-   GITHUB_TOKEN=ghp_your_token_here
+   GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>
    GITHUB_OWNER=your-org
    GITHUB_REPO=your-repo
 
    # LLM API Keys
-   OPENAI_API_KEY=sk-your-key-here
-   ANTHROPIC_API_KEY=sk-ant-your-key-here
-   DEEPSEEK_API_KEY=sk-your-deepseek-key-here
+   OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+   ANTHROPIC_API_KEY=<YOUR_ANTHROPIC_API_KEY>
+   DEEPSEEK_API_KEY=<YOUR_DEEPSEEK_API_KEY>
 
    # AWS Configuration
    AWS_REGION=eu-central-1
@@ -125,8 +125,8 @@ const githubSecrets = await getGithubSecrets();
 const llmSecrets = await getLlmSecrets();
 const dbSecrets = await getDatabaseSecrets();
 
-console.log(githubSecrets.token); // ghp_...
-console.log(llmSecrets.openai_api_key); // sk-...
+console.log(githubSecrets.token); // <REDACTED_GITHUB_TOKEN>
+console.log(llmSecrets.openai_api_key); // <REDACTED_LLM_KEY>
 ```
 
 **Features:**
@@ -148,7 +148,7 @@ After deploying the CDK stacks, secrets are created with placeholder values. You
 aws secretsmanager update-secret \
   --secret-id afu9/github \
   --secret-string '{
-    "token": "ghp_your_github_token",
+      "token": "<YOUR_GITHUB_TOKEN>",
     "owner": "your-github-org",
     "repo": "your-repo-name"
   }' \
@@ -161,9 +161,9 @@ aws secretsmanager update-secret \
 aws secretsmanager update-secret \
   --secret-id afu9/llm \
   --secret-string '{
-    "openai_api_key": "sk-your-openai-key",
-    "anthropic_api_key": "sk-ant-your-anthropic-key",
-    "deepseek_api_key": "sk-your-deepseek-key"
+      "openai_api_key": "<YOUR_OPENAI_API_KEY>",
+      "anthropic_api_key": "<YOUR_ANTHROPIC_API_KEY>",
+      "deepseek_api_key": "<YOUR_DEEPSEEK_API_KEY>"
   }' \
   --region eu-central-1
 ```
@@ -207,7 +207,7 @@ To rotate a secret:
    ```bash
    aws secretsmanager update-secret \
      --secret-id afu9/github \
-     --secret-string '{"token":"ghp_new_token","owner":"org","repo":"repo"}'
+       --secret-string '{"token":"<YOUR_GITHUB_TOKEN>","owner":"org","repo":"repo"}'
    ```
 3. Restart ECS tasks to pick up new secrets:
    ```bash
