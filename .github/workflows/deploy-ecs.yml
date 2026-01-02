@@ -522,41 +522,6 @@ jobs:
             # ECS Secrets Manager integration accepts secret name as valueFrom.
             SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
             echo "Using stage smoke key secret id: ${SMOKE_KEY_SECRET_ID}"
-
-            # Preflight: ensure the ECS TASK EXECUTION ROLE can read the smoke-key.
-            # If this fails, ECS cannot inject AFU9_SMOKE_KEY and staging smoke bypass will not work.
-            EXEC_ROLE_ARN=$(aws iam get-role \
-              --role-name "afu9-ecs-task-execution-role" \
-              --query 'Role.Arn' \
-              --output text)
-
-            if [ -z "${EXEC_ROLE_ARN:-}" ] || [ "${EXEC_ROLE_ARN}" = "None" ]; then
-              echo "❌ Could not resolve ECS task execution role ARN (role-name=afu9-ecs-task-execution-role)" >&2
-              exit 1
-            fi
-
-            ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
-            if [ -z "${ACCOUNT_ID:-}" ] || [ "${ACCOUNT_ID}" = "None" ]; then
-              echo "❌ Could not resolve AWS account id for preflight" >&2
-              exit 1
-            fi
-
-            # Secrets Manager ARNs include a rotated suffix; simulate against the wildcard.
-            SMOKE_KEY_ARN_WILDCARD="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/stage/smoke-key-*"
-
-            SIM_RESULT=$(aws iam simulate-principal-policy \
-              --policy-source-arn "${EXEC_ROLE_ARN}" \
-              --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
-              --resource-arns "${SMOKE_KEY_ARN_WILDCARD}" \
-              --query 'EvaluationResults[].EvalDecision' \
-              --output text || true)
-
-            if echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
-              echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_ARN_WILDCARD}" >&2
-              echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
-              echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
-              exit 1
-            fi
           fi
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
@@ -602,6 +567,40 @@ jobs:
             --task-definition "$TASK_DEF_ARN" \
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
+
+          # Staging preflight (best-effort): ensure the task execution role can read the smoke key.
+          # Note: GitHub deploy role may not be allowed to call iam:GetRole, so we derive executionRoleArn
+          # from the task definition we just fetched.
+          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+            EXEC_ROLE_ARN=$(jq -r '.executionRoleArn // empty' task-def.json)
+            if [ -z "${EXEC_ROLE_ARN:-}" ]; then
+              echo "⚠️  Could not resolve executionRoleArn from task definition; skipping smoke-key preflight" >&2
+            else
+              ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+              if [ -z "${ACCOUNT_ID:-}" ] || [ "${ACCOUNT_ID}" = "None" ]; then
+                echo "⚠️  Could not resolve AWS account id for preflight; skipping smoke-key preflight" >&2
+              else
+                # Secrets Manager ARNs include a rotated suffix; simulate against the wildcard.
+                SMOKE_KEY_ARN_WILDCARD="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/stage/smoke-key-*"
+
+                SIM_RESULT=$(aws iam simulate-principal-policy \
+                  --policy-source-arn "${EXEC_ROLE_ARN}" \
+                  --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
+                  --resource-arns "${SMOKE_KEY_ARN_WILDCARD}" \
+                  --query 'EvaluationResults[].EvalDecision' \
+                  --output text 2>/dev/null || true)
+
+                if [ -z "${SIM_RESULT:-}" ]; then
+                  echo "⚠️  IAM simulation not permitted; skipping smoke-key preflight" >&2
+                elif echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
+                  echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_ARN_WILDCARD}" >&2
+                  echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
+                  echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
+                  exit 1
+                fi
+              fi
+            fi
+          fi
 
           # Canonical DB secret reference (inject by secret name; no DescribeSecret required).
           DB_SECRET_ID="afu9/database"
