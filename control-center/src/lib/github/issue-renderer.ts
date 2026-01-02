@@ -13,6 +13,7 @@
 
 import type { ChangeRequest } from '../schemas/changeRequest';
 import { generateBodyWithMarker } from './canonical-id-resolver';
+import { createHash } from 'crypto';
 
 /**
  * Rendered issue result
@@ -32,6 +33,13 @@ export interface RenderedIssue {
 export interface RenderOptions {
   /** Include optional sections even if empty */
   includeOptional?: boolean;
+}
+
+/**
+ * Compute SHA-256 hash of content
+ */
+function computeHash(content: string): string {
+  return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
 /**
@@ -372,14 +380,6 @@ function renderMetaSection(cr: ChangeRequest): string {
   }
   
   return lines.join('\n');
-}
-
-/**
- * Compute SHA-256 hash of content
- */
-function computeHash(content: string): string {
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
 /**
