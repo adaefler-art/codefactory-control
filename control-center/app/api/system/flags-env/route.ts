@@ -18,7 +18,8 @@ import { FLAGS_CATALOG } from '@/lib/flags-env-catalog';
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  // Require authentication - check for user ID from middleware
+  // Require authentication - x-afu9-sub is set by middleware after JWT verification
+  // This header cannot be spoofed by clients as middleware runs server-side
   const userId = request.headers.get('x-afu9-sub');
   if (!userId) {
     return jsonResponse(

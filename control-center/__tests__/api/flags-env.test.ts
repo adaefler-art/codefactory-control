@@ -43,6 +43,18 @@ describe('Flags/Env API Endpoint', () => {
     expect(body.error).toBe('Unauthorized');
   });
 
+  test('returns 401 even if x-afu9-sub header is missing (middleware not run)', async () => {
+    // This test simulates direct route access without middleware
+    // In production, middleware always runs first and sets x-afu9-sub after JWT verification
+    const request = createMockRequest('flags-env-test-no-middleware');
+    const response = await GET(request);
+    
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error).toBe('Unauthorized');
+    expect(body.message).toContain('Authentication required');
+  });
+
   test('GET /api/system/flags-env returns 200 for authenticated user', async () => {
     const request = createMockRequest('flags-env-test-123', 'test-user-id');
     const response = await GET(request);
