@@ -382,7 +382,16 @@ export async function middleware(request: NextRequest) {
 
   // Authentication and authorization successful
   // Add downstream context propagation headers to request for route handlers
+  // SECURITY: Strip any client-provided x-afu9-* headers before setting verified values
+  // This prevents header spoofing attacks where clients could impersonate other users
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete('x-afu9-sub');
+  requestHeaders.delete('x-afu9-stage');
+  requestHeaders.delete('x-afu9-groups');
+  requestHeaders.delete('x-afu9-auth-debug');
+  requestHeaders.delete('x-afu9-auth-via');
+  
+  // Now set the verified values from JWT payload
   requestHeaders.set('x-request-id', requestId);
   requestHeaders.set('x-afu9-sub', userSub);
   requestHeaders.set('x-afu9-stage', requiredStage);
