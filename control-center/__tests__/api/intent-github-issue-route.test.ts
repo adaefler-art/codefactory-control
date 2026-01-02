@@ -13,11 +13,13 @@ import { NextRequest } from 'next/server';
 import { POST } from '../../app/api/intent/sessions/[id]/github-issue/route';
 import * as intentCrVersions from '../../src/lib/db/intentCrVersions';
 import * as intentCrDrafts from '../../src/lib/db/intentCrDrafts';
+import * as crGithubIssueAudit from '../../src/lib/db/crGithubIssueAudit';
 import { IssueCreatorError } from '../../src/lib/github/issue-creator';
 
 // Mock dependencies - partial mock to keep IssueCreatorError class
 jest.mock('../../src/lib/db/intentCrVersions');
 jest.mock('../../src/lib/db/intentCrDrafts');
+jest.mock('../../src/lib/db/crGithubIssueAudit');
 jest.mock('../../src/lib/github/issue-creator', () => {
   const actual = jest.requireActual('../../src/lib/github/issue-creator');
   return {
@@ -32,6 +34,7 @@ jest.mock('../../src/lib/db', () => ({
 const mockGetLatestCrVersion = intentCrVersions.getLatestCrVersion as jest.MockedFunction<typeof intentCrVersions.getLatestCrVersion>;
 const mockGetLatestCrDraft = intentCrDrafts.getLatestCrDraft as jest.MockedFunction<typeof intentCrDrafts.getLatestCrDraft>;
 const mockCreateOrUpdateFromCR = jest.requireMock('../../src/lib/github/issue-creator').createOrUpdateFromCR;
+const mockInsertAuditRecord = crGithubIssueAudit.insertAuditRecord as jest.MockedFunction<typeof crGithubIssueAudit.insertAuditRecord>;
 
 // Sample CR for testing
 const sampleCR = {
@@ -112,6 +115,14 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         canonicalId: 'CR-TEST-001',
         renderedHash: 'abc123',
         labelsApplied: ['afu9', 'v0.7'],
+        crHash: 'cr-hash-xyz',
+        lawbookVersion: null,
+        usedSourcesHash: null,
+      });
+
+      mockInsertAuditRecord.mockResolvedValue({
+        success: true,
+        id: 'audit-uuid-0',
       });
 
       const req = new NextRequest('http://localhost/api/intent/sessions/test-session/github-issue', {
@@ -309,6 +320,9 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         canonicalId: 'CR-TEST-001',
         renderedHash: 'def456',
         labelsApplied: ['afu9', 'v0.7', 'state:CREATED'],
+        crHash: 'cr-hash-abc',
+        lawbookVersion: null,
+        usedSourcesHash: null,
       });
 
       const req = new NextRequest('http://localhost/api/intent/sessions/test-session/github-issue', {
@@ -346,6 +360,14 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         canonicalId: 'CR-TEST-001',
         renderedHash: 'ghi789',
         labelsApplied: ['afu9', 'v0.7', 'state:IN_PROGRESS'],
+        crHash: 'cr-hash-def',
+        lawbookVersion: null,
+        usedSourcesHash: null,
+      });
+
+      mockInsertAuditRecord.mockResolvedValue({
+        success: true,
+        id: 'audit-uuid-2',
       });
 
       const req = new NextRequest('http://localhost/api/intent/sessions/test-session/github-issue', {
@@ -388,6 +410,14 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         canonicalId: 'CR-TEST-001',
         renderedHash: 'jkl012',
         labelsApplied: ['afu9', 'v0.7'],
+        crHash: 'cr-hash-ghi',
+        lawbookVersion: null,
+        usedSourcesHash: null,
+      });
+
+      mockInsertAuditRecord.mockResolvedValue({
+        success: true,
+        id: 'audit-uuid-3',
       });
 
       const req = new NextRequest('http://localhost/api/intent/sessions/test-session/github-issue', {
@@ -401,6 +431,122 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.result.issueNumber).toBe(300);
+    });
+  });
+  
+  // ========================================
+  // D) Audit Trail Integration Tests
+  // ========================================
+  
+  describe('Audit trail integration (E75.4)', () => {
+    test('writes audit record on successful issue creation', async () => {
+      mockGetLatestCrVersion.mockResolvedValue({
+        success: true,
+        data: {
+          id: 'version-1',
+          session_id: 'test-session',
+          created_at: '2026-01-02T00:00:00Z',
+          cr_json: sampleCR,
+          cr_hash: 'hash123',
+          cr_version: 1,
+        },
+      });
+
+      mockCreateOrUpdateFromCR.mockResolvedValue({
+        mode: 'created',
+        issueNumber: 742,
+        url: 'https://github.com/test/test/issues/742',
+        canonicalId: 'CR-TEST-001',
+        renderedHash: 'rendered-hash-123',
+        labelsApplied: ['afu9'],
+        crHash: 'cr-hash-456',
+        lawbookVersion: '0.7.0',
+        usedSourcesHash: 'sources-hash-789',
+      });
+
+      mockInsertAuditRecord.mockResolvedValue({
+        success: true,
+        id: 'audit-uuid-123',
+      });
+
+      const req = new NextRequest('http://localhost/api/intent/sessions/test-session/github-issue', {
+        method: 'POST',
+        headers: { 'x-afu9-sub': 'user-123' },
+      });
+
+      const res = await POST(req, { params: { id: 'test-session' } });
+      
+      expect(res.status).toBe(200);
+      
+      // Verify audit record was written
+      expect(mockInsertAuditRecord).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          canonical_id: 'CR-TEST-001',
+          session_id: 'test-session',
+          cr_hash: 'cr-hash-456',
+          lawbook_version: '0.7.0',
+          owner: 'test',
+          repo: 'test',
+          issue_number: 742,
+          action: 'created',
+          rendered_issue_hash: 'rendered-hash-123',
+          used_sources_hash: 'sources-hash-789',
+          result_json: expect.objectContaining({
+            url: 'https://github.com/test/test/issues/742',
+            labelsApplied: ['afu9'],
+          }),
+        })
+      );
+    });
+    
+    test('continues successfully even if audit insertion fails (fail-safe)', async () => {
+      mockGetLatestCrVersion.mockResolvedValue({
+        success: true,
+        data: {
+          id: 'version-1',
+          session_id: 'test-session',
+          created_at: '2026-01-02T00:00:00Z',
+          cr_json: sampleCR,
+          cr_hash: 'hash123',
+          cr_version: 1,
+        },
+      });
+
+      mockCreateOrUpdateFromCR.mockResolvedValue({
+        mode: 'created',
+        issueNumber: 742,
+        url: 'https://github.com/test/test/issues/742',
+        canonicalId: 'CR-TEST-001',
+        renderedHash: 'rendered-hash-123',
+        labelsApplied: ['afu9'],
+        crHash: 'cr-hash-456',
+        lawbookVersion: null,
+        usedSourcesHash: null,
+      });
+
+      // Simulate audit insertion failure
+      mockInsertAuditRecord.mockResolvedValue({
+        success: false,
+        error: 'Database connection failed',
+      });
+
+      const req = new NextRequest('http://localhost/api/intent/sessions/test-session/github-issue', {
+        method: 'POST',
+        headers: { 'x-afu9-sub': 'user-123' },
+      });
+
+      const res = await POST(req, { params: { id: 'test-session' } });
+      
+      // Request should still succeed
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.result.issueNumber).toBe(742);
+      
+      // Should include warning about audit failure
+      expect(body.warnings).toBeDefined();
+      expect(body.warnings).toContain('Audit record insertion failed - operation succeeded but may not be auditable');
     });
   });
 });
