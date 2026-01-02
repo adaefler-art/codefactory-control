@@ -12,6 +12,7 @@
  */
 
 import type { ChangeRequest } from '../schemas/changeRequest';
+import type { SourceRef } from '../schemas/usedSources';
 import { generateBodyWithMarker } from './canonical-id-resolver';
 import { createHash } from 'crypto';
 
@@ -311,7 +312,7 @@ function formatKindName(kind: string): string {
 /**
  * Render a single evidence item as compact reference
  */
-function renderEvidenceItem(ev: any): string {
+function renderEvidenceItem(ev: SourceRef): string {
   switch (ev.kind) {
     case 'file_snippet':
       return `- **File:** \`${ev.repo.owner}/${ev.repo.repo}\` @ \`${ev.branch}\` - \`${ev.path}\` (lines ${ev.startLine}-${ev.endLine}) ${ev.snippetHash ? `[hash: \`${ev.snippetHash.substring(0, 12)}...\`]` : ''}`;
@@ -323,10 +324,12 @@ function renderEvidenceItem(ev: any): string {
       return `- **PR:** [#${ev.number}](https://github.com/${ev.repo.owner}/${ev.repo.repo}/pull/${ev.number}) - ${ev.title || 'Untitled'}`;
     
     case 'afu9_artifact':
-      return `- **Artifact:** \`${ev.artifactType}\` - ID: \`${ev.artifactId}\` ${ev.description ? `- ${ev.description}` : ''}`;
+      return `- **Artifact:** \`${ev.artifactType}\` - ID: \`${ev.artifactId}\` ${ev.ref?.description ? `- ${ev.ref.description}` : ''}`;
     
     default:
-      return `- **${ev.kind}:** ${JSON.stringify(ev)}`;
+      // Exhaustive check - TypeScript will error if we miss a case
+      const _exhaustiveCheck: never = ev;
+      return `- **${(ev as SourceRef).kind}:** ${JSON.stringify(ev)}`;
   }
 }
 

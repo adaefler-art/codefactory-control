@@ -13,7 +13,7 @@
 
 import { validateChangeRequest, type ValidationResult } from '../validators/changeRequestValidator';
 import { resolveCanonicalId, type ResolveCanonicalIdInput } from './canonical-id-resolver';
-import { renderCRAsIssue, generateLabelsForNewIssue, mergeLabelsForUpdate } from './issue-renderer';
+import { renderCRAsIssue, generateLabelsForNewIssue, mergeLabelsForUpdate, type RenderedIssue } from './issue-renderer';
 import { createAuthenticatedClient, type GitHubAuthRequest } from './auth-wrapper';
 import type { ChangeRequest } from '../schemas/changeRequest';
 
@@ -145,7 +145,7 @@ async function createIssue(
   owner: string,
   repo: string,
   cr: ChangeRequest,
-  rendered: { title: string; body: string; renderedHash: string }
+  rendered: RenderedIssue
 ): Promise<CreateOrUpdateResult> {
   // Get authenticated client (with policy enforcement)
   const octokit = await createAuthenticatedClient({ owner, repo });
@@ -187,7 +187,7 @@ async function updateIssue(
   owner: string,
   repo: string,
   cr: ChangeRequest,
-  rendered: { title: string; body: string; renderedHash: string },
+  rendered: RenderedIssue,
   issueNumber: number
 ): Promise<CreateOrUpdateResult> {
   // Get authenticated client (with policy enforcement)
