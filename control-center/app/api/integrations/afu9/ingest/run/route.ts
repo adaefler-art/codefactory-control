@@ -21,11 +21,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getPool } from '@/lib/db';
-import {
-  ingestRun,
-  RunNotFoundError,
-  AFU9IngestionError,
-} from '@/lib/afu9-ingestion';
+import { ingestRun } from '@/lib/afu9-ingestion';
+import { RunNotFoundError, AFU9IngestionError } from '@/lib/afu9-ingestion/types';
 
 /**
  * Schema for request body validation

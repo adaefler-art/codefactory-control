@@ -78,7 +78,7 @@ export async function POST(
           return errorResponse('Invalid used_sources', {
             status: 400,
             requestId,
-            details: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
+            details: error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
           });
         }
         throw error;
