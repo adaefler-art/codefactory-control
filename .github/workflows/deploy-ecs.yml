@@ -224,6 +224,31 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Deploy Context Guardrail (E7.0.1)
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
+          ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
+          CREATE_STAGING_SERVICE: 'false'
+          AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
+          MANAGE_DNS: ${{ env.MANAGE_DNS }}
+        run: |
+          set -euo pipefail
+          echo "🔒 Running Deploy Context Guardrail (E7.0.1)"
+          echo "Environment: ${DEPLOY_ENV}"
+          echo "Service: ${ECS_SERVICE}"
+          echo "Cluster: ${ECS_CLUSTER}"
+          echo ""
+          
+          # Run guardrail to validate environment context
+          # This enforces fail-closed: no implicit prod, explicit DEPLOY_ENV required,
+          # and cross-env artifact detection (stage/prod isolation).
+          ts-node scripts/deploy-context-guardrail.ts
+          
+          echo ""
+          echo "✅ Guardrail passed - proceeding with deploy"
+
       - name: Preflight gate
         shell: bash
         env:

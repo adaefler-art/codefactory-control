@@ -84,6 +84,25 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Deploy Context Guardrail (E7.0.1)
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ github.event.inputs.environment }}
+          CREATE_STAGING_SERVICE: ${{ env.CREATE_STAGING_SERVICE }}
+          AFU9_ENABLE_HTTPS: ${{ github.event.inputs.enable_https }}
+        run: |
+          set -euo pipefail
+          echo "🔒 Running Deploy Context Guardrail (E7.0.1)"
+          echo "Environment: ${DEPLOY_ENV}"
+          echo "CREATE_STAGING_SERVICE: ${CREATE_STAGING_SERVICE}"
+          echo ""
+          
+          # Run guardrail to validate environment context
+          ts-node scripts/deploy-context-guardrail.ts
+          
+          echo ""
+          echo "✅ Guardrail passed - proceeding with database stack deploy"
+
       - name: "Guard: afu9/database secret not pending deletion"
         shell: bash
         run: |
