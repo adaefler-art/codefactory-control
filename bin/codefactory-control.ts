@@ -234,7 +234,29 @@ if (multiEnvEnabled) {
   // Check if database should be enabled
   const enableDatabase = isDatabaseEnabled(app);
 
+  const explicitEnvProvided = app.node.tryGetContext('environment') !== undefined;
   const deployEnvironment = getValidatedContext<string>(app, 'environment') ?? 'production';
+  const requireExplicitEnv = (() => {
+    const v = getValidatedContext<boolean | string>(app, 'afu9-require-explicit-environment');
+    return v === true || v === 'true';
+  })();
+
+  if (!explicitEnvProvided) {
+    const msg =
+      'CDK context "environment" is not set; defaulting to production. ' +
+      'To avoid accidental prod deploys, pass -c environment=staging or use multi-env: -c afu9-multi-env=true.';
+    // Visible in synth/diff output
+    cdk.Annotations.of(app).addWarning(msg);
+    // Visible in CI logs
+    // eslint-disable-next-line no-console
+    console.warn('[AFU-9][DEPLOY-GUARD]', msg);
+
+    if (requireExplicitEnv) {
+      throw new Error(
+        'Refusing to proceed without explicit -c environment=... (afu9-require-explicit-environment=true)'
+      );
+    }
+  }
 
   // ECS stack (depends on network, optionally on database)
   const stageTargetGroup = new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroupSingle', {

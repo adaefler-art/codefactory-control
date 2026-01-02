@@ -1,0 +1,315 @@
+#!/usr/bin/env ts-node
+
+/**
+ * Pre-Deploy Image Gate (E7.0.2 - Hardened)
+ * 
+ * Purpose: Pre-deployment check ensuring all images from the manifest are:
+ *   1. Built and pushed to ECR
+ *   2. ECR repositories exist and are accessible
+ *   3. Images are tagged correctly for the target environment
+ * 
+ * This gate prevents "silent partial deploys" where TaskDef references images
+ * that haven't been built or pushed.
+ * 
+ * Environment variables:
+ *   DEPLOY_ENV - Required: "staging"/"stage" or "production"/"prod"
+ *   GIT_SHA - Required: Full git commit SHA
+ *   AWS_REGION - Optional: AWS region (default: eu-central-1)
+ *   SKIP_IMAGE_GATE - Optional: Set to "true" to skip (NOT recommended)
+ * 
+ * Exit codes:
+ *   0 - Gate passed (all images ready)
+ *   1 - Gate failed (missing images or repos)
+ *   2 - Usage error or missing env vars
+ */
+
+import * as path from 'path';
+import { loadManifest } from './validate-image-manifest';
+import {
+  normalizeEnvironment,
+  generateAllTags,
+  computeImageTag,
+  getDeployImages,
+  type ImageManifest,
+  type ImageDefinition
+} from './lib/image-matrix';
+
+// AWS SDK is optional - script can run in two modes:
+// 1. With AWS SDK: actually check ECR repositories and images
+// 2. Without AWS SDK: validate manifest structure only (for local dev)
+let ecrClient: any = null;
+try {
+  const { ECRClient, DescribeRepositoriesCommand, DescribeImagesCommand } = require('@aws-sdk/client-ecr');
+  const region = process.env.AWS_REGION || 'eu-central-1';
+  ecrClient = new ECRClient({ region });
+} catch (error) {
+  console.warn('⚠️  AWS SDK not available - ECR checks will be skipped');
+}
+
+interface ImageRef {
+  id: string;
+  name: string;
+  primaryTag: string;  // Full SHA tag for deterministic verification
+  allTags: string[];   // All variant tags (short SHA, latest)
+  required: boolean;
+}
+
+function getRequiredEnvVar(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`❌ Missing required environment variable: ${name}`);
+    process.exit(2);
+  }
+  return value;
+}
+
+function buildImageReferences(
+  manifest: ImageManifest,
+  deployEnv: string,
+  gitSha: string,
+  features?: Record<string, boolean>
+): ImageRef[] {
+  // Normalize environment to handle aliases (prod/production, stage/staging)
+  const normalizedEnv = normalizeEnvironment(deployEnv);
+  
+  // Get images for this deploy (filters by environment and features)
+  const deployImages = getDeployImages(manifest, normalizedEnv, features);
+  
+  // Generate tags for all images
+  const allTags = generateAllTags(manifest, normalizedEnv, gitSha);
+  const primaryTag = computeImageTag(manifest, normalizedEnv, gitSha);
+
+  return deployImages.map((img: ImageDefinition) => ({
+    id: img.id,
+    name: img.name,
+    primaryTag,
+    allTags,
+    required: img.required
+  }));
+}
+
+async function checkEcrRepository(repoName: string): Promise<boolean> {
+  if (!ecrClient) {
+    console.log(`  ℹ️  Skipping ECR check for ${repoName} (AWS SDK not available)`);
+    return true;
+  }
+
+  try {
+    const { DescribeRepositoriesCommand } = require('@aws-sdk/client-ecr');
+    const command = new DescribeRepositoriesCommand({
+      repositoryNames: [repoName]
+    });
+    
+    await ecrClient.send(command);
+    return true;
+  } catch (error: any) {
+    if (error.name === 'RepositoryNotFoundException') {
+      return false;
+    }
+    // Re-throw other errors (auth issues, network problems, etc.)
+    throw error;
+  }
+}
+
+async function checkImageExists(repoName: string, tag: string): Promise<boolean> {
+  if (!ecrClient) {
+    console.log(`  ℹ️  Skipping image check for ${repoName}:${tag} (AWS SDK not available)`);
+    return true;
+  }
+
+  try {
+    const { DescribeImagesCommand } = require('@aws-sdk/client-ecr');
+    const command = new DescribeImagesCommand({
+      repositoryName: repoName,
+      imageIds: [{ imageTag: tag }]
+    });
+    
+    const response = await ecrClient.send(command);
+    return response.imageDetails && response.imageDetails.length > 0;
+  } catch (error: any) {
+    if (error.name === 'ImageNotFoundException') {
+      return false;
+    }
+    // Re-throw other errors
+    throw error;
+  }
+}
+
+async function validateEcrRepositories(manifest: any): Promise<string[]> {
+  const errors: string[] = [];
+
+  console.log('🔍 Checking ECR repositories...');
+  
+  for (const repoName of manifest.ecrRepositories) {
+    try {
+      const exists = await checkEcrRepository(repoName);
+      if (!exists) {
+        errors.push(`ECR repository does not exist: ${repoName}`);
+        console.error(`  ❌ Repository not found: ${repoName}`);
+      } else {
+        console.log(`  ✅ Repository exists: ${repoName}`);
+      }
+    } catch (error: any) {
+      errors.push(`Failed to check ECR repository ${repoName}: ${error.message}`);
+      console.error(`  ❌ Error checking ${repoName}: ${error.message}`);
+    }
+  }
+
+  return errors;
+}
+
+async function validateImages(imageRefs: ImageRef[]): Promise<string[]> {
+  const errors: string[] = [];
+
+  console.log('\n🔍 Checking image availability in ECR...');
+  
+  // If ECR client is unavailable, fail for required images in CI
+  if (!ecrClient) {
+    console.warn('⚠️  AWS SDK for ECR not available');
+    // In CI/CD environments, we should fail if ECR checks can't run
+    if (process.env.CI || process.env.GITHUB_ACTIONS) {
+      errors.push('ECR validation required in CI/CD but AWS SDK is not available');
+      return errors;
+    }
+    console.warn('   Skipping ECR image checks (local development mode)');
+    return errors;
+  }
+  
+  for (const imageRef of imageRefs) {
+    console.log(`\n  Image: ${imageRef.id} (${imageRef.name})`);
+    console.log(`    Primary tag: ${imageRef.primaryTag}`);
+    
+    // Check primary tag (full SHA - most deterministic)
+    try {
+      const primaryExists = await checkImageExists(imageRef.name, imageRef.primaryTag);
+      if (primaryExists) {
+        console.log(`    ✅ Primary tag found: ${imageRef.primaryTag}`);
+      } else {
+        console.error(`    ❌ Primary tag NOT found: ${imageRef.primaryTag}`);
+        if (imageRef.required) {
+          errors.push(
+            `Required image ${imageRef.id} missing primary tag: ${imageRef.primaryTag}`
+          );
+        }
+      }
+    } catch (error: any) {
+      console.error(`    ❌ Error checking primary tag: ${error.message}`);
+      if (imageRef.required) {
+        errors.push(
+          `Failed to verify required image ${imageRef.id}: ${error.message}`
+        );
+      }
+    }
+    
+    // Also check other tags (informational - don't fail on these)
+    const otherTags = imageRef.allTags.filter(t => t !== imageRef.primaryTag);
+    if (otherTags.length > 0) {
+      console.log(`    Other tags: ${otherTags.join(', ')}`);
+      for (const tag of otherTags) {
+        try {
+          const exists = await checkImageExists(imageRef.name, tag);
+          if (exists) {
+            console.log(`      ✓ ${tag}`);
+          } else {
+            console.log(`      ⚠  ${tag} (not found but optional)`);
+          }
+        } catch (error: any) {
+          console.log(`      ⚠  ${tag} (error: ${error.message})`);
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
+async function main() {
+  console.log('🔒 Pre-Deploy Image Gate (E7.0.2)\n');
+
+  // Check if gate should be skipped
+  if (process.env.SKIP_IMAGE_GATE === 'true') {
+    console.warn('⚠️  WARNING: Image gate is SKIPPED (SKIP_IMAGE_GATE=true)');
+    console.warn('   This is NOT recommended for production deploys.\n');
+    process.exit(0);
+  }
+
+  // Load required environment variables
+  const deployEnv = getRequiredEnvVar('DEPLOY_ENV');
+  const gitSha = getRequiredEnvVar('GIT_SHA');
+  const region = process.env.AWS_REGION || 'eu-central-1';
+
+  console.log('Environment:');
+  console.log(`  DEPLOY_ENV: ${deployEnv}`);
+  console.log(`  GIT_SHA: ${gitSha}`);
+  console.log(`  AWS_REGION: ${region}`);
+  console.log();
+
+  // Load manifest
+  const repoRoot = path.join(__dirname, '..');
+  const manifestPath = path.join(repoRoot, 'images-manifest.json');
+  
+  console.log(`📋 Loading manifest: ${manifestPath}`);
+  const manifest = loadManifest(manifestPath);
+  console.log(`✓ Manifest loaded (version ${manifest.version})\n`);
+
+  // Build image references
+  const imageRefs = buildImageReferences(manifest, deployEnv, gitSha);
+  
+  console.log('📦 Required images for this deploy:');
+  imageRefs.forEach(ref => {
+    console.log(`  - ${ref.id} (${ref.name})`);
+    console.log(`    Primary tag: ${ref.primaryTag}`);
+    if (ref.allTags.length > 1) {
+      const otherTags = ref.allTags.filter(t => t !== ref.primaryTag);
+      console.log(`    Other tags: ${otherTags.join(', ')}`);
+    }
+  });
+  console.log();
+
+  // Run validations
+  const errors: string[] = [];
+
+  try {
+    // Validate ECR repositories exist
+    const repoErrors = await validateEcrRepositories(manifest);
+    errors.push(...repoErrors);
+
+    // Validate images are pushed
+    const imageErrors = await validateImages(imageRefs);
+    errors.push(...imageErrors);
+
+  } catch (error: any) {
+    console.error(`\n❌ Unexpected error during validation: ${error.message}`);
+    if (error.stack) {
+      console.error(error.stack);
+    }
+    process.exit(1);
+  }
+
+  // Summary
+  console.log('\n' + '='.repeat(60));
+  if (errors.length === 0) {
+    console.log('✅ GATE PASSED - All images are ready for deployment');
+    console.log('='.repeat(60));
+    console.log('\nAll required images have been built and pushed.');
+    console.log('Deployment is authorized to proceed.');
+    process.exit(0);
+  } else {
+    console.log(`❌ GATE FAILED - ${errors.length} issue(s) detected`);
+    console.log('='.repeat(60));
+    console.log('\nIssues:');
+    errors.forEach((err, idx) => {
+      console.log(`  ${idx + 1}. ${err}`);
+    });
+    console.log('\nFix the issues above and ensure all images are built/pushed before deploying.');
+    process.exit(1);
+  }
+}
+
+// Run if executed directly
+if (require.main === module) {
+  main();
+}
+
+// Export functions for use by post-deploy verification
+export { buildImageReferences };
