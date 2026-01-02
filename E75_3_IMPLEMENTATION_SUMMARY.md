@@ -214,8 +214,8 @@ npm --prefix control-center test
 ```
 
 **Total Coverage (with existing tests):**
-- Canonical-ID Resolver: 48 tests
-- Issue Creator: 14 tests
+- Canonical-ID Resolver: 45 tests
+- Issue Creator: 17 tests
 - Idempotency/Concurrency: 15 tests
 - **Total: 77 tests, all passing**
 
@@ -350,8 +350,8 @@ npm --prefix control-center test
 - New tests extend with comprehensive concurrency coverage
 
 ### Combined Coverage
-- **Resolver:** 48 tests (E75.1)
-- **Creator:** 14 tests (E75.2)
+- **Resolver:** 45 tests (E75.1)
+- **Creator:** 17 tests (E75.2)
 - **Idempotency/Concurrency:** 15 tests (E75.3)
 - **Total:** 77 tests, all passing
 

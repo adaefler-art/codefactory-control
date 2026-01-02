@@ -60,8 +60,8 @@ Time:        ~800ms
 ```
 
 **Coverage Breakdown:**
-- Canonical-ID Resolver (E75.1): 48 tests
-- Issue Creator (E75.2): 14 tests
+- Canonical-ID Resolver (E75.1): 45 tests
+- Issue Creator (E75.2): 17 tests
 - Idempotency/Concurrency (E75.3): 15 tests
 - **Total: 77 tests**
 
