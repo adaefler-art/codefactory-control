@@ -98,7 +98,8 @@ jobs:
           echo ""
           
           # Run guardrail to validate environment context
-          ts-node scripts/deploy-context-guardrail.ts
+          # Use npx with ts-node for deterministic execution
+          npx ts-node scripts/deploy-context-guardrail.ts
           
           echo ""
           echo "✅ Guardrail passed - proceeding with database stack deploy"

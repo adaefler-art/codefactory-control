@@ -244,7 +244,8 @@ jobs:
           # Run guardrail to validate environment context
           # This enforces fail-closed: no implicit prod, explicit DEPLOY_ENV required,
           # and cross-env artifact detection (stage/prod isolation).
-          ts-node scripts/deploy-context-guardrail.ts
+          # Use npx with ts-node for deterministic execution
+          npx ts-node scripts/deploy-context-guardrail.ts
           
           echo ""
           echo "✅ Guardrail passed - proceeding with deploy"

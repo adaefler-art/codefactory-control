@@ -2,7 +2,7 @@
  * Tests for Deploy Context Guardrail (E7.0.1)
  */
 
-import { resolveDeployContext, DeployContext } from '../deploy-context-resolver';
+import { resolveDeployContext, DeployContext, normalizeEnvironment } from '../deploy-context-resolver';
 import {
   validateProdArtifacts,
   validateStageArtifacts,
@@ -22,9 +22,37 @@ describe('Deploy Context Resolver', () => {
   });
 
   it('should fail when DEPLOY_ENV is invalid', () => {
-    expect(() => resolveDeployContext('prod')).toThrow('Invalid DEPLOY_ENV');
-    expect(() => resolveDeployContext('stage')).toThrow('Invalid DEPLOY_ENV');
     expect(() => resolveDeployContext('development')).toThrow('Invalid DEPLOY_ENV');
+    expect(() => resolveDeployContext('test')).toThrow('Invalid DEPLOY_ENV');
+  });
+
+  it('should accept and normalize "production" alias', () => {
+    const context = resolveDeployContext('production');
+    expect(context.environment).toBe('production');
+  });
+
+  it('should accept and normalize "prod" alias', () => {
+    const context = resolveDeployContext('prod');
+    expect(context.environment).toBe('production');
+    expect(context.service).toBe('afu9-control-center');
+  });
+
+  it('should accept and normalize "staging" alias', () => {
+    const context = resolveDeployContext('staging');
+    expect(context.environment).toBe('staging');
+  });
+
+  it('should accept and normalize "stage" alias', () => {
+    const context = resolveDeployContext('stage');
+    expect(context.environment).toBe('staging');
+    expect(context.service).toBe('afu9-control-center-staging');
+  });
+
+  it('should normalize environment case-insensitively', () => {
+    expect(resolveDeployContext('PRODUCTION').environment).toBe('production');
+    expect(resolveDeployContext('Prod').environment).toBe('production');
+    expect(resolveDeployContext('STAGING').environment).toBe('staging');
+    expect(resolveDeployContext('Stage').environment).toBe('staging');
   });
 
   it('should resolve production context correctly', () => {
@@ -114,6 +142,19 @@ describe('Production Deploy Validation', () => {
     const violations = validateProdArtifacts(prodContext, artifacts);
     expect(violations.length).toBeGreaterThan(0);
     expect(violations[0]).toContain('CREATE_STAGING_SERVICE');
+  });
+
+  it('should NOT flag false positives like "product" or "production"', () => {
+    const artifacts = {
+      secretArns: ['arn:aws:secretsmanager:eu-central-1:123456789:secret:afu9/product-catalog'],
+      secretNames: ['production-database'], // This is OK - it's the word "production"
+      imageRefs: ['123456789.dkr.ecr.eu-central-1.amazonaws.com/products:prod-abc123'],
+      serviceNames: ['product-service'],
+      envVars: { PRODUCT_MODE: 'production' },
+    };
+    const violations = validateProdArtifacts(prodContext, artifacts);
+    // Should have no violations - these are not stage artifacts
+    expect(violations).toEqual([]);
   });
 
   it('should pass when prod uses only prod artifacts', () => {

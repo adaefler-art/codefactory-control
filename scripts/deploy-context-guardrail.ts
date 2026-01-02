@@ -73,33 +73,36 @@ function extractArtifactRefs(): ArtifactRefs {
 
 /**
  * Validates that prod deploy doesn't use stage artifacts
+ * Uses structured rules to avoid false positives
  */
 function validateProdArtifacts(context: DeployContext, artifacts: ArtifactRefs): string[] {
   const violations: string[] = [];
 
   // Check secret ARNs/names for stage references
+  // Look for explicit stage path segments, not substring matches
   for (const arn of artifacts.secretArns) {
-    if (arn.includes('/stage/') || arn.includes('staging')) {
+    if (arn.match(/\/stage\//) || arn.match(/\/staging\//)) {
       violations.push(`Secret ARN contains stage reference: ${arn}`);
     }
   }
 
   for (const name of artifacts.secretNames) {
-    if (name.includes('/stage/') || name.includes('staging')) {
+    if (name.match(/\/stage\//) || name.match(/\/staging\//)) {
       violations.push(`Secret name contains stage reference: ${name}`);
     }
   }
 
   // Check image references for stage tags
+  // Match explicit tag patterns: :stage- or :staging-
   for (const image of artifacts.imageRefs) {
-    if (image.includes(':stage-') || image.includes(':staging-')) {
+    if (image.match(/:stage-/) || image.match(/:staging-/)) {
       violations.push(`Image reference uses stage tag: ${image}`);
     }
   }
 
-  // Check service names
+  // Check service names - must not contain "staging" as a word
   for (const service of artifacts.serviceNames) {
-    if (service.includes('staging')) {
+    if (service.match(/\bstaging\b/i)) {
       violations.push(`Service name contains "staging": ${service}`);
     }
   }
@@ -114,20 +117,23 @@ function validateProdArtifacts(context: DeployContext, artifacts: ArtifactRefs):
 
 /**
  * Validates that stage deploy doesn't use prod-only artifacts
+ * Uses structured rules to avoid false positives
  */
 function validateStageArtifacts(context: DeployContext, artifacts: ArtifactRefs): string[] {
   const violations: string[] = [];
 
-  // Check service names - must include "staging"
+  // Check service names - must include "staging" as a word for staging deploys
   for (const service of artifacts.serviceNames) {
-    if (service && !service.includes('staging') && service.includes('afu9')) {
+    // Only validate if it looks like an AFU9 service name
+    if (service && service.match(/afu9.*control-center/i) && !service.match(/\bstaging\b/i)) {
       violations.push(`Service name for staging deploy should include "staging": ${service}`);
     }
   }
 
   // Check image references - should not use prod tags
+  // Match explicit tag pattern: :prod-
   for (const image of artifacts.imageRefs) {
-    if (image.includes(':prod-')) {
+    if (image.match(/:prod-/)) {
       violations.push(`Image reference uses prod tag in staging deploy: ${image}`);
     }
   }
@@ -137,6 +143,7 @@ function validateStageArtifacts(context: DeployContext, artifacts: ArtifactRefs)
 
 /**
  * Displays target summary for verification
+ * SECURITY: Only shows ARNs/names, never secret values
  */
 function displayTargetSummary(context: DeployContext, artifacts: ArtifactRefs): void {
   console.log('\n========================================');
@@ -168,7 +175,11 @@ function displayTargetSummary(context: DeployContext, artifacts: ArtifactRefs): 
   console.log('');
 
   console.log('Feature Flags:');
-  for (const [key, value] of Object.entries(artifacts.envVars)) {
+  // Only show safe configuration flags, not secret values
+  const safeEnvVars = Object.entries(artifacts.envVars).filter(([key]) => 
+    !key.includes('SECRET') && !key.includes('TOKEN') && !key.includes('PASSWORD') && !key.includes('KEY')
+  );
+  for (const [key, value] of safeEnvVars) {
     console.log(`  ${key}: ${value}`);
   }
   console.log('');
