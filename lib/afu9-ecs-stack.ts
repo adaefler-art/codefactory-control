@@ -425,11 +425,7 @@ export class Afu9EcsStack extends cdk.Stack {
     const shouldIncludeStageSmokeKey =
       environment === ENVIRONMENT.STAGE || (!!props.stageTargetGroup && createStagingService);
     const smokeKeySecret = shouldIncludeStageSmokeKey
-      ? secretsmanager.Secret.fromSecretCompleteArn(
-          this,
-          'StageSmokeKey',
-          'arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G'
-        )
+      ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
       : undefined;
 
     // ========================================
