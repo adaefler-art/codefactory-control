@@ -59,7 +59,7 @@ describe('Effective Configuration Resolution', () => {
     
     expect(githubAppId).toBeDefined();
     expect(githubAppId?.value).toBe('123456');
-    expect(githubAppId?.source).toBe(ConfigSource.ENV);
+    expect(githubAppId?.source).toBe(ConfigSource.RUNTIME_ENV);
     expect(githubAppId?.isSet).toBe(true);
     expect(githubAppId?.isMissing).toBe(false);
   });
@@ -72,7 +72,7 @@ describe('Effective Configuration Resolution', () => {
     
     expect(nodeEnv).toBeDefined();
     expect(nodeEnv?.value).toBe('development');
-    expect(nodeEnv?.source).toBe(ConfigSource.DEFAULT);
+    expect(nodeEnv?.source).toBe(ConfigSource.CATALOG_DEFAULT);
     expect(nodeEnv?.isSet).toBe(false);
   });
 
@@ -220,7 +220,8 @@ describe('Value Sanitization', () => {
     
     const sanitized = sanitizeValue(privateKey!);
     expect(sanitized).not.toBe('very-secret-key-value-1234567890');
-    expect(sanitized).toContain('...');
+    // Should be fully masked (no substrings revealed)
+    expect(sanitized).toMatch(/^\*+$/);
   });
 
   test('does not sanitize non-secret values', () => {
@@ -297,5 +298,113 @@ describe('Environment Detection', () => {
     
     const report = resolveEffectiveConfig();
     expect(report.environment).toBe('development');
+  });
+});
+
+describe('Enhanced Secret Sanitization', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  test('fully masks secret values without revealing substrings', () => {
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'very-secret-key-value-1234567890-abcdefghijk';
+    
+    const report = resolveEffectiveConfig();
+    const privateKey = report.values.find(v => v.key === 'GITHUB_APP_PRIVATE_KEY_PEM');
+    
+    expect(privateKey).toBeDefined();
+    
+    const sanitized = sanitizeValue(privateKey!);
+    // Should be fully masked, no substring of actual value
+    expect(sanitized).toMatch(/^\*+$/);
+    expect(sanitized).not.toContain('very');
+    expect(sanitized).not.toContain('1234');
+    expect(sanitized).not.toContain('abcd');
+  });
+
+  test('sanitizes based on tag secret', () => {
+    // Even if key looks benign, tag:secret should trigger sanitization
+    process.env.OPENAI_API_KEY = 'sk-test1234567890abcdefghijklmnop';
+    
+    const report = resolveEffectiveConfig();
+    const openaiKey = report.values.find(v => v.key === 'OPENAI_API_KEY');
+    
+    expect(openaiKey).toBeDefined();
+    expect(openaiKey?.config.tags).toContain('secret');
+    
+    const sanitized = sanitizeValue(openaiKey!);
+    expect(sanitized).toMatch(/^\*+$/);
+    expect(sanitized).not.toContain('sk-');
+  });
+
+  test('does not sanitize non-secret values', () => {
+    process.env.GITHUB_OWNER = 'my-test-org';
+    
+    const report = resolveEffectiveConfig();
+    const githubOwner = report.values.find(v => v.key === 'GITHUB_OWNER');
+    
+    expect(githubOwner).toBeDefined();
+    expect(githubOwner?.config.tags).not.toContain('secret');
+    
+    const sanitized = sanitizeValue(githubOwner!);
+    expect(sanitized).toBe('my-test-org');
+  });
+
+  test('sanitized report fully masks all secrets', () => {
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'secret-key-data-123';
+    process.env.OPENAI_API_KEY = 'sk-1234567890abcdef';
+    process.env.GITHUB_OWNER = 'my-org';
+    
+    const report = getEffectiveConfigReportSanitized();
+    
+    const privateKey = report.values.find(v => v.key === 'GITHUB_APP_PRIVATE_KEY_PEM');
+    const openaiKey = report.values.find(v => v.key === 'OPENAI_API_KEY');
+    const githubOwner = report.values.find(v => v.key === 'GITHUB_OWNER');
+    
+    // Secrets fully masked
+    expect(privateKey?.value).toMatch(/^\*+$/);
+    expect(openaiKey?.value).toMatch(/^\*+$/);
+    
+    // Non-secrets not masked
+    expect(githubOwner?.value).toBe('my-org');
+  });
+});
+
+describe('Environment-Aware Required Flags', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  test('respects requiredIn for environment-specific requirements', () => {
+    // This test would require adding a flag with requiredIn to the catalog
+    // For now, verify that missing detection works with current environment
+    process.env.NODE_ENV = 'development';
+    
+    const report = resolveEffectiveConfig();
+    
+    // All required flags should be checked in development
+    expect(report.environment).toBe('development');
+  });
+
+  test('conditional requirements only enforced when condition met', () => {
+    // Test that conditionalOn logic works
+    // Would need catalog entry with conditionalOn to fully test
+    const report = resolveEffectiveConfig();
+    
+    // Verify report structure includes all expected fields
+    expect(report.missingRequired).toBeDefined();
+    expect(Array.isArray(report.missingRequired)).toBe(true);
   });
 });

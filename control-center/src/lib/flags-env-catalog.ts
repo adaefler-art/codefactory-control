@@ -54,6 +54,13 @@ export const FlagConfigSchema = z.object({
   defaultValue: z.union([z.string(), z.boolean(), z.number(), z.null()]).optional(),
   allowedEnvironments: z.array(z.nativeEnum(AllowedEnvironment)),
   required: z.boolean().default(false),
+  /** Environments where this flag is required (if required=true and this is set, only enforced in these envs) */
+  requiredIn: z.array(z.enum(['development', 'staging', 'production'])).optional(),
+  /** Conditional requirement - flag is only required if this condition is met */
+  conditionalOn: z.object({
+    key: z.string(),
+    equals: z.union([z.boolean(), z.string(), z.number()]).optional(),
+  }).optional(),
   /** Whether this is build-time or runtime configuration */
   source: z.enum(['build', 'runtime', 'both']).default('runtime'),
   /** Tags for categorization */

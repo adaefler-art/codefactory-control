@@ -7,6 +7,7 @@
  * Detects missing expected flags and provides catalog information.
  * 
  * E7.0.4: Central source of truth for configuration
+ * Auth: Requires authentication (x-afu9-sub header from middleware)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,6 +17,19 @@ import { FLAGS_CATALOG } from '@/lib/flags-env-catalog';
 
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
+
+  // Require authentication - check for user ID from middleware
+  const userId = request.headers.get('x-afu9-sub');
+  if (!userId) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Unauthorized',
+        message: 'Authentication required to access system configuration',
+      },
+      { requestId, status: 401 }
+    );
+  }
 
   try {
     const report = getEffectiveConfigReportSanitized();

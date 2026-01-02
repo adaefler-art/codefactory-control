@@ -9,10 +9,13 @@
 import { GET } from '../../app/api/system/flags-env/route';
 
 // Mock NextRequest-like object
-function createMockRequest(requestId?: string) {
+function createMockRequest(requestId?: string, userId?: string) {
   const headers = new Headers();
   if (requestId) {
     headers.set('x-request-id', requestId);
+  }
+  if (userId) {
+    headers.set('x-afu9-sub', userId);
   }
   return {
     headers,
@@ -30,22 +33,32 @@ describe('Flags/Env API Endpoint', () => {
     process.env = originalEnv;
   });
 
-  test('GET /api/system/flags-env returns 200', async () => {
-    const request = createMockRequest();
+  test('returns 401 when user is not authenticated', async () => {
+    const request = createMockRequest('flags-env-test-unauth');
+    const response = await GET(request);
+    
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe('Unauthorized');
+  });
+
+  test('GET /api/system/flags-env returns 200 for authenticated user', async () => {
+    const request = createMockRequest('flags-env-test-123', 'test-user-id');
     const response = await GET(request);
     
     expect(response.status).toBe(200);
   });
 
   test('response includes x-request-id header', async () => {
-    const request = createMockRequest('flags-env-test-123');
+    const request = createMockRequest('flags-env-test-123', 'test-user-id');
     const response = await GET(request);
     
     expect(response.headers.get('x-request-id')).toBe('flags-env-test-123');
   });
 
   test('response has correct structure', async () => {
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -56,7 +69,7 @@ describe('Flags/Env API Endpoint', () => {
   });
 
   test('catalog metadata is present', async () => {
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -67,7 +80,7 @@ describe('Flags/Env API Endpoint', () => {
   });
 
   test('effective config report is present', async () => {
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -83,7 +96,7 @@ describe('Flags/Env API Endpoint', () => {
     process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'very-secret-private-key-data';
     process.env.OPENAI_API_KEY = 'sk-test1234567890abcdef';
     
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -103,7 +116,7 @@ describe('Flags/Env API Endpoint', () => {
     process.env.GITHUB_OWNER = 'my-test-org';
     process.env.AWS_REGION = 'us-west-2';
     
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -119,7 +132,7 @@ describe('Flags/Env API Endpoint', () => {
   });
 
   test('summary counts are accurate', async () => {
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -140,7 +153,7 @@ describe('Flags/Env API Endpoint', () => {
     delete process.env.GITHUB_APP_PRIVATE_KEY_PEM;
     delete process.env.GITHUB_APP_WEBHOOK_SECRET;
     
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -153,7 +166,7 @@ describe('Flags/Env API Endpoint', () => {
   });
 
   test('flags include metadata', async () => {
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -178,7 +191,7 @@ describe('Flags/Env API Endpoint', () => {
   test('environment is correctly reported', async () => {
     process.env.NODE_ENV = 'production';
     
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     const body = await response.json();
     
@@ -186,7 +199,7 @@ describe('Flags/Env API Endpoint', () => {
   });
 
   test('response is JSON with correct content-type', async () => {
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     
     const contentType = response.headers.get('content-type');
@@ -198,7 +211,7 @@ describe('Flags/Env API Error Handling', () => {
   test('handles errors gracefully', async () => {
     // This test ensures the error handling path works
     // In a real error scenario, the API should return 500
-    const request = createMockRequest();
+    const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
     
     // Under normal conditions, should succeed
