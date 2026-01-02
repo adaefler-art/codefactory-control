@@ -37,29 +37,6 @@ import {
   AFU9IngestionError,
 } from './types';
 
-export {
-  IngestRunParamsSchema,
-  IngestDeployParamsSchema,
-  IngestVerdictParamsSchema,
-  IngestVerificationParamsSchema,
-  AFU9IngestionError,
-  RunNotFoundError,
-  DeployNotFoundError,
-  VerdictNotFoundError,
-  VerificationNotFoundError,
-} from './types';
-
-export type {
-  IngestRunParams,
-  IngestDeployParams,
-  IngestVerdictParams,
-  IngestVerificationParams,
-  IngestRunResult,
-  IngestDeployResult,
-  IngestVerdictResult,
-  IngestVerificationResult,
-} from './types';
-
 // ========================================
 // Helper Functions
 // ========================================

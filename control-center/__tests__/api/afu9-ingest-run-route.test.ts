@@ -31,9 +31,6 @@ const mockIngestRun = jest.fn();
 
 jest.mock('@/lib/afu9-ingestion', () => ({
   ingestRun: mockIngestRun,
-}));
-
-jest.mock('@/lib/afu9-ingestion/types', () => ({
   RunNotFoundError,
   AFU9IngestionError,
 }));
