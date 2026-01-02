@@ -568,6 +568,13 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
 
+          ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          if [ -z "${ACCOUNT_ID:-}" ] || [ "${ACCOUNT_ID}" = "None" ]; then
+            echo "❌ Could not resolve AWS account id" >&2
+            exit 1
+          fi
+          export ACCOUNT_ID
+
           # Staging preflight (best-effort): ensure the task execution role can read the smoke key.
           # Note: GitHub deploy role may not be allowed to call iam:GetRole, so we derive executionRoleArn
           # from the task definition we just fetched.
@@ -576,44 +583,41 @@ jobs:
             if [ -z "${EXEC_ROLE_ARN:-}" ]; then
               echo "⚠️  Could not resolve executionRoleArn from task definition; skipping smoke-key preflight" >&2
             else
-              ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
-              if [ -z "${ACCOUNT_ID:-}" ] || [ "${ACCOUNT_ID}" = "None" ]; then
-                echo "⚠️  Could not resolve AWS account id for preflight; skipping smoke-key preflight" >&2
-              else
-                # Secrets Manager ARNs include a rotated suffix; simulate against the wildcard.
-                SMOKE_KEY_ARN_WILDCARD="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/stage/smoke-key-*"
+              # Secrets Manager ARNs include a rotated suffix; simulate against the wildcard.
+              SMOKE_KEY_ARN_WILDCARD="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/stage/smoke-key-*"
 
-                SIM_RESULT=$(aws iam simulate-principal-policy \
-                  --policy-source-arn "${EXEC_ROLE_ARN}" \
-                  --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
-                  --resource-arns "${SMOKE_KEY_ARN_WILDCARD}" \
-                  --query 'EvaluationResults[].EvalDecision' \
-                  --output text 2>/dev/null || true)
+              SIM_RESULT=$(aws iam simulate-principal-policy \
+                --policy-source-arn "${EXEC_ROLE_ARN}" \
+                --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
+                --resource-arns "${SMOKE_KEY_ARN_WILDCARD}" \
+                --query 'EvaluationResults[].EvalDecision' \
+                --output text 2>/dev/null || true)
 
-                if [ -z "${SIM_RESULT:-}" ]; then
-                  echo "⚠️  IAM simulation not permitted; skipping smoke-key preflight" >&2
-                elif echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
-                  echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_ARN_WILDCARD}" >&2
-                  echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
-                  echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
-                  exit 1
-                fi
+              if [ -z "${SIM_RESULT:-}" ]; then
+                echo "⚠️  IAM simulation not permitted; skipping smoke-key preflight" >&2
+              elif echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
+                echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_ARN_WILDCARD}" >&2
+                echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
+                echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
+                exit 1
               fi
             fi
           fi
 
-          # Canonical DB secret reference (inject by secret name; no DescribeSecret required).
-          DB_SECRET_ID="afu9/database"
-          echo "Using DB secret id: $DB_SECRET_ID"
-          export DB_SECRET_ID
+          # Canonical DB secret reference for ECS Secrets Manager JSON-key selectors.
+          # IMPORTANT: Using plain secret name with ":jsonKey::" can be parsed by ECS as an SSM parameter name.
+          # Use an ARN prefix (rotation-safe/partial ARN) to force Secrets Manager interpretation.
+          DB_SECRET_ARN="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/database"
+          echo "Using DB secret arn prefix: $DB_SECRET_ARN"
+          export DB_SECRET_ARN
 
           # Sanitize DB secret references before further mutation:
           # - replace legacy /master secret refs
           # - replace any fixed/rotated suffix refs with canonical ARN
           jq 'walk(
             if type=="string" then
-              gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ID + ":"))
-              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ID + ":"))
+              gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
+              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
               | gsub("afu9/database/master"; "afu9/database")
             else . end
           )' \
@@ -651,15 +655,15 @@ jobs:
                else . end
                  | if .secrets then .secrets |= map(
                      if .name == "DATABASE_HOST" then
-                       .valueFrom = (env.DB_SECRET_ID + ":host::")
+                       .valueFrom = (env.DB_SECRET_ARN + ":host::")
                      elif .name == "DATABASE_PORT" then
-                       .valueFrom = (env.DB_SECRET_ID + ":port::")
+                       .valueFrom = (env.DB_SECRET_ARN + ":port::")
                      elif .name == "DATABASE_NAME" then
-                       .valueFrom = (env.DB_SECRET_ID + ":database::")
+                       .valueFrom = (env.DB_SECRET_ARN + ":database::")
                      elif .name == "DATABASE_USER" then
-                       .valueFrom = (env.DB_SECRET_ID + ":username::")
+                       .valueFrom = (env.DB_SECRET_ARN + ":username::")
                      elif .name == "DATABASE_PASSWORD" then
-                       .valueFrom = (env.DB_SECRET_ID + ":password::")
+                       .valueFrom = (env.DB_SECRET_ARN + ":password::")
                      else . end
                    ) else . end
              ) |
@@ -743,7 +747,7 @@ jobs:
             exit 1
           fi
 
-          if jq -re '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | select((.valueFrom|startswith(env.DB_SECRET_ID + ":"))|not)' new-task-def.json >/dev/null; then
+          if jq -re '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | select((.valueFrom|startswith(env.DB_SECRET_ARN + ":"))|not)' new-task-def.json >/dev/null; then
             echo "❌ DATABASE_* secrets are not using canonical DB secret ARN; aborting." >&2
             jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | "\(.name)=\(.valueFrom)"' new-task-def.json >&2
             exit 1
