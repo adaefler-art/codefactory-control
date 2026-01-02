@@ -511,6 +511,10 @@ jobs:
         env:
           DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
           SHOULD_MIGRATE: ${{ steps.gates.outputs.should_migrate }}
+          # Optional escape hatch: provide the staging smoke-key secret ARN explicitly
+          # to avoid requiring secretsmanager:DescribeSecret on the GitHub deploy role.
+          # Value must be a Secrets Manager ARN (arn:aws:secretsmanager:...).
+          AFU9_STAGE_SMOKE_KEY_ARN: ${{ vars.AFU9_STAGE_SMOKE_KEY_ARN }}
         run: |
           set -euo pipefail
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
@@ -525,31 +529,40 @@ jobs:
             SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
             echo "Using stage smoke key secret id: ${SMOKE_KEY_SECRET_ID}"
 
-            # Prefer Secrets Manager (resolved by name, no hardcoded suffix ARN in repo).
-            set +e
-            SMOKE_KEY_VALUE_FROM=$(aws secretsmanager describe-secret \
-              --secret-id "${SMOKE_KEY_SECRET_ID}" \
-              --region "${{ env.AWS_REGION }}" \
-              --query 'ARN' \
-              --output text 2>smoke-key.describe.err)
-            SMOKE_KEY_DESCRIBE_RC=$?
-            set -e
+            if [ -n "${AFU9_STAGE_SMOKE_KEY_ARN:-}" ]; then
+              SMOKE_KEY_VALUE_FROM="${AFU9_STAGE_SMOKE_KEY_ARN}"
+              echo "Using staging smoke key ARN from GitHub variable AFU9_STAGE_SMOKE_KEY_ARN"
+            else
+              echo "GitHub variable AFU9_STAGE_SMOKE_KEY_ARN is not set; attempting to resolve via Secrets Manager DescribeSecret..."
 
-            if [ "${SMOKE_KEY_DESCRIBE_RC}" -ne 0 ]; then
-              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SMOKE_KEY_SECRET_ID}" >&2
-              echo "   This deploy must NOT fall back to SSM (it causes ECS to treat the identifier as an SSM parameter name)." >&2
-              echo "   AWS CLI error:" >&2
-              cat smoke-key.describe.err >&2 || true
-              echo "   Remedy:" >&2
-              echo "   - Ensure the secret exists in Secrets Manager (name: ${SMOKE_KEY_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
-              echo "   - Ensure the deploy role can call secretsmanager:DescribeSecret" >&2
-              exit 1
-            fi
+              # Prefer Secrets Manager (resolved by name, no hardcoded suffix ARN in repo).
+              set +e
+              SMOKE_KEY_VALUE_FROM=$(aws secretsmanager describe-secret \
+                --secret-id "${SMOKE_KEY_SECRET_ID}" \
+                --region "${{ env.AWS_REGION }}" \
+                --query 'ARN' \
+                --output text 2>smoke-key.describe.err)
+              SMOKE_KEY_DESCRIBE_RC=$?
+              set -e
 
-            if [ -z "${SMOKE_KEY_VALUE_FROM:-}" ] || [ "${SMOKE_KEY_VALUE_FROM}" = "None" ]; then
-              echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_KEY_SECRET_ID})." >&2
-              echo "   Expected a secret named exactly: ${SMOKE_KEY_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
-              exit 1
+              if [ "${SMOKE_KEY_DESCRIBE_RC}" -ne 0 ]; then
+                echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SMOKE_KEY_SECRET_ID}" >&2
+                echo "   This deploy must NOT fall back to SSM (it causes ECS to treat the identifier as an SSM parameter name)." >&2
+                echo "   AWS CLI error:" >&2
+                cat smoke-key.describe.err >&2 || true
+                echo "   Remedy (choose one):" >&2
+                echo "   1) Set GitHub variable AFU9_STAGE_SMOKE_KEY_ARN to the full secret ARN (recommended)." >&2
+                echo "   2) Grant the deploy role secretsmanager:DescribeSecret on this secret." >&2
+                echo "   3) Ensure the secret exists in Secrets Manager (name: ${SMOKE_KEY_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
+                exit 1
+              fi
+
+              if [ -z "${SMOKE_KEY_VALUE_FROM:-}" ] || [ "${SMOKE_KEY_VALUE_FROM}" = "None" ]; then
+                echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_KEY_SECRET_ID})." >&2
+                echo "   Expected a secret named exactly: ${SMOKE_KEY_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
+                echo "   Remedy: set GitHub variable AFU9_STAGE_SMOKE_KEY_ARN to the full secret ARN." >&2
+                exit 1
+              fi
             fi
 
             if ! echo "${SMOKE_KEY_VALUE_FROM}" | grep -q '^arn:aws:secretsmanager:'; then
