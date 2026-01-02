@@ -104,7 +104,7 @@ function maybeAttachSmokeDebugHeaders(
  * - Downstream context propagation via x-afu9-* headers
  * - Environment variable driven configuration
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const requestId = getRequestId();
   const { pathname: rawPathname } = request.nextUrl;
   const hostname = getEffectiveHostnameFromRequest(request);
