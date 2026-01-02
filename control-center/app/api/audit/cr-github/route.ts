@@ -4,8 +4,12 @@
  * Query audit trail for CR → GitHub Issue operations.
  * Issue E75.4: Audit Trail (CR↔Issue mapping, hashes, timestamps, lawbookVersion)
  * 
- * Authentication: Required (x-afu9-sub header from middleware)
+ * Authentication: Required (x-afu9-sub header set by middleware after JWT verification)
  * Authorization: Repo allowlist enforced (I711)
+ * 
+ * SECURITY: The x-afu9-sub header is set by middleware.ts after server-side JWT verification.
+ * Client-provided x-afu9-* headers are stripped by middleware to prevent spoofing.
+ * This route trusts x-afu9-sub because it can only come from verified middleware.
  * 
  * Query Parameters:
  * - canonicalId: CR canonical ID (required if owner/repo/issueNumber not provided)
@@ -31,14 +35,21 @@ import { isRepoAllowed, getAllowedRepos } from '@/lib/github/auth-wrapper';
  * 
  * Query audit trail by canonical ID or by owner/repo/issue
  * 
- * Authentication: Required (x-afu9-sub header)
+ * Authentication: Required (x-afu9-sub header verified by middleware)
  * Authorization: Repo allowlist enforced
+ * 
+ * The x-afu9-sub header can be trusted because:
+ * 1. Middleware strips all client-provided x-afu9-* headers
+ * 2. Middleware verifies JWT server-side (fail-closed)
+ * 3. Middleware sets x-afu9-sub only after successful verification
+ * 4. This route is protected by middleware (not public)
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   
   try {
-    // A) Authentication check (fail-closed)
+    // Authentication check: x-afu9-sub is set by middleware after JWT verification
+    // If missing, middleware didn't authenticate the request (fail-closed)
     const userId = request.headers.get('x-afu9-sub');
     if (!userId) {
       return errorResponse('Unauthorized', {
