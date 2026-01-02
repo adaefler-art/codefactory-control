@@ -517,11 +517,38 @@ jobs:
           echo "should_migrate=${SHOULD_MIGRATE}"
 
           SMOKE_KEY_SECRET_ID=""
+          SMOKE_KEY_VALUE_FROM=""
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            # Inject by secret name (avoids requiring Secrets Manager DescribeSecret at deploy time).
-            # ECS Secrets Manager integration accepts secret name as valueFrom.
+            # Canonical identifier (must appear in this workflow for repo invariants).
+            # Note: ECS `valueFrom` treats non-ARN strings as SSM Parameter Store names.
+            # To inject from Secrets Manager, we resolve the secret ARN by name at deploy time.
             SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
             echo "Using stage smoke key secret id: ${SMOKE_KEY_SECRET_ID}"
+
+            # Prefer Secrets Manager (resolved by name, no hardcoded suffix ARN in repo).
+            SMOKE_KEY_VALUE_FROM=$(aws secretsmanager describe-secret \
+              --secret-id "${SMOKE_KEY_SECRET_ID}" \
+              --region "${{ env.AWS_REGION }}" \
+              --query 'ARN' \
+              --output text 2>/dev/null || true)
+
+            if [ -z "${SMOKE_KEY_VALUE_FROM:-}" ] || [ "${SMOKE_KEY_VALUE_FROM}" = "None" ]; then
+              echo "⚠️  Secrets Manager secret not resolvable by name (${SMOKE_KEY_SECRET_ID}); checking SSM Parameter Store..." >&2
+              if aws ssm get-parameter --name "${SMOKE_KEY_SECRET_ID}" --with-decryption --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+                SMOKE_KEY_VALUE_FROM="${SMOKE_KEY_SECRET_ID}"
+                echo "Using SSM parameter for smoke key: ${SMOKE_KEY_VALUE_FROM}"
+              else
+                echo "❌ Missing staging smoke key. Expected either:" >&2
+                echo "   - Secrets Manager secret named: ${SMOKE_KEY_SECRET_ID}" >&2
+                echo "   - OR SSM SecureString parameter named: ${SMOKE_KEY_SECRET_ID}" >&2
+                echo "   Remedy (CloudShell):" >&2
+                echo "     aws ssm put-parameter --name \"${SMOKE_KEY_SECRET_ID}\" --type SecureString --value \"<smoke-key>\" --overwrite --region ${{ env.AWS_REGION }}" >&2
+                echo "   OR create a Secrets Manager secret with name ${SMOKE_KEY_SECRET_ID}." >&2
+                exit 1
+              fi
+            else
+              echo "Using Secrets Manager ARN for smoke key (resolved by name): ${SMOKE_KEY_VALUE_FROM}"
+            fi
           fi
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
@@ -711,7 +738,7 @@ jobs:
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            jq --arg smoke_value_from "${SMOKE_KEY_SECRET_ID}" '
+            jq --arg smoke_value_from "${SMOKE_KEY_VALUE_FROM}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
                   .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_value_from}])
