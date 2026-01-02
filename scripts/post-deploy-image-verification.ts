@@ -58,14 +58,29 @@ function parseImageUri(imageUri: string): { repository: string; tag: string } {
   // Format: account.dkr.ecr.region.amazonaws.com/repo-name:tag
   const parts = imageUri.split(':');
   if (parts.length !== 2) {
-    throw new Error(`Invalid image URI format: ${imageUri}`);
+    throw new Error(`Invalid image URI format: ${imageUri} (expected format: registry/repo:tag)`);
   }
   
   const tag = parts[1];
   const repoFullPath = parts[0];
+  
   // Extract just the repo name (e.g., "afu9/control-center")
+  // Expected format: account.dkr.ecr.region.amazonaws.com/repo-name
   const repoParts = repoFullPath.split('/');
-  const repository = repoParts.slice(1).join('/'); // Skip ECR registry part
+  
+  if (repoParts.length < 2) {
+    throw new Error(
+      `Invalid repository path in image URI: ${imageUri} ` +
+      `(expected format: registry/repo:tag, got ${repoParts.length} parts)`
+    );
+  }
+  
+  // Skip ECR registry part (first element), join remaining parts for multi-part repo names
+  const repository = repoParts.slice(1).join('/');
+  
+  if (!repository) {
+    throw new Error(`Could not extract repository name from image URI: ${imageUri}`);
+  }
   
   return { repository, tag };
 }

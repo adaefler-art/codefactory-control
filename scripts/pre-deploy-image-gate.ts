@@ -166,6 +166,18 @@ async function validateImages(imageRefs: ImageRef[]): Promise<string[]> {
 
   console.log('\n🔍 Checking image availability in ECR...');
   
+  // If ECR client is unavailable, fail for required images in CI
+  if (!ecrClient) {
+    console.warn('⚠️  AWS SDK for ECR not available');
+    // In CI/CD environments, we should fail if ECR checks can't run
+    if (process.env.CI || process.env.GITHUB_ACTIONS) {
+      errors.push('ECR validation required in CI/CD but AWS SDK is not available');
+      return errors;
+    }
+    console.warn('   Skipping ECR image checks (local development mode)');
+    return errors;
+  }
+  
   for (const imageRef of imageRefs) {
     console.log(`\n  Image: ${imageRef.id} (${imageRef.name})`);
     
@@ -185,7 +197,7 @@ async function validateImages(imageRefs: ImageRef[]): Promise<string[]> {
     }
 
     // For required images, at least one tag must exist
-    if (imageRef.required && !anyTagFound && ecrClient) {
+    if (imageRef.required && !anyTagFound) {
       errors.push(`Required image ${imageRef.id} has no pushed tags: ${imageRef.tags.join(', ')}`);
       console.error(`  ❌ REQUIRED image missing: ${imageRef.id}`);
     }
