@@ -48,6 +48,7 @@ function validateSecretScope(
   secretArn: string,
   environment: string
 ): { valid: boolean; reason?: string } {
+  // Regex: Match everything after "secret:" until we hit a wildcard (*) or hyphen-suffix (-)
   const secretMatch = secretArn.match(/secret:([^*\-]+)/);
   if (!secretMatch) {
     return { valid: true };

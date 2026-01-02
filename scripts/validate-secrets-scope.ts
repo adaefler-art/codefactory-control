@@ -104,6 +104,9 @@ function detectEnvironment(context: {
 
 /**
  * Extract secret ARNs from resources array
+ * Matches both full ARNs and partial ARN patterns from template literals
+ * - Full ARN: arn:aws:secretsmanager:region:account:secret:afu9/...
+ * - Partial: secret:afu9/... (from template literals like `${region}:${account}:secret:afu9/...`)
  */
 function extractSecretArns(resources: string[]): string[] {
   return resources.filter(r => 
@@ -120,6 +123,7 @@ function validateSecretScope(
 ): { valid: boolean; reason?: string } {
   // Extract the secret name/path from the ARN
   // ARN format: arn:aws:secretsmanager:region:account:secret:SECRET_NAME-SUFFIX
+  // Regex: Match everything after "secret:" until we hit a wildcard (*) or hyphen-suffix (-)
   const secretMatch = secretArn.match(/secret:([^*\-]+)/);
   if (!secretMatch) {
     // If we can't parse it, assume it's a variable reference and skip
@@ -296,8 +300,9 @@ function validatePolicySecretScope(
 
   // Detect environment from context
   const environment = detectEnvironment(context);
-  if (!environment) {
-    return violations; // Skip if we can't determine environment
+  // Note: detectEnvironment returns 'legacy' as fallback, never null/empty
+  if (environment === null) {
+    return violations; // Skip if we can't determine environment (defensive check)
   }
 
   // Extract and validate secret ARNs
