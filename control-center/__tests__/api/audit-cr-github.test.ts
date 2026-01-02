@@ -222,66 +222,66 @@ describe('GET /api/audit/cr-github', () => {
         hasMore: false,
       });
       
-      expect(mockQueryCrGithubIssueAudit).toHaveBeenCalledWith(
+      expect(mockQueryCrGithubIssueAuditWithCursor).toHaveBeenCalledWith(
         expect.anything(),
         'CR-2026-01-02-001',
-        { limit: 50, offset: 0 }
+        { limit: 51, before: undefined }
       );
     });
     
-    test('supports custom pagination parameters', async () => {
-      mockQueryCrGithubIssueAudit.mockResolvedValue({
+    test('supports cursor-based pagination', async () => {
+      const mockRecords = [
+        {
+          id: 'audit-1',
+          canonical_id: 'CR-TEST',
+          session_id: null,
+          cr_version_id: null,
+          cr_hash: 'hash1',
+          lawbook_version: null,
+          owner: 'test',
+          repo: 'test',
+          issue_number: 1,
+          action: 'create' as const,
+          rendered_issue_hash: 'hash2',
+          used_sources_hash: null,
+          created_at: '2026-01-02T10:00:00Z',
+          result_json: { url: 'https://github.com/...', labelsApplied: [] },
+        },
+      ];
+      
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
         success: true,
-        data: [],
+        data: mockRecords,
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&limit=10&offset=20'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&limit=10&before=2026-01-02T12:00:00Z:uuid-123',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
       
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.pagination).toEqual({
+      expect(body.pagination).toMatchObject({
         limit: 10,
-        offset: 20,
-        count: 0,
+        count: 1,
       });
       
-      expect(mockQueryCrGithubIssueAudit).toHaveBeenCalledWith(
+      expect(mockQueryCrGithubIssueAuditWithCursor).toHaveBeenCalledWith(
         expect.anything(),
         'CR-TEST',
-        { limit: 10, offset: 20 }
-      );
-    });
-    
-    test('enforces max limit of 100', async () => {
-      mockQueryCrGithubIssueAudit.mockResolvedValue({
-        success: true,
-        data: [],
-      });
-      
-      const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&limit=200'
-      );
-      
-      const res = await GET(req);
-      
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.pagination.limit).toBe(100); // Capped at max
-      
-      expect(mockQueryCrGithubIssueAudit).toHaveBeenCalledWith(
-        expect.anything(),
-        'CR-TEST',
-        { limit: 100, offset: 0 }
+        { limit: 11, before: '2026-01-02T12:00:00Z:uuid-123' }
       );
     });
   });
   
   // ========================================
-  // B) Query by Owner/Repo/Issue
+  // C) Query by Owner/Repo/Issue
   // ========================================
   
   describe('Query by owner/repo/issue', () => {
@@ -305,13 +305,18 @@ describe('GET /api/audit/cr-github', () => {
         },
       ];
       
-      mockQueryByIssue.mockResolvedValue({
+      mockQueryByIssueWithCursor.mockResolvedValue({
         success: true,
         data: mockRecords,
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?owner=adaefler-art&repo=codefactory-control&issueNumber=742'
+        'http://localhost/api/audit/cr-github?owner=adaefler-art&repo=codefactory-control&issueNumber=742',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -324,34 +329,39 @@ describe('GET /api/audit/cr-github', () => {
       expect(body.data[0].repo).toBe('codefactory-control');
       expect(body.data[0].issue_number).toBe(742);
       
-      expect(mockQueryByIssue).toHaveBeenCalledWith(
+      expect(mockQueryByIssueWithCursor).toHaveBeenCalledWith(
         expect.anything(),
         'adaefler-art',
         'codefactory-control',
         742,
-        { limit: 50, offset: 0 }
+        { limit: 51, before: undefined }
       );
     });
     
     test('supports pagination for issue query', async () => {
-      mockQueryByIssue.mockResolvedValue({
+      mockQueryByIssueWithCursor.mockResolvedValue({
         success: true,
         data: [],
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?owner=test&repo=test&issueNumber=1&limit=25&offset=50'
+        'http://localhost/api/audit/cr-github?owner=test&repo=test&issueNumber=1&limit=25&before=2026-01-02T10:00:00Z:uuid-123',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
       
       expect(res.status).toBe(200);
-      expect(mockQueryByIssue).toHaveBeenCalledWith(
+      expect(mockQueryByIssueWithCursor).toHaveBeenCalledWith(
         expect.anything(),
         'test',
         'test',
         1,
-        { limit: 25, offset: 50 }
+        { limit: 26, before: '2026-01-02T10:00:00Z:uuid-123' }
       );
     });
   });
@@ -362,7 +372,11 @@ describe('GET /api/audit/cr-github', () => {
   
   describe('Error handling', () => {
     test('returns 400 when no query parameters provided', async () => {
-      const req = new NextRequest('http://localhost/api/audit/cr-github');
+      const req = new NextRequest('http://localhost/api/audit/cr-github', {
+        headers: {
+          'x-afu9-sub': 'user-123',
+        },
+      });
       
       const res = await GET(req);
       
@@ -374,7 +388,12 @@ describe('GET /api/audit/cr-github', () => {
     
     test('returns 400 when only owner provided (missing repo and issueNumber)', async () => {
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?owner=test'
+        'http://localhost/api/audit/cr-github?owner=test',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -386,7 +405,12 @@ describe('GET /api/audit/cr-github', () => {
     
     test('returns 400 when only owner and repo provided (missing issueNumber)', async () => {
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?owner=test&repo=test'
+        'http://localhost/api/audit/cr-github?owner=test&repo=test',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -396,7 +420,12 @@ describe('GET /api/audit/cr-github', () => {
     
     test('returns 400 for invalid limit (< 1)', async () => {
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&limit=0'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&limit=0',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -406,26 +435,41 @@ describe('GET /api/audit/cr-github', () => {
       expect(body.error).toContain('Invalid limit parameter');
     });
     
-    test('returns 400 for invalid offset (< 0)', async () => {
+    test('enforces max limit of 200', async () => {
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
+        success: true,
+        data: [],
+      });
+      
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&offset=-1'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST&limit=500',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
       
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toContain('Invalid offset parameter');
+      expect(body.pagination.limit).toBe(200); // Capped at max
     });
     
     test('returns 500 when database query fails', async () => {
-      mockQueryCrGithubIssueAudit.mockResolvedValue({
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
         success: false,
         error: 'Database connection failed',
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -437,10 +481,15 @@ describe('GET /api/audit/cr-github', () => {
     });
     
     test('returns 500 when unexpected error occurs', async () => {
-      mockQueryCrGithubIssueAudit.mockRejectedValue(new Error('Unexpected error'));
+      mockQueryCrGithubIssueAuditWithCursor.mockRejectedValue(new Error('Unexpected error'));
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-TEST',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -457,13 +506,18 @@ describe('GET /api/audit/cr-github', () => {
   
   describe('Integration scenarios', () => {
     test('returns empty array when no audit records exist', async () => {
-      mockQueryCrGithubIssueAudit.mockResolvedValue({
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
         success: true,
         data: [],
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-NONEXISTENT'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-NONEXISTENT',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
@@ -473,6 +527,7 @@ describe('GET /api/audit/cr-github', () => {
       expect(body.success).toBe(true);
       expect(body.data).toEqual([]);
       expect(body.pagination.count).toBe(0);
+      expect(body.pagination.hasMore).toBe(false);
     });
     
     test('handles multiple audit records in chronological order', async () => {
@@ -511,13 +566,18 @@ describe('GET /api/audit/cr-github', () => {
         },
       ];
       
-      mockQueryCrGithubIssueAudit.mockResolvedValue({
+      mockQueryCrGithubIssueAuditWithCursor.mockResolvedValue({
         success: true,
         data: mockRecords,
       });
       
       const req = new NextRequest(
-        'http://localhost/api/audit/cr-github?canonicalId=CR-2026-01-02-001'
+        'http://localhost/api/audit/cr-github?canonicalId=CR-2026-01-02-001',
+        {
+          headers: {
+            'x-afu9-sub': 'user-123',
+          },
+        }
       );
       
       const res = await GET(req);
