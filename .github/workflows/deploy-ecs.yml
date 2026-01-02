@@ -516,21 +516,12 @@ jobs:
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
           echo "should_migrate=${SHOULD_MIGRATE}"
 
-          SMOKE_KEY_SECRET_ARN=""
+          SMOKE_KEY_SECRET_ID=""
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            # Resolve by secret name to survive rotated suffix changes.
-            SMOKE_KEY_SECRET_ARN=$(aws secretsmanager describe-secret \
-              --secret-id "afu9/stage/smoke-key" \
-              --region "${{ env.AWS_REGION }}" \
-              --query 'ARN' \
-              --output text)
-
-            if [ -z "${SMOKE_KEY_SECRET_ARN:-}" ] || [ "${SMOKE_KEY_SECRET_ARN}" = "None" ]; then
-              echo "❌ Could not resolve canonical stage smoke key secret ARN for afu9/stage/smoke-key" >&2
-              exit 1
-            fi
-
-            echo "Using stage smoke key ARN: ${SMOKE_KEY_SECRET_ARN}"
+            # Inject by secret name (avoids requiring Secrets Manager DescribeSecret at deploy time).
+            # ECS Secrets Manager integration accepts secret name as valueFrom.
+            SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
+            echo "Using stage smoke key secret id: ${SMOKE_KEY_SECRET_ID}"
 
             # Preflight: ensure the ECS TASK EXECUTION ROLE can read the smoke-key.
             # If this fails, ECS cannot inject AFU9_SMOKE_KEY and staging smoke bypass will not work.
@@ -544,15 +535,24 @@ jobs:
               exit 1
             fi
 
+            ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+            if [ -z "${ACCOUNT_ID:-}" ] || [ "${ACCOUNT_ID}" = "None" ]; then
+              echo "❌ Could not resolve AWS account id for preflight" >&2
+              exit 1
+            fi
+
+            # Secrets Manager ARNs include a rotated suffix; simulate against the wildcard.
+            SMOKE_KEY_ARN_WILDCARD="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/stage/smoke-key-*"
+
             SIM_RESULT=$(aws iam simulate-principal-policy \
               --policy-source-arn "${EXEC_ROLE_ARN}" \
               --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
-              --resource-arns "${SMOKE_KEY_SECRET_ARN}" \
+              --resource-arns "${SMOKE_KEY_ARN_WILDCARD}" \
               --query 'EvaluationResults[].EvalDecision' \
               --output text || true)
 
             if echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
-              echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_SECRET_ARN}" >&2
+              echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_ARN_WILDCARD}" >&2
               echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
               echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
               exit 1
@@ -603,27 +603,18 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'taskDefinition' > task-def.json
 
-          # Resolve canonical DB secret ARN (Secrets Manager accepts secret name as SecretId)
-          DB_SECRET_ARN=$(aws secretsmanager describe-secret \
-            --secret-id "afu9/database" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'ARN' \
-            --output text)
-
-          if [ -z "${DB_SECRET_ARN:-}" ] || [ "$DB_SECRET_ARN" = "None" ]; then
-            echo "❌ Could not resolve canonical DB secret ARN for afu9/database" >&2
-            exit 1
-          fi
-          echo "Using DB secret ARN: $DB_SECRET_ARN"
-          export DB_SECRET_ARN
+          # Canonical DB secret reference (inject by secret name; no DescribeSecret required).
+          DB_SECRET_ID="afu9/database"
+          echo "Using DB secret id: $DB_SECRET_ID"
+          export DB_SECRET_ID
 
           # Sanitize DB secret references before further mutation:
           # - replace legacy /master secret refs
           # - replace any fixed/rotated suffix refs with canonical ARN
           jq 'walk(
             if type=="string" then
-              gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ARN + ":"))
-              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ARN + ":"))
+              gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database/master[^:]*:"; (env.DB_SECRET_ID + ":"))
+              | gsub("arn:aws:secretsmanager:[^:]+:[0-9]+:secret:afu9/database-[^:]+:"; (env.DB_SECRET_ID + ":"))
               | gsub("afu9/database/master"; "afu9/database")
             else . end
           )' \
@@ -661,15 +652,15 @@ jobs:
                else . end
                  | if .secrets then .secrets |= map(
                      if .name == "DATABASE_HOST" then
-                       .valueFrom = (env.DB_SECRET_ARN + ":host::")
+                       .valueFrom = (env.DB_SECRET_ID + ":host::")
                      elif .name == "DATABASE_PORT" then
-                       .valueFrom = (env.DB_SECRET_ARN + ":port::")
+                       .valueFrom = (env.DB_SECRET_ID + ":port::")
                      elif .name == "DATABASE_NAME" then
-                       .valueFrom = (env.DB_SECRET_ARN + ":database::")
+                       .valueFrom = (env.DB_SECRET_ID + ":database::")
                      elif .name == "DATABASE_USER" then
-                       .valueFrom = (env.DB_SECRET_ARN + ":username::")
+                       .valueFrom = (env.DB_SECRET_ID + ":username::")
                      elif .name == "DATABASE_PASSWORD" then
-                       .valueFrom = (env.DB_SECRET_ARN + ":password::")
+                       .valueFrom = (env.DB_SECRET_ID + ":password::")
                      else . end
                    ) else . end
              ) |
@@ -717,10 +708,10 @@ jobs:
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            jq --arg smoke_arn "${SMOKE_KEY_SECRET_ARN}" '
+            jq --arg smoke_value_from "${SMOKE_KEY_SECRET_ID}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
-                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_arn}])
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_value_from}])
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json
@@ -753,7 +744,7 @@ jobs:
             exit 1
           fi
 
-          if jq -re '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | select((.valueFrom|startswith(env.DB_SECRET_ARN + ":"))|not)' new-task-def.json >/dev/null; then
+          if jq -re '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | select((.valueFrom|startswith(env.DB_SECRET_ID + ":"))|not)' new-task-def.json >/dev/null; then
             echo "❌ DATABASE_* secrets are not using canonical DB secret ARN; aborting." >&2
             jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name|test("^DATABASE_(HOST|PORT|NAME|USER|PASSWORD)$")) | "\(.name)=\(.valueFrom)"' new-task-def.json >&2
             exit 1
