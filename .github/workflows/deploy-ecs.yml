@@ -356,6 +356,7 @@ jobs:
           echo "mcp_github=$(aws ecr describe-repositories --repository-names afu9/mcp-github --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
           echo "mcp_deploy=$(aws ecr describe-repositories --repository-names afu9/mcp-deploy --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
           echo "mcp_observability=$(aws ecr describe-repositories --repository-names afu9/mcp-observability --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "mcp_runner=$(aws ecr describe-repositories --repository-names afu9/mcp-runner --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
 
       - name: Generate image tags
         id: image-tags
@@ -433,6 +434,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push MCP Runner Server
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-servers
+          file: ./mcp-servers/afu9-runner/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Deploy Provenance (hard gate)
         id: provenance
         shell: bash
@@ -502,7 +516,48 @@ jobs:
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
           echo "should_migrate=${SHOULD_MIGRATE}"
 
-          SMOKE_KEY_SECRET_ARN="arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G"
+          SMOKE_KEY_SECRET_ARN=""
+          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+            # Resolve by secret name to survive rotated suffix changes.
+            SMOKE_KEY_SECRET_ARN=$(aws secretsmanager describe-secret \
+              --secret-id "afu9/stage/smoke-key" \
+              --region "${{ env.AWS_REGION }}" \
+              --query 'ARN' \
+              --output text)
+
+            if [ -z "${SMOKE_KEY_SECRET_ARN:-}" ] || [ "${SMOKE_KEY_SECRET_ARN}" = "None" ]; then
+              echo "❌ Could not resolve canonical stage smoke key secret ARN for afu9/stage/smoke-key" >&2
+              exit 1
+            fi
+
+            echo "Using stage smoke key ARN: ${SMOKE_KEY_SECRET_ARN}"
+
+            # Preflight: ensure the ECS TASK EXECUTION ROLE can read the smoke-key.
+            # If this fails, ECS cannot inject AFU9_SMOKE_KEY and staging smoke bypass will not work.
+            EXEC_ROLE_ARN=$(aws iam get-role \
+              --role-name "afu9-ecs-task-execution-role" \
+              --query 'Role.Arn' \
+              --output text)
+
+            if [ -z "${EXEC_ROLE_ARN:-}" ] || [ "${EXEC_ROLE_ARN}" = "None" ]; then
+              echo "❌ Could not resolve ECS task execution role ARN (role-name=afu9-ecs-task-execution-role)" >&2
+              exit 1
+            fi
+
+            SIM_RESULT=$(aws iam simulate-principal-policy \
+              --policy-source-arn "${EXEC_ROLE_ARN}" \
+              --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
+              --resource-arns "${SMOKE_KEY_SECRET_ARN}" \
+              --query 'EvaluationResults[].EvalDecision' \
+              --output text || true)
+
+            if echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
+              echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_SECRET_ARN}" >&2
+              echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
+              echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
+              exit 1
+            fi
+          fi
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
             echo "❌ DEPLOY_EVENTS_TOKEN secret is missing" >&2
@@ -580,6 +635,7 @@ jobs:
             --arg mcp_github_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
             --arg mcp_deploy_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
             --arg mcp_observability_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
+            --arg mcp_runner_image "${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
              '.containerDefinitions |= map(
                if (
                  .name == "control-center" or
@@ -598,6 +654,10 @@ jobs:
                  .name == "mcp-observability" or
                  ((.image // "") | contains("/afu9/mcp-observability:"))
                ) then .image = $mcp_observability_image
+               elif (
+                 .name == "mcp-runner" or
+                 ((.image // "") | contains("/afu9/mcp-runner:"))
+               ) then .image = $mcp_runner_image
                else . end
                  | if .secrets then .secrets |= map(
                      if .name == "DATABASE_HOST" then
@@ -615,6 +675,44 @@ jobs:
              ) |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
              task-def.json > new-task-def.json
+
+          # Ensure runner sidecar is present for staging (optional sidecar; do not break tasks if it is down).
+          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+            export MCP_RUNNER_IMAGE="${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}"
+
+            jq '
+              def has_runner: any(.containerDefinitions[]?; .name == "mcp-runner");
+              if has_runner then
+                .
+              else
+                .containerDefinitions += [{
+                  name: "mcp-runner",
+                  image: env.MCP_RUNNER_IMAGE,
+                  essential: false,
+                  environment: [
+                    { name: "DEPLOY_ENV", value: "staging" },
+                    { name: "PORT", value: "3004" }
+                  ],
+                  portMappings: [{ containerPort: 3004, protocol: "tcp" }]
+                }]
+              end
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+
+            jq '
+              .containerDefinitions |= map(
+                if .name == "control-center" then
+                  .environment = ((.environment // [])
+                    | map(select(.name != "MCP_RUNNER_URL" and .name != "MCP_RUNNER_ENDPOINT"))
+                    + [
+                      {name: "MCP_RUNNER_URL", value: "http://127.0.0.1:3004"},
+                      {name: "MCP_RUNNER_ENDPOINT", value: "http://127.0.0.1:3004"}
+                    ])
+                else . end
+              )
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+          fi
 
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.

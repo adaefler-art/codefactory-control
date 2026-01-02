@@ -162,6 +162,67 @@ interface ValidationResult {
 }
 
 // ============================================================================
+// Deploy Workflow Invariants (SMOKE + RUNNER)
+// ============================================================================
+
+function checkDeployEcsWorkflowInvariants(): ValidationResult {
+  console.log('🔍 Running Deploy Workflow Invariants Check...');
+
+  const errors: string[] = [];
+  const workflowPath = path.join(REPO_ROOT, '.github', 'workflows', 'deploy-ecs.yml');
+
+  if (!fs.existsSync(workflowPath)) {
+    console.log('   ⚠️  Deploy Workflow Invariants Check SKIPPED (deploy-ecs.yml not found)');
+    return { passed: true, errors: [] };
+  }
+
+  const content = fs.readFileSync(workflowPath, 'utf-8');
+
+  const ecsStackPath = path.join(REPO_ROOT, 'lib', 'afu9-ecs-stack.ts');
+  const ecsStackContent = fs.existsSync(ecsStackPath) ? fs.readFileSync(ecsStackPath, 'utf-8') : '';
+
+  // A) Staging smoke key must be resolved by secret name (rotation-safe)
+  // Disallow any suffix-pinned smoke-key ARN references.
+  const suffixedSmokeArnPattern = /arn:aws:secretsmanager:[^:]+:\d{12}:secret:afu9\/stage\/smoke-key-[A-Za-z0-9]+/g;
+  if (suffixedSmokeArnPattern.test(content)) {
+    errors.push(
+      `\n❌ deploy-ecs.yml pins a suffixed stage smoke-key ARN.\n` +
+      `The staging smoke key MUST be resolved by secret name (afu9/stage/smoke-key), not by a rotated suffix ARN.\n` +
+      `Remedy: use aws secretsmanager describe-secret --secret-id "afu9/stage/smoke-key" to fetch ARN at deploy time.\n`
+    );
+  }
+
+  const mustResolveByName = /--secret-id\s+"afu9\/stage\/smoke-key"/m;
+  if (!mustResolveByName.test(content)) {
+    errors.push(
+      `\n❌ deploy-ecs.yml does not resolve the staging smoke key by secret name.\n` +
+      `Expected to find a describe-secret lookup for secret-id "afu9/stage/smoke-key".\n`
+    );
+  }
+
+  // B) If runner is wired (CDK) or referenced (workflow), the workflow must build/push the image.
+  const runnerWiredInCdk = /addContainer\(\s*['"]mcp-runner['"]/.test(ecsStackContent) || /\bcontainerName:\s*['"]mcp-runner['"]/.test(ecsStackContent);
+  const runnerReferenced = /mcp-runner|afu9\/mcp-runner|afu9-runner\/Dockerfile/.test(content);
+  const runnerEcrLookupPresent = /repository-names\s+afu9\/mcp-runner/.test(content);
+  const runnerBuildPresent = /Build and push MCP Runner Server/.test(content) && /mcp-servers\/afu9-runner\/Dockerfile/.test(content);
+
+  if ((runnerReferenced || runnerWiredInCdk) && (!runnerEcrLookupPresent || !runnerBuildPresent)) {
+    errors.push(
+      `\n❌ deploy-ecs.yml references mcp-runner but does not build/push it consistently.\n` +
+      `Expected: ECR URI lookup for afu9/mcp-runner and a docker/build-push-action step using mcp-servers/afu9-runner/Dockerfile.\n`
+    );
+  }
+
+  if (errors.length > 0) {
+    console.log(`   ❌ Deploy Workflow Invariants Check FAILED (${errors.length} violations)`);
+    return { passed: false, errors };
+  }
+
+  console.log('   ✅ Deploy Workflow Invariants Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
 // Route-Map Check
 // ============================================================================
 
@@ -1074,6 +1135,7 @@ async function main() {
     checkSecretFiles(),        // I661 security check
     checkEmptyFolders(),
     checkUnreferencedRoutes(),
+    checkDeployEcsWorkflowInvariants(),
     checkMixedScope(),
   ];
 
