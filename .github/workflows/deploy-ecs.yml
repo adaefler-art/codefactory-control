@@ -619,21 +619,18 @@ jobs:
             if [ -z "${EXEC_ROLE_ARN:-}" ]; then
               echo "⚠️  Could not resolve executionRoleArn from task definition; skipping smoke-key preflight" >&2
             else
-              # Secrets Manager ARNs include a rotated suffix; simulate against the wildcard.
-              SMOKE_KEY_ARN_WILDCARD="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/stage/smoke-key-*"
-
               SIM_RESULT=$(aws iam simulate-principal-policy \
                 --policy-source-arn "${EXEC_ROLE_ARN}" \
                 --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
-                --resource-arns "${SMOKE_KEY_ARN_WILDCARD}" \
+                --resource-arns "${SMOKE_KEY_VALUE_FROM}" \
                 --query 'EvaluationResults[].EvalDecision' \
                 --output text 2>/dev/null || true)
 
               if [ -z "${SIM_RESULT:-}" ]; then
                 echo "⚠️  IAM simulation not permitted; skipping smoke-key preflight" >&2
               elif echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
-                echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_ARN_WILDCARD}" >&2
-                echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on arn:...:secret:afu9/stage/smoke-key-*" >&2
+                echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_VALUE_FROM}" >&2
+                echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on the resolved secret ARN." >&2
                 echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
                 exit 1
               fi
@@ -773,6 +770,26 @@ jobs:
             if [ -z "${INJECTED_SMOKE_VALUE_FROM:-}" ] || ! echo "${INJECTED_SMOKE_VALUE_FROM}" | grep -q '^arn:aws:secretsmanager:'; then
               echo "❌ AFU9_SMOKE_KEY injection is not a Secrets Manager ARN; refusing to deploy." >&2
               exit 1
+            fi
+
+            if [ "${INJECTED_SMOKE_VALUE_FROM}" != "${SMOKE_KEY_VALUE_FROM}" ]; then
+              echo "❌ AFU9_SMOKE_KEY valueFrom does not match name-resolved secret ARN." >&2
+              echo "   Expected: ${SMOKE_KEY_VALUE_FROM}" >&2
+              echo "   Actual:   ${INJECTED_SMOKE_VALUE_FROM}" >&2
+              exit 1
+            fi
+
+            # Guardrail: prevent stale, suffix-pinned ARNs elsewhere in the task definition.
+            # We allow the resolved ARN (which includes the current suffix) but forbid any other smoke-key-* ARN.
+            if jq -re '.. | select(type=="string") | select(test("secret:afu9/stage/smoke-key-"))' new-task-def.json >/dev/null; then
+              MISMATCH=$(jq -r '.. | select(type=="string") | select(test("secret:afu9/stage/smoke-key-"))' new-task-def.json | sort -u | grep -v -F "${SMOKE_KEY_VALUE_FROM}" || true)
+              if [ -n "${MISMATCH}" ]; then
+                echo "❌ Detected stale staging smoke-key ARN reference(s) after mutation; refusing to deploy." >&2
+                echo "   Resolved ARN: ${SMOKE_KEY_VALUE_FROM}" >&2
+                echo "   Other reference(s):" >&2
+                echo "${MISMATCH}" >&2
+                exit 1
+              fi
             fi
 
             if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
