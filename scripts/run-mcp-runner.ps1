@@ -8,7 +8,7 @@ param(
 
   [string]$Repository = 'afu9/mcp-runner',
 
-  [string]$ContainerName = 'afu9-mcp-runner',
+  [string]$ContainerName = 'mcp-runner',
 
   [switch]$Rebuild
 )

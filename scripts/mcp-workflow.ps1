@@ -115,7 +115,7 @@ $defs = @{
   github = @{ repo = 'afu9/mcp-github'; container = 'afu9-mcp-github'; port = 3001; dockerfile = 'mcp-servers/github/Dockerfile'; context = 'mcp-servers' };
   deploy = @{ repo = 'afu9/mcp-deploy'; container = 'afu9-mcp-deploy'; port = 3002; dockerfile = 'mcp-servers/deploy/Dockerfile'; context = 'mcp-servers' };
   observability = @{ repo = 'afu9/mcp-observability'; container = 'afu9-mcp-observability'; port = 3003; dockerfile = 'mcp-servers/observability/Dockerfile'; context = 'mcp-servers' };
-  runner = @{ repo = 'afu9/mcp-runner'; container = 'afu9-mcp-runner'; port = 3004; dockerfile = '.github/docker/mcp-runner.Dockerfile'; context = 'mcp-servers' };
+  runner = @{ repo = 'afu9/mcp-runner'; container = 'mcp-runner'; port = 3004; dockerfile = '.github/docker/mcp-runner.Dockerfile'; context = 'mcp-servers' };
 }
 
 foreach ($s in $serversToRun) {
