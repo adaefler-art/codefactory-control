@@ -64,6 +64,9 @@ env:
   MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
   AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
 
+  # Deterministic host used by readiness/smoke steps
+  READY_HOST: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging') == 'prod' && 'prod.afu-9.com' || 'stage.afu-9.com' }}
+
 jobs:
   build-and-deploy:
     name: Build and Deploy to ECS
@@ -230,7 +233,7 @@ jobs:
           DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
           ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
           ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
-          CREATE_STAGING_SERVICE: 'false'
+          CREATE_STAGING_SERVICE: "false"
           AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
           MANAGE_DNS: ${{ env.MANAGE_DNS }}
         run: |
@@ -240,13 +243,13 @@ jobs:
           echo "Service: ${ECS_SERVICE}"
           echo "Cluster: ${ECS_CLUSTER}"
           echo ""
-          
+
           # Run guardrail to validate environment context
           # This enforces fail-closed: no implicit prod, explicit DEPLOY_ENV required,
           # and cross-env artifact detection (stage/prod isolation).
           # Use npx with ts-node for deterministic execution
           npx ts-node scripts/deploy-context-guardrail.ts
-          
+
           echo ""
           echo "✅ Guardrail passed - proceeding with deploy"
 
@@ -261,7 +264,7 @@ jobs:
           ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
           STAGING_SERVICE: afu9-control-center-staging
           REQUIRE_STAGING_SERVICE: ${{ steps.target.outputs.deploy_env == 'staging' && 'true' || 'false' }}
-          CREATE_STAGING_SERVICE: 'false'
+          CREATE_STAGING_SERVICE: "false"
           AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
           PROTECTED_RESOURCES: ${{ env.MANAGE_DNS == 'true' && 'cluster,roles,listeners' || 'cluster,roles,listeners,route53' }}
           CDK_STACKS: Afu9EcsStack Afu9RoutingSingleEnvStack
@@ -339,7 +342,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client jq
 
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -389,9 +391,9 @@ jobs:
             BUILD_ENV=${{ steps.target.outputs.deploy_env }}
             BUILD_TIMESTAMP=${{ steps.build-meta.outputs.timestamp }}
           tags: |
-              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
-              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
-              ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
+            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
+            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+            ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -1397,11 +1399,11 @@ jobs:
           echo "🔍 Running Post-Deploy Image Verification (E7.0.2)"
           echo "Verifying running task definition uses only images from this deploy..."
           echo ""
-          
+
           # Verify that the deployed task definition contains ONLY images
           # from the current deploy (no mixed/stale references)
           npx ts-node scripts/post-deploy-image-verification.ts
-          
+
           echo ""
           echo "✅ Verification passed - task definition matches deploy"
 
@@ -1409,19 +1411,19 @@ jobs:
         shell: bash
         env:
           MCP_VERIFY_ENDPOINT: https://${{ steps.target.outputs.ready_host }}/api/mcp/verify
-          MCP_VERIFY_TIMEOUT_MS: '60000'
+          MCP_VERIFY_TIMEOUT_MS: "60000"
         run: |
           set -euo pipefail
           echo "🔍 Running MCP Catalog Verification Gate (E7.0.3)"
           echo "Verifying catalog matches runtime MCP server configuration..."
           echo "Endpoint: ${MCP_VERIFY_ENDPOINT}"
           echo ""
-          
+
           # Verify that the MCP catalog is consistent with runtime configuration
           # This prevents false-green scenarios where health checks pass but
           # catalog references wrong endpoints/ports
           npx ts-node scripts/mcp-catalog-verify-gate.ts
-          
+
           echo ""
           echo "✅ MCP catalog verification passed"
 
