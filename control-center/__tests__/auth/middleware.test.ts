@@ -9,7 +9,7 @@ import * as jwtVerify from '../../lib/auth/jwt-verify';
 import * as stageEnforcement from '../../lib/auth/stage-enforcement';
 import { PUBLIC_ROUTES, isPublicRoute } from '../../lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from '../../src/lib/auth/public-status-endpoints';
-import { proxy as middleware } from '../../proxy';
+import { middleware } from '../../proxy';
 
 describe('Middleware Authentication Logic', () => {
   beforeEach(() => {

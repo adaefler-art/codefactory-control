@@ -61,7 +61,7 @@ describe('GET /api/audit/cr-github', () => {
     
     test('prevents header spoofing: client-provided x-afu9-sub should be stripped by middleware', async () => {
       // This test documents the security model:
-      // The route trusts x-afu9-sub because middleware.ts strips client headers
+      // The route trusts x-afu9-sub because proxy.ts strips client headers
       // and only sets x-afu9-sub after JWT verification.
       // 
       // In a real scenario, middleware would strip the spoofed header before

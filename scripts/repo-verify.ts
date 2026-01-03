@@ -499,6 +499,7 @@ function checkEmptyFolders(): ValidationResult {
     'node_modules',
     '.git',
     '.next',
+    '.swc',
     'dist',
     'build',
     'coverage',

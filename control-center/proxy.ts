@@ -96,6 +96,7 @@ function maybeAttachSmokeDebugHeaders(
 }
 
 /**
+ * Middleware to protect routes and verify authentication
  * Proxy to protect routes and verify authentication
  * 
  * Enhanced with:
@@ -104,6 +105,7 @@ function maybeAttachSmokeDebugHeaders(
  * - Downstream context propagation via x-afu9-* headers
  * - Environment variable driven configuration
  */
+export async function middleware(request: NextRequest) {
 export async function proxy(request: NextRequest) {
   const requestId = getRequestId();
   const { pathname: rawPathname } = request.nextUrl;
@@ -141,7 +143,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
-  // Proxy runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
+  // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
   if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
     return nextWithRequestId();
   }
@@ -407,7 +409,12 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-// Configure which routes the proxy should run on
+// Next.js 16 proxy entrypoint (middleware -> proxy migration)
+export async function proxy(request: NextRequest) {
+  return middleware(request);
+}
+
+// Configure which routes the middleware should run on
 export const config = {
   matcher: [
     /*
