@@ -342,6 +342,32 @@ export class IncidentDAO {
     return this.mapRowToIncident(result.rows[0]);
   }
 
+  /**
+   * Update incident classification
+   * 
+   * @param id - Incident ID
+   * @param classification - Classification object to store
+   * @returns Updated incident
+   */
+  async updateClassification(id: string, classification: any): Promise<Incident | null> {
+    const result = await this.pool.query<any>(
+      `UPDATE incidents
+      SET classification = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING 
+        id, incident_key, severity, status, title, summary,
+        classification, lawbook_version, source_primary, tags,
+        created_at, updated_at, first_seen_at, last_seen_at`,
+      [classification, id]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.mapRowToIncident(result.rows[0]);
+  }
+
   // ========================================
   // Private Helper Methods
   // ========================================
