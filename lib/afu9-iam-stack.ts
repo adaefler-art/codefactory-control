@@ -347,6 +347,18 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // Allow the deploy workflow to resolve the staging smoke-key ARN by name.
+    // Justification: the ECS deploy workflow injects AFU9_SMOKE_KEY for staging tasks.
+    // Note: Secrets Manager ARNs include a randomized suffix; use wildcard.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'SecretsManagerDescribeAfu9StageSmokeKey',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:DescribeSecret'],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/stage/smoke-key*`],
+      })
+    );
+
     // Allow CI/CD to validate required keys in AFU-9 secrets.
     // Justification: repo build/deploy scripts run secret validation (reads secret JSON).
     this.deployRole.addToPolicy(
