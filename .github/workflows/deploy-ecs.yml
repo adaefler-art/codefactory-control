@@ -719,7 +719,7 @@ jobs:
                   name: "mcp-runner",
                   image: env.MCP_RUNNER_IMAGE,
                   essential: false,
-                  command: ["node","/app/dist/index.js"],
+                  command: ["sh","-lc","set -e; if [ ! -f /app/base/src/server.js ] && [ -f /app/dist/base/src/server.js ]; then mkdir -p /app/base/src; cp /app/dist/base/src/* /app/base/src/; fi; if [ -f /app/dist/index.js ]; then exec node /app/dist/index.js; elif [ -f /app/dist/src/index.js ]; then exec node /app/dist/src/index.js; elif [ -f /app/dist/afu9-runner/src/index.js ]; then exec node /app/dist/afu9-runner/src/index.js; else echo 'No runner entrypoint found' >&2; find /app/dist -maxdepth 4 -type f -name 'index.js' >&2 || true; exit 1; fi"],
                   environment: [
                     { name: "DEPLOY_ENV", value: "staging" },
                     { name: "PORT", value: "3004" }
@@ -731,11 +731,11 @@ jobs:
             mv new-task-def.tmp.json new-task-def.json
 
             # Ensure the runner uses the correct entrypoint even if it was already present.
-            # The current runner image builds to /app/dist/index.js (not /app/dist/src/index.js).
+            # Also materialize @afu9/mcp-base at /app/base to avoid broken file: symlink installs.
             jq '
               .containerDefinitions |= map(
                 if .name == "mcp-runner" then
-                  .command = ["node","/app/dist/index.js"]
+                  .command = ["sh","-lc","set -e; if [ ! -f /app/base/src/server.js ] && [ -f /app/dist/base/src/server.js ]; then mkdir -p /app/base/src; cp /app/dist/base/src/* /app/base/src/; fi; if [ -f /app/dist/index.js ]; then exec node /app/dist/index.js; elif [ -f /app/dist/src/index.js ]; then exec node /app/dist/src/index.js; elif [ -f /app/dist/afu9-runner/src/index.js ]; then exec node /app/dist/afu9-runner/src/index.js; else echo 'No runner entrypoint found' >&2; find /app/dist -maxdepth 4 -type f -name 'index.js' >&2 || true; exit 1; fi"]
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json
