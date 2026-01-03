@@ -438,7 +438,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./mcp-servers
-          file: ./mcp-servers/afu9-runner/Dockerfile
+          file: ./.github/docker/mcp-runner.Dockerfile
           push: true
           tags: |
             ${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.short_sha }}
