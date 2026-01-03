@@ -192,7 +192,37 @@ jobs:
           IMAGE_TAG="${TAG_PREFIX}-${{ github.sha }}"
           IMAGE_URI="${REPO_URI}:${IMAGE_TAG}"
 
-          SMOKE_KEY_SECRET_ARN="arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G"
+          SMOKE_KEY_SECRET_ID=""
+          SMOKE_KEY_SECRET_ARN=""
+          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+            SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
+            echo "Resolving staging smoke key secret ARN by name: ${SMOKE_KEY_SECRET_ID}"
+
+            set +e
+            SMOKE_KEY_SECRET_ARN=$(aws secretsmanager describe-secret \
+              --secret-id "${SMOKE_KEY_SECRET_ID}" \
+              --region "${REGION}" \
+              --query 'ARN' \
+              --output text 2>smoke-key.describe.err)
+            SMOKE_KEY_DESCRIBE_RC=$?
+            set -e
+
+            if [ "${SMOKE_KEY_DESCRIBE_RC}" -ne 0 ]; then
+              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SMOKE_KEY_SECRET_ID}" >&2
+              cat smoke-key.describe.err >&2 || true
+              exit 1
+            fi
+
+            if [ -z "${SMOKE_KEY_SECRET_ARN:-}" ] || [ "${SMOKE_KEY_SECRET_ARN}" = "None" ]; then
+              echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_KEY_SECRET_ID})" >&2
+              exit 1
+            fi
+
+            if ! echo "${SMOKE_KEY_SECRET_ARN}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ Resolved smoke key valueFrom is not a Secrets Manager ARN: ${SMOKE_KEY_SECRET_ARN}" >&2
+              exit 1
+            fi
+          fi
 
           echo "Target: cluster=${CLUSTER} service=${SERVICE}"
           echo "Image:  ${IMAGE_URI}"
@@ -237,6 +267,15 @@ jobs:
               )
             ' new-task-def.json > new-task-def.tmp.json
             mv new-task-def.tmp.json new-task-def.json
+
+            INJECTED_SMOKE_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY") | .valueFrom' new-task-def.json | head -n 1)
+            echo "Injected AFU9_SMOKE_KEY valueFrom: ${INJECTED_SMOKE_VALUE_FROM}"
+            if [ "${INJECTED_SMOKE_VALUE_FROM}" != "${SMOKE_KEY_SECRET_ARN}" ]; then
+              echo "❌ AFU9_SMOKE_KEY valueFrom does not match name-resolved secret ARN." >&2
+              echo "   Expected: ${SMOKE_KEY_SECRET_ARN}" >&2
+              echo "   Actual:   ${INJECTED_SMOKE_VALUE_FROM}" >&2
+              exit 1
+            fi
 
             if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
               echo "❌ AFU9_SMOKE_KEY not injected for staging task definition" >&2
