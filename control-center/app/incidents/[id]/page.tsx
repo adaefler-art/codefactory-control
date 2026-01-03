@@ -46,7 +46,6 @@ interface TimelineNode {
   node_type: string;
   node_id: string;
   created_at: string;
-  payload: any;
 }
 
 export default function IncidentDetailPage() {

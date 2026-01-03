@@ -268,11 +268,15 @@ export type Event = z.infer<typeof EventSchema>;
 
 /**
  * Filter for listing incidents
+ * 
+ * Pagination limits:
+ * - Default: 50 items
+ * - Maximum: 200 items (enforced to prevent unbounded queries)
  */
 export const IncidentFilterSchema = z.object({
   status: z.enum(INCIDENT_STATUSES).optional(),
   severity: z.enum(INCIDENT_SEVERITIES).optional(),
-  limit: z.number().int().positive().max(1000).default(100),
+  limit: z.number().int().positive().max(200).default(50),
   offset: z.number().int().nonnegative().default(0),
 });
 

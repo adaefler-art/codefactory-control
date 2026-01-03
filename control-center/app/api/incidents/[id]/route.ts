@@ -5,11 +5,19 @@
  * 
  * Retrieves detailed information about a specific incident including:
  * - Incident metadata
- * - Evidence items
- * - Events timeline
- * - Links to timeline nodes
+ * - Evidence items (bounded to latest 100)
+ * - Events timeline (bounded to latest 100)
+ * - Links to timeline nodes (bounded to 50, enriched with minimal allowlisted fields)
  * 
  * Authentication: Required (x-afu9-sub header)
+ * 
+ * SECURITY NOTE:
+ * The x-afu9-sub header is set by proxy.ts after JWT verification.
+ * Client-provided x-afu9-* headers are stripped by the middleware (see proxy.ts:397-401).
+ * This prevents header spoofing attacks. Routes fail-closed if x-afu9-sub is missing.
+ * 
+ * Timeline node enrichment is scoped to allowlisted node types (ISSUE, RUN, DEPLOY)
+ * and returns only minimal fields (id, type, node_id, created_at) to prevent data leakage.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -58,22 +66,26 @@ export async function GET(
       });
     }
 
-    // Fetch evidence
+    // Fetch evidence (bounded to latest 100 for performance)
     const evidence = await dao.getEvidence(id);
 
-    // Fetch events
-    const events = await dao.getEvents(id);
+    // Fetch events (bounded to latest 100 via DAO default)
+    const events = await dao.getEvents(id, 100);
 
-    // Fetch links to timeline nodes
-    const links = await dao.getLinks(id);
+    // Fetch links to timeline nodes (bounded to 50)
+    const allLinks = await dao.getLinks(id);
+    const links = allLinks.slice(0, 50);
 
-    // For each link, fetch the timeline node info
+    // Allowlisted node types for enrichment (security scoping)
+    const ALLOWLISTED_NODE_TYPES = ['ISSUE', 'RUN', 'DEPLOY'];
+
+    // For each link, fetch minimal timeline node info (allowlisted types only)
     const timelineNodes = [];
     for (const link of links) {
       try {
-        // Query timeline_nodes table for basic info
+        // Query timeline_nodes table for minimal info (id, type, node_id, created_at only)
         const nodeResult = await pool.query(
-          `SELECT id, node_type, node_id, created_at, payload
+          `SELECT id, node_type, node_id, created_at
            FROM timeline_nodes
            WHERE id = $1`,
           [link.timeline_node_id]
@@ -81,15 +93,18 @@ export async function GET(
 
         if (nodeResult.rows.length > 0) {
           const node = nodeResult.rows[0];
-          timelineNodes.push({
-            link_id: link.id,
-            link_type: link.link_type,
-            timeline_node_id: link.timeline_node_id,
-            node_type: node.node_type,
-            node_id: node.node_id,
-            created_at: node.created_at.toISOString(),
-            payload: node.payload || {},
-          });
+          
+          // Only enrich allowlisted node types
+          if (ALLOWLISTED_NODE_TYPES.includes(node.node_type)) {
+            timelineNodes.push({
+              link_id: link.id,
+              link_type: link.link_type,
+              timeline_node_id: link.timeline_node_id,
+              node_type: node.node_type,
+              node_id: node.node_id,
+              created_at: node.created_at.toISOString(),
+            });
+          }
         }
       } catch (err) {
         console.error('[API] Error fetching timeline node:', link.timeline_node_id, err);

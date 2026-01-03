@@ -9,10 +9,15 @@
  * Query parameters:
  * - status: Filter by incident status (OPEN, ACKED, MITIGATED, CLOSED)
  * - severity: Filter by severity (YELLOW, RED)
- * - limit: Max results to return (default: 100, max: 1000)
+ * - limit: Max results to return (default: 50, max: 200)
  * - offset: Pagination offset (default: 0)
  * 
  * Authentication: Required (x-afu9-sub header)
+ * 
+ * SECURITY NOTE:
+ * The x-afu9-sub header is set by proxy.ts after JWT verification.
+ * Client-provided x-afu9-* headers are stripped by the middleware (see proxy.ts:397-401).
+ * This prevents header spoofing attacks. Routes fail-closed if x-afu9-sub is missing.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -44,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     // Build filter object
     const filter: any = {
-      limit: limitStr ? parseInt(limitStr, 10) : 100,
+      limit: limitStr ? parseInt(limitStr, 10) : 50,
       offset: offsetStr ? parseInt(offsetStr, 10) : 0,
     };
 
@@ -78,6 +83,7 @@ export async function GET(request: NextRequest) {
       success: true,
       incidents,
       count: incidents.length,
+      hasMore: incidents.length >= validationResult.data.limit,
       filter: validationResult.data,
     }, { requestId });
   } catch (error) {

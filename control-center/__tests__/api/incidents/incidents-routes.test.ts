@@ -91,8 +91,9 @@ describe('Incidents API Routes', () => {
       expect(data.success).toBe(true);
       expect(data.incidents).toEqual(mockIncidents);
       expect(data.count).toBe(1);
+      expect(data.hasMore).toBe(false); // 1 < 50 default limit
       expect(mockListIncidents).toHaveBeenCalledWith({
-        limit: 100,
+        limit: 50,
         offset: 0,
       });
     });
@@ -108,7 +109,7 @@ describe('Incidents API Routes', () => {
       expect(response.status).toBe(200);
       expect(mockListIncidents).toHaveBeenCalledWith({
         status: 'OPEN',
-        limit: 100,
+        limit: 50,
         offset: 0,
       });
     });
@@ -124,7 +125,7 @@ describe('Incidents API Routes', () => {
       expect(response.status).toBe(200);
       expect(mockListIncidents).toHaveBeenCalledWith({
         severity: 'RED',
-        limit: 100,
+        limit: 50,
         offset: 0,
       });
     });
@@ -153,6 +154,18 @@ describe('Incidents API Routes', () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error).toBe('Invalid filter parameters');
+    });
+
+    it('should enforce max limit of 200', async () => {
+      const request = new NextRequest('http://localhost:3000/api/incidents?limit=500');
+      request.headers.set('x-afu9-sub', 'test-user');
+
+      const response = await listIncidents(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe('Invalid filter parameters');
+      expect(data.details).toContain('200'); // Should mention max limit
     });
   });
 
