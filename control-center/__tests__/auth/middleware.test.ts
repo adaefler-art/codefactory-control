@@ -99,6 +99,14 @@ describe('Middleware Authentication Logic', () => {
     expect(
       shouldAllowUnauthenticatedGithubStatusEndpoint({
         method: 'GET',
+        pathname: '/api/mcp/verify',
+        hostname: 'stage.afu-9.com',
+      })
+    ).toBe(true);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
         pathname: '/api/deploy/status',
         hostname: 'stage.afu-9.com',
       })
@@ -162,6 +170,14 @@ describe('Middleware Authentication Logic', () => {
       shouldAllowUnauthenticatedGithubStatusEndpoint({
         method: 'GET',
         pathname: '/api/deploy/status',
+        hostname: 'prod.afu-9.com',
+      })
+    ).toBe(true);
+
+    expect(
+      shouldAllowUnauthenticatedGithubStatusEndpoint({
+        method: 'GET',
+        pathname: '/api/mcp/verify',
         hostname: 'prod.afu-9.com',
       })
     ).toBe(true);
