@@ -275,6 +275,100 @@ export type ExecutePlaybookResponse = z.infer<typeof ExecutePlaybookResponseSche
 // ========================================
 
 /**
+ * Stable stringify for deterministic hashing
+ * Recursively sorts object keys alphabetically and handles arrays stably
+ * Prevents circular references
+ */
+export function stableStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+
+  const normalize = (v: any): any => {
+    if (v === null) return null;
+    if (v === undefined) return null; // Treat undefined as null for stability
+    if (typeof v !== 'object') return v;
+    
+    if (Array.isArray(v)) {
+      return v.map(normalize);
+    }
+
+    // Circular reference detection
+    if (seen.has(v)) {
+      throw new Error('Cannot stableStringify cyclic structure');
+    }
+    seen.add(v);
+
+    // Sort keys alphabetically for deterministic output
+    const keys = Object.keys(v).sort();
+    const out: Record<string, any> = {};
+    for (const k of keys) {
+      out[k] = normalize(v[k]);
+    }
+    return out;
+  };
+
+  return JSON.stringify(normalize(value));
+}
+
+/**
+ * Sanitize and redact secrets from data (deny-by-default)
+ * Masks values for keys/paths containing SECRET, TOKEN, PASSWORD, KEY, AUTH, COOKIE, HEADER, BEARER
+ * Also masks JWT-like patterns and API keys
+ */
+export function sanitizeRedact(value: unknown, path: string = ''): any {
+  // Secret key patterns (case-insensitive)
+  const secretKeyPattern = /(secret|token|password|key|auth|cookie|header|bearer|credential|api[-_]?key)/i;
+  
+  // Check if current path contains secret keywords
+  const pathParts = path.split('.').filter(Boolean);
+  const shouldRedact = pathParts.some(part => secretKeyPattern.test(part));
+  
+  if (shouldRedact) {
+    // Redact the entire value if path contains secret keywords, even null/undefined
+    return '********';
+  }
+
+  // Handle null/undefined for non-secret paths
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // For strings, check for obvious secret patterns even if not in secret path
+  if (typeof value === 'string') {
+    // JWT pattern (three base64 segments separated by dots)
+    if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value) && value.length > 100) {
+      return '********';
+    }
+    
+    // API key patterns (sk-, pk-, sk_live_, etc.)
+    if (/^(sk|pk|api|key)[-_]/i.test(value)) {
+      return '********';
+    }
+    
+    // Bearer token pattern
+    if (/^bearer\s+/i.test(value)) {
+      return '********';
+    }
+  }
+
+  // Recursively sanitize objects
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const sanitized: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value as Record<string, any>)) {
+      const newPath = path ? `${path}.${key}` : key;
+      sanitized[key] = sanitizeRedact(val, newPath);
+    }
+    return sanitized;
+  }
+
+  // Recursively sanitize arrays
+  if (Array.isArray(value)) {
+    return value.map((item, idx) => sanitizeRedact(item, `${path}[${idx}]`));
+  }
+
+  return value;
+}
+
+/**
  * Compute run_key for idempotency
  * Format: <incident_key>:<playbook_id>:<inputs_hash>
  */
@@ -288,10 +382,11 @@ export function computeRunKey(
 
 /**
  * Compute inputs hash (SHA-256 of stable JSON)
+ * Uses stableStringify for deterministic hashing regardless of key order
  */
 export function computeInputsHash(inputs: Record<string, any>): string {
   const crypto = require('crypto');
-  const stableJson = JSON.stringify(inputs, Object.keys(inputs).sort());
+  const stableJson = stableStringify(inputs);
   return crypto.createHash('sha256').update(stableJson).digest('hex');
 }
 

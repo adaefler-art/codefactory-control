@@ -15,6 +15,7 @@ import {
   RemediationStepInput,
   RemediationRunStatus,
   RemediationStepStatus,
+  sanitizeRedact,
 } from '../contracts/remediation-playbook';
 
 export class RemediationPlaybookDAO {
@@ -30,9 +31,16 @@ export class RemediationPlaybookDAO {
    * If run_key exists: returns existing run (no-op)
    * If run_key does not exist: creates new run
    * 
+   * Concurrency-safe: Uses INSERT...ON CONFLICT to handle race conditions
+   * Sanitization: All JSON fields are sanitized to remove secrets
+   * 
    * @returns The created or existing remediation run
    */
   async upsertRunByKey(input: RemediationRunInput): Promise<RemediationRun> {
+    // Sanitize all JSON fields before storing
+    const sanitizedPlannedJson = input.planned_json ? sanitizeRedact(input.planned_json) : null;
+    const sanitizedResultJson = input.result_json ? sanitizeRedact(input.result_json) : null;
+    
     const result = await this.pool.query<any>(
       `INSERT INTO remediation_runs (
         run_key, incident_id, playbook_id, playbook_version,
@@ -51,8 +59,8 @@ export class RemediationPlaybookDAO {
         input.playbook_id,
         input.playbook_version,
         input.status || 'PLANNED',
-        input.planned_json || null,
-        input.result_json || null,
+        sanitizedPlannedJson,
+        sanitizedResultJson,
         input.lawbook_version,
         input.inputs_hash,
       ]
@@ -125,12 +133,17 @@ export class RemediationPlaybookDAO {
 
   /**
    * Update remediation run status
+   * 
+   * Sanitization: result_json is sanitized before storage
    */
   async updateRunStatus(
     id: string,
     status: RemediationRunStatus,
     result_json?: Record<string, any>
   ): Promise<RemediationRun | null> {
+    // Sanitize result_json before storing
+    const sanitizedResultJson = result_json ? sanitizeRedact(result_json) : null;
+    
     const result = await this.pool.query<any>(
       `UPDATE remediation_runs
       SET status = $1, result_json = COALESCE($2, result_json), updated_at = NOW()
@@ -139,7 +152,7 @@ export class RemediationPlaybookDAO {
         id, run_key, incident_id, playbook_id, playbook_version,
         status, created_at, updated_at, planned_json, result_json,
         lawbook_version, inputs_hash`,
-      [status, result_json || null, id]
+      [status, sanitizedResultJson, id]
     );
 
     if (result.rows.length === 0) {
@@ -151,8 +164,16 @@ export class RemediationPlaybookDAO {
 
   /**
    * Create a remediation step (idempotent per run+step_id)
+   * 
+   * Concurrency-safe: Uses INSERT...ON CONFLICT for idempotency
+   * Sanitization: All JSON fields are sanitized to remove secrets
    */
   async createStep(input: RemediationStepInput): Promise<RemediationStep> {
+    // Sanitize all JSON fields before storing
+    const sanitizedInputJson = input.input_json ? sanitizeRedact(input.input_json) : null;
+    const sanitizedOutputJson = input.output_json ? sanitizeRedact(input.output_json) : null;
+    const sanitizedErrorJson = input.error_json ? sanitizeRedact(input.error_json) : null;
+    
     const result = await this.pool.query<any>(
       `INSERT INTO remediation_steps (
         remediation_run_id, step_id, action_type, status,
@@ -176,9 +197,9 @@ export class RemediationPlaybookDAO {
         input.action_type,
         input.status || 'PLANNED',
         input.idempotency_key || null,
-        input.input_json || null,
-        input.output_json || null,
-        input.error_json || null,
+        sanitizedInputJson,
+        sanitizedOutputJson,
+        sanitizedErrorJson,
       ]
     );
 
@@ -188,6 +209,8 @@ export class RemediationPlaybookDAO {
 
   /**
    * Update remediation step status
+   * 
+   * Sanitization: output_json and error_json are sanitized before storage
    */
   async updateStepStatus(
     id: string,
@@ -199,6 +222,10 @@ export class RemediationPlaybookDAO {
       error_json?: Record<string, any>;
     } = {}
   ): Promise<RemediationStep | null> {
+    // Sanitize JSON fields before storing
+    const sanitizedOutputJson = updates.output_json ? sanitizeRedact(updates.output_json) : null;
+    const sanitizedErrorJson = updates.error_json ? sanitizeRedact(updates.error_json) : null;
+    
     const result = await this.pool.query<any>(
       `UPDATE remediation_steps
       SET 
@@ -216,8 +243,8 @@ export class RemediationPlaybookDAO {
         status,
         updates.started_at || null,
         updates.finished_at || null,
-        updates.output_json || null,
-        updates.error_json || null,
+        sanitizedOutputJson,
+        sanitizedErrorJson,
         id,
       ]
     );
