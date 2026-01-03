@@ -226,8 +226,7 @@ export class IncidentDAO {
           results.push(this.mapRowToEvidence(result.rows[0]));
         }
       } catch (error) {
-        // If no sha256, conflict won't happen, but log other errors
-        console.error('Error adding evidence:', error);
+        // If no sha256, conflict won't happen, propagate error for caller handling
         throw error;
       }
     }
