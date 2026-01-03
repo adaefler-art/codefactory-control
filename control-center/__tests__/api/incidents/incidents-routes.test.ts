@@ -12,26 +12,40 @@ import { NextRequest } from 'next/server';
 import { GET as listIncidents } from '../../../app/api/incidents/route';
 import { GET as getIncident } from '../../../app/api/incidents/[id]/route';
 
+// Create mock functions
+const mockListIncidents = jest.fn();
+const mockGetIncident = jest.fn();
+const mockGetEvidence = jest.fn();
+const mockGetEvents = jest.fn();
+const mockGetLinks = jest.fn();
+const mockQuery = jest.fn();
+
 // Mock dependencies
 jest.mock('../../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
-    query: jest.fn(),
+    query: mockQuery,
   })),
 }));
 
 jest.mock('../../../src/lib/db/incidents', () => ({
   getIncidentDAO: jest.fn(() => ({
-    listIncidents: jest.fn(),
-    getIncident: jest.fn(),
-    getEvidence: jest.fn(),
-    getEvents: jest.fn(),
-    getLinks: jest.fn(),
+    listIncidents: mockListIncidents,
+    getIncident: mockGetIncident,
+    getEvidence: mockGetEvidence,
+    getEvents: mockGetEvents,
+    getLinks: mockGetLinks,
   })),
 }));
 
 describe('Incidents API Routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockListIncidents.mockReset();
+    mockGetIncident.mockReset();
+    mockGetEvidence.mockReset();
+    mockGetEvents.mockReset();
+    mockGetLinks.mockReset();
+    mockQuery.mockReset();
   });
 
   describe('GET /api/incidents', () => {
@@ -46,9 +60,6 @@ describe('Incidents API Routes', () => {
     });
 
     it('should list incidents with default filters', async () => {
-      const { getIncidentDAO } = require('../../../src/lib/db/incidents');
-      const mockDAO = getIncidentDAO();
-      
       const mockIncidents = [
         {
           id: '123e4567-e89b-12d3-a456-426614174000',
@@ -68,7 +79,7 @@ describe('Incidents API Routes', () => {
         },
       ];
       
-      mockDAO.listIncidents.mockResolvedValue(mockIncidents);
+      mockListIncidents.mockResolvedValue(mockIncidents);
 
       const request = new NextRequest('http://localhost:3000/api/incidents');
       request.headers.set('x-afu9-sub', 'test-user');
@@ -80,17 +91,14 @@ describe('Incidents API Routes', () => {
       expect(data.success).toBe(true);
       expect(data.incidents).toEqual(mockIncidents);
       expect(data.count).toBe(1);
-      expect(mockDAO.listIncidents).toHaveBeenCalledWith({
+      expect(mockListIncidents).toHaveBeenCalledWith({
         limit: 100,
         offset: 0,
       });
     });
 
     it('should filter by status', async () => {
-      const { getIncidentDAO } = require('../../../src/lib/db/incidents');
-      const mockDAO = getIncidentDAO();
-      
-      mockDAO.listIncidents.mockResolvedValue([]);
+      mockListIncidents.mockResolvedValue([]);
 
       const request = new NextRequest('http://localhost:3000/api/incidents?status=OPEN');
       request.headers.set('x-afu9-sub', 'test-user');
@@ -98,7 +106,7 @@ describe('Incidents API Routes', () => {
       const response = await listIncidents(request);
 
       expect(response.status).toBe(200);
-      expect(mockDAO.listIncidents).toHaveBeenCalledWith({
+      expect(mockListIncidents).toHaveBeenCalledWith({
         status: 'OPEN',
         limit: 100,
         offset: 0,
@@ -106,10 +114,7 @@ describe('Incidents API Routes', () => {
     });
 
     it('should filter by severity', async () => {
-      const { getIncidentDAO } = require('../../../src/lib/db/incidents');
-      const mockDAO = getIncidentDAO();
-      
-      mockDAO.listIncidents.mockResolvedValue([]);
+      mockListIncidents.mockResolvedValue([]);
 
       const request = new NextRequest('http://localhost:3000/api/incidents?severity=RED');
       request.headers.set('x-afu9-sub', 'test-user');
@@ -117,7 +122,7 @@ describe('Incidents API Routes', () => {
       const response = await listIncidents(request);
 
       expect(response.status).toBe(200);
-      expect(mockDAO.listIncidents).toHaveBeenCalledWith({
+      expect(mockListIncidents).toHaveBeenCalledWith({
         severity: 'RED',
         limit: 100,
         offset: 0,
@@ -125,10 +130,7 @@ describe('Incidents API Routes', () => {
     });
 
     it('should support pagination with limit and offset', async () => {
-      const { getIncidentDAO } = require('../../../src/lib/db/incidents');
-      const mockDAO = getIncidentDAO();
-      
-      mockDAO.listIncidents.mockResolvedValue([]);
+      mockListIncidents.mockResolvedValue([]);
 
       const request = new NextRequest('http://localhost:3000/api/incidents?limit=50&offset=10');
       request.headers.set('x-afu9-sub', 'test-user');
@@ -136,7 +138,7 @@ describe('Incidents API Routes', () => {
       const response = await listIncidents(request);
 
       expect(response.status).toBe(200);
-      expect(mockDAO.listIncidents).toHaveBeenCalledWith({
+      expect(mockListIncidents).toHaveBeenCalledWith({
         limit: 50,
         offset: 10,
       });
@@ -167,10 +169,7 @@ describe('Incidents API Routes', () => {
     });
 
     it('should return 404 if incident not found', async () => {
-      const { getIncidentDAO } = require('../../../src/lib/db/incidents');
-      const mockDAO = getIncidentDAO();
-      
-      mockDAO.getIncident.mockResolvedValue(null);
+      mockGetIncident.mockResolvedValue(null);
 
       const request = new NextRequest('http://localhost:3000/api/incidents/123');
       request.headers.set('x-afu9-sub', 'test-user');
@@ -184,11 +183,6 @@ describe('Incidents API Routes', () => {
     });
 
     it('should return incident with evidence, events, and links', async () => {
-      const { getIncidentDAO } = require('../../../src/lib/db/incidents');
-      const { getPool } = require('../../../src/lib/db');
-      const mockDAO = getIncidentDAO();
-      const mockPool = getPool();
-      
       const mockIncident = {
         id: '123e4567-e89b-12d3-a456-426614174000',
         incident_key: 'deploy_status:prod:deploy-123:2024-01-15T10:00:00Z',
@@ -237,13 +231,13 @@ describe('Incidents API Routes', () => {
         },
       ];
 
-      mockDAO.getIncident.mockResolvedValue(mockIncident);
-      mockDAO.getEvidence.mockResolvedValue(mockEvidence);
-      mockDAO.getEvents.mockResolvedValue(mockEvents);
-      mockDAO.getLinks.mockResolvedValue(mockLinks);
+      mockGetIncident.mockResolvedValue(mockIncident);
+      mockGetEvidence.mockResolvedValue(mockEvidence);
+      mockGetEvents.mockResolvedValue(mockEvents);
+      mockGetLinks.mockResolvedValue(mockLinks);
 
       // Mock timeline node query
-      mockPool.query.mockResolvedValue({
+      mockQuery.mockResolvedValue({
         rows: [
           {
             id: 'node-123',
