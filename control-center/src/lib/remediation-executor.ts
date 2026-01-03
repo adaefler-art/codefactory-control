@@ -69,6 +69,8 @@ async function loadLawbookGateConfig(): Promise<LawbookGateConfig> {
       'scale-up',
       'notify-slack',
       'run-verification',
+      'safe-retry-runner', // I772: Allow safe retry of GitHub workflows
+      'rerun-post-deploy-verification', // I772: Allow re-run of E65.2 verification
     ],
     allowedActionTypes: [
       'RESTART_SERVICE',
@@ -166,20 +168,28 @@ function planRemediationRun(
 // ========================================
 
 /**
- * Stub step executor
+ * Step executor function type
+ */
+export type StepExecutorFunction = (
+  pool: Pool,
+  context: StepContext
+) => Promise<StepResult>;
+
+/**
+ * Idempotency key function type
+ */
+export type IdempotencyKeyFunction = (context: StepContext) => string;
+
+/**
+ * Default step executor (stub)
  * In production, this would call actual remediation services
  */
-async function executeStepAction(
+async function executeStepActionDefault(
+  pool: Pool,
   step: StepDefinition,
   context: StepContext
 ): Promise<StepResult> {
-  // Stub implementation
-  // In production, this would:
-  // 1. Call AWS APIs (e.g., ECS UpdateService for RESTART_SERVICE)
-  // 2. Call notification services (e.g., Slack API for NOTIFY_SLACK)
-  // 3. Trigger verification playbooks (E65.2 for RUN_VERIFICATION)
-  // 4. Create GitHub issues (for CREATE_ISSUE)
-  
+  // Stub implementation for playbooks without custom executors
   return {
     success: true,
     output: {
@@ -192,9 +202,9 @@ async function executeStepAction(
 }
 
 /**
- * Compute step-level idempotency key
+ * Default step-level idempotency key computation
  */
-function computeStepIdempotencyKey(
+function computeStepIdempotencyKeyDefault(
   step: StepDefinition,
   context: StepContext
 ): string {
@@ -222,10 +232,17 @@ export class RemediationPlaybookExecutor {
    * - Lawbook gating: deny-by-default, explicit allow required
    * - Deterministic planning
    * - Full audit trail
+   * 
+   * @param request - The playbook execution request
+   * @param playbook - The playbook definition
+   * @param stepExecutors - Optional map of step executors (stepId -> executor function)
+   * @param idempotencyKeyFns - Optional map of idempotency key functions (stepId -> key function)
    */
   async executePlaybook(
     request: ExecutePlaybookRequest,
-    playbook: PlaybookDefinition
+    playbook: PlaybookDefinition,
+    stepExecutors?: Map<string, StepExecutorFunction>,
+    idempotencyKeyFns?: Map<string, IdempotencyKeyFunction>
   ): Promise<ExecutePlaybookResponse> {
     const incidentDAO = getIncidentDAO(this.pool);
     const remediationDAO = getRemediationPlaybookDAO(this.pool);
@@ -368,6 +385,7 @@ export class RemediationPlaybookExecutor {
     // Step 9: Execute steps sequentially
     const startTime = Date.now();
     let allSucceeded = true;
+    const stepOutputs = new Map<string, any>(); // Track step outputs for chaining
     
     for (const plannedStep of planned.steps) {
       const stepDef = playbook.steps.find(s => s.stepId === plannedStep.stepId);
@@ -375,15 +393,23 @@ export class RemediationPlaybookExecutor {
         throw new Error(`Step definition not found: ${plannedStep.stepId}`);
       }
       
-      // Create step record
-      const stepIdempotencyKey = computeStepIdempotencyKey(stepDef, {
+      // Build step context with previous step outputs
+      const stepContext: StepContext = {
         incidentId: incident.id,
         incidentKey: incident.incident_key,
         runId: run.id,
         lawbookVersion: lawbookConfig.version,
         evidence,
-        inputs: plannedStep.resolvedInputs,
-      });
+        inputs: {
+          ...plannedStep.resolvedInputs,
+          ...Object.fromEntries(stepOutputs), // Include previous step outputs
+        },
+      };
+      
+      // Compute step idempotency key (use custom function if provided)
+      const idempotencyKeyFn = idempotencyKeyFns?.get(stepDef.stepId) || 
+        ((ctx: StepContext) => computeStepIdempotencyKeyDefault(stepDef, ctx));
+      const stepIdempotencyKey = idempotencyKeyFn(stepContext);
       
       const step = await remediationDAO.createStep({
         remediation_run_id: run.id,
@@ -391,7 +417,7 @@ export class RemediationPlaybookExecutor {
         action_type: stepDef.actionType,
         status: 'PLANNED',
         idempotency_key: stepIdempotencyKey,
-        input_json: plannedStep.resolvedInputs,
+        input_json: stepContext.inputs,
       });
       
       // Execute step
@@ -400,20 +426,22 @@ export class RemediationPlaybookExecutor {
       });
       
       try {
-        const result = await executeStepAction(stepDef, {
-          incidentId: incident.id,
-          incidentKey: incident.incident_key,
-          runId: run.id,
-          lawbookVersion: lawbookConfig.version,
-          evidence,
-          inputs: plannedStep.resolvedInputs,
-        });
+        // Get step executor (use custom if provided, otherwise use default)
+        const executor = stepExecutors?.get(stepDef.stepId) || 
+          ((pool: Pool, ctx: StepContext) => executeStepActionDefault(pool, stepDef, ctx));
+        
+        const result = await executor(this.pool, stepContext);
         
         if (result.success) {
           await remediationDAO.updateStepStatus(step.id, 'SUCCEEDED', {
             finished_at: new Date(),
             output_json: result.output,
           });
+          
+          // Store step output for next steps
+          if (result.output) {
+            stepOutputs.set(`${stepDef.stepId}StepOutput`, result.output);
+          }
         } else {
           await remediationDAO.updateStepStatus(step.id, 'FAILED', {
             finished_at: new Date(),
