@@ -4,6 +4,7 @@ import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/a
 import { isPublicRoute } from './lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/public-status-endpoints';
 import { getEffectiveHostname } from './src/lib/http/effective-hostname';
+import { extractSmokeKeyFromEnv, normalizeSmokeKeyCandidate } from './src/lib/auth/smokeKey';
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -71,26 +72,34 @@ function clearCookie(response: NextResponse, name: string) {
 }
 
 function isSmokeBypass(request: NextRequest): boolean {
-  const smokeKey = process.env.AFU9_SMOKE_KEY;
-  const providedSmokeKey = request.headers.get('x-afu9-smoke-key');
+  const { expectedSmokeKey } = extractSmokeKeyFromEnv(process.env.AFU9_SMOKE_KEY);
+  const providedSmokeKey = normalizeSmokeKeyCandidate(request.headers.get('x-afu9-smoke-key'));
 
-  if (!smokeKey || !providedSmokeKey) return false;
-  return providedSmokeKey.trim() === smokeKey.trim();
+  if (!expectedSmokeKey || !providedSmokeKey) return false;
+  return providedSmokeKey === expectedSmokeKey;
 }
 
 function maybeAttachSmokeDebugHeaders(
   response: NextResponse,
   request: NextRequest,
-  detectedStage: string
+  detectedStage: string,
+  isStagingHost: boolean
 ): NextResponse {
+  // Staging-only to avoid leaking auth/debug signals on prod paths.
+  if (!isStagingHost) return response;
+
   const providedSmokeKey = request.headers.get('x-afu9-smoke-key');
   if (!providedSmokeKey) return response;
 
-  const envPresent = Boolean(process.env.AFU9_SMOKE_KEY);
+  const extraction = extractSmokeKeyFromEnv(process.env.AFU9_SMOKE_KEY);
+  const normalizedProvided = normalizeSmokeKeyCandidate(providedSmokeKey);
   const keyMatch = isSmokeBypass(request);
 
   response.headers.set('x-afu9-smoke-stage', detectedStage);
-  response.headers.set('x-afu9-smoke-env-present', envPresent ? '1' : '0');
+  response.headers.set('x-afu9-smoke-env-present', extraction.envPresent ? '1' : '0');
+  response.headers.set('x-afu9-smoke-env-format', extraction.envFormat);
+  response.headers.set('x-afu9-smoke-env-len', String(extraction.envLen));
+  response.headers.set('x-afu9-smoke-key-len', String(normalizedProvided?.length ?? 0));
   response.headers.set('x-afu9-smoke-key-match', keyMatch ? '1' : '0');
   return response;
 }
@@ -136,7 +145,7 @@ export async function middleware(request: NextRequest) {
     if (allowlisted) {
       const response = nextWithRequestId();
       response.headers.set('x-afu9-smoke-auth-used', '1');
-      return maybeAttachSmokeDebugHeaders(response, request, detectedStage);
+      return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
     }
   }
 
@@ -195,7 +204,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
-      maybeAttachSmokeDebugHeaders(response, request, detectedStage);
+      maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_refresh_only' });
       return response;
     }
@@ -228,7 +237,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
-      maybeAttachSmokeDebugHeaders(response, request, detectedStage);
+      maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_missing' });
       return response;
     } else {
