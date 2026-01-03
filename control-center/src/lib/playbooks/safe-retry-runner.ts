@@ -24,10 +24,16 @@ import {
   computeInputsHash,
 } from '../contracts/remediation-playbook';
 import { dispatchWorkflow, pollRun, ingestRun } from '../github-runner/adapter';
+import { isRepoAllowed } from '../github/auth-wrapper';
 
 /**
  * Step 1: Dispatch Runner
  * Re-dispatch the workflow with the same inputs (or a safe subset)
+ * 
+ * HARDENING (E77.2):
+ * - Enforces I711 repo allowlist before dispatch
+ * - Requires deterministic ref (headSha or specific ref, no default branch)
+ * - Sanitizes outputs to prevent secret persistence
  */
 export async function executeDispatchRunner(
   pool: Pool,
@@ -53,7 +59,6 @@ export async function executeDispatchRunner(
     const owner = ref.owner || context.inputs.owner;
     const repo = ref.repo || context.inputs.repo;
     const workflowIdOrFile = ref.workflowIdOrFile || ref.workflow || context.inputs.workflow;
-    const gitRef = ref.ref || ref.branch || 'main';
     const sourceRunId = ref.runId || context.inputs.sourceRunId;
 
     if (!owner || !repo || !workflowIdOrFile) {
@@ -67,16 +72,51 @@ export async function executeDispatchRunner(
       };
     }
 
+    // HARDENING: Enforce I711 repo allowlist (fail-closed)
+    if (!isRepoAllowed(owner, repo)) {
+      return {
+        success: false,
+        error: {
+          code: 'REPO_NOT_ALLOWED',
+          message: `Repository ${owner}/${repo} is not in the allowlist`,
+          details: JSON.stringify({ owner, repo }),
+        },
+      };
+    }
+
+    // HARDENING: Require deterministic ref (headSha or explicit ref, no default branch)
+    // Prefer headSha for exact commit pinning, fall back to explicit ref
+    const headSha = ref.headSha || ref.head_sha;
+    const explicitRef = ref.ref || ref.branch;
+    
+    if (!headSha && !explicitRef) {
+      return {
+        success: false,
+        error: {
+          code: 'DETERMINISM_REQUIRED',
+          message: 'Evidence must include headSha or explicit ref for deterministic retry',
+          details: JSON.stringify({ 
+            availableFields: Object.keys(ref),
+            required: ['headSha OR ref/branch'],
+          }),
+        },
+      };
+    }
+
+    // Use headSha if available (most deterministic), otherwise use explicit ref
+    const gitRef = headSha || explicitRef;
+
     // Dispatch the workflow
     const result = await dispatchWorkflow(pool, {
       correlationId: `${context.incidentKey}:retry:${sourceRunId}`,
       owner,
       repo,
       workflowIdOrFile,
-      ref: gitRef,
+      ref: gitRef!,
       inputs: ref.inputs || {},
     });
 
+    // HARDENING: Return only minimal, sanitized fields (no raw API responses)
     return {
       success: true,
       output: {
@@ -84,9 +124,22 @@ export async function executeDispatchRunner(
         runUrl: result.runUrl,
         recordId: result.recordId,
         isExisting: result.isExisting,
+        // Explicitly omit any raw response data
       },
     };
   } catch (error: any) {
+    // Check if this is a repo access denied error
+    if (error.code === 'REPO_NOT_ALLOWED') {
+      return {
+        success: false,
+        error: {
+          code: 'REPO_NOT_ALLOWED',
+          message: error.message,
+          details: error.details,
+        },
+      };
+    }
+    
     return {
       success: false,
       error: {
@@ -101,6 +154,9 @@ export async function executeDispatchRunner(
 /**
  * Step 2: Poll Runner
  * Poll the newly dispatched run until completion or timeout
+ * 
+ * HARDENING (E77.2):
+ * - Returns only minimal, sanitized fields (no raw API responses)
  */
 export async function executePollRunner(
   pool: Pool,
@@ -141,6 +197,7 @@ export async function executePollRunner(
 
       // Check if run is completed
       if (pollResult.normalizedStatus === 'completed') {
+        // HARDENING: Return only minimal, sanitized fields
         return {
           success: true,
           output: {
@@ -149,6 +206,7 @@ export async function executePollRunner(
             conclusion: pollResult.conclusion,
             normalizedStatus: pollResult.normalizedStatus,
             updatedAt: pollResult.updatedAt,
+            // Explicitly omit raw API response data
           },
         };
       }
@@ -187,6 +245,9 @@ export async function executePollRunner(
 /**
  * Step 3: Ingest Runner
  * Ingest the completed run and attach artifacts as evidence
+ * 
+ * HARDENING (E77.2):
+ * - Returns only minimal, sanitized artifact metadata (no download URLs with tokens)
  */
 export async function executeIngestRunner(
   pool: Pool,
@@ -219,20 +280,31 @@ export async function executeIngestRunner(
       runId: pollStepOutput.runId,
     });
 
+    // HARDENING: Return only minimal, sanitized artifact metadata
+    // Omit download URLs (which may contain temporary tokens)
     return {
       success: true,
       output: {
         runId: result.runId,
         recordId: result.recordId,
-        summary: result.summary,
+        summary: {
+          status: result.summary.status,
+          conclusion: result.summary.conclusion,
+          totalJobs: result.summary.totalJobs,
+          successfulJobs: result.summary.successfulJobs,
+          failedJobs: result.summary.failedJobs,
+          durationMs: result.summary.durationMs,
+        },
         jobsCount: result.jobs.length,
         artifactsCount: result.artifacts.length,
+        // Sanitized artifact metadata (no download URLs)
         artifacts: result.artifacts.map(a => ({
           id: a.id,
           name: a.name,
           sizeInBytes: a.sizeInBytes,
+          // Omit downloadUrl - it contains temporary tokens
         })),
-        logsUrl: result.logsUrl,
+        // Omit logsUrl - it contains temporary tokens
       },
     };
   } catch (error: any) {

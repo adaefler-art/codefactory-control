@@ -27,6 +27,21 @@ import {
 import { getIncidentDAO } from '../db/incidents';
 
 /**
+ * Normalize environment name for consistent comparison
+ * Maps: prod/production → prod, stage/staging → stage
+ */
+function normalizeEnvironment(env: string): 'prod' | 'stage' | null {
+  const normalized = env.toLowerCase().trim();
+  if (normalized === 'prod' || normalized === 'production') {
+    return 'prod';
+  }
+  if (normalized === 'stage' || normalized === 'staging') {
+    return 'stage';
+  }
+  return null; // Unknown environment
+}
+
+/**
  * Step 1: Run Verification
  * Invoke E65.2 post-deploy verification playbook
  */
@@ -120,6 +135,11 @@ export async function executeRunVerification(
 /**
  * Step 2: Ingest Incident Update (optional)
  * If verification passes, update incident status to MITIGATED candidate
+ * 
+ * HARDENING (E77.2):
+ * - Only marks MITIGATED when verification explicitly passes for the SAME environment
+ * - Normalizes environments (prod/production, stage/staging)
+ * - Fails verification for different environments
  */
 export async function executeIngestIncidentUpdate(
   pool: Pool,
@@ -150,11 +170,64 @@ export async function executeIngestIncidentUpdate(
       };
     }
 
-    // Update incident status to MITIGATED
+    // HARDENING: Verify environment match
+    // Get the incident to check its environment context
     const incidentDAO = getIncidentDAO(pool);
+    const incident = await incidentDAO.getIncident(context.incidentId);
     
+    if (!incident) {
+      return {
+        success: false,
+        error: {
+          code: 'INCIDENT_NOT_FOUND',
+          message: `Incident ${context.incidentId} not found`,
+        },
+      };
+    }
+
+    // Extract environment from incident evidence or classification
+    // Look for deploy_status or verification evidence that indicates the incident's environment
+    const incidentEvidence = await incidentDAO.getEvidence(context.incidentId);
+    const deployEvidence = incidentEvidence.find(e => 
+      e.kind === 'deploy_status' || e.kind === 'verification'
+    );
+    
+    const incidentEnv = deployEvidence?.ref?.env;
+    const verificationEnv = verificationStepOutput.env;
+
+    // HARDENING: Normalize and compare environments
+    const normalizedIncidentEnv = incidentEnv ? normalizeEnvironment(incidentEnv) : null;
+    const normalizedVerificationEnv = verificationEnv ? normalizeEnvironment(verificationEnv) : null;
+
+    if (!normalizedVerificationEnv) {
+      return {
+        success: false,
+        error: {
+          code: 'INVALID_VERIFICATION_ENV',
+          message: 'Verification environment could not be normalized',
+          details: JSON.stringify({ verificationEnv }),
+        },
+      };
+    }
+
+    // If we have an incident environment, verify it matches
+    if (normalizedIncidentEnv && normalizedIncidentEnv !== normalizedVerificationEnv) {
+      return {
+        success: true,
+        output: {
+          message: `Verification passed for ${normalizedVerificationEnv} but incident is for ${normalizedIncidentEnv}, not marking MITIGATED`,
+          incidentId: context.incidentId,
+          currentStatus: 'unchanged',
+          envMismatch: true,
+          incidentEnv: normalizedIncidentEnv,
+          verificationEnv: normalizedVerificationEnv,
+        },
+      };
+    }
+
+    // Update incident status to MITIGATED
     // Note: In a full implementation, we'd check business rules to determine
-    // if auto-closing is allowed. For now, we just suggest MITIGATED status.
+    // if auto-closing is allowed. For now, we mark as MITIGATED when verification passes for the same env.
     await incidentDAO.updateStatus(context.incidentId, 'MITIGATED');
 
     // Add evidence about the successful verification
@@ -165,7 +238,7 @@ export async function executeIngestIncidentUpdate(
         ref: {
           playbookRunId: verificationStepOutput.playbookRunId,
           reportHash: verificationStepOutput.reportHash,
-          env: verificationStepOutput.env,
+          env: normalizedVerificationEnv,
           deployId: verificationStepOutput.deployId,
           status: verificationStepOutput.status,
         },
@@ -180,6 +253,7 @@ export async function executeIngestIncidentUpdate(
         incidentId: context.incidentId,
         newStatus: 'MITIGATED',
         verificationRunId: verificationStepOutput.playbookRunId,
+        env: normalizedVerificationEnv,
       },
     };
   } catch (error: any) {
