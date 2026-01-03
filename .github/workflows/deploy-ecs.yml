@@ -65,7 +65,7 @@ env:
   AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
 
   # Deterministic host used by readiness/smoke steps
-  READY_HOST: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging') == 'prod' && 'prod.afu-9.com' || 'stage.afu-9.com' }}
+  READY_HOST: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging') == 'production' && 'prod.afu-9.com' || 'stage.afu-9.com' }}
 
 jobs:
   build-and-deploy:
@@ -1444,6 +1444,11 @@ jobs:
       - name: Verify staging smoke-key ARN applied
         if: steps.target.outputs.deploy_env == 'staging'
         shell: bash
+        env:
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          APP_VERSION: ${{ steps.build-meta.outputs.version }}
+          DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
         run: |
           set -euo pipefail
 
