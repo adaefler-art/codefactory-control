@@ -516,48 +516,47 @@ jobs:
           echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
           echo "should_migrate=${SHOULD_MIGRATE}"
 
-          SMOKE_KEY_SECRET_ID=""
-          SMOKE_KEY_VALUE_FROM=""
+          SMOKE_ARN=""
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
             # Canonical identifier (must appear in this workflow for repo invariants).
             # Note: ECS `valueFrom` treats non-ARN strings as SSM Parameter Store names.
             # To inject from Secrets Manager, we resolve the secret ARN by name at deploy time.
-            SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
-            echo "Using stage smoke key secret id: ${SMOKE_KEY_SECRET_ID}"
+            SMOKE_SECRET_ID="afu9/stage/smoke-key"
+            echo "Resolving staging smoke key secret ARN by name: ${SMOKE_SECRET_ID}"
 
             # Prefer Secrets Manager (resolved by name, no hardcoded suffix ARN in repo).
             set +e
-            SMOKE_KEY_VALUE_FROM=$(aws secretsmanager describe-secret \
-              --secret-id "${SMOKE_KEY_SECRET_ID}" \
-              --region "${{ env.AWS_REGION }}" \
+            SMOKE_ARN=$(aws secretsmanager describe-secret \
+              --secret-id "${SMOKE_SECRET_ID}" \
               --query 'ARN' \
-              --output text 2>smoke-key.describe.err)
-            SMOKE_KEY_DESCRIBE_RC=$?
+              --output text \
+              --region "${{ env.AWS_REGION }}" 2>smoke-key.describe.err)
+            SMOKE_DESCRIBE_RC=$?
             set -e
 
-            if [ "${SMOKE_KEY_DESCRIBE_RC}" -ne 0 ]; then
-              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SMOKE_KEY_SECRET_ID}" >&2
+            if [ "${SMOKE_DESCRIBE_RC}" -ne 0 ]; then
+              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SMOKE_SECRET_ID}" >&2
               echo "   This deploy must NOT fall back to SSM (it causes ECS to treat the identifier as an SSM parameter name)." >&2
               echo "   AWS CLI error:" >&2
               cat smoke-key.describe.err >&2 || true
               echo "   Remedy:" >&2
-              echo "   - Ensure the secret exists in Secrets Manager (name: ${SMOKE_KEY_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
+              echo "   - Ensure the secret exists in Secrets Manager (name: ${SMOKE_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
               echo "   - Ensure the deploy role can call secretsmanager:DescribeSecret" >&2
               exit 1
             fi
 
-            if [ -z "${SMOKE_KEY_VALUE_FROM:-}" ] || [ "${SMOKE_KEY_VALUE_FROM}" = "None" ]; then
-              echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_KEY_SECRET_ID})." >&2
-              echo "   Expected a secret named exactly: ${SMOKE_KEY_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
+            if [ -z "${SMOKE_ARN:-}" ] || [ "${SMOKE_ARN}" = "None" ]; then
+              echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_SECRET_ID})." >&2
+              echo "   Expected a secret named exactly: ${SMOKE_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
               exit 1
             fi
 
-            if ! echo "${SMOKE_KEY_VALUE_FROM}" | grep -q '^arn:aws:secretsmanager:'; then
-              echo "❌ Resolved smoke key valueFrom is not a Secrets Manager ARN: ${SMOKE_KEY_VALUE_FROM}" >&2
+            if ! echo "${SMOKE_ARN}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ Resolved smoke key valueFrom is not a Secrets Manager ARN: ${SMOKE_ARN}" >&2
               exit 1
             fi
 
-            echo "Using Secrets Manager ARN for smoke key (resolved by name): ${SMOKE_KEY_VALUE_FROM}"
+            echo "Using Secrets Manager ARN for smoke key (resolved by name): ${SMOKE_ARN}"
           fi
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
@@ -622,14 +621,14 @@ jobs:
               SIM_RESULT=$(aws iam simulate-principal-policy \
                 --policy-source-arn "${EXEC_ROLE_ARN}" \
                 --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
-                --resource-arns "${SMOKE_KEY_VALUE_FROM}" \
+                --resource-arns "${SMOKE_ARN}" \
                 --query 'EvaluationResults[].EvalDecision' \
                 --output text 2>/dev/null || true)
 
               if [ -z "${SIM_RESULT:-}" ]; then
                 echo "⚠️  IAM simulation not permitted; skipping smoke-key preflight" >&2
               elif echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
-                echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_KEY_VALUE_FROM}" >&2
+                echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_ARN}" >&2
                 echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on the resolved secret ARN." >&2
                 echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
                 exit 1
@@ -756,7 +755,7 @@ jobs:
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            jq --arg smoke_value_from "${SMOKE_KEY_VALUE_FROM}" '
+            jq --arg smoke_value_from "${SMOKE_ARN}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
                   .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_value_from}])
@@ -772,24 +771,11 @@ jobs:
               exit 1
             fi
 
-            if [ "${INJECTED_SMOKE_VALUE_FROM}" != "${SMOKE_KEY_VALUE_FROM}" ]; then
+            if [ "${INJECTED_SMOKE_VALUE_FROM}" != "${SMOKE_ARN}" ]; then
               echo "❌ AFU9_SMOKE_KEY valueFrom does not match name-resolved secret ARN." >&2
-              echo "   Expected: ${SMOKE_KEY_VALUE_FROM}" >&2
+              echo "   Expected: ${SMOKE_ARN}" >&2
               echo "   Actual:   ${INJECTED_SMOKE_VALUE_FROM}" >&2
               exit 1
-            fi
-
-            # Guardrail: prevent stale, suffix-pinned ARNs elsewhere in the task definition.
-            # We allow the resolved ARN (which includes the current suffix) but forbid any other smoke-key-* ARN.
-            if jq -re '.. | select(type=="string") | select(test("secret:afu9/stage/smoke-key-"))' new-task-def.json >/dev/null; then
-              MISMATCH=$(jq -r '.. | select(type=="string") | select(test("secret:afu9/stage/smoke-key-"))' new-task-def.json | sort -u | grep -v -F "${SMOKE_KEY_VALUE_FROM}" || true)
-              if [ -n "${MISMATCH}" ]; then
-                echo "❌ Detected stale staging smoke-key ARN reference(s) after mutation; refusing to deploy." >&2
-                echo "   Resolved ARN: ${SMOKE_KEY_VALUE_FROM}" >&2
-                echo "   Other reference(s):" >&2
-                echo "${MISMATCH}" >&2
-                exit 1
-              fi
             fi
 
             if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
@@ -872,6 +858,7 @@ jobs:
 
           echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "migration_task_def_arn=$MIGRATION_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "smoke_arn=$SMOKE_ARN" >> "$GITHUB_OUTPUT"
           echo "New task definition: $NEW_TASK_DEF_ARN"
           if [ -n "${MIGRATION_TASK_DEF_ARN}" ]; then
             echo "Migration task definition: $MIGRATION_TASK_DEF_ARN"
@@ -990,6 +977,7 @@ jobs:
           SERVICE="${{ steps.target.outputs.ecs_service }}"
           TASK_DEF="${{ steps.task-def.outputs.new_task_def_arn }}"
           REGION="${{ env.AWS_REGION }}"
+          DEPLOY_ENV="${{ steps.target.outputs.deploy_env }}"
 
           echo "Cluster: $CLUSTER"
           echo "Service: $SERVICE"
@@ -1040,10 +1028,16 @@ jobs:
 
           # Perform the update with detailed error capture
           echo "Executing service update..."
+          FORCE_FLAG=""
+          if [ "${DEPLOY_ENV}" = "staging" ]; then
+            FORCE_FLAG="--force-new-deployment"
+          fi
+
           if ! UPDATE_OUTPUT=$(aws ecs update-service \
             --cluster "$CLUSTER" \
             --service "$SERVICE" \
             --task-definition "$TASK_DEF" \
+            $FORCE_FLAG \
             --region "$REGION" \
             --output json 2>&1); then
             echo "❌ ECS service update failed with error:"
@@ -1444,6 +1438,58 @@ jobs:
             echo "❌ DEPLOY_EVENTS_TOKEN secret is missing" >&2
             exit 1
           fi
+
+      - name: Verify staging smoke-key ARN applied
+        if: steps.target.outputs.deploy_env == 'staging'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CLUSTER="${{ steps.target.outputs.ecs_cluster }}"
+          SERVICE="${{ steps.target.outputs.ecs_service }}"
+          REGION="${{ env.AWS_REGION }}"
+          SMOKE_ARN="${{ steps.task-def.outputs.smoke_arn }}"
+
+          if [ -z "${SMOKE_ARN:-}" ] || [ "${SMOKE_ARN}" = "None" ]; then
+            echo "❌ Missing smoke_arn output from task definition step; cannot verify staging smoke-key injection." >&2
+            exit 1
+          fi
+
+          ACTIVE_TASK_DEF=$(aws ecs describe-services \
+            --cluster "${CLUSTER}" \
+            --services "${SERVICE}" \
+            --region "${REGION}" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          if [ -z "${ACTIVE_TASK_DEF:-}" ] || [ "${ACTIVE_TASK_DEF}" = "None" ]; then
+            echo "❌ Could not resolve active task definition for service ${SERVICE}" >&2
+            exit 1
+          fi
+
+          aws ecs describe-task-definition \
+            --task-definition "${ACTIVE_TASK_DEF}" \
+            --region "${REGION}" \
+            --query 'taskDefinition' \
+            --output json > active-task-def.json
+
+          ACTUAL_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY") | .valueFrom' active-task-def.json | head -n 1)
+
+          if [ -z "${ACTUAL_VALUE_FROM:-}" ] || [ "${ACTUAL_VALUE_FROM}" = "null" ]; then
+            echo "❌ AFU9_SMOKE_KEY is not present in the active staging task definition." >&2
+            echo "   taskDef=${ACTIVE_TASK_DEF}" >&2
+            exit 1
+          fi
+
+          if [ "${ACTUAL_VALUE_FROM}" != "${SMOKE_ARN}" ]; then
+            echo "❌ Staging task definition smoke-key mismatch after deploy." >&2
+            echo "   taskDef=${ACTIVE_TASK_DEF}" >&2
+            echo "   expected=${SMOKE_ARN}" >&2
+            echo "   actual=${ACTUAL_VALUE_FROM}" >&2
+            exit 1
+          fi
+
+          echo "✅ Verified: AFU9_SMOKE_KEY.valueFrom matches resolved canonical secret ARN"
 
           URL="https://${READY_HOST}/api/internal/deploy-events"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -182,13 +182,13 @@ function checkDeployEcsWorkflowInvariants(): ValidationResult {
   const ecsStackContent = fs.existsSync(ecsStackPath) ? fs.readFileSync(ecsStackPath, 'utf-8') : '';
 
   // A) Staging smoke key must be resolved by secret name (rotation-safe)
-  // Disallow any suffix-pinned smoke-key ARN references.
-  const suffixedSmokeArnPattern = /arn:aws:secretsmanager:[^:]+:\d{12}:secret:afu9\/stage\/smoke-key-[A-Za-z0-9]+/g;
-  if (suffixedSmokeArnPattern.test(content)) {
+  // Disallow any suffix-pinned stage smoke-key references in the workflow.
+  // Only the canonical name "afu9/stage/smoke-key" is allowed (the workflow should resolve the ARN at runtime).
+  if (content.includes('afu9/stage/smoke-key-')) {
     errors.push(
-      `\n❌ deploy-ecs.yml pins a suffixed stage smoke-key ARN.\n` +
-      `The staging smoke key MUST be resolved by secret name (afu9/stage/smoke-key), not by a rotated suffix ARN.\n` +
-      `Remedy: inject Secrets Manager by secret name (valueFrom: "afu9/stage/smoke-key") and avoid suffix-pinned ARNs.\n`
+      `\n❌ deploy-ecs.yml contains a suffix-pinned staging smoke-key reference (afu9/stage/smoke-key-*).\n` +
+      `The staging smoke key MUST be resolved by canonical secret name (afu9/stage/smoke-key) at deploy time, then injected as the resolved secret ARN.\n` +
+      `Remedy: use secretsmanager:DescribeSecret on "afu9/stage/smoke-key" to resolve ARN, then set AFU9_SMOKE_KEY.valueFrom to that ARN.\n`
     );
   }
 
