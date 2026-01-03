@@ -96,8 +96,7 @@ function maybeAttachSmokeDebugHeaders(
 }
 
 /**
- * Middleware to protect routes and verify authentication
- * Proxy to protect routes and verify authentication
+ * Proxy (middleware) to protect routes and verify authentication
  * 
  * Enhanced with:
  * - Fail-closed JWT verification
@@ -106,7 +105,6 @@ function maybeAttachSmokeDebugHeaders(
  * - Environment variable driven configuration
  */
 export async function middleware(request: NextRequest) {
-export async function proxy(request: NextRequest) {
   const requestId = getRequestId();
   const { pathname: rawPathname } = request.nextUrl;
   const hostname = getEffectiveHostnameFromRequest(request);
