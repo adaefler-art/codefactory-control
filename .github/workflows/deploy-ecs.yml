@@ -719,7 +719,7 @@ jobs:
                   name: "mcp-runner",
                   image: env.MCP_RUNNER_IMAGE,
                   essential: false,
-                  command: ["node","dist/index.js"],
+                  command: ["node","/app/dist/index.js"],
                   environment: [
                     { name: "DEPLOY_ENV", value: "staging" },
                     { name: "PORT", value: "3004" }
@@ -735,7 +735,7 @@ jobs:
             jq '
               .containerDefinitions |= map(
                 if .name == "mcp-runner" then
-                  .command = ["node","dist/index.js"]
+                  .command = ["node","/app/dist/index.js"]
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json

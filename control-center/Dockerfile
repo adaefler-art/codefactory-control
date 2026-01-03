@@ -92,6 +92,9 @@ COPY --chown=nextjs:nodejs scripts/db-migrate.sh ./scripts/db-migrate.sh
 # Include runtime workflow artifacts (required when enabling self-propelling)
 COPY --chown=nextjs:nodejs control-center/runtime ./runtime
 
+# Include canonical MCP catalog (used by /api/mcp/verify gate at runtime)
+COPY --chown=nextjs:nodejs docs/mcp/catalog.json /app/docs/mcp/catalog.json
+
 RUN chmod +x ./scripts/db-migrate.sh
 
 # Copy standalone build output
