@@ -50,8 +50,23 @@ COPY --from=builder /build/afu9-runner/dist /app/dist
 COPY --from=builder /build/afu9-runner/node_modules /app/node_modules
 COPY --from=builder /build/afu9-runner/package.json /app/package.json
 
+# Normalize runner entrypoint path for compatibility with npm start.
+# Some builds emit /app/dist/index.js (flat) instead of dist/src/index.js.
+RUN if [ ! -f /app/dist/src/index.js ] && [ -f /app/dist/index.js ]; then \
+      mkdir -p /app/dist/src; \
+      cp /app/dist/index.js /app/dist/src/index.js; \
+    fi
+
 # Materialize base module for the file:../base symlink target
 COPY --from=builder /build/base-runtime /app/base
+
+# Ensure deep imports resolve even when npm installs file: deps as a copied directory
+# (i.e., no symlink preserved in node_modules). The runner code imports:
+#   require('@afu9/mcp-base/src/server')
+# so we must guarantee node can resolve that path at runtime.
+RUN rm -rf /app/node_modules/@afu9/mcp-base \
+  && mkdir -p /app/node_modules/@afu9/mcp-base \
+  && cp -R /app/base/* /app/node_modules/@afu9/mcp-base/
 
 ENV NODE_ENV=production
 ENV PORT=3002
@@ -59,4 +74,5 @@ ENV SOURCE_DATE_EPOCH=0
 
 EXPOSE 3002
 
-CMD ["npm", "start"]
+# Start without relying on package.json paths.
+CMD ["sh","-lc","set -e; if [ -f /app/dist/index.js ]; then exec node /app/dist/index.js; elif [ -f /app/dist/src/index.js ]; then exec node /app/dist/src/index.js; elif [ -f /app/dist/afu9-runner/src/index.js ]; then exec node /app/dist/afu9-runner/src/index.js; else echo \"No runner entrypoint found\" >&2; find /app/dist -maxdepth 4 -type f -name index.js >&2 || true; exit 1; fi"]
