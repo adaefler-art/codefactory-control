@@ -22,15 +22,19 @@ import {
 } from '@/lib/playbooks/safe-retry-runner';
 import { StepContext } from '@/lib/contracts/remediation-playbook';
 import * as runnerAdapter from '@/lib/github-runner/adapter';
+import * as authWrapper from '@/lib/github/auth-wrapper';
 
-// Mock the GitHub runner adapter
+// Mock the GitHub runner adapter and auth wrapper
 jest.mock('@/lib/github-runner/adapter');
+jest.mock('@/lib/github/auth-wrapper');
 
 const mockPool = {} as Pool;
 
 describe('SAFE_RETRY_RUNNER Playbook', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Mock repo allowlist to allow all repos by default (tests will override as needed)
+    (authWrapper.isRepoAllowed as jest.Mock).mockReturnValue(true);
   });
 
   describe('Playbook Definition', () => {
@@ -80,7 +84,7 @@ describe('SAFE_RETRY_RUNNER Playbook', () => {
         evidence: [
           {
             kind: 'runner',
-            ref: {}, // Missing owner, repo, workflow
+            ref: {}, // Missing owner, repo, workflow, AND headSha/ref
           },
         ],
         inputs: {},
@@ -116,6 +120,7 @@ describe('SAFE_RETRY_RUNNER Playbook', () => {
               workflowIdOrFile: 'test.yml',
               ref: 'main',
               runId: 99999,
+              headSha: 'abc123def456', // Added for determinism
               inputs: { foo: 'bar' },
             },
           },
@@ -133,7 +138,7 @@ describe('SAFE_RETRY_RUNNER Playbook', () => {
         owner: 'test',
         repo: 'repo',
         workflowIdOrFile: 'test.yml',
-        ref: 'main',
+        ref: 'abc123def456', // Uses headSha instead of ref
         inputs: { foo: 'bar' },
       });
     });
@@ -156,6 +161,7 @@ describe('SAFE_RETRY_RUNNER Playbook', () => {
               repo: 'repo',
               workflowIdOrFile: 'test.yml',
               runId: 99999,
+              headSha: 'abc123', // Added for determinism
             },
           },
         ],

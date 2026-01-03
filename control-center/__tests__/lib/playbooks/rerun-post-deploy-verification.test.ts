@@ -168,6 +168,8 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
 
     beforeEach(() => {
       mockIncidentDAO = {
+        getIncident: jest.fn(),
+        getEvidence: jest.fn(),
         updateStatus: jest.fn().mockResolvedValue(undefined),
         addEvidence: jest.fn().mockResolvedValue(undefined),
       };
@@ -212,6 +214,20 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
     });
 
     it('should update incident status to MITIGATED when verification passes', async () => {
+      // Mock incident and evidence
+      mockIncidentDAO.getIncident.mockResolvedValue({
+        id: 'incident-1',
+        incident_key: 'test:incident:1',
+        status: 'OPEN',
+      });
+      
+      mockIncidentDAO.getEvidence.mockResolvedValue([
+        {
+          kind: 'deploy_status',
+          ref: { env: 'stage' },
+        },
+      ]);
+
       const context: StepContext = {
         incidentId: 'incident-1',
         incidentKey: 'test:incident:1',
@@ -223,7 +239,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'stage',
+            env: 'stage', // Matching environment
             deployId: 'deploy-123',
           },
         },
@@ -240,7 +256,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
         ref: {
           playbookRunId: 'playbook-run-1',
           reportHash: 'abc123',
-          env: 'stage',
+          env: 'stage', // Normalized environment
           deployId: 'deploy-123',
           status: 'success',
         },
@@ -249,6 +265,20 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
     });
 
     it('should handle update errors gracefully', async () => {
+      // Mock incident and evidence
+      mockIncidentDAO.getIncident.mockResolvedValue({
+        id: 'incident-1',
+        incident_key: 'test:incident:1',
+        status: 'OPEN',
+      });
+      
+      mockIncidentDAO.getEvidence.mockResolvedValue([
+        {
+          kind: 'deploy_status',
+          ref: { env: 'stage' },
+        },
+      ]);
+      
       mockIncidentDAO.updateStatus.mockRejectedValue(
         new Error('Database error')
       );
