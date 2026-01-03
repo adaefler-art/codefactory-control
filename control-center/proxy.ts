@@ -96,7 +96,7 @@ function maybeAttachSmokeDebugHeaders(
 }
 
 /**
- * Middleware to protect routes and verify authentication
+ * Proxy to protect routes and verify authentication
  * 
  * Enhanced with:
  * - Fail-closed JWT verification
@@ -104,7 +104,7 @@ function maybeAttachSmokeDebugHeaders(
  * - Downstream context propagation via x-afu9-* headers
  * - Environment variable driven configuration
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const requestId = getRequestId();
   const { pathname: rawPathname } = request.nextUrl;
   const hostname = getEffectiveHostnameFromRequest(request);
@@ -141,7 +141,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
-  // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
+  // Proxy runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
   if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
     return nextWithRequestId();
   }
@@ -407,7 +407,7 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-// Configure which routes the middleware should run on
+// Configure which routes the proxy should run on
 export const config = {
   matcher: [
     /*
