@@ -343,13 +343,46 @@ export class IncidentDAO {
   }
 
   /**
-   * Update incident classification
+   * Update incident classification (idempotent)
+   * 
+   * Only updates if the classification has actually changed.
+   * Returns the incident and a boolean indicating if update occurred.
    * 
    * @param id - Incident ID
    * @param classification - Classification object to store
-   * @returns Updated incident
+   * @param classificationHash - SHA256 hash of the classification
+   * @returns { incident: Incident | null, updated: boolean }
    */
-  async updateClassification(id: string, classification: any): Promise<Incident | null> {
+  async updateClassification(
+    id: string,
+    classification: any,
+    classificationHash: string
+  ): Promise<{ incident: Incident | null; updated: boolean }> {
+    // First check if classification has changed
+    const current = await this.pool.query<any>(
+      `SELECT classification FROM incidents WHERE id = $1`,
+      [id]
+    );
+
+    if (current.rows.length === 0) {
+      return { incident: null, updated: false };
+    }
+
+    // Compute hash of current classification if it exists
+    const currentClassification = current.rows[0].classification;
+    if (currentClassification) {
+      // Import computeClassificationHash here to avoid circular dependency
+      const { computeClassificationHash } = require('../classifier');
+      const currentHash = computeClassificationHash(currentClassification);
+      
+      // If hash matches, no update needed
+      if (currentHash === classificationHash) {
+        const incident = await this.getIncident(id);
+        return { incident, updated: false };
+      }
+    }
+
+    // Update classification
     const result = await this.pool.query<any>(
       `UPDATE incidents
       SET classification = $1, updated_at = NOW()
@@ -362,10 +395,10 @@ export class IncidentDAO {
     );
 
     if (result.rows.length === 0) {
-      return null;
+      return { incident: null, updated: false };
     }
 
-    return this.mapRowToIncident(result.rows[0]);
+    return { incident: this.mapRowToIncident(result.rows[0]), updated: true };
   }
 
   // ========================================

@@ -50,6 +50,7 @@
  *    - Labels: ["needs-classification"]
  */
 
+import { createHash } from 'crypto';
 import {
   Incident,
   Evidence,
@@ -95,15 +96,11 @@ export function classifyIncident(
     matchRunnerWorkflowFailed(incident, evidence) ||
     matchUnknown(incident, evidence);
 
-  // Build evidence pack
+  // Build evidence pack (with deterministically sorted pointers)
   const evidencePack: EvidencePack = {
     summary: buildSummary(incident, ruleMatch),
     keyFacts: sortedKeyFacts(ruleMatch.keyFacts),
-    pointers: evidence.map(e => ({
-      kind: e.kind,
-      ref: e.ref,
-      sha256: e.sha256 || undefined,
-    })),
+    pointers: sortedPointers(evidence),
   };
 
   // Build classification
@@ -480,4 +477,81 @@ function sortedLabels(labels: string[]): string[] {
  */
 function sortedKeyFacts(facts: string[]): string[] {
   return [...facts].sort();
+}
+
+/**
+ * Sort evidence pointers deterministically
+ * Order by: kind (asc), sha256 (asc), then stable ref stringification
+ */
+function sortedPointers(evidence: Evidence[]): PrimaryEvidence[] {
+  return evidence
+    .map(e => ({
+      kind: e.kind,
+      ref: e.ref,
+      sha256: e.sha256 || undefined,
+    }))
+    .sort((a, b) => {
+      // Sort by kind first
+      if (a.kind !== b.kind) {
+        return a.kind.localeCompare(b.kind);
+      }
+      // Then by sha256 (nullish values last)
+      const aSha = a.sha256 || '';
+      const bSha = b.sha256 || '';
+      if (aSha !== bSha) {
+        return aSha.localeCompare(bSha);
+      }
+      // Finally by stringified ref for stability
+      return stableStringify(a.ref).localeCompare(stableStringify(b.ref));
+    });
+}
+
+/**
+ * Stable JSON stringification with sorted keys
+ * Ensures deterministic hash computation
+ */
+function stableStringify(obj: any): string {
+  if (obj === null || obj === undefined) {
+    return JSON.stringify(obj);
+  }
+  
+  if (typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(stableStringify).join(',') + ']';
+  }
+  
+  // Sort keys alphabetically for stable ordering
+  const sortedKeys = Object.keys(obj).sort();
+  const pairs = sortedKeys.map(key => {
+    return JSON.stringify(key) + ':' + stableStringify(obj[key]);
+  });
+  
+  return '{' + pairs.join(',') + '}';
+}
+
+/**
+ * Compute classification hash for idempotency
+ * Hash includes: classifierVersion, category, confidence, labels, primaryEvidence, pointers
+ */
+export function computeClassificationHash(classification: Classification): string {
+  const payload = stableStringify({
+    classifierVersion: classification.classifierVersion,
+    category: classification.category,
+    confidence: classification.confidence,
+    labels: classification.labels, // already sorted
+    primaryEvidence: {
+      kind: classification.primaryEvidence.kind,
+      ref: classification.primaryEvidence.ref,
+      sha256: classification.primaryEvidence.sha256 || null,
+    },
+    pointers: classification.evidencePack.pointers.map(p => ({
+      kind: p.kind,
+      ref: p.ref,
+      sha256: p.sha256 || null,
+    })),
+  });
+  return createHash('sha256').update(payload).digest('hex');
 }

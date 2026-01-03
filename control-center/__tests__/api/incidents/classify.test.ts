@@ -8,7 +8,7 @@
 
 import { Pool } from 'pg';
 import { IncidentDAO } from '../../../src/lib/db/incidents';
-import { classifyIncident, CLASSIFIER_VERSION } from '../../../src/lib/classifier';
+import { classifyIncident, CLASSIFIER_VERSION, computeClassificationHash } from '../../../src/lib/classifier';
 import {
   Incident,
   Evidence,
@@ -144,7 +144,7 @@ describe('Classify Incident API Integration', () => {
   });
 
   describe('DAO integration', () => {
-    test('updateClassification stores classification in database', async () => {
+    test('updateClassification stores classification in database when new', async () => {
       const classification = {
         classifierVersion: CLASSIFIER_VERSION,
         category: 'DEPLOY_VERIFICATION_FAILED',
@@ -160,6 +160,11 @@ describe('Classify Incident API Integration', () => {
           pointers: [],
         },
       };
+
+      const classificationHash = computeClassificationHash(classification);
+
+      // Mock: no existing classification
+      mockQuery.mockResolvedValueOnce({ rows: [{ classification: null }] });
 
       const mockRow = {
         id: 'inc-dao-1',
@@ -181,16 +186,66 @@ describe('Classify Incident API Integration', () => {
         last_seen_at: new Date('2024-01-01T00:00:00Z'),
       };
 
-      mockQuery.mockResolvedValue({ rows: [mockRow] });
+      mockQuery.mockResolvedValueOnce({ rows: [mockRow] });
 
-      const result = await dao.updateClassification('inc-dao-1', classification);
+      const result = await dao.updateClassification('inc-dao-1', classification, classificationHash);
 
-      expect(result).not.toBeNull();
-      expect(result?.classification).toEqual(classification);
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE incidents'),
-        expect.arrayContaining([classification, 'inc-dao-1'])
-      );
+      expect(result.incident).not.toBeNull();
+      expect(result.updated).toBe(true);
+      expect(result.incident?.classification).toEqual(classification);
+    });
+
+    test('updateClassification is idempotent - no update when hash matches', async () => {
+      const classification = {
+        classifierVersion: CLASSIFIER_VERSION,
+        category: 'DEPLOY_VERIFICATION_FAILED',
+        confidence: 'high',
+        labels: ['config', 'infra', 'needs-redeploy'],
+        primaryEvidence: {
+          kind: 'verification',
+          ref: { runId: 'run-123' },
+        },
+        evidencePack: {
+          summary: 'Verification failed',
+          keyFacts: ['Run failed', 'Playbook: ready-check'],
+          pointers: [],
+        },
+      };
+
+      const classificationHash = computeClassificationHash(classification);
+
+      // Mock: existing classification with same hash
+      mockQuery.mockResolvedValueOnce({ rows: [{ classification: classification }] });
+
+      const mockIncident = {
+        id: 'inc-dao-2',
+        incident_key: 'verification:deploy-456:hash',
+        severity: 'RED',
+        status: 'OPEN',
+        title: 'Verification failed',
+        summary: null,
+        classification: classification,
+        lawbook_version: null,
+        source_primary: {
+          kind: 'verification',
+          ref: { deployId: 'deploy-456' },
+        },
+        tags: [],
+        created_at: new Date('2024-01-01T00:00:00Z'),
+        updated_at: new Date('2024-01-01T00:00:00Z'),
+        first_seen_at: new Date('2024-01-01T00:00:00Z'),
+        last_seen_at: new Date('2024-01-01T00:00:00Z'),
+      };
+
+      // Mock getIncident call
+      mockQuery.mockResolvedValueOnce({ rows: [mockIncident] });
+
+      const result = await dao.updateClassification('inc-dao-2', classification, classificationHash);
+
+      expect(result.incident).not.toBeNull();
+      expect(result.updated).toBe(false);
+      // Should not have called UPDATE (only SELECT for check + getIncident)
+      expect(mockQuery).toHaveBeenCalledTimes(2);
     });
   });
 });

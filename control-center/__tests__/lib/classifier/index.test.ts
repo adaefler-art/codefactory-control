@@ -696,8 +696,199 @@ describe('Incident Classifier v1', () => {
       const classification = classifyIncident(incident, evidence);
 
       expect(classification.evidencePack.pointers).toHaveLength(2);
-      expect(classification.evidencePack.pointers[0].kind).toBe('ecs');
-      expect(classification.evidencePack.pointers[1].kind).toBe('alb');
+      // Pointers should be sorted by kind (alb < ecs)
+      expect(classification.evidencePack.pointers[0].kind).toBe('alb');
+      expect(classification.evidencePack.pointers[1].kind).toBe('ecs');
+    });
+  });
+
+  describe('Classification hash and idempotency', () => {
+    test('computes classification hash deterministically', () => {
+      const { computeClassificationHash } = require('../../../src/lib/classifier');
+      
+      const incident: Incident = {
+        id: 'inc-hash-1',
+        incident_key: 'test:hash',
+        severity: 'RED',
+        status: 'OPEN',
+        title: 'Test incident',
+        summary: null,
+        classification: null,
+        lawbook_version: null,
+        source_primary: {
+          kind: 'verification',
+          ref: { deployId: 'deploy-123' },
+        },
+        tags: [],
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        first_seen_at: '2024-01-01T00:00:00Z',
+        last_seen_at: '2024-01-01T00:00:00Z',
+      };
+
+      const evidence: Evidence[] = [
+        {
+          id: 'ev-hash-1',
+          incident_id: 'inc-hash-1',
+          kind: 'verification',
+          ref: {
+            runId: 'run-123',
+            status: 'FAILED',
+          },
+          sha256: 'hash-1',
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ];
+
+      const classification1 = classifyIncident(incident, evidence);
+      const classification2 = classifyIncident(incident, evidence);
+
+      const hash1 = computeClassificationHash(classification1);
+      const hash2 = computeClassificationHash(classification2);
+
+      expect(hash1).toBe(hash2);
+      expect(hash1).toHaveLength(64); // SHA256 hex digest
+    });
+
+    test('different classification produces different hash', () => {
+      const { computeClassificationHash } = require('../../../src/lib/classifier');
+      
+      const incident1: Incident = {
+        id: 'inc-hash-2',
+        incident_key: 'test:hash:2',
+        severity: 'RED',
+        status: 'OPEN',
+        title: 'Test incident',
+        summary: null,
+        classification: null,
+        lawbook_version: null,
+        source_primary: {
+          kind: 'ecs',
+          ref: { taskArn: 'task-1' },
+        },
+        tags: [],
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        first_seen_at: '2024-01-01T00:00:00Z',
+        last_seen_at: '2024-01-01T00:00:00Z',
+      };
+
+      const evidence1: Evidence[] = [
+        {
+          id: 'ev-hash-2a',
+          incident_id: 'inc-hash-2',
+          kind: 'ecs',
+          ref: {
+            cluster: 'prod',
+            taskArn: 'task-1',
+            stoppedReason: 'Essential container in task exited',
+            exitCode: 1,
+          },
+          sha256: 'hash-2a',
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ];
+
+      const evidence2: Evidence[] = [
+        {
+          id: 'ev-hash-2b',
+          incident_id: 'inc-hash-2',
+          kind: 'ecs',
+          ref: {
+            cluster: 'prod',
+            taskArn: 'task-1',
+            stoppedReason: 'CannotPullContainerError',
+          },
+          sha256: 'hash-2b',
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ];
+
+      const classification1 = classifyIncident(incident1, evidence1);
+      const classification2 = classifyIncident(incident1, evidence2);
+
+      const hash1 = computeClassificationHash(classification1);
+      const hash2 = computeClassificationHash(classification2);
+
+      expect(hash1).not.toBe(hash2);
+      expect(classification1.category).toBe('ECS_TASK_CRASHLOOP');
+      expect(classification2.category).toBe('ECS_IMAGE_PULL_FAILED');
+    });
+
+    test('evidence order does not affect classification hash', () => {
+      const { computeClassificationHash } = require('../../../src/lib/classifier');
+      
+      const incident: Incident = {
+        id: 'inc-hash-3',
+        incident_key: 'test:hash:3',
+        severity: 'RED',
+        status: 'OPEN',
+        title: 'Test incident',
+        summary: null,
+        classification: null,
+        lawbook_version: null,
+        source_primary: {
+          kind: 'ecs',
+          ref: { taskArn: 'task-multi' },
+        },
+        tags: [],
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        first_seen_at: '2024-01-01T00:00:00Z',
+        last_seen_at: '2024-01-01T00:00:00Z',
+      };
+
+      // Evidence in different order
+      const evidence1: Evidence[] = [
+        {
+          id: 'ev1',
+          incident_id: 'inc-hash-3',
+          kind: 'ecs',
+          ref: { cluster: 'prod', taskArn: 'task-multi', exitCode: 1, stoppedReason: 'Essential container in task exited' },
+          sha256: 'hash-ecs',
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'ev2',
+          incident_id: 'inc-hash-3',
+          kind: 'alb',
+          ref: { targetId: 'target-1' },
+          sha256: 'hash-alb',
+          created_at: '2024-01-01T00:01:00Z',
+        },
+      ];
+
+      const evidence2: Evidence[] = [
+        {
+          id: 'ev2',
+          incident_id: 'inc-hash-3',
+          kind: 'alb',
+          ref: { targetId: 'target-1' },
+          sha256: 'hash-alb',
+          created_at: '2024-01-01T00:01:00Z',
+        },
+        {
+          id: 'ev1',
+          incident_id: 'inc-hash-3',
+          kind: 'ecs',
+          ref: { cluster: 'prod', taskArn: 'task-multi', exitCode: 1, stoppedReason: 'Essential container in task exited' },
+          sha256: 'hash-ecs',
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ];
+
+      const classification1 = classifyIncident(incident, evidence1);
+      const classification2 = classifyIncident(incident, evidence2);
+
+      const hash1 = computeClassificationHash(classification1);
+      const hash2 = computeClassificationHash(classification2);
+
+      expect(hash1).toBe(hash2);
+      // Verify pointers are sorted
+      expect(classification1.evidencePack.pointers[0].kind).toBe('alb');
+      expect(classification1.evidencePack.pointers[1].kind).toBe('ecs');
+      expect(classification2.evidencePack.pointers[0].kind).toBe('alb');
+      expect(classification2.evidencePack.pointers[1].kind).toBe('ecs');
     });
   });
 });
