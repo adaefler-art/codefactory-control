@@ -205,12 +205,14 @@ function checkDeployEcsWorkflowInvariants(): ValidationResult {
   const runnerWiredInCdk = /addContainer\(\s*['"]mcp-runner['"]/.test(ecsStackContent) || /\bcontainerName:\s*['"]mcp-runner['"]/.test(ecsStackContent);
   const runnerReferenced = /mcp-runner|afu9\/mcp-runner|afu9-runner\/Dockerfile/.test(content);
   const runnerEcrLookupPresent = /repository-names\s+afu9\/mcp-runner/.test(content);
-  const runnerBuildPresent = /Build and push MCP Runner Server/.test(content) && /mcp-servers\/afu9-runner\/Dockerfile/.test(content);
+  const runnerBuildPresent =
+    /Build and push MCP Runner Server/.test(content) &&
+    (/mcp-servers\/afu9-runner\/Dockerfile/.test(content) || /\.github\/docker\/mcp-runner\.Dockerfile/.test(content));
 
   if ((runnerReferenced || runnerWiredInCdk) && (!runnerEcrLookupPresent || !runnerBuildPresent)) {
     errors.push(
       `\n❌ deploy-ecs.yml references mcp-runner but does not build/push it consistently.\n` +
-      `Expected: ECR URI lookup for afu9/mcp-runner and a docker/build-push-action step using mcp-servers/afu9-runner/Dockerfile.\n`
+      `Expected: ECR URI lookup for afu9/mcp-runner and a docker/build-push-action step for the runner image (mcp-servers/afu9-runner/Dockerfile OR .github/docker/mcp-runner.Dockerfile).\n`
     );
   }
 
