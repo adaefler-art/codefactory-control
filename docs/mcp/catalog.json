@@ -1,14 +1,14 @@
 {
   "catalogVersion": "0.6.0",
   "generatedAt": "2025-12-29T20:34:53Z",
-  "notes": "Canonical MCP tool catalog for AFU-9. Tool names are server-scoped (JSON-RPC params.tool). Server names and default ports match Control Center defaults: observability=3001, deploy=3002, github=3003. Mutating tools require idempotencyKey and explicit guardrails.",
+  "notes": "Canonical MCP tool catalog for AFU-9. Tool names are server-scoped (JSON-RPC params.tool). Server names and default ports match Control Center defaults: observability=3003, deploy=3002, github=3001. Mutating tools require idempotencyKey and explicit guardrails.",
   "servers": [
     {
       "name": "observability",
       "displayName": "Observability",
       "contractVersion": "0.6.0",
-      "port": 3001,
-      "endpoint": "http://localhost:3001",
+      "port": 3003,
+      "endpoint": "http://localhost:3003",
       "tools": [
         {
           "name": "health",
@@ -385,8 +385,8 @@
       "name": "github",
       "displayName": "GitHub",
       "contractVersion": "0.6.0",
-      "port": 3003,
-      "endpoint": "http://localhost:3003",
+      "port": 3001,
+      "endpoint": "http://localhost:3001",
       "tools": [
         {
           "name": "getIssue",
