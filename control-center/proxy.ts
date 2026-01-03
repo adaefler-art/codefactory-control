@@ -407,6 +407,11 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// Next.js 16 proxy entrypoint (middleware -> proxy migration)
+export async function proxy(request: NextRequest) {
+  return middleware(request);
+}
+
 // Configure which routes the middleware should run on
 export const config = {
   matcher: [

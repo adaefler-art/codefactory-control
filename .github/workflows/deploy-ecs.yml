@@ -719,6 +719,7 @@ jobs:
                   name: "mcp-runner",
                   image: env.MCP_RUNNER_IMAGE,
                   essential: false,
+                  command: ["node","dist/index.js"],
                   environment: [
                     { name: "DEPLOY_ENV", value: "staging" },
                     { name: "PORT", value: "3004" }
@@ -726,6 +727,17 @@ jobs:
                   portMappings: [{ containerPort: 3004, protocol: "tcp" }]
                 }]
               end
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
+
+            # Ensure the runner uses the correct entrypoint even if it was already present.
+            # The current runner image builds to /app/dist/index.js (not /app/dist/src/index.js).
+            jq '
+              .containerDefinitions |= map(
+                if .name == "mcp-runner" then
+                  .command = ["node","dist/index.js"]
+                else . end
+              )
             ' new-task-def.json > new-task-def.tmp.json
             mv new-task-def.tmp.json new-task-def.json
 

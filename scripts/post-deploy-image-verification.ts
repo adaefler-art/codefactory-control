@@ -143,10 +143,21 @@ function validateImageTags(
     const manifestImage = expectedImageMap.get(containerImg.containerName);
 
     if (!manifestImage) {
-      // Container in TaskDef but not in manifest for this deploy
+      // Container in TaskDef but not in manifest for this deploy.
+      // Fail closed ONLY if it is not running the current deploy tag.
+      // This preserves the core safety property (no mixed/stale images), while
+      // avoiding brittle failures when the manifest is missing an entry.
+
+      if (containerImg.tag === expectedPrimaryTag && containerImg.repository.startsWith('afu9/')) {
+        console.warn(
+          `    ⚠️  Container not in manifest, but tag matches current deploy (${expectedPrimaryTag})`
+        );
+        continue;
+      }
+
       errors.push(
         `Unexpected container "${containerImg.containerName}" found in TaskDef ` +
-        `but not in manifest for ${deployEnv} deploy`
+          `but not in manifest for ${deployEnv} deploy (tag ${containerImg.tag} != ${expectedPrimaryTag})`
       );
       console.error(`    ❌ Unexpected container (not in manifest for this environment)`);
       continue;

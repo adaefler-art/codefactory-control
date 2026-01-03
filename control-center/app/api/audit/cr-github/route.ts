@@ -7,7 +7,7 @@
  * Authentication: Required (x-afu9-sub header set by middleware after JWT verification)
  * Authorization: Repo allowlist enforced (I711)
  * 
- * SECURITY: The x-afu9-sub header is set by middleware.ts after server-side JWT verification.
+ * SECURITY: The x-afu9-sub header is set by proxy.ts after server-side JWT verification.
  * Client-provided x-afu9-* headers are stripped by middleware to prevent spoofing.
  * This route trusts x-afu9-sub because it can only come from verified middleware.
  * 
@@ -35,7 +35,7 @@ import { isRepoAllowed, getAllowedRepos } from '@/lib/github/auth-wrapper';
  * 
  * Query audit trail by canonical ID or by owner/repo/issue
  * 
- * Authentication: Required (x-afu9-sub header verified by middleware)
+ * Authentication: Required (x-afu9-sub header verified by proxy)
  * Authorization: Repo allowlist enforced
  * 
  * The x-afu9-sub header can be trusted because:
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   
   try {
-    // Authentication check: x-afu9-sub is set by middleware after JWT verification
+    // Authentication check: x-afu9-sub is set by proxy after JWT verification
     // If missing, middleware didn't authenticate the request (fail-closed)
     const userId = request.headers.get('x-afu9-sub');
     if (!userId) {
