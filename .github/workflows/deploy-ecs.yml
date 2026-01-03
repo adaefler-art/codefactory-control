@@ -747,8 +747,8 @@ jobs:
                   .environment = ((.environment // [])
                     | map(select(.name != "MCP_RUNNER_URL" and .name != "MCP_RUNNER_ENDPOINT"))
                     + [
-                      {name: "MCP_RUNNER_URL", value: "http://127.0.0.1:3004"},
-                      {name: "MCP_RUNNER_ENDPOINT", value: "http://127.0.0.1:3004"}
+                      {name: "MCP_RUNNER_URL", value: "http://localhost:3004"},
+                      {name: "MCP_RUNNER_ENDPOINT", value: "http://localhost:3004"}
                     ])
                 else . end
               )
