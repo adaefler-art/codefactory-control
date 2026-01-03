@@ -4,6 +4,38 @@
 **Contract Version:** `0.6.0`  
 **Port:** `3002` (standalone default), `3004` (ECS task)
 
+## Local Run (Docker)
+
+The MCP catalog verification gate expects the runner at `http://localhost:3004`.
+
+Use the repo scripts to build and run the hardened runner image (required because the runner uses a deep import `@afu9/mcp-base/src/server`):
+
+```powershell
+pwsh -File scripts/build-mcp-runner.ps1 -TagPrefix stage -TagSuffix latest
+pwsh -File scripts/run-mcp-runner.ps1 -Port 3004 -TagPrefix stage -TagSuffix latest
+```
+
+Health check:
+
+```powershell
+Invoke-WebRequest http://localhost:3004/health -UseBasicParsing
+```
+
+## Local MCP Workflow (Start Any MCP)
+
+To start MCP servers individually or together (with optional build + health checks):
+
+```powershell
+# start only runner
+pwsh -File scripts/mcp-workflow.ps1 -Servers runner -Build -Recreate
+
+# start github + deploy
+pwsh -File scripts/mcp-workflow.ps1 -Servers github,deploy -Build -Recreate
+
+# start all (github, deploy, observability, runner)
+pwsh -File scripts/mcp-workflow.ps1 -Servers all -Build -Recreate
+```
+
 ## Overview
 
 The AFU-9 Runner is a Model Context Protocol (MCP) server that provides workflow run management and execution capabilities for the AFU-9 autonomous fabrication system.

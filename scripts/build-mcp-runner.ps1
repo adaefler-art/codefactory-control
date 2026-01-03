@@ -13,8 +13,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Runner Dockerfile expects the build context to be ./mcp-servers
-$dockerfile = 'mcp-servers/afu9-runner/Dockerfile'
+# Runner build must use the hardened Dockerfile that materializes the local file:../base dependency.
+# The plain mcp-servers/afu9-runner/Dockerfile can produce runtime images where deep imports like
+# '@afu9/mcp-base/src/server' fail (no /src/*.js in the installed package layout), causing the
+# container to exit and the MCP catalog gate to fail.
+$dockerfile = '.github/docker/mcp-runner.Dockerfile'
 $context = 'mcp-servers'
 $tag = ('{0}:{1}-{2}' -f $Repository, $TagPrefix, $TagSuffix)
 

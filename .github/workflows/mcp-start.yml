@@ -1,0 +1,93 @@
+name: MCP Start (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Build Docker images before starting
+        required: true
+        default: true
+        type: boolean
+      recreate:
+        description: Recreate containers (docker rm -f) before starting
+        required: true
+        default: true
+        type: boolean
+      start_github:
+        description: Start mcp-github (3001)
+        required: true
+        default: true
+        type: boolean
+      start_deploy:
+        description: Start mcp-deploy (3002)
+        required: true
+        default: true
+        type: boolean
+      start_observability:
+        description: Start mcp-observability (3003)
+        required: true
+        default: true
+        type: boolean
+      start_runner:
+        description: Start afu9-runner/mcp-runner (3004)
+        required: true
+        default: true
+        type: boolean
+      tag_prefix:
+        description: Image tag prefix
+        required: true
+        default: stage
+        type: choice
+        options:
+          - stage
+          - prod
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select servers
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+          servers=()
+          if [ "${{ inputs.start_github }}" = "true" ]; then servers+=(github); fi
+          if [ "${{ inputs.start_deploy }}" = "true" ]; then servers+=(deploy); fi
+          if [ "${{ inputs.start_observability }}" = "true" ]; then servers+=(observability); fi
+          if [ "${{ inputs.start_runner }}" = "true" ]; then servers+=(runner); fi
+
+          if [ ${#servers[@]} -eq 0 ]; then
+            echo "No servers selected" >&2
+            exit 1
+          fi
+
+          echo "servers=${servers[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Start selected MCP servers
+        shell: pwsh
+        env:
+          # Optional secrets: do not hardcode
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          $servers = "${{ steps.select.outputs.servers }}" -split "\s+" | Where-Object { $_ }
+          $params = @(
+            '-Servers'
+          ) + $servers
+
+          if ('${{ inputs.build }}' -eq 'true') { $params += '-Build' }
+          if ('${{ inputs.recreate }}' -eq 'true') { $params += '-Recreate' }
+
+          $params += @('-TagPrefix','${{ inputs.tag_prefix }}','-TagSuffix','latest','-HealthTimeoutSec','90')
+
+          & pwsh -File scripts/mcp-workflow.ps1 @params
+
+      - name: Show containers
+        shell: bash
+        run: |
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
