@@ -50,10 +50,37 @@ export interface IncidentIngestionResult {
 // ========================================
 
 /**
+ * Stable JSON stringification with sorted keys
+ * Ensures deterministic hash computation
+ */
+function stableStringify(obj: any): string {
+  if (obj === null || obj === undefined) {
+    return JSON.stringify(obj);
+  }
+  
+  if (typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(stableStringify).join(',') + ']';
+  }
+  
+  // Sort keys alphabetically for stable ordering
+  const sortedKeys = Object.keys(obj).sort();
+  const pairs = sortedKeys.map(key => {
+    return JSON.stringify(key) + ':' + stableStringify(obj[key]);
+  });
+  
+  return '{' + pairs.join(',') + '}';
+}
+
+/**
  * Compute SHA-256 hash of evidence for deduplication
+ * Uses stable JSON stringification to ensure deterministic hashes
  */
 function computeEvidenceHash(evidence: EvidenceInput): string {
-  const payload = JSON.stringify({
+  const payload = stableStringify({
     incident_id: evidence.incident_id,
     kind: evidence.kind,
     ref: evidence.ref,
