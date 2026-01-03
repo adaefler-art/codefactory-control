@@ -8,7 +8,9 @@ export function shouldAllowUnauthenticatedGithubStatusEndpoint(input: {
   const isStagingHostname = hostname.startsWith('stage.');
 
   const isAllowedPath =
-    input.pathname === '/api/integrations/github/status' || input.pathname === '/api/deploy/status';
+    input.pathname === '/api/integrations/github/status' ||
+    input.pathname === '/api/deploy/status' ||
+    input.pathname === '/api/mcp/verify';
 
   return (allowByEnv || isStagingHostname) && input.method === 'GET' && isAllowedPath;
 }
