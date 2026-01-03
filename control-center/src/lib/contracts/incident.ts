@@ -51,6 +51,72 @@ export type LinkType = typeof LINK_TYPES[number];
 export type EventType = typeof EVENT_TYPES[number];
 
 // ========================================
+// Classification Schema (E76.3 / I763)
+// ========================================
+
+export const CLASSIFICATION_CATEGORIES = [
+  'DEPLOY_VERIFICATION_FAILED',
+  'ALB_TARGET_UNHEALTHY',
+  'ECS_TASK_CRASHLOOP',
+  'ECS_IMAGE_PULL_FAILED',
+  'RUNNER_WORKFLOW_FAILED',
+  'IAM_POLICY_VALIDATION_FAILED',
+  'UNKNOWN',
+] as const;
+
+export const CLASSIFICATION_CONFIDENCE = ['low', 'medium', 'high'] as const;
+
+export type ClassificationCategory = typeof CLASSIFICATION_CATEGORIES[number];
+export type ClassificationConfidence = typeof CLASSIFICATION_CONFIDENCE[number];
+
+/**
+ * Evidence pointer in evidence pack
+ */
+export const EvidencePointerSchema = z.object({
+  kind: z.enum(EVIDENCE_KINDS),
+  ref: z.record(z.string(), z.any()),
+  sha256: z.string().optional().nullable(),
+});
+
+export type EvidencePointer = z.infer<typeof EvidencePointerSchema>;
+
+/**
+ * Evidence pack: compact summary of key evidence for remediation
+ */
+export const EvidencePackSchema = z.object({
+  summary: z.string(),
+  keyFacts: z.array(z.string()),
+  pointers: z.array(EvidencePointerSchema),
+});
+
+export type EvidencePack = z.infer<typeof EvidencePackSchema>;
+
+/**
+ * Primary evidence reference
+ */
+export const PrimaryEvidenceSchema = z.object({
+  kind: z.enum(EVIDENCE_KINDS),
+  ref: z.record(z.string(), z.any()),
+  sha256: z.string().optional().nullable(),
+});
+
+export type PrimaryEvidence = z.infer<typeof PrimaryEvidenceSchema>;
+
+/**
+ * Classification result (stored in incidents.classification jsonb)
+ */
+export const ClassificationSchema = z.object({
+  classifierVersion: z.string(),
+  category: z.enum(CLASSIFICATION_CATEGORIES),
+  confidence: z.enum(CLASSIFICATION_CONFIDENCE),
+  labels: z.array(z.string()),
+  primaryEvidence: PrimaryEvidenceSchema,
+  evidencePack: EvidencePackSchema,
+});
+
+export type Classification = z.infer<typeof ClassificationSchema>;
+
+// ========================================
 // Source Primary Schemas
 // ========================================
 
