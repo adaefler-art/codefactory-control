@@ -50,6 +50,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'codefactory-control';
 const MAX_SYNC_PAGES = 10;
 const MAX_ISSUES = 200;
 const PER_PAGE_MAX = 100;
+const MAX_STATUS_RAW_LENGTH = 256; // I3: Bound github_status_raw to prevent unbounded persistence
 
 // Zod schema for request validation
 const SyncRequestSchema = z.object({
@@ -293,13 +294,22 @@ export async function POST(request: NextRequest) {
               );
 
               // Determine raw status string for audit trail
+              // I3: Bound and sanitize to prevent unbounded/secret persistence
               let githubStatusRaw: string | null = null;
               if (githubMirrorStatus !== 'UNKNOWN') {
                 // Store the actual status label or state for audit
                 const statusLabel = labelNames.find((l: string) => 
                   l.toLowerCase().startsWith('status:')
                 );
-                githubStatusRaw = statusLabel || githubIssue.state;
+                const rawValue = statusLabel || githubIssue.state;
+                
+                // Sanitize to redact any secrets/URLs with query strings
+                const sanitized = sanitizeRedact(rawValue);
+                
+                // Truncate to max length
+                githubStatusRaw = typeof sanitized === 'string' 
+                  ? sanitized.substring(0, MAX_STATUS_RAW_LENGTH)
+                  : null;
               }
 
               // I3: Update AFU9 issue with github_mirror_status and metadata
