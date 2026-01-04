@@ -82,10 +82,7 @@ export function computeEffectiveStatus(state: IssueStateModel): LocalStatus {
   // Rule 2: If GitHub has known status, map and use it
   // Rationale: When not executing, GitHub is source of truth for external coordination
   if (githubMirrorStatus !== 'UNKNOWN') {
-    const mappedStatus = mapGithubMirrorStatusToEffective(githubMirrorStatus);
-    if (mappedStatus !== null) {
-      return mappedStatus;
-    }
+    return mapGithubMirrorStatusToEffective(githubMirrorStatus)!;
   }
 
   // Rule 3: Fall back to local AFU9 status
