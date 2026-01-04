@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface Incident {
   id: string;
@@ -88,7 +89,7 @@ export default function IncidentDetailPage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/incidents/${id}`, {
+      const response = await fetch(API_ROUTES.incidents.get(id), {
         credentials: "include",
         cache: "no-store",
       });
