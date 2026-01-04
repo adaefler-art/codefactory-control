@@ -30,10 +30,12 @@ import {
   StepContext,
   StepResult,
   computeInputsHash,
+  sanitizeRedact,
 } from '../contracts/remediation-playbook';
 import { normalizeEnvironment, type DeployEnvironment } from '../utils/environment';
 import { findLastKnownGood, LastKnownGoodDeploy } from '../db/deployStatusSnapshots';
 import { getIncidentDAO } from '../db/incidents';
+import { isRepoAllowed } from '../github/auth-wrapper';
 
 /**
  * Step 1: Select LKG
@@ -115,14 +117,34 @@ export async function executeSelectLkg(
 
     const lkg = lkgResult.lkg;
 
-    // Ensure we have deploy reference (commit or image digest)
-    if (!lkg.commitHash && !lkg.imageDigest) {
+    // HARDENING 1: Deterministic "redeploy same bits" pinning
+    // Require at least ONE immutable artifact pin that cannot drift
+    // Prefer imageDigest (immutable), fail-closed if only commit_hash without verification
+    if (!lkg.imageDigest && !lkg.cfnChangeSetId) {
+      // Only commit_hash is present - this is insufficient for deterministic redeploy
+      // because commit could build different images over time (drift)
+      if (!lkg.commitHash) {
+        return {
+          success: false,
+          error: {
+            code: 'NO_LKG_REFERENCE',
+            message: 'LKG found but missing deploy reference (commitHash, imageDigest, or cfnChangeSetId)',
+            details: JSON.stringify({ lkgSnapshotId: lkg.snapshotId }),
+          },
+        };
+      }
+      
+      // Fail-closed: commit_hash alone is insufficient without immutable image pin
       return {
         success: false,
         error: {
-          code: 'NO_LKG_REFERENCE',
-          message: 'LKG found but missing deploy reference (commitHash or imageDigest)',
-          details: JSON.stringify({ lkgSnapshotId: lkg.snapshotId }),
+          code: 'DETERMINISM_REQUIRED',
+          message: 'LKG has only commit_hash without immutable artifact pin (imageDigest or cfnChangeSetId). Cannot guarantee deterministic redeploy.',
+          details: JSON.stringify({ 
+            lkgSnapshotId: lkg.snapshotId,
+            commitHash: lkg.commitHash,
+            reason: 'Commit-based deploys can drift; require imageDigest for immutable artifact',
+          }),
         },
       };
     }
@@ -161,6 +183,10 @@ export async function executeSelectLkg(
  * Step 2: Dispatch Deploy
  * Triggers deploy workflow with LKG reference
  * In production, would integrate with E64.1 Runner Adapter
+ * 
+ * HARDENING:
+ * - Policy enforcement: I711 repo allowlist before dispatch
+ * - Output sanitization: no URLs with tokens
  */
 export async function executeDispatchDeploy(
   pool: Pool,
@@ -181,6 +207,24 @@ export async function executeDispatchDeploy(
 
     const lkg = lkgOutput.lkg as LastKnownGoodDeploy;
 
+    // Extract repo info from LKG metadata or evidence
+    // In production, this would come from deploy context
+    const owner = context.inputs.owner || lkg.service?.split('/')[0];
+    const repo = context.inputs.repo || lkg.service?.split('/')[1];
+
+    // HARDENING 2: Policy enforcement - I711 repo allowlist
+    // Fail-closed before any external dispatch
+    if (owner && repo && !isRepoAllowed(owner, repo)) {
+      return {
+        success: false,
+        error: {
+          code: 'REPO_NOT_ALLOWED',
+          message: `Repository ${owner}/${repo} is not in the allowlist`,
+          details: JSON.stringify({ owner, repo }),
+        },
+      };
+    }
+
     // In production, this would call E64.1 Runner Adapter to dispatch deploy workflow
     // For now, simulate the dispatch
     const dispatchId = `deploy-lkg-${Date.now()}`;
@@ -189,23 +233,27 @@ export async function executeDispatchDeploy(
     // const dispatchResult = await runnerAdapter.dispatchDeploy({
     //   env: lkg.env,
     //   service: lkg.service,
-    //   ref: lkg.commitHash || lkg.imageDigest,
-    //   type: lkg.commitHash ? 'commit' : 'image',
+    //   ref: lkg.imageDigest || lkg.cfnChangeSetId || lkg.commitHash,
+    //   type: lkg.imageDigest ? 'image' : lkg.cfnChangeSetId ? 'cfn' : 'commit',
     // });
+
+    // HARDENING 3: Sanitize outputs - no URLs with tokens, only safe fields
+    const sanitizedOutput = {
+      dispatchId,
+      lkgReference: sanitizeRedact({
+        imageDigest: lkg.imageDigest,
+        cfnChangeSetId: lkg.cfnChangeSetId,
+        commitHash: lkg.commitHash,
+        version: lkg.version,
+      }),
+      env: lkg.env,
+      service: lkg.service,
+      timestamp: new Date().toISOString(),
+    };
 
     return {
       success: true,
-      output: {
-        dispatchId,
-        lkgReference: {
-          commitHash: lkg.commitHash,
-          imageDigest: lkg.imageDigest,
-          version: lkg.version,
-        },
-        env: lkg.env,
-        service: lkg.service,
-        message: 'Deploy workflow dispatched for LKG (simulated)',
-      },
+      output: sanitizedOutput,
     };
   } catch (error: any) {
     return {
@@ -222,6 +270,9 @@ export async function executeDispatchDeploy(
 /**
  * Step 3: Post-Deploy Verification
  * Runs E65.2 verification on the redeployed LKG
+ * 
+ * HARDENING:
+ * - Output sanitization: no tokenized URLs
  */
 export async function executePostDeployVerification(
   pool: Pool,
@@ -258,15 +309,17 @@ export async function executePostDeployVerification(
     const crypto = require('crypto');
     const reportHash = crypto.createHash('sha256').update(reportJson).digest('hex');
 
+    // HARDENING 3: Sanitize outputs - persist only safe fields
     return {
       success: verificationPassed,
-      output: {
+      output: sanitizeRedact({
         playbookRunId,
         status: verificationPassed ? 'success' : 'failed',
         reportHash,
         env,
         dispatchId,
-      },
+        timestamp: new Date().toISOString(),
+      }),
       error: !verificationPassed ? {
         code: 'VERIFICATION_FAILED',
         message: 'Post-deploy verification failed for LKG redeploy',
@@ -287,6 +340,10 @@ export async function executePostDeployVerification(
 /**
  * Step 4: Update Deploy Status
  * Updates E65.1 status based on verification result
+ * 
+ * HARDENING 4: Environment semantics
+ * - Use canonical normalization
+ * - MITIGATED only if verification env matches incident env
  */
 export async function executeUpdateDeployStatus(
   pool: Pool,
@@ -306,14 +363,77 @@ export async function executeUpdateDeployStatus(
     }
 
     const newStatus = verificationOutput.status === 'success' ? 'GREEN' : 'RED';
-    const env = verificationOutput.env;
+    const verificationEnv = verificationOutput.env;
 
-    // In production, this would update deploy_status_snapshots via E65.1
-    // For now, log the status update intent
-    
-    // If verification passed, update incident to MITIGATED
+    // HARDENING 4: Canonical environment matching
+    // Normalize verification environment
+    let normalizedVerificationEnv: DeployEnvironment;
+    try {
+      normalizedVerificationEnv = normalizeEnvironment(verificationEnv);
+    } catch (error: any) {
+      return {
+        success: false,
+        error: {
+          code: 'INVALID_VERIFICATION_ENV',
+          message: `Verification environment could not be normalized: ${error.message}`,
+          details: JSON.stringify({ verificationEnv }),
+        },
+      };
+    }
+
+    // If verification passed, check environment match before marking MITIGATED
     if (newStatus === 'GREEN') {
       const incidentDAO = getIncidentDAO(pool);
+      const incident = await incidentDAO.getIncident(context.incidentId);
+      
+      if (!incident) {
+        return {
+          success: false,
+          error: {
+            code: 'INCIDENT_NOT_FOUND',
+            message: `Incident ${context.incidentId} not found`,
+          },
+        };
+      }
+
+      // Extract environment from incident evidence
+      const incidentEvidence = await incidentDAO.getEvidence(context.incidentId);
+      const deployEvidence = incidentEvidence.find(e => 
+        e.kind === 'deploy_status' || e.kind === 'verification'
+      );
+      
+      const incidentEnv = deployEvidence?.ref?.env;
+      let normalizedIncidentEnv: DeployEnvironment | null = null;
+
+      // Try to normalize incident environment
+      if (incidentEnv) {
+        try {
+          normalizedIncidentEnv = normalizeEnvironment(incidentEnv);
+        } catch (error: any) {
+          // Incident env is invalid but we'll proceed without matching check
+          // for backward compatibility
+          normalizedIncidentEnv = null;
+        }
+      }
+
+      // HARDENING 4: Environment match required for MITIGATED
+      // If we have an incident environment, verify it matches
+      if (normalizedIncidentEnv && normalizedIncidentEnv !== normalizedVerificationEnv) {
+        return {
+          success: true,
+          output: {
+            newStatus,
+            env: normalizedVerificationEnv,
+            incidentId: context.incidentId,
+            message: `Verification passed for ${normalizedVerificationEnv} but incident is for ${normalizedIncidentEnv}, not marking MITIGATED`,
+            envMismatch: true,
+            incidentEnv: normalizedIncidentEnv,
+            verificationEnv: normalizedVerificationEnv,
+          },
+        };
+      }
+
+      // Mark incident as MITIGATED
       await incidentDAO.updateStatus(context.incidentId, 'MITIGATED');
       
       // Add evidence about successful LKG redeploy
@@ -321,28 +441,38 @@ export async function executeUpdateDeployStatus(
         {
           incident_id: context.incidentId,
           kind: 'verification',
-          ref: {
+          ref: sanitizeRedact({
             playbookRunId: verificationOutput.playbookRunId,
             reportHash: verificationOutput.reportHash,
-            env,
+            env: normalizedVerificationEnv,
             dispatchId: verificationOutput.dispatchId,
             status: 'success',
             redeployType: 'LKG',
-          },
+            timestamp: new Date().toISOString(),
+          }),
           sha256: verificationOutput.reportHash,
         },
       ]);
+
+      return {
+        success: true,
+        output: {
+          newStatus,
+          env: normalizedVerificationEnv,
+          incidentId: context.incidentId,
+          message: 'LKG redeploy verified GREEN, incident marked MITIGATED',
+        },
+      };
     }
 
+    // Verification failed - do not update incident status
     return {
       success: true,
       output: {
         newStatus,
-        env,
+        env: normalizedVerificationEnv,
         incidentId: context.incidentId,
-        message: newStatus === 'GREEN' 
-          ? 'LKG redeploy verified GREEN, incident marked MITIGATED'
-          : 'LKG redeploy verification failed, status RED',
+        message: 'LKG redeploy verification failed, status RED',
       },
     };
   } catch (error: any) {
@@ -359,6 +489,9 @@ export async function executeUpdateDeployStatus(
 
 /**
  * Compute idempotency keys for each step
+ * 
+ * HARDENING 5: Frequency limiting correctness
+ * - Incident + env scoped to avoid cross-env blocking
  */
 export function computeSelectLkgIdempotencyKey(context: StepContext): string {
   const evidence = context.evidence.find(
@@ -366,14 +499,38 @@ export function computeSelectLkgIdempotencyKey(context: StepContext): string {
   );
   const env = evidence?.ref?.env || context.inputs.env;
   const service = evidence?.ref?.service || context.inputs.service;
-  const paramsHash = computeInputsHash({ env, service });
+  
+  // Normalize environment for consistent keying
+  let normalizedEnv = env;
+  try {
+    normalizedEnv = normalizeEnvironment(env);
+  } catch {
+    // Keep original if normalization fails
+  }
+  
+  const paramsHash = computeInputsHash({ env: normalizedEnv, service });
   return `select-lkg:${context.incidentKey}:${paramsHash}`;
 }
 
 export function computeDispatchDeployIdempotencyKey(context: StepContext): string {
+  // HARDENING 5: Include env in limiter key to avoid cross-env blocking
+  // Extract env from evidence or inputs
+  const evidence = context.evidence.find(
+    e => e.kind === 'deploy_status' || e.kind === 'verification'
+  );
+  const env = evidence?.ref?.env || context.inputs.env || 'unknown';
+  
+  // Normalize environment for consistent keying
+  let normalizedEnv = env;
+  try {
+    normalizedEnv = normalizeEnvironment(env);
+  } catch {
+    // Keep original if normalization fails
+  }
+  
   // Include timestamp-based hour to enforce once-per-hour limit
   const hourKey = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
-  return `dispatch-deploy:${context.incidentKey}:${hourKey}`;
+  return `dispatch-deploy:${context.incidentKey}:${normalizedEnv}:${hourKey}`;
 }
 
 export function computeVerificationIdempotencyKey(context: StepContext): string {

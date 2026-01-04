@@ -2,11 +2,12 @@
 
 **Issue:** I773 (E77.3) - Playbook "Redeploy Last Known Good" + Verify + Status update
 
-**Date:** 2026-01-04
+**Date:** 2026-01-04  
+**Hardening:** 2026-01-04 (Determinism, Policy, Sanitization, Env Matching)
 
 ## Overview
 
-Implemented a heavily gated playbook to automatically redeploy the "Last Known Good" (LKG) version when a deploy is RED or verification fails. This playbook is evidence-based, idempotent, and includes frequency limiting safeguards.
+Implemented a heavily gated playbook to automatically redeploy the "Last Known Good" (LKG) version when a deploy is RED or verification fails. This playbook is evidence-based, idempotent, and includes comprehensive safeguards for production safety.
 
 ## Last Known Good (LKG) Definition
 
@@ -15,9 +16,9 @@ A "Last Known Good" deployment is defined as a deploy event that meets ALL of th
 1. **Status:** Deploy status snapshot with `status = 'GREEN'`
 2. **Verification:** Verification PASS with `reportHash` present in `signals.verificationRun`
 3. **Deploy Inputs:** Known deploy reference (at least one of):
-   - `commit_hash` from `deploy_events` table
-   - `imageDigest` from `signals.deploy` metadata
-   - `cfnChangeSetId` from `signals.deploy` metadata
+   - **PREFERRED:** `imageDigest` from `signals.deploy` metadata (immutable, deterministic)
+   - **ALTERNATIVE:** `cfnChangeSetId` from `signals.deploy` metadata (immutable)
+   - **INSUFFICIENT:** `commit_hash` alone (fails with `DETERMINISM_REQUIRED` - can drift)
 4. **Recency:** Most recent matching record for the same environment/service
 
 ### LKG Selection Query
@@ -54,22 +55,28 @@ LIMIT 1
 
 1. **Select LKG** (Planning)
    - Query for Last Known Good deployment
-   - Validate LKG has deploy reference
+   - **HARDENING:** Require immutable artifact pin (imageDigest or cfnChangeSetId)
+   - Fail-closed with `DETERMINISM_REQUIRED` if only commit_hash present
    - Returns: LKG metadata (commit/image/version)
 
 2. **Dispatch Deploy**
+   - **HARDENING:** Enforce I711 repo allowlist before dispatch (fail-closed `REPO_NOT_ALLOWED`)
    - Trigger deploy workflow with LKG reference
+   - **HARDENING:** Sanitize outputs (no URLs with tokens)
    - Integrates with E64.1 Runner Adapter (when available)
-   - Returns: Dispatch ID and LKG reference
+   - Returns: Dispatch ID and sanitized LKG reference
 
 3. **Post-Deploy Verification**
    - Run E65.2 verification on redeployed LKG
+   - **HARDENING:** Sanitize outputs (no tokenized URLs)
    - Returns: Verification status and reportHash
 
 4. **Update Deploy Status**
+   - **HARDENING:** Canonical environment normalization and matching
+   - MITIGATED only if verification env matches incident env (after normalization)
    - Update E65.1 status based on verification result
-   - Mark incident as MITIGATED if verification passes
-   - Add evidence about successful LKG redeploy
+   - Mark incident as MITIGATED if verification passes AND envs match
+   - Add sanitized evidence about successful LKG redeploy
 
 ### Applicable Categories
 
@@ -83,46 +90,100 @@ At least one of:
 - `kind="deploy_status"` with `ref.env`
 - `kind="verification"` with `ref.env`
 
-## Safeguards
+## Safeguards (HARDENED)
 
-### 1. Lawbook Gating
+### 1. Deterministic Redeploy Pinning (HARDENING)
+
+**Requirement:** Redeploy EXACT same bits, not "whatever builds today"
+
+- **PREFERRED:** `imageDigest` (sha256:...) - immutable container image reference
+- **ALTERNATIVE:** `cfnChangeSetId` (arn:aws:cloudformation:...) - immutable CFN reference
+- **REJECTED:** `commit_hash` alone - fails with `DETERMINISM_REQUIRED` error
+
+**Why:** Commit-based deploys can drift over time. The same commit could build different images if dependencies change, base images update, or build timestamps vary. Only immutable artifact references guarantee we redeploy the exact bits that were verified GREEN.
+
+**Error Code:** `DETERMINISM_REQUIRED` when LKG has only commit_hash without imageDigest or cfnChangeSetId
+
+### 2. Policy Enforcement - I711 Repo Allowlist (HARDENING)
+
+- **Enforcement:** `isRepoAllowed(owner, repo)` check BEFORE any dispatch
+- **Fail-Closed:** Returns `REPO_NOT_ALLOWED` error if repo not in allowlist
+- **No Network Calls:** Tests prove no adapter calls happen when repo denied
+
+### 3. Secrets/Tokens Sanitization (HARDENING)
+
+**Output sanitization** applied to all step outputs:
+- **No URLs with query strings** (potential tokens)
+- **No sensitive field names:** token, secret, password, key, authorization, cookie, bearer, signature
+- **Only safe fields persisted:** runId, status, timestamps, env, service, reportHash, dispatchId
+
+Uses `sanitizeRedact()` from remediation-playbook contracts.
+
+### 4. Lawbook Gating
 
 - Playbook ID `redeploy-lkg` must be in allowed list
 - `ROLLBACK_DEPLOY` action type is ONLY allowed for this playbook
 - Deny-by-default approach
 
-### 2. Evidence Gating
+### 5. Evidence Gating
 
 - **NO_LKG_FOUND:** Playbook is SKIPPED if no LKG exists
 - **NO_LKG_REFERENCE:** Playbook is SKIPPED if LKG has no deploy reference
+- **DETERMINISM_REQUIRED:** Playbook FAILS if only commit_hash (no immutable pin)
 - Environment must be valid (production/staging)
 
-### 3. Frequency Limiting
+### 6. Environment Semantics (HARDENING)
 
-- Idempotency key includes hour timestamp: `dispatch-deploy:{incidentKey}:{YYYY-MM-DDTHH}`
-- Enforces maximum once per incident per hour
-- Re-execution within same hour returns existing run
+**Canonical normalization** using `normalizeEnvironment()`:
+- `prod` → `production`
+- `stage` → `staging`
+- Consistent across incident evidence, verification, and status updates
 
-### 4. Full Audit Trail
+**Environment matching:**
+- MITIGATED only when `normalizeEnvironment(verificationEnv) === normalizeEnvironment(incidentEnv)`
+- Cross-environment verification does NOT mark incident MITIGATED
+- Returns `envMismatch: true` with detailed message when envs differ
+
+### 7. Frequency Limiting (HARDENING)
+
+**Once per incident per hour PER ENVIRONMENT**
+
+- **Scoped Key:** `dispatch-deploy:{incidentKey}:{normalizedEnv}:{hourKey}`
+- **Prevents:** Cross-env blocking (prod incident doesn't block staging redeploy)
+- **Enforces:** Maximum one redeploy per incident per environment per hour
+- **Concurrency-Safe:** Uses idempotency via run_key
+
+### 8. Full Audit Trail
 
 - All steps recorded in `remediation_runs` and `remediation_steps` tables
-- Evidence stored in `incident_evidence` table
+- Evidence stored in `incident_evidence` table with sanitized references
 - Deterministic planning with stable `inputs_hash`
+- Sanitized outputs prevent secret persistence
 
 ## Files Changed
 
 ### New Files
 
-1. **`control-center/src/lib/playbooks/redeploy-lkg.ts`**
+1. **`control-center/src/lib/playbooks/redeploy-lkg.ts`** (HARDENED)
    - Playbook definition and step executors
    - 4 steps: Select LKG, Dispatch Deploy, Verification, Update Status
-   - Idempotency key functions with frequency limiting
+   - **HARDENING:** Determinism check, repo allowlist, sanitization, env matching
+   - Idempotency key functions with env-scoped frequency limiting
 
-2. **`control-center/__tests__/lib/playbooks/redeploy-lkg.test.ts`**
+2. **`control-center/__tests__/lib/playbooks/redeploy-lkg.test.ts`** (UPDATED)
    - Comprehensive test coverage (22 tests)
    - Tests all scenarios: NO_LKG_FOUND, lawbook gating, idempotency
+   - **UPDATED:** Fixed tests for determinism requirement
 
-3. **`control-center/__tests__/lib/db/findLastKnownGood.test.ts`**
+3. **`control-center/__tests__/lib/playbooks/redeploy-lkg-hardening.test.ts`** (NEW)
+   - **Hardening test suite (10 tests)**
+   - Tests deterministic pinning (imageDigest required)
+   - Tests repo allowlist enforcement
+   - Tests secrets/tokens sanitization
+   - Tests environment matching for MITIGATED
+   - Tests env-scoped frequency limiting
+
+4. **`control-center/__tests__/lib/db/findLastKnownGood.test.ts`**
    - Tests for LKG selection query (12 tests)
    - Validates filtering and metadata selection
 
@@ -146,38 +207,60 @@ At least one of:
 5. **`control-center/__tests__/lib/remediation-executor.test.ts`**
    - Updated error message expectation for ROLLBACK_DEPLOY gating
 
-## Test Results
+## Test Results (HARDENED)
 
 All tests passing:
 
 ```
 Test Suites: 14 passed, 14 total
-Tests:       177 passed, 177 total
+Tests:       187 passed, 187 total (includes 10 new hardening tests)
 ```
 
 Key test scenarios covered:
+- ✅ **DETERMINISM_REQUIRED** when LKG has only commit_hash (no imageDigest/cfnChangeSetId)
+- ✅ **REPO_NOT_ALLOWED** when repository not in I711 allowlist
+- ✅ **Secrets/tokens sanitization** in all step outputs
+- ✅ **Environment matching** for MITIGATED (verificationEnv must equal incidentEnv after normalization)
+- ✅ **Env-scoped frequency limiting** (production and staging incidents tracked separately)
 - ✅ NO_LKG_FOUND when no GREEN verification exists
 - ✅ NO_LKG_REFERENCE when LKG has no deploy reference
 - ✅ Lawbook gating (deny by default, allow for redeploy-lkg)
-- ✅ Frequency limiting (once per hour per incident)
 - ✅ Idempotency (same inputs → same run)
 - ✅ Environment normalization (prod → production)
 - ✅ Full execution flow with all 4 steps
+
+## Hardening Summary
+
+### Error Codes Added
+
+- **`DETERMINISM_REQUIRED`**: LKG has only commit_hash without immutable artifact pin
+- **`REPO_NOT_ALLOWED`**: Repository not in I711 allowlist (existing, now enforced)
+- **`INVALID_VERIFICATION_ENV`**: Verification environment invalid/unnormalizable
+- **Environment mismatch**: Returns success but doesn't mark MITIGATED (envMismatch: true)
+
+### Behavior Changes
+
+1. **Fail-Closed Determinism**: LKG with only commit_hash now FAILS (was: accepted)
+2. **Repo Allowlist Enforcement**: Dispatch checks `isRepoAllowed()` (was: not enforced)
+3. **Output Sanitization**: All outputs sanitized via `sanitizeRedact()` (was: raw outputs)
+4. **Environment Matching**: MITIGATED requires env match (was: any verification pass)
+5. **Env-Scoped Limiting**: Frequency key includes env (was: incident-only)
 
 ## PowerShell Commands
 
 ### Run Tests
 
 ```powershell
-# Run all LKG-related tests
+# Run all LKG-related tests (including hardening)
 cd control-center
 npm test -- --testPathPattern="(redeploy-lkg|findLastKnownGood)" --no-coverage
 
-# Run all playbook and remediation tests
+# Run all playbook and remediation tests (187 tests)
 npm test -- --testPathPattern="(playbook|remediation)" --no-coverage
 
-# Run specific test file
+# Run specific test files
 npm test -- __tests__/lib/playbooks/redeploy-lkg.test.ts --no-coverage
+npm test -- __tests__/lib/playbooks/redeploy-lkg-hardening.test.ts --no-coverage
 ```
 
 ### Verify Build

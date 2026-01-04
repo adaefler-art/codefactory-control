@@ -180,7 +180,7 @@ describe('REDEPLOY_LKG Playbook', () => {
       expect(result.error?.code).toBe('NO_LKG_REFERENCE');
     });
 
-    it('should successfully select LKG when found with commit hash', async () => {
+    it('should successfully select LKG when found with commit hash and imageDigest', async () => {
       const mockFindLastKnownGood = deployStatusDb.findLastKnownGood as jest.MockedFunction<
         typeof deployStatusDb.findLastKnownGood
       >;
@@ -192,7 +192,7 @@ describe('REDEPLOY_LKG Playbook', () => {
         service: 'api',
         version: 'v1.2.3',
         commitHash: 'abc123def456',
-        imageDigest: null,
+        imageDigest: 'sha256:abcd1234...', // Determinism: imageDigest required
         cfnChangeSetId: null,
         observedAt: '2025-01-01T00:00:00Z',
         verificationRunId: 'ver-1',
@@ -368,6 +368,16 @@ describe('REDEPLOY_LKG Playbook', () => {
 
     it('should update status to GREEN and mark incident MITIGATED when verification passes', async () => {
       const mockIncidentDAO = {
+        getIncident: jest.fn().mockResolvedValue({
+          id: 'incident-1',
+          incident_key: 'test:incident:1',
+        }),
+        getEvidence: jest.fn().mockResolvedValue([
+          {
+            kind: 'deploy_status',
+            ref: { env: 'prod' }, // Same env as verification
+          },
+        ]),
         updateStatus: jest.fn().mockResolvedValue(undefined),
         addEvidence: jest.fn().mockResolvedValue(undefined),
       };
@@ -385,7 +395,7 @@ describe('REDEPLOY_LKG Playbook', () => {
             playbookRunId: 'ver-run-1',
             status: 'success',
             reportHash: 'hash456',
-            env: 'prod',
+            env: 'prod', // Matches incident env after normalization
             dispatchId: 'dispatch-1',
           },
         },
