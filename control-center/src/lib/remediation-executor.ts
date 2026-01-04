@@ -226,6 +226,44 @@ function computeStepIdempotencyKeyDefault(
 }
 
 // ========================================
+// Audit Event Emission (E77.5 / I775)
+// ========================================
+
+/**
+ * Emit audit event safely
+ * 
+ * Failures in audit emission should NOT break the main remediation flow.
+ * Log warnings but continue execution.
+ * 
+ * @param dao - The remediation DAO
+ * @param input - The audit event input
+ */
+async function emitAuditEventSafe(
+  dao: any,
+  input: {
+    remediation_run_id: string;
+    incident_id: string;
+    event_type: string;
+    lawbook_version: string;
+    payload_json: Record<string, any>;
+  }
+): Promise<void> {
+  try {
+    await dao.createAuditEvent({
+      ...input,
+      payload_hash: '', // Will be computed by DAO
+    });
+  } catch (error: any) {
+    // Log warning but don't throw - audit failures should not break execution
+    console.warn('[audit] Failed to emit audit event:', {
+      event_type: input.event_type,
+      remediation_run_id: input.remediation_run_id,
+      error: error.message,
+    });
+  }
+}
+
+// ========================================
 // Main Executor
 // ========================================
 
@@ -395,6 +433,24 @@ export class RemediationPlaybookExecutor {
       planned_json: planned,
     });
     
+    // Emit PLANNED audit event
+    await emitAuditEventSafe(remediationDAO, {
+      remediation_run_id: run.id,
+      incident_id: incident.id,
+      event_type: 'PLANNED',
+      lawbook_version: lawbookConfig.version,
+      payload_json: {
+        playbookId: playbook.id,
+        playbookVersion: playbook.version,
+        inputsHash: planned.inputsHash,
+        stepsCount: planned.steps.length,
+        steps: planned.steps.map(s => ({
+          stepId: s.stepId,
+          actionType: s.actionType,
+        })),
+      },
+    });
+    
     // Step 9: Execute steps sequentially
     const startTime = Date.now();
     let allSucceeded = true;
@@ -433,6 +489,20 @@ export class RemediationPlaybookExecutor {
         input_json: stepContext.inputs,
       });
       
+      // Emit STEP_STARTED audit event
+      await emitAuditEventSafe(remediationDAO, {
+        remediation_run_id: run.id,
+        incident_id: incident.id,
+        event_type: 'STEP_STARTED',
+        lawbook_version: lawbookConfig.version,
+        payload_json: {
+          stepId: stepDef.stepId,
+          actionType: stepDef.actionType,
+          idempotencyKey: stepIdempotencyKey,
+          inputsHash: computeInputsHash(stepContext.inputs),
+        },
+      });
+      
       // Execute step
       await remediationDAO.updateStepStatus(step.id, 'RUNNING', {
         started_at: new Date(),
@@ -451,6 +521,23 @@ export class RemediationPlaybookExecutor {
             output_json: result.output,
           });
           
+          // Emit STEP_FINISHED audit event (success)
+          await emitAuditEventSafe(remediationDAO, {
+            remediation_run_id: run.id,
+            incident_id: incident.id,
+            event_type: 'STEP_FINISHED',
+            lawbook_version: lawbookConfig.version,
+            payload_json: {
+              stepId: stepDef.stepId,
+              actionType: stepDef.actionType,
+              status: 'SUCCEEDED',
+              outputSummary: result.output ? {
+                hasOutput: true,
+                outputHash: computeInputsHash(result.output),
+              } : { hasOutput: false },
+            },
+          });
+          
           // Store step output for next steps
           if (result.output) {
             stepOutputs.set(`${stepDef.stepId}StepOutput`, result.output);
@@ -460,6 +547,22 @@ export class RemediationPlaybookExecutor {
             finished_at: new Date(),
             error_json: result.error,
           });
+          
+          // Emit STEP_FINISHED audit event (failure)
+          await emitAuditEventSafe(remediationDAO, {
+            remediation_run_id: run.id,
+            incident_id: incident.id,
+            event_type: 'STEP_FINISHED',
+            lawbook_version: lawbookConfig.version,
+            payload_json: {
+              stepId: stepDef.stepId,
+              actionType: stepDef.actionType,
+              status: 'FAILED',
+              errorCode: result.error?.code,
+              errorMessage: result.error?.message,
+            },
+          });
+          
           allSucceeded = false;
           break; // Fail-fast
         }
@@ -472,6 +575,22 @@ export class RemediationPlaybookExecutor {
             details: error.stack,
           },
         });
+        
+        // Emit STEP_FINISHED audit event (exception)
+        await emitAuditEventSafe(remediationDAO, {
+          remediation_run_id: run.id,
+          incident_id: incident.id,
+          event_type: 'STEP_FINISHED',
+          lawbook_version: lawbookConfig.version,
+          payload_json: {
+            stepId: stepDef.stepId,
+            actionType: stepDef.actionType,
+            status: 'FAILED',
+            errorCode: 'EXECUTION_ERROR',
+            errorMessage: error.message,
+          },
+        });
+        
         allSucceeded = false;
         break; // Fail-fast
       }
@@ -487,6 +606,36 @@ export class RemediationPlaybookExecutor {
       successCount: steps.filter(s => s.status === 'SUCCEEDED').length,
       failedCount: steps.filter(s => s.status === 'FAILED').length,
       durationMs: endTime - startTime,
+    });
+    
+    // Emit STATUS_UPDATED audit event
+    await emitAuditEventSafe(remediationDAO, {
+      remediation_run_id: run.id,
+      incident_id: incident.id,
+      event_type: 'STATUS_UPDATED',
+      lawbook_version: lawbookConfig.version,
+      payload_json: {
+        status: finalStatus,
+        totalSteps: steps.length,
+        successCount: steps.filter(s => s.status === 'SUCCEEDED').length,
+        failedCount: steps.filter(s => s.status === 'FAILED').length,
+        durationMs: endTime - startTime,
+      },
+    });
+    
+    // Emit final COMPLETED or FAILED audit event
+    await emitAuditEventSafe(remediationDAO, {
+      remediation_run_id: run.id,
+      incident_id: incident.id,
+      event_type: finalStatus === 'SUCCEEDED' ? 'COMPLETED' : 'FAILED',
+      lawbook_version: lawbookConfig.version,
+      payload_json: {
+        status: finalStatus,
+        totalSteps: steps.length,
+        successCount: steps.filter(s => s.status === 'SUCCEEDED').length,
+        failedCount: steps.filter(s => s.status === 'FAILED').length,
+        durationMs: endTime - startTime,
+      },
     });
     
     // Step 11: Return result
