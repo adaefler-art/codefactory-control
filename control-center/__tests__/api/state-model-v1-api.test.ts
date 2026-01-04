@@ -93,7 +93,7 @@ describe('State Model v1 API Fields (I2)', () => {
       expect(issue.githubMirrorStatus).toBe('IN_PROGRESS');
       expect(issue.executionState).toBe('RUNNING');
       expect(issue.handoffState).toBe('SYNCED');
-      expect(issue.githubLastSyncedAt).toBe('2023-12-23T00:45:00Z');
+      expect(issue.githubLastSyncedAt).toBe('2023-12-23T00:45:00.000Z');
 
       // Verify effectiveStatus is computed (ExecutionState = RUNNING → uses localStatus)
       expect(issue.effectiveStatus).toBe('IMPLEMENTING');
@@ -105,7 +105,7 @@ describe('State Model v1 API Fields (I2)', () => {
       expect(issue.execution_state).toBe('RUNNING');
       expect(issue.handoff_state).toBe('SYNCED');
       expect(issue.effective_status).toBe('IMPLEMENTING');
-      expect(issue.github_last_synced_at).toBe('2023-12-23T00:45:00Z');
+      expect(issue.github_last_synced_at).toBe('2023-12-23T00:45:00.000Z');
     });
 
     test('effectiveStatus uses GitHub status when not executing', async () => {
@@ -191,11 +191,11 @@ describe('State Model v1 API Fields (I2)', () => {
       expect(issue.executionState).toBe('RUNNING');
       expect(issue.handoffState).toBe('SYNCED');
       expect(issue.effectiveStatus).toBe('IMPLEMENTING');
-      expect(issue.githubLastSyncedAt).toBe('2023-12-23T00:45:00Z');
+      expect(issue.githubLastSyncedAt).toBe('2023-12-23T00:45:00.000Z');
     });
 
     test('computes effectiveStatus correctly for different state combinations', async () => {
-      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+      const { getAfu9IssueById, getAfu9IssueByPublicId } = require('../../src/lib/db/afu9Issues');
 
       // Test case: GitHub DONE status should map to effectiveStatus DONE
       const mockDoneIssue = {
@@ -205,7 +205,12 @@ describe('State Model v1 API Fields (I2)', () => {
         github_mirror_status: Afu9GithubMirrorStatus.DONE,
       };
 
+      // Mock both methods since short ID might be used
       getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: mockDoneIssue,
+      });
+      getAfu9IssueByPublicId.mockResolvedValue({
         success: true,
         data: mockDoneIssue,
       });
