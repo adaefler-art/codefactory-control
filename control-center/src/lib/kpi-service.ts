@@ -1118,3 +1118,419 @@ export async function getBuildDeterminismMetrics() {
     };
   }
 }
+
+/**
+ * E78.1: KPI Measurements & Aggregates
+ * Deterministic KPI computation layer
+ */
+
+import type {
+  KpiMeasurement,
+  KpiAggregate,
+  D2DMetrics,
+  IncidentRateMetrics,
+  MTTRMetrics,
+  AutoFixRateMetrics,
+  ComputeKpisForWindowRequest,
+  ComputeKpisForWindowResponse,
+} from './types/kpi';
+import { createHash } from 'crypto';
+
+const COMPUTE_VERSION = '0.7.0';
+
+/**
+ * Calculate D2D (Decision-to-Deploy) for an issue
+ * Formula: Decision timestamp (SPEC_READY) → Deploy timestamp (hours)
+ */
+export async function calculateD2DForIssue(issueId: string): Promise<D2DMetrics | null> {
+  const pool = getPool();
+  
+  try {
+    const query = `SELECT * FROM calculate_d2d_hours($1)`;
+    const result = await pool.query(query, [issueId]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    const row = result.rows[0];
+    return {
+      d2dHours: parseFloat(row.d2d_hours),
+      decisionAt: row.decision_at.toISOString(),
+      deployAt: row.deploy_at.toISOString(),
+      issueId,
+      deployId: row.source_refs.deployId,
+    };
+  } catch (error) {
+    console.error('[KPI Service] Error calculating D2D for issue:', error);
+    return null;
+  }
+}
+
+/**
+ * Calculate MTTR (Mean Time To Resolve) for a time window
+ * Formula: AVG(CLOSED.created_at - OPEN.created_at) for closed incidents
+ */
+export async function calculateMTTRForWindow(
+  windowStart: string,
+  windowEnd: string
+): Promise<MTTRMetrics | null> {
+  const pool = getPool();
+  
+  try {
+    const query = `SELECT * FROM calculate_mttr_for_window($1, $2)`;
+    const result = await pool.query(query, [windowStart, windowEnd]);
+    
+    if (result.rows.length === 0 || !result.rows[0].mttr_hours) {
+      return null;
+    }
+    
+    const row = result.rows[0];
+    return {
+      mttrHours: parseFloat(row.mttr_hours),
+      incidentCount: parseInt(row.incident_count, 10),
+      windowStart,
+      windowEnd,
+    };
+  } catch (error) {
+    console.error('[KPI Service] Error calculating MTTR:', error);
+    return null;
+  }
+}
+
+/**
+ * Calculate Incident Rate for a time window
+ * Formula: incidents per day in the window
+ */
+export async function calculateIncidentRateForWindow(
+  windowStart: string,
+  windowEnd: string
+): Promise<IncidentRateMetrics | null> {
+  const pool = getPool();
+  
+  try {
+    const query = `SELECT * FROM calculate_incident_rate_for_window($1, $2)`;
+    const result = await pool.query(query, [windowStart, windowEnd]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    const row = result.rows[0];
+    return {
+      incidentsPerDay: parseFloat(row.incidents_per_day),
+      totalIncidents: parseInt(row.total_incidents, 10),
+      windowDays: parseFloat(row.window_days),
+      windowStart,
+      windowEnd,
+    };
+  } catch (error) {
+    console.error('[KPI Service] Error calculating Incident Rate:', error);
+    return null;
+  }
+}
+
+/**
+ * Calculate Auto-fix Rate for a time window
+ * Formula: (SUCCEEDED remediation runs) / (total remediation runs) * 100
+ * Note: Assumes SUCCEEDED runs are auto-fixed without human intervention
+ */
+export async function calculateAutoFixRateForWindow(
+  windowStart: string,
+  windowEnd: string
+): Promise<AutoFixRateMetrics | null> {
+  const pool = getPool();
+  
+  try {
+    const query = `SELECT * FROM calculate_autofix_rate_for_window($1, $2)`;
+    const result = await pool.query(query, [windowStart, windowEnd]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    const row = result.rows[0];
+    return {
+      autofixRatePct: parseFloat(row.autofix_rate_pct),
+      autofixCount: parseInt(row.autofix_count, 10),
+      totalRuns: parseInt(row.total_runs, 10),
+      windowStart,
+      windowEnd,
+      caveat: 'Assumes SUCCEEDED remediation runs are auto-fixed without human intervention',
+    };
+  } catch (error) {
+    console.error('[KPI Service] Error calculating Auto-fix Rate:', error);
+    return null;
+  }
+}
+
+/**
+ * Create a KPI measurement record
+ */
+export async function createKpiMeasurement(
+  measurement: Omit<KpiMeasurement, 'id' | 'createdAt'>
+): Promise<KpiMeasurement> {
+  const pool = getPool();
+  
+  const query = `
+    INSERT INTO kpi_measurements (
+      kpi_name, entity_type, entity_id, occurred_at, value_num, unit, source_refs
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (kpi_name, entity_type, entity_id, occurred_at) 
+    DO UPDATE SET 
+      value_num = EXCLUDED.value_num,
+      unit = EXCLUDED.unit,
+      source_refs = EXCLUDED.source_refs
+    RETURNING 
+      id, kpi_name, entity_type, entity_id, occurred_at, value_num, unit, source_refs, created_at
+  `;
+  
+  try {
+    const result = await pool.query(query, [
+      measurement.kpiName,
+      measurement.entityType,
+      measurement.entityId,
+      measurement.occurredAt,
+      measurement.valueNum,
+      measurement.unit,
+      JSON.stringify(measurement.sourceRefs),
+    ]);
+    
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      kpiName: row.kpi_name,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      occurredAt: row.occurred_at.toISOString(),
+      valueNum: row.value_num ? parseFloat(row.value_num) : null,
+      unit: row.unit,
+      sourceRefs: row.source_refs,
+      createdAt: row.created_at.toISOString(),
+    };
+  } catch (error) {
+    console.error('[KPI Service] Error creating KPI measurement:', error);
+    throw error;
+  }
+}
+
+/**
+ * Calculate inputs hash for deterministic recompute
+ * Creates SHA-256 hash of canonical input references
+ */
+function calculateInputsHash(inputs: Record<string, any>): string {
+  // Sort keys to ensure deterministic serialization
+  const canonical = JSON.stringify(inputs, Object.keys(inputs).sort());
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+/**
+ * Compute KPIs for a time window
+ * Creates windowed aggregates idempotently based on inputs_hash
+ */
+export async function computeKpisForWindow(
+  request: ComputeKpisForWindowRequest
+): Promise<ComputeKpisForWindowResponse> {
+  const pool = getPool();
+  const { window, windowStart, windowEnd, kpiNames, forceRecompute } = request;
+  
+  const aggregates: KpiAggregate[] = [];
+  const computedAt = new Date().toISOString();
+  
+  try {
+    // Determine which KPIs to compute
+    const kpisToCompute = kpiNames || ['incident_rate', 'mttr', 'autofix_rate'];
+    
+    // Compute each KPI
+    for (const kpiName of kpisToCompute) {
+      let valueNum: number | null = null;
+      let unit = '';
+      let metadata: Record<string, any> = {};
+      let sourceRefs: Record<string, any> = {};
+      
+      if (kpiName === 'incident_rate') {
+        const metrics = await calculateIncidentRateForWindow(windowStart, windowEnd);
+        if (metrics) {
+          valueNum = metrics.incidentsPerDay;
+          unit = 'incidents_per_day';
+          metadata = {
+            totalIncidents: metrics.totalIncidents,
+            windowDays: metrics.windowDays,
+          };
+          sourceRefs = { windowStart, windowEnd };
+        }
+      } else if (kpiName === 'mttr') {
+        const metrics = await calculateMTTRForWindow(windowStart, windowEnd);
+        if (metrics) {
+          valueNum = metrics.mttrHours;
+          unit = 'hours';
+          metadata = {
+            incidentCount: metrics.incidentCount,
+          };
+          sourceRefs = { windowStart, windowEnd };
+        }
+      } else if (kpiName === 'autofix_rate') {
+        const metrics = await calculateAutoFixRateForWindow(windowStart, windowEnd);
+        if (metrics) {
+          valueNum = metrics.autofixRatePct;
+          unit = 'percentage';
+          metadata = {
+            autofixCount: metrics.autofixCount,
+            totalRuns: metrics.totalRuns,
+            caveat: metrics.caveat,
+          };
+          sourceRefs = { windowStart, windowEnd };
+        }
+      }
+      
+      // Calculate inputs hash for idempotency
+      const inputsHash = calculateInputsHash({ kpiName, window, windowStart, windowEnd, sourceRefs });
+      
+      // Check if aggregate already exists (unless force recompute)
+      if (!forceRecompute) {
+        const checkQuery = `
+          SELECT id FROM kpi_aggregates
+          WHERE window = $1
+            AND window_start = $2
+            AND window_end = $3
+            AND kpi_name = $4
+            AND compute_version = $5
+            AND inputs_hash = $6
+          LIMIT 1
+        `;
+        const checkResult = await pool.query(checkQuery, [
+          window,
+          windowStart,
+          windowEnd,
+          kpiName,
+          COMPUTE_VERSION,
+          inputsHash,
+        ]);
+        
+        if (checkResult.rows.length > 0) {
+          console.log(`[KPI Service] Aggregate already exists for ${kpiName}, skipping`);
+          continue;
+        }
+      }
+      
+      // Insert aggregate (or update if force recompute)
+      const insertQuery = `
+        INSERT INTO kpi_aggregates (
+          window, window_start, window_end, kpi_name, value_num, unit,
+          compute_version, inputs_hash, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (window, window_start, window_end, kpi_name, compute_version, inputs_hash)
+        DO UPDATE SET
+          value_num = EXCLUDED.value_num,
+          metadata = EXCLUDED.metadata
+        RETURNING 
+          id, window, window_start, window_end, kpi_name, value_num, unit,
+          compute_version, inputs_hash, metadata, created_at
+      `;
+      
+      const insertResult = await pool.query(insertQuery, [
+        window,
+        windowStart,
+        windowEnd,
+        kpiName,
+        valueNum,
+        unit,
+        COMPUTE_VERSION,
+        inputsHash,
+        JSON.stringify(metadata),
+      ]);
+      
+      const row = insertResult.rows[0];
+      aggregates.push({
+        id: row.id,
+        window: row.window,
+        windowStart: row.window_start.toISOString(),
+        windowEnd: row.window_end.toISOString(),
+        kpiName: row.kpi_name,
+        valueNum: row.value_num ? parseFloat(row.value_num) : null,
+        unit: row.unit,
+        computeVersion: row.compute_version,
+        inputsHash: row.inputs_hash,
+        metadata: row.metadata,
+        createdAt: row.created_at.toISOString(),
+      });
+    }
+    
+    // Calculate overall inputs hash for all computed KPIs
+    const overallInputsHash = calculateInputsHash({
+      window,
+      windowStart,
+      windowEnd,
+      kpiNames: kpisToCompute,
+    });
+    
+    console.log(`[KPI Service] Computed ${aggregates.length} aggregates for window ${window}`);
+    
+    return {
+      aggregates,
+      inputsHash: overallInputsHash,
+      computeVersion: COMPUTE_VERSION,
+      computedAt,
+      windowStart,
+      windowEnd,
+    };
+  } catch (error) {
+    console.error('[KPI Service] Error computing KPIs for window:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get KPI aggregates for a time range
+ */
+export async function getKpiAggregates(params: {
+  window?: string;
+  fromDate?: string;
+  toDate?: string;
+  kpiNames?: string[];
+  limit?: number;
+}): Promise<KpiAggregate[]> {
+  const pool = getPool();
+  
+  const limit = params.limit || 100;
+  
+  const query = `
+    SELECT 
+      id, window, window_start, window_end, kpi_name, value_num, unit,
+      compute_version, inputs_hash, metadata, created_at
+    FROM kpi_aggregates
+    WHERE ($1::TEXT IS NULL OR window = $1)
+      AND ($2::TIMESTAMPTZ IS NULL OR window_start >= $2)
+      AND ($3::TIMESTAMPTZ IS NULL OR window_end <= $3)
+      AND ($4::TEXT[] IS NULL OR kpi_name = ANY($4))
+    ORDER BY window_start DESC, created_at DESC
+    LIMIT $5
+  `;
+  
+  try {
+    const result = await pool.query(query, [
+      params.window || null,
+      params.fromDate || null,
+      params.toDate || null,
+      params.kpiNames || null,
+      limit,
+    ]);
+    
+    return result.rows.map((row) => ({
+      id: row.id,
+      window: row.window,
+      windowStart: row.window_start.toISOString(),
+      windowEnd: row.window_end.toISOString(),
+      kpiName: row.kpi_name,
+      valueNum: row.value_num ? parseFloat(row.value_num) : null,
+      unit: row.unit,
+      computeVersion: row.compute_version,
+      inputsHash: row.inputs_hash,
+      metadata: row.metadata,
+      createdAt: row.created_at.toISOString(),
+    }));
+  } catch (error) {
+    console.error('[KPI Service] Error getting KPI aggregates:', error);
+    throw error;
+  }
+}
