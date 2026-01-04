@@ -444,8 +444,6 @@ describe('Deterministic ordering and atomic seq increment', () => {
     expect(messages[0].seq).toBe(1);
     expect(messages[1].seq).toBe(3);
     expect(messages[2].seq).toBe(5);
-    expect(messages[1].seq).toBe(3);
-    expect(messages[2].seq).toBe(5);
     
     // Verify all calls included userId for access control
     expect(appendIntentMessage).toHaveBeenCalledWith(
