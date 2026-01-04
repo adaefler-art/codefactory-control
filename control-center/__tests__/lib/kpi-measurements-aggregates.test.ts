@@ -202,6 +202,28 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
         ],
       });
 
+      // Mock aggregate existence check for incident_rate (not exists)
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
+
+      // Mock aggregate insert for incident_rate
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'agg-1',
+            window: 'daily',
+            window_start: new Date('2024-01-01T00:00:00Z'),
+            window_end: new Date('2024-01-02T00:00:00Z'),
+            kpi_name: 'incident_rate',
+            value_num: '3.0',
+            unit: 'incidents_per_day',
+            compute_version: '0.7.0',
+            inputs_hash: 'hash1',
+            metadata: { totalIncidents: 6, windowDays: 2.0 },
+            created_at: new Date(),
+          },
+        ],
+      });
+
       // Mock MTTR calculation
       mockPool.query.mockResolvedValueOnce({
         rows: [
@@ -209,6 +231,28 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
             mttr_hours: '1.5',
             incident_count: '4',
             source_refs: {},
+          },
+        ],
+      });
+
+      // Mock aggregate existence check for mttr (not exists)
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
+
+      // Mock aggregate insert for mttr
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'agg-2',
+            window: 'daily',
+            window_start: new Date('2024-01-01T00:00:00Z'),
+            window_end: new Date('2024-01-02T00:00:00Z'),
+            kpi_name: 'mttr',
+            value_num: '1.5',
+            unit: 'hours',
+            compute_version: '0.7.0',
+            inputs_hash: 'hash2',
+            metadata: { incidentCount: 4 },
+            created_at: new Date(),
           },
         ],
       });
@@ -225,65 +269,27 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
         ],
       });
 
-      // Mock aggregate existence check (not exists for all 3)
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [] }) // incident_rate check
-        .mockResolvedValueOnce({ rows: [] }) // mttr check
-        .mockResolvedValueOnce({ rows: [] }); // autofix_rate check
+      // Mock aggregate existence check for autofix_rate (not exists)
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
 
-      // Mock aggregate inserts
-      mockPool.query
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: 'agg-1',
-              window: 'daily',
-              window_start: new Date('2024-01-01T00:00:00Z'),
-              window_end: new Date('2024-01-02T00:00:00Z'),
-              kpi_name: 'incident_rate',
-              value_num: '3.0',
-              unit: 'incidents_per_day',
-              compute_version: '0.7.0',
-              inputs_hash: 'hash1',
-              metadata: { totalIncidents: 6, windowDays: 2.0 },
-              created_at: new Date(),
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: 'agg-2',
-              window: 'daily',
-              window_start: new Date('2024-01-01T00:00:00Z'),
-              window_end: new Date('2024-01-02T00:00:00Z'),
-              kpi_name: 'mttr',
-              value_num: '1.5',
-              unit: 'hours',
-              compute_version: '0.7.0',
-              inputs_hash: 'hash2',
-              metadata: { incidentCount: 4 },
-              created_at: new Date(),
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: 'agg-3',
-              window: 'daily',
-              window_start: new Date('2024-01-01T00:00:00Z'),
-              window_end: new Date('2024-01-02T00:00:00Z'),
-              kpi_name: 'autofix_rate',
-              value_num: '80.0',
-              unit: 'percentage',
-              compute_version: '0.7.0',
-              inputs_hash: 'hash3',
-              metadata: { autofixCount: 8, totalRuns: 10 },
-              created_at: new Date(),
-            },
-          ],
-        });
+      // Mock aggregate insert for autofix_rate
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'agg-3',
+            window: 'daily',
+            window_start: new Date('2024-01-01T00:00:00Z'),
+            window_end: new Date('2024-01-02T00:00:00Z'),
+            kpi_name: 'autofix_rate',
+            value_num: '80.0',
+            unit: 'percentage',
+            compute_version: '0.7.0',
+            inputs_hash: 'hash3',
+            metadata: { autofixCount: 8, totalRuns: 10 },
+            created_at: new Date(),
+          },
+        ],
+      });
 
       const result = await computeKpisForWindow({
         window: 'daily',
