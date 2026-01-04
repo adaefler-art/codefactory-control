@@ -138,6 +138,9 @@ export async function middleware(request: NextRequest) {
   if (isStagingHost && isSmokeBypass(request)) {
     const allowlisted =
       (request.method === 'GET' && pathname === '/api/timeline/chain') ||
+      (request.method === 'GET' && pathname === '/api/issues') ||
+      (request.method === 'POST' && pathname === '/api/ops/issues/sync') ||
+      (request.method === 'POST' && pathname === '/api/integrations/github/ingest/issue') ||
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
       (request.method === 'GET' && /^\/api\/intent\/sessions\/[^/]+$/.test(pathname)) ||
       (request.method === 'POST' && /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname));

@@ -426,4 +426,76 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
     });
   });
+
+  describe('Smoke-auth bypass allowlist for Issues endpoints (staging only)', () => {
+    test('stage + correct key + GET /api/issues => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/issues',
+        method: 'GET',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-stage')).toBe('staging');
+      expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('1');
+    });
+
+    test('stage + correct key + POST /api/ops/issues/sync => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/ops/issues/sync',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+    });
+
+    test('stage + correct key + POST /api/integrations/github/ingest/issue => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/integrations/github/ingest/issue',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+    });
+
+    test('stage + wrong key => bypass not active (401)', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/issues',
+        headers: { 'x-afu9-smoke-key': 'wrong' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
+      expect(response.headers.get('x-afu9-smoke-stage')).toBe('staging');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('0');
+    });
+
+    test('non-stage + correct key => bypass not active (401)', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://prod.afu-9.com/api/issues',
+        method: 'GET',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
+      expect(response.headers.get('x-afu9-smoke-stage')).toBeNull();
+    });
+  });
 });
