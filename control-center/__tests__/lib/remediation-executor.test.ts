@@ -416,6 +416,8 @@ describe('RemediationPlaybookExecutor', () => {
             },
           ],
         })
+        // Mock PLANNED audit event (E77.5: added for audit trail)
+        .mockResolvedValueOnce({ rows: [{ id: 'audit-1', created_at: new Date() }] })
         // Mock step creation
         .mockResolvedValueOnce({
           rows: [
@@ -434,6 +436,8 @@ describe('RemediationPlaybookExecutor', () => {
             },
           ],
         })
+        // Mock STEP_STARTED audit event (E77.5)
+        .mockResolvedValueOnce({ rows: [{ id: 'audit-2', created_at: new Date() }] })
         // Mock step status update (RUNNING)
         .mockResolvedValueOnce({
           rows: [
@@ -470,7 +474,9 @@ describe('RemediationPlaybookExecutor', () => {
             },
           ],
         })
-        // Mock get steps for run
+        // Mock STEP_FINISHED audit event (E77.5)
+        .mockResolvedValueOnce({ rows: [{ id: 'audit-3', created_at: new Date() }] })
+        // Mock getStepsForRun (E77.5: added for audit trail)
         .mockResolvedValueOnce({
           rows: [
             {
@@ -518,7 +524,11 @@ describe('RemediationPlaybookExecutor', () => {
               inputs_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
             },
           ],
-        });
+        })
+        // Mock STATUS_UPDATED audit event (E77.5)
+        .mockResolvedValueOnce({ rows: [{ id: 'audit-4', created_at: new Date() }] })
+        // Mock COMPLETED audit event (E77.5)
+        .mockResolvedValueOnce({ rows: [{ id: 'audit-5', created_at: new Date() }] });
 
       const result = await executor.executePlaybook(request, playbook);
 
