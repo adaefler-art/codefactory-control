@@ -216,6 +216,34 @@ function checkDeployEcsWorkflowInvariants(): ValidationResult {
     );
   }
 
+  // C) Bash set -u safety (regression guard)
+  // We run many bash steps with `set -euo pipefail`. Under `-u`, any unbound variable will crash the step.
+  // Pragmatic, deterministic guard: if a variable is used in the workflow, require either:
+  // - it is defined via a YAML env assignment (`VAR:`), or
+  // - it is guarded in bash with `${VAR:-...}`.
+  function hasEnvAssignment(varName: string): boolean {
+    const envLine = new RegExp(`(^|\n)\s*${varName}:\s*`, 'm');
+    return envLine.test(content);
+  }
+  function isDefaultGuarded(varName: string): boolean {
+    const guarded = new RegExp(`\$\{\s*${varName}\s*:-[^}]*\}`, 'm');
+    return guarded.test(content);
+  }
+  function isUsedInBash(varName: string): boolean {
+    const used = new RegExp(`\$\{\s*${varName}\s*\}|\$${varName}\b`, 'm');
+    return used.test(content);
+  }
+
+  for (const varName of ['READY_HOST', 'APP_VERSION']) {
+    if (isUsedInBash(varName) && !hasEnvAssignment(varName) && !isDefaultGuarded(varName)) {
+      errors.push(
+        `\n❌ deploy-ecs.yml uses ${varName} in bash but does not appear to define it (env) or guard it (\${${varName}:-...}).\n` +
+        `This can fail under bash strict mode (set -u) with: ${varName}: unbound variable.\n` +
+        `Remedy: define ${varName} via workflow/step env: or guard reads with \${${varName}:-default}.\n`
+      );
+    }
+  }
+
   if (errors.length > 0) {
     console.log(`   ❌ Deploy Workflow Invariants Check FAILED (${errors.length} violations)`);
     return { passed: false, errors };
