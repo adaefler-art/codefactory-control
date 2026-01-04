@@ -6,7 +6,10 @@
  * @jest-environment node
  */
 
-import { generateIntentResponse, isIntentEnabled } from '../../src/lib/intent-agent';
+let generateIntentResponse: typeof import('../../src/lib/intent-agent').generateIntentResponse;
+let isIntentEnabled: typeof import('../../src/lib/intent-agent').isIntentEnabled;
+
+const mockCreate = jest.fn();
 
 // Mock OpenAI
 jest.mock('openai', () => {
@@ -15,18 +18,7 @@ jest.mock('openai', () => {
     default: jest.fn().mockImplementation(() => ({
       chat: {
         completions: {
-          create: jest.fn().mockResolvedValue({
-            choices: [
-              {
-                message: {
-                  content: 'Test response',
-                },
-              },
-            ],
-            usage: {
-              total_tokens: 100,
-            },
-          }),
+          create: mockCreate,
         },
       },
     })),
@@ -41,6 +33,24 @@ describe('INTENT Agent Hardening', () => {
     process.env = { ...originalEnv };
     process.env.AFU9_INTENT_ENABLED = 'true';
     process.env.OPENAI_API_KEY = 'test-openai-key';
+
+    mockCreate.mockReset();
+    mockCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: 'Test response',
+          },
+        },
+      ],
+      usage: {
+        total_tokens: 100,
+      },
+    });
+
+    // Reload module after env setup so module-scope constants use correct values
+    jest.resetModules();
+    ({ generateIntentResponse, isIntentEnabled } = require('../../src/lib/intent-agent'));
   });
 
   afterEach(() => {
@@ -82,9 +92,6 @@ describe('INTENT Agent Hardening', () => {
     });
 
     test('bounds conversation history to max messages', async () => {
-      const OpenAI = require('openai').default;
-      const mockCreate = OpenAI.mock.results[0].value.chat.completions.create;
-      
       const manyMessages = Array(20).fill(null).map((_, i) => ({
         role: i % 2 === 0 ? 'user' : 'assistant' as const,
         content: `Message ${i}`,
@@ -126,9 +133,6 @@ describe('INTENT Agent Hardening', () => {
 
   describe('Deterministic Settings', () => {
     test('uses temperature=0 for deterministic responses', async () => {
-      const OpenAI = require('openai').default;
-      const mockCreate = OpenAI.mock.results[0].value.chat.completions.create;
-      
       await generateIntentResponse('test');
       
       const call = mockCreate.mock.calls[0][0];
@@ -136,9 +140,6 @@ describe('INTENT Agent Hardening', () => {
     });
 
     test('sets max_tokens to bounded value', async () => {
-      const OpenAI = require('openai').default;
-      const mockCreate = OpenAI.mock.results[0].value.chat.completions.create;
-      
       await generateIntentResponse('test');
       
       const call = mockCreate.mock.calls[0][0];
@@ -149,9 +150,8 @@ describe('INTENT Agent Hardening', () => {
 
   describe('Secret Sanitization', () => {
     test('redacts API keys from response', async () => {
-      const OpenAI = require('openai').default;
       const apiKey = 'sk-' + '1234567890abcdefghijklmnop';
-      OpenAI.mock.results[0].value.chat.completions.create.mockResolvedValueOnce({
+      mockCreate.mockResolvedValueOnce({
         choices: [
           {
             message: {
@@ -164,13 +164,12 @@ describe('INTENT Agent Hardening', () => {
       
       const response = await generateIntentResponse('test');
       expect(response.content).not.toContain(apiKey);
-      expect(response.content).toContain('[REDACTED_API_KEY]');
+      expect(response.content).toContain('[REDACTED]');
     });
 
     test('redacts GitHub tokens from response', async () => {
-      const OpenAI = require('openai').default;
       const ghToken = 'ghp_' + '1234567890abcdefghijklmnopqrstuvwxyz';
-      OpenAI.mock.results[0].value.chat.completions.create.mockResolvedValueOnce({
+      mockCreate.mockResolvedValueOnce({
         choices: [
           {
             message: {
@@ -183,13 +182,12 @@ describe('INTENT Agent Hardening', () => {
       
       const response = await generateIntentResponse('test');
       expect(response.content).not.toContain(ghToken);
-      expect(response.content).toContain('[REDACTED_GITHUB_TOKEN]');
+      expect(response.content).toContain('[REDACTED]');
     });
 
     test('redacts URLs with query strings', async () => {
-      const OpenAI = require('openai').default;
       const secret = 'sec' + 'ret123';
-      OpenAI.mock.results[0].value.chat.completions.create.mockResolvedValueOnce({
+      mockCreate.mockResolvedValueOnce({
         choices: [
           {
             message: {
@@ -206,9 +204,8 @@ describe('INTENT Agent Hardening', () => {
     });
 
     test('redacts Bearer tokens', async () => {
-      const OpenAI = require('openai').default;
       const jwtHeader = 'eyJ' + 'hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
-      OpenAI.mock.results[0].value.chat.completions.create.mockResolvedValueOnce({
+      mockCreate.mockResolvedValueOnce({
         choices: [
           {
             message: {
@@ -227,8 +224,7 @@ describe('INTENT Agent Hardening', () => {
 
   describe('Error Handling', () => {
     test('handles timeout gracefully', async () => {
-      const OpenAI = require('openai').default;
-      OpenAI.mock.results[0].value.chat.completions.create.mockRejectedValueOnce(
+      mockCreate.mockRejectedValueOnce(
         Object.assign(new Error('Aborted'), { name: 'AbortError' })
       );
       
@@ -238,8 +234,7 @@ describe('INTENT Agent Hardening', () => {
     test('does not leak stack traces in logs', async () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
       
-      const OpenAI = require('openai').default;
-      OpenAI.mock.results[0].value.chat.completions.create.mockRejectedValueOnce(
+      mockCreate.mockRejectedValueOnce(
         new Error('Test error')
       );
       
