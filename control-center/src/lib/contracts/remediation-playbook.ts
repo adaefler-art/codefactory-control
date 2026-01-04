@@ -54,6 +54,23 @@ export type RemediationStepStatus = typeof REMEDIATION_STEP_STATUSES[number];
 export type ActionType = typeof ACTION_TYPES[number];
 
 // ========================================
+// Audit Event Types (E77.5 / I775)
+// ========================================
+
+export const REMEDIATION_AUDIT_EVENT_TYPES = [
+  'PLANNED',
+  'STEP_STARTED',
+  'STEP_FINISHED',
+  'VERIFICATION_STARTED',
+  'VERIFICATION_FINISHED',
+  'STATUS_UPDATED',
+  'COMPLETED',
+  'FAILED',
+] as const;
+
+export type RemediationAuditEventType = typeof REMEDIATION_AUDIT_EVENT_TYPES[number];
+
+// ========================================
 // Evidence Predicate Schemas
 // ========================================
 
@@ -275,6 +292,40 @@ export const ExecutePlaybookResponseSchema = z.object({
 export type ExecutePlaybookResponse = z.infer<typeof ExecutePlaybookResponseSchema>;
 
 // ========================================
+// Audit Event Schemas (E77.5 / I775)
+// ========================================
+
+/**
+ * Remediation Audit Event Input
+ */
+export const RemediationAuditEventInputSchema = z.object({
+  remediation_run_id: z.string().uuid(),
+  incident_id: z.string().uuid(),
+  event_type: z.enum(REMEDIATION_AUDIT_EVENT_TYPES),
+  lawbook_version: z.string(),
+  payload_json: z.record(z.string(), z.any()),
+  payload_hash: z.string(),
+});
+
+export type RemediationAuditEventInput = z.infer<typeof RemediationAuditEventInputSchema>;
+
+/**
+ * Remediation Audit Event Schema (DB row)
+ */
+export const RemediationAuditEventSchema = z.object({
+  id: z.string().uuid(),
+  remediation_run_id: z.string().uuid(),
+  incident_id: z.string().uuid(),
+  event_type: z.enum(REMEDIATION_AUDIT_EVENT_TYPES),
+  created_at: z.string().datetime(),
+  lawbook_version: z.string(),
+  payload_json: z.record(z.string(), z.any()),
+  payload_hash: z.string(),
+});
+
+export type RemediationAuditEvent = z.infer<typeof RemediationAuditEventSchema>;
+
+// ========================================
 // Helper Functions
 // ========================================
 
@@ -400,6 +451,17 @@ export function computeRunKey(
 export function computeInputsHash(inputs: Record<string, any>): string {
   const crypto = require('crypto');
   const stableJson = stableStringify(inputs);
+  return crypto.createHash('sha256').update(stableJson).digest('hex');
+}
+
+/**
+ * Compute payload hash for audit events (SHA-256 of stable JSON)
+ * Uses stableStringify for deterministic hashing
+ * E77.5 / I775: Ensure same payload → same hash
+ */
+export function computePayloadHash(payload: Record<string, any>): string {
+  const crypto = require('crypto');
+  const stableJson = stableStringify(payload);
   return crypto.createHash('sha256').update(stableJson).digest('hex');
 }
 

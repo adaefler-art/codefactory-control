@@ -16,6 +16,9 @@ import {
   RemediationRunStatus,
   RemediationStepStatus,
   sanitizeRedact,
+  RemediationAuditEvent,
+  RemediationAuditEventInput,
+  computePayloadHash,
 } from '../contracts/remediation-playbook';
 
 export class RemediationPlaybookDAO {
@@ -329,6 +332,105 @@ export class RemediationPlaybookDAO {
       input_json: row.input_json,
       output_json: row.output_json,
       error_json: row.error_json,
+    };
+  }
+
+  private mapRowToAuditEvent(row: any): RemediationAuditEvent {
+    return {
+      id: row.id,
+      remediation_run_id: row.remediation_run_id,
+      incident_id: row.incident_id,
+      event_type: row.event_type,
+      created_at: row.created_at.toISOString(),
+      lawbook_version: row.lawbook_version,
+      payload_json: row.payload_json,
+      payload_hash: row.payload_hash,
+    };
+  }
+
+  // ========================================
+  // Audit Event Methods (E77.5 / I775)
+  // ========================================
+
+  /**
+   * Create audit event (append-only)
+   * 
+   * Audit events are immutable once created. No updates allowed.
+   * Payload is sanitized and hashed for integrity verification.
+   * 
+   * @returns The created audit event
+   */
+  async createAuditEvent(input: RemediationAuditEventInput): Promise<RemediationAuditEvent> {
+    // Sanitize payload before storing (no secrets)
+    const sanitizedPayload = sanitizeRedact(input.payload_json);
+    
+    // Compute hash from sanitized payload
+    const payloadHash = computePayloadHash(sanitizedPayload);
+    
+    const result = await this.pool.query<any>(
+      `INSERT INTO remediation_audit_events (
+        remediation_run_id, incident_id, event_type,
+        lawbook_version, payload_json, payload_hash
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING 
+        id, remediation_run_id, incident_id, event_type,
+        created_at, lawbook_version, payload_json, payload_hash`,
+      [
+        input.remediation_run_id,
+        input.incident_id,
+        input.event_type,
+        input.lawbook_version,
+        sanitizedPayload,
+        payloadHash,
+      ]
+    );
+
+    return this.mapRowToAuditEvent(result.rows[0]);
+  }
+
+  /**
+   * Get audit events for a remediation run
+   * 
+   * Events are ordered deterministically by:
+   * 1. created_at (ascending)
+   * 2. id (ascending - for same-timestamp ordering)
+   * 
+   * @returns Ordered list of audit events
+   */
+  async getAuditEventsForRun(remediation_run_id: string): Promise<RemediationAuditEvent[]> {
+    const result = await this.pool.query<any>(
+      `SELECT 
+        id, remediation_run_id, incident_id, event_type,
+        created_at, lawbook_version, payload_json, payload_hash
+      FROM remediation_audit_events
+      WHERE remediation_run_id = $1
+      ORDER BY created_at ASC, id ASC`,
+      [remediation_run_id]
+    );
+
+    return result.rows.map(row => this.mapRowToAuditEvent(row));
+  }
+
+  /**
+   * Get complete audit bundle for a run (run + steps + audit events)
+   * Used for export functionality
+   * 
+   * @returns Bundle with run, steps, and audit events
+   */
+  async getAuditBundle(remediation_run_id: string): Promise<{
+    run: RemediationRun | null;
+    steps: RemediationStep[];
+    auditEvents: RemediationAuditEvent[];
+  }> {
+    const run = await this.getRun(remediation_run_id);
+    const steps = await this.getStepsForRun(remediation_run_id);
+    const auditEvents = await this.getAuditEventsForRun(remediation_run_id);
+
+    return {
+      run,
+      steps,
+      auditEvents,
     };
   }
 }
