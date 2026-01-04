@@ -1,18 +1,41 @@
 export type SmokeEnvFormat = 'plain' | 'json' | 'json_invalid';
 
+export type SmokeExpectedFormat = 'plain' | 'json-extracted' | 'json-unusable' | 'missing';
+
 export type SmokeKeyExtraction = {
   expectedSmokeKey: string | null;
   envPresent: boolean;
   envFormat: SmokeEnvFormat;
   envLen: number;
+  expectedLen: number;
+  expectedFormat: SmokeExpectedFormat;
 };
 
-const JSON_FIELD_PRIORITY = ['smokeKey', 'key', 'value', 'AFU9_SMOKE_KEY'] as const;
+const JSON_FIELD_PRIORITY = ['key', 'smokeKey', 'value', 'token', 'secret', 'smoke_key', 'SMOKE_KEY'] as const;
 
 export function normalizeSmokeKeyCandidate(value: string | null | undefined): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+export function smokeKeysMatchConstantTime(provided: string | null, expected: string | null): boolean {
+  if (!provided || !expected) return false;
+  if (provided.length !== expected.length) return false;
+
+  const a = Buffer.from(provided, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length) return false;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const nodeCrypto = require('crypto') as typeof import('crypto');
+    return nodeCrypto.timingSafeEqual(a, b);
+  } catch {
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+    return diff === 0;
+  }
 }
 
 export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtraction {
@@ -26,6 +49,8 @@ export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtr
       envPresent: false,
       envFormat: 'plain',
       envLen: 0,
+      expectedLen: 0,
+      expectedFormat: 'missing',
     };
   }
 
@@ -36,6 +61,8 @@ export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtr
       envPresent: true,
       envFormat: 'plain',
       envLen,
+      expectedLen: trimmed.length,
+      expectedFormat: 'plain',
     };
   }
 
@@ -49,15 +76,20 @@ export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtr
         envPresent: true,
         envFormat: 'json',
         envLen,
+        expectedLen: normalized?.length ?? 0,
+        expectedFormat: normalized ? 'json-extracted' : 'json-unusable',
       };
     }
 
     if (typeof parsed === 'number') {
+      const normalized = String(parsed);
       return {
-        expectedSmokeKey: String(parsed),
+        expectedSmokeKey: normalized,
         envPresent: true,
         envFormat: 'json',
         envLen,
+        expectedLen: normalized.length,
+        expectedFormat: 'json-extracted',
       };
     }
 
@@ -73,15 +105,20 @@ export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtr
               envPresent: true,
               envFormat: 'json',
               envLen,
+              expectedLen: normalized.length,
+              expectedFormat: 'json-extracted',
             };
           }
         }
         if (typeof v === 'number') {
+          const normalized = String(v);
           return {
-            expectedSmokeKey: String(v),
+            expectedSmokeKey: normalized,
             envPresent: true,
             envFormat: 'json',
             envLen,
+            expectedLen: normalized.length,
+            expectedFormat: 'json-extracted',
           };
         }
       }
@@ -91,6 +128,8 @@ export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtr
         envPresent: true,
         envFormat: 'json',
         envLen,
+        expectedLen: 0,
+        expectedFormat: 'json-unusable',
       };
     }
 
@@ -100,14 +139,18 @@ export function extractSmokeKeyFromEnv(rawEnv: string | undefined): SmokeKeyExtr
       envPresent: true,
       envFormat: 'json',
       envLen,
+      expectedLen: 0,
+      expectedFormat: 'json-unusable',
     };
   } catch {
-    // Spec: if JSON parsing fails, treat as plain string (trimmed)
+    // Fail closed: if it looks JSON but isn't parseable, do not allow bypass.
     return {
-      expectedSmokeKey: trimmed,
+      expectedSmokeKey: null,
       envPresent: true,
       envFormat: 'json_invalid',
       envLen,
+      expectedLen: 0,
+      expectedFormat: 'json-unusable',
     };
   }
 }

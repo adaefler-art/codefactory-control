@@ -25,9 +25,10 @@ describe('extractSmokeKeyFromEnv', () => {
     expect(r.envFormat).toBe('json');
   });
 
-  test('JSON invalid "{abc" -> trimmed raw', () => {
+  test('JSON invalid "{abc" -> fail closed (null)', () => {
     const r = extractSmokeKeyFromEnv(' {abc  ');
-    expect(r.expectedSmokeKey).toBe('{abc');
     expect(r.envFormat).toBe('json_invalid');
+    expect(r.expectedSmokeKey).toBeNull();
+    expect(r.expectedFormat).toBe('json-unusable');
   });
 });
