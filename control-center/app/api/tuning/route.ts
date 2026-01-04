@@ -19,9 +19,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../src/lib/db';
-import { getTuningSuggestions } from '../../../src/lib/tuning-suggestions-service';
-import { getRequestId, errorResponse, jsonResponse } from '../../../src/lib/api/response-helpers';
+import { getPool } from '@/lib/db';
+import { getTuningSuggestions } from '@/lib/tuning-suggestions-service';
+import { getRequestId, errorResponse, jsonResponse } from '@/lib/api/response-helpers';
 
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);

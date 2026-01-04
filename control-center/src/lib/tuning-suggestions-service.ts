@@ -18,7 +18,7 @@ import {
   computeSuggestionId,
   TUNING_SUGGESTION_VERSION,
   SuggestionReferences,
-} from '../contracts/tuning-suggestions';
+} from './contracts/tuning-suggestions';
 import { createHash } from 'crypto';
 
 // ========================================

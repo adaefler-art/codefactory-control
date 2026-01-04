@@ -19,9 +19,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '../../../../src/lib/db';
-import { generateTuningSuggestions } from '../../../../src/lib/tuning-suggestions-service';
-import { getRequestId, errorResponse, jsonResponse } from '../../../../src/lib/api/response-helpers';
+import { getPool } from '@/lib/db';
+import { generateTuningSuggestions } from '@/lib/tuning-suggestions-service';
+import { getRequestId, errorResponse, jsonResponse } from '@/lib/api/response-helpers';
 import { z } from 'zod';
 
 const GenerateSuggestionsRequestSchema = z.object({
