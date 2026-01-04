@@ -247,7 +247,7 @@ export async function listIssueSnapshots(
     limit?: number;
     offset?: number;
   } = {}
-): Promise<OperationResult<IssueSnapshotRow[]>> {
+): Promise<OperationResult<{ snapshots: IssueSnapshotRow[]; total: number }>> {
   try {
     const { repo_owner, repo_name, state, limit = 100, offset = 0 } = options;
 
@@ -272,6 +272,14 @@ export async function listIssueSnapshots(
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    // Get total count
+    const countResult = await pool.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM issue_snapshots ${whereClause}`,
+      params.slice(0, paramIndex - 1)
+    );
+    const total = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    // Get paginated results
     params.push(limit, offset);
 
     const result = await pool.query<IssueSnapshotRow>(
@@ -284,7 +292,10 @@ export async function listIssueSnapshots(
 
     return {
       success: true,
-      data: result.rows,
+      data: {
+        snapshots: result.rows,
+        total,
+      },
     };
   } catch (error) {
     console.error('[listIssueSnapshots] Database error:', error);

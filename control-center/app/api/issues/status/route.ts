@@ -75,7 +75,10 @@ export async function GET(request: NextRequest) {
       console.warn('[API /api/issues/status] Failed to fetch recent sync runs:', runsResult.error);
     }
 
-    const issues = snapshotsResult.data || [];
+    const { snapshots: issues, total: totalSnapshots } = snapshotsResult.data || {
+      snapshots: [],
+      total: 0,
+    };
     const staleness = stalenessResult.data || {
       last_synced_at: null,
       staleness_hours: null,
@@ -100,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     const responseBody: any = {
       issues: normalizedIssues,
-      total: staleness.total_snapshots,
+      total: totalSnapshots,
       limit,
       offset,
       staleness: {

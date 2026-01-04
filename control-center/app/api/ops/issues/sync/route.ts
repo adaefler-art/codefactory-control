@@ -27,6 +27,12 @@ import {
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 
+// Constants
+const GITHUB_OWNER = process.env.GITHUB_OWNER || 'adaefler-art';
+const GITHUB_REPO = process.env.GITHUB_REPO || 'codefactory-control';
+const MAX_SYNC_PAGES = parseInt(process.env.AFU9_ISSUE_SYNC_MAX_PAGES || '10', 10);
+const PER_PAGE = 100; // GitHub search API max
+
 /**
  * Extract canonical ID from issue title or labels
  * Examples: "E64.1: ...", "I751: ...", "[E64.1] ...", etc.
@@ -98,7 +104,6 @@ export async function POST(request: NextRequest) {
     try {
       // Fetch issues from GitHub with deterministic pagination
       // GitHub search API max per_page is 100
-      const perPage = 100;
       let page = 1;
       let hasMore = true;
 
@@ -107,7 +112,7 @@ export async function POST(request: NextRequest) {
 
         const result = await searchIssues({
           query,
-          per_page: perPage,
+          per_page: PER_PAGE,
           page,
           sort: 'updated',
           direction: 'desc',
@@ -120,8 +125,8 @@ export async function POST(request: NextRequest) {
           const canonicalId = extractCanonicalId(issue.title, issue.labels);
 
           const upsertResult = await upsertIssueSnapshot(pool, {
-            repo_owner: process.env.GITHUB_OWNER || 'adaefler-art',
-            repo_name: process.env.GITHUB_REPO || 'codefactory-control',
+            repo_owner: GITHUB_OWNER,
+            repo_name: GITHUB_REPO,
             issue_number: issue.number,
             canonical_id: canonicalId,
             state: issue.state,
@@ -144,12 +149,14 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if there are more pages
-        hasMore = result.issues.length === perPage && page * perPage < totalCount;
+        hasMore = result.issues.length === PER_PAGE && page * PER_PAGE < totalCount;
         page++;
 
-        // Safety limit: max 10 pages (1000 issues)
-        if (page > 10) {
-          console.warn('[API /api/ops/issues/sync] Reached page limit (10), stopping');
+        // Safety limit: configurable max pages
+        if (page > MAX_SYNC_PAGES) {
+          console.warn(
+            `[API /api/ops/issues/sync] Reached page limit (${MAX_SYNC_PAGES}), stopping`
+          );
           hasMore = false;
         }
       }

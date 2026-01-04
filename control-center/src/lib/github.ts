@@ -1,5 +1,4 @@
 import { createAuthenticatedClient } from "./github/auth-wrapper";
-import { Octokit } from 'octokit';
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
 const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
@@ -72,7 +71,7 @@ export interface UpdateIssueResult {
  * Create an authenticated Octokit instance using GitHub App authentication
  * E71.1: Now enforces repo access policy via auth-wrapper
  */
-async function createAuthenticatedOctokit(owner: string, repo: string): Promise<Octokit> {
+async function createAuthenticatedOctokit(owner: string, repo: string) {
   return await createAuthenticatedClient({ owner, repo });
 }
 

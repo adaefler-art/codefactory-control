@@ -60,8 +60,9 @@ CREATE INDEX idx_issue_snapshots_synced_at ON issue_snapshots(synced_at DESC);
 -- Lookup by state
 CREATE INDEX idx_issue_snapshots_state ON issue_snapshots(state);
 
--- Composite index for repo queries
+-- Composite index for repo queries with ordering
 CREATE INDEX idx_issue_snapshots_repo ON issue_snapshots(repo_owner, repo_name);
+CREATE INDEX idx_issue_snapshots_repo_updated ON issue_snapshots(repo_owner, repo_name, updated_at DESC);
 
 -- ========================================
 -- Issue Sync Runs Table
