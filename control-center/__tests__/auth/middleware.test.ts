@@ -221,6 +221,8 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
       expect(response.headers.get('x-afu9-smoke-env-format')).toBe('plain');
       expect(response.headers.get('x-afu9-smoke-env-len')).toBe(String('secret'.length));
+      expect(response.headers.get('x-afu9-smoke-expected-format')).toBe('plain');
+      expect(response.headers.get('x-afu9-smoke-expected-len')).toBe(String('secret'.length));
       expect(response.headers.get('x-afu9-smoke-key-len')).toBe(String('wrong'.length));
       expect(response.headers.get('x-afu9-smoke-key-match')).toBe('0');
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
@@ -240,9 +242,29 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
       expect(response.headers.get('x-afu9-smoke-env-format')).toBe('plain');
       expect(response.headers.get('x-afu9-smoke-env-len')).toBe(String('secret'.length));
+      expect(response.headers.get('x-afu9-smoke-expected-format')).toBe('plain');
+      expect(response.headers.get('x-afu9-smoke-expected-len')).toBe(String('secret'.length));
       expect(response.headers.get('x-afu9-smoke-key-len')).toBe(String('secret'.length));
       expect(response.headers.get('x-afu9-smoke-key-match')).toBe('1');
       expect(response.headers.get('x-request-id')).toBeTruthy();
+    });
+
+    test('env set as JSON {key:"secret"}, correct header -> bypass on staging host', async () => {
+      const env = JSON.stringify({ key: 'secret' });
+      process.env.AFU9_SMOKE_KEY = env;
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/timeline/chain',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-env-format')).toBe('json');
+      expect(response.headers.get('x-afu9-smoke-env-len')).toBe(String(env.trim().length));
+      expect(response.headers.get('x-afu9-smoke-expected-format')).toBe('json-extracted');
+      expect(response.headers.get('x-afu9-smoke-expected-len')).toBe(String('secret'.length));
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('1');
     });
 
     test('env set as JSON {smokeKey:"secret"}, correct header -> bypass on staging host', async () => {
@@ -258,7 +280,28 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
       expect(response.headers.get('x-afu9-smoke-env-format')).toBe('json');
       expect(response.headers.get('x-afu9-smoke-env-len')).toBe(String(env.trim().length));
+      expect(response.headers.get('x-afu9-smoke-expected-format')).toBe('json-extracted');
+      expect(response.headers.get('x-afu9-smoke-expected-len')).toBe(String('secret'.length));
       expect(response.headers.get('x-afu9-smoke-key-match')).toBe('1');
+    });
+
+    test('env looks like JSON but is invalid -> no throw, bypass disabled (match=false)', async () => {
+      const env = '{not-valid-json';
+      process.env.AFU9_SMOKE_KEY = env;
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/timeline/chain',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-env-present')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-env-format')).toBe('json_invalid');
+      expect(response.headers.get('x-afu9-smoke-env-len')).toBe(String(env.trim().length));
+      expect(response.headers.get('x-afu9-smoke-expected-format')).toBe('json-unusable');
+      expect(response.headers.get('x-afu9-smoke-expected-len')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-key-match')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
     });
 
     test('env has trailing newline/spaces, header matches after trim -> bypass on staging host', async () => {

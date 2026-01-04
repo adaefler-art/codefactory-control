@@ -4,7 +4,7 @@ import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/a
 import { isPublicRoute } from './lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/public-status-endpoints';
 import { getEffectiveHostname } from './src/lib/http/effective-hostname';
-import { extractSmokeKeyFromEnv, normalizeSmokeKeyCandidate } from './src/lib/auth/smokeKey';
+import { extractSmokeKeyFromEnv, normalizeSmokeKeyCandidate, smokeKeysMatchConstantTime } from './src/lib/auth/smokeKey';
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -74,9 +74,7 @@ function clearCookie(response: NextResponse, name: string) {
 function isSmokeBypass(request: NextRequest): boolean {
   const { expectedSmokeKey } = extractSmokeKeyFromEnv(process.env.AFU9_SMOKE_KEY);
   const providedSmokeKey = normalizeSmokeKeyCandidate(request.headers.get('x-afu9-smoke-key'));
-
-  if (!expectedSmokeKey || !providedSmokeKey) return false;
-  return providedSmokeKey === expectedSmokeKey;
+  return smokeKeysMatchConstantTime(providedSmokeKey, expectedSmokeKey);
 }
 
 function maybeAttachSmokeDebugHeaders(
@@ -99,6 +97,8 @@ function maybeAttachSmokeDebugHeaders(
   response.headers.set('x-afu9-smoke-env-present', extraction.envPresent ? '1' : '0');
   response.headers.set('x-afu9-smoke-env-format', extraction.envFormat);
   response.headers.set('x-afu9-smoke-env-len', String(extraction.envLen));
+  response.headers.set('x-afu9-smoke-expected-len', String(extraction.expectedLen));
+  response.headers.set('x-afu9-smoke-expected-format', extraction.expectedFormat);
   response.headers.set('x-afu9-smoke-key-len', String(normalizedProvided?.length ?? 0));
   response.headers.set('x-afu9-smoke-key-match', keyMatch ? '1' : '0');
   return response;
