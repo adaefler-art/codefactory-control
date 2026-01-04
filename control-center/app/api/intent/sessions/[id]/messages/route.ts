@@ -107,12 +107,22 @@ export async function POST(
         content: msg.content,
       }));
     
-    // Generate INTENT agent response
+    // Generate INTENT agent response with rate limiting
     let agentResponse;
     try {
-      agentResponse = await generateIntentResponse(body.content, conversationHistory);
+      agentResponse = await generateIntentResponse(body.content, conversationHistory, userId);
     } catch (error) {
       console.error('[API /api/intent/sessions/[id]/messages] INTENT agent error:', error);
+      
+      // Check for rate limit error
+      if (error instanceof Error && error.message.includes('Rate limit exceeded')) {
+        return errorResponse('Rate limit exceeded', {
+          status: 429,
+          requestId,
+          details: error.message,
+        });
+      }
+      
       return errorResponse('INTENT agent error', {
         status: 500,
         requestId,
