@@ -27,6 +27,7 @@ jest.mock('../../src/lib/db/issueSync', () => ({
 // Mock GitHub client
 jest.mock('../../src/lib/github', () => ({
   searchIssues: jest.fn(),
+  getIssue: jest.fn(),
 }));
 
 // Mock afu9Issues database helpers
@@ -707,6 +708,162 @@ describe('POST /api/ops/issues/sync', () => {
           github_mirror_status: 'UNKNOWN',
           github_status_raw: null,
           github_issue_last_sync_at: expect.any(String),
+        })
+      );
+    });
+
+    test('fetches fresh issue details via REST API and syncs status', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues, getIssue } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-rest-fetch';
+      
+      // Mock GitHub search result (may be stale)
+      const mockSearchIssue = {
+        number: 700,
+        title: 'I700: REST Fetch Test',
+        state: 'open',
+        html_url: 'https://github.com/adaefler-art/codefactory-control/issues/700',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T10:00:00Z',
+        labels: [{ name: 'old-label' }],
+        assignees: [],
+        node_id: 'node_700',
+        body: 'Test REST fetch',
+      };
+
+      // Mock fresh REST API result
+      const mockRestIssue = {
+        state: 'open',
+        labels: [{ name: 'status:implementing' }],
+        updated_at: '2025-01-04T12:00:00Z',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-700',
+        title: 'I700: REST Fetch Test',
+        github_issue_number: 700,
+        github_mirror_status: 'UNKNOWN',
+        status: 'CREATED',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockSearchIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      getIssue.mockResolvedValue(mockRestIssue); // Fresh REST fetch
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-rest-fetch',
+          'x-afu9-sub': 'user-123',
+          'x-afu9-stage': 'staging',
+          'x-afu9-groups': 'afu9-engineer-stage',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.statusSynced).toBe(1);
+
+      // Verify REST API was called to get fresh issue details
+      expect(getIssue).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        700
+      );
+
+      // Verify status was extracted from fresh REST data (not stale search result)
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        'afu9-uuid-700',
+        expect.objectContaining({
+          github_mirror_status: 'IN_PROGRESS',
+          github_status_raw: 'status:implementing',
+          github_issue_last_sync_at: expect.any(String),
+          github_sync_error: null, // No error on success
+        })
+      );
+    });
+
+    test('handles REST fetch failure gracefully and sets sync error', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues, getIssue } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-rest-error';
+      
+      const mockSearchIssue = {
+        number: 800,
+        title: 'I800: REST Error Test',
+        state: 'open',
+        html_url: 'https://github.com/adaefler-art/codefactory-control/issues/800',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T10:00:00Z',
+        labels: [],
+        assignees: [],
+        node_id: 'node_800',
+        body: 'Test error handling',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-800',
+        title: 'I800: REST Error Test',
+        github_issue_number: 800,
+        github_mirror_status: 'TODO',
+        status: 'SPEC_READY',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockSearchIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      getIssue.mockRejectedValue(new Error('GitHub API-Limit erreicht')); // Simulate API error
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-rest-error',
+          'x-afu9-sub': 'user-123',
+          'x-afu9-stage': 'staging',
+          'x-afu9-groups': 'afu9-engineer-stage',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.statusSynced).toBe(1);
+
+      // Verify REST API was attempted
+      expect(getIssue).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        800
+      );
+
+      // Verify error was captured and status set to UNKNOWN
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        'afu9-uuid-800',
+        expect.objectContaining({
+          github_mirror_status: 'UNKNOWN',
+          github_status_raw: null,
+          github_issue_last_sync_at: expect.any(String),
+          github_sync_error: expect.stringContaining('GitHub API-Limit'), // Error message captured
         })
       );
     });
