@@ -49,57 +49,53 @@ npm --prefix control-center run build
 
 ### 3. Run Tests
 
+#### Run Hardening Tests (Priority)
+
+```powershell
+# Run service-health-reset hardening tests
+npm --prefix control-center test -- --testPathPattern="service-health-reset-hardening"
+```
+
+**Expected Output:**
+```
+PASS  __tests__/lib/playbooks/service-health-reset-hardening.test.ts
+  SERVICE_HEALTH_RESET Hardening
+    Target Allowlist Enforcement
+      ✓ should deny target not in allowlist
+      ✓ should allow target in allowlist
+      ✓ should require environment for allowlist validation
+    Deterministic ALB Evidence Mapping
+      ✓ should fail-close when ALB evidence lacks cluster/service and no mapping
+      ✓ should use lawbook mapping for ALB evidence
+      ✓ should accept ALB evidence with explicit cluster/service (no mapping needed)
+    Canonical Environment Semantics
+      ✓ should require environment for snapshot
+      ✓ should normalize environment aliases (prod -> production)
+      ✓ should only mark MITIGATED when verification env matches target env
+      ✓ should not mark MITIGATED when verification env does not match
+      ✓ should handle environment alias matching (prod vs production)
+      ✓ should fail-close on invalid verification env
+    Frequency Limiting
+      ✓ should include hour key in reset idempotency key
+      ✓ should generate different keys for different environments
+    Secret Sanitization
+      ✓ should sanitize outputs to prevent token persistence
+
+Test Suites: 1 passed, 1 total
+Tests:       14 passed, 14 total
+```
+
 #### Run All Playbook Tests
 
 ```powershell
-# Run all playbook tests
-npm --prefix control-center test -- --testPathPattern=playbooks
+# Run all service-health-reset tests
+npm --prefix control-center test -- --testPathPattern="service-health-reset"
 ```
 
 **Expected Output:**
-- ✅ All playbook tests pass
-- ✅ service-health-reset tests pass
-- ✅ registry tests pass
-
-#### Run Service Health Reset Tests Specifically
-
-```powershell
-# Run service-health-reset playbook tests
-npm --prefix control-center test -- service-health-reset.test.ts
-```
-
-**Expected Output:**
-```
-PASS  __tests__/lib/playbooks/service-health-reset.test.ts
-  SERVICE_HEALTH_RESET Playbook
-    Playbook Definition
-      ✓ should have correct metadata
-      ✓ should require ECS or ALB evidence
-      ✓ should have five steps
-    Step 1: Snapshot State
-      ✓ should fail when no ECS evidence is found
-      ✓ should fail when evidence is missing cluster or service
-      ✓ should snapshot service state successfully
-    Step 2: Apply Reset
-      ✓ should fail when lawbook denies operation
-      ✓ should execute force new deployment when allowed
-    Step 3: Wait & Observe
-      ✓ should poll service stability with bounded timeout
-      ✓ should handle timeout when service does not stabilize
-    Step 4: Post Verification
-      ✓ should skip verification when no environment provided
-      ✓ should run verification when environment is provided
-    Step 5: Update Status
-      ✓ should update incident to MITIGATED when remediation succeeds
-      ✓ should keep incident as ACKED when remediation partially fails
-    Idempotency Keys
-      ✓ should generate consistent snapshot idempotency key
-      ✓ should generate consistent reset idempotency key
-      ✓ should generate consistent observe idempotency key
-
-Test Suites: 1 passed, 1 total
-Tests:       17 passed, 17 total
-```
+- ✅ All hardening tests pass (14 tests)
+- ✅ All functional tests pass (17 tests)
+- ✅ Total: 31 tests pass
 
 #### Run Registry Tests
 
@@ -242,12 +238,23 @@ All of the following must be true:
 
 - ✅ `npm run repo:verify` passes without errors
 - ✅ `npm --prefix control-center run build` completes successfully
-- ✅ `npm --prefix control-center test` - all tests pass
-- ✅ service-health-reset.test.ts - 17 tests pass
+- ✅ `npm --prefix control-center test -- --testPathPattern="service-health-reset"` - all tests pass
+- ✅ service-health-reset.test.ts - 17 functional tests pass
+- ✅ service-health-reset-hardening.test.ts - 14 hardening tests pass
 - ✅ registry.test.ts - 15 tests pass (4 playbooks registered)
 - ✅ No TypeScript compilation errors
 - ✅ No linting errors
 - ✅ All new files created and tracked in git
+
+### Hardening-Specific Criteria
+
+- ✅ Target allowlist enforced (deny-by-default, fail-closed)
+- ✅ ALB evidence mapping deterministic (no heuristics)
+- ✅ Canonical environment semantics (normalized matching)
+- ✅ Frequency limiting (hourly idempotency keys)
+- ✅ Secret sanitization (all outputs use `sanitizeRedact()`)
+- ✅ All new behavior is fail-closed, deny-by-default
+- ✅ Tests prove: denied target→0 adapter calls, ALB without mapping→fail-closed, env mismatch→not MITIGATED, frequency limiting→once per hour
 
 ## Verification Report Template
 
