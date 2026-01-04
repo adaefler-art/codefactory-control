@@ -457,6 +457,19 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
     });
 
+    test('stage + correct key + POST /api/issues/sync => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/issues/sync',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret', 'x-afu9-sub': 'smoke-user-a' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+    });
+
     test('stage + correct key + POST /api/integrations/github/ingest/issue => bypass active', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
       const request = makeRequest({
@@ -490,6 +503,20 @@ describe('Middleware Authentication Logic', () => {
         url: 'https://prod.afu-9.com/api/issues',
         method: 'GET',
         headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
+      expect(response.headers.get('x-afu9-smoke-stage')).toBeNull();
+    });
+
+    test('non-stage + correct key + POST /api/issues/sync => bypass not active (401)', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const request = makeRequest({
+        url: 'https://prod.afu-9.com/api/issues/sync',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret', 'x-afu9-sub': 'smoke-user-a' },
       });
 
       const response = await middleware(request);
