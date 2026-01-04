@@ -1151,6 +1151,68 @@ function checkLargeFiles(): ValidationResult {
 }
 
 // ============================================================================
+// Issue Sync MVP Check (AFU-9)
+// ============================================================================
+
+/**
+ * Check that Issue Sync MVP components are present
+ * - Migration 039 (issue_snapshots, issue_sync_runs)
+ * - POST /api/ops/issues/sync route
+ * - GET /api/issues/status route (optional, may exist from other features)
+ */
+function checkIssueSyncMvp(): ValidationResult {
+  console.log('🔍 Running Issue Sync MVP Check...');
+
+  const errors: string[] = [];
+
+  // Check for migration 039
+  const migrationPath = path.join(REPO_ROOT, 'database', 'migrations', '039_issue_sync_snapshots.sql');
+  if (!fs.existsSync(migrationPath)) {
+    errors.push(
+      `\n❌ Issue Sync MVP migration missing:\n` +
+      `   Expected: database/migrations/039_issue_sync_snapshots.sql\n` +
+      `\n` +
+      `   This migration should create:\n` +
+      `   - issue_snapshots table (GitHub issue snapshots)\n` +
+      `   - issue_sync_runs table (sync operation ledger)\n` +
+      `\n` +
+      `   Remedy: Create migration 039 with required schema\n`
+    );
+  }
+
+  // Check for POST /api/ops/issues/sync route
+  const syncRoutePath = path.join(CONTROL_CENTER_DIR, 'app', 'api', 'ops', 'issues', 'sync', 'route.ts');
+  if (!fs.existsSync(syncRoutePath)) {
+    errors.push(
+      `\n❌ Issue Sync route missing:\n` +
+      `   Expected: control-center/app/api/ops/issues/sync/route.ts\n` +
+      `\n` +
+      `   This route should implement:\n` +
+      `   - POST handler for syncing GitHub issues\n` +
+      `   - Auth-first validation\n` +
+      `   - Deterministic pagination\n` +
+      `   - GitHub App-only authentication (no PAT)\n` +
+      `\n` +
+      `   Remedy: Create POST /api/ops/issues/sync route\n`
+    );
+  }
+
+  // Optional: Check for GET /api/issues/status route (may exist from other features)
+  const statusRoutePath = path.join(CONTROL_CENTER_DIR, 'app', 'api', 'issues', 'status', 'route.ts');
+  if (!fs.existsSync(statusRoutePath)) {
+    console.log('   ⚠️  Note: GET /api/issues/status route not found (optional)');
+  }
+
+  if (errors.length > 0) {
+    console.log(`   ❌ Issue Sync MVP Check FAILED (${errors.length} violations)`);
+    return { passed: false, errors };
+  }
+
+  console.log('   ✅ Issue Sync MVP Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1169,6 +1231,7 @@ async function main() {
     checkUnreferencedRoutes(),
     checkDeployEcsWorkflowInvariants(),
     checkMixedScope(),
+    checkIssueSyncMvp(),       // AFU-9 Issue Sync MVP
   ];
 
   console.log('\n=====================================');

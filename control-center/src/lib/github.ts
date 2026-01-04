@@ -15,6 +15,22 @@ export interface MinimalIssue {
 }
 
 /**
+ * Full issue data from GitHub API (for issue sync)
+ */
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  labels: Array<{ name: string }>;
+  assignees: Array<{ login: string }>;
+  node_id: string;
+  body: string | null;
+}
+
+/**
  * Parameters for creating a GitHub issue
  */
 export interface CreateIssueParams {
@@ -55,7 +71,7 @@ export interface UpdateIssueResult {
  * Create an authenticated Octokit instance using GitHub App authentication
  * E71.1: Now enforces repo access policy via auth-wrapper
  */
-async function createAuthenticatedOctokit(owner: string, repo: string): Promise<Octokit> {
+async function createAuthenticatedOctokit(owner: string, repo: string) {
   return await createAuthenticatedClient({ owner, repo });
 }
 
@@ -230,5 +246,115 @@ export async function listIssuesByLabel(label: string): Promise<MinimalIssue[]> 
     }
     
     throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
+  }
+}
+
+/**
+ * Search/list issues with pagination support
+ * Used for AFU-9 Issue Sync (deterministic, paginated retrieval)
+ * 
+ * @param options - Search options
+ * @returns Array of full issue objects
+ */
+export async function searchIssues(options: {
+  owner?: string;
+  repo?: string;
+  query?: string;
+  state?: 'open' | 'closed' | 'all';
+  sort?: 'created' | 'updated' | 'comments';
+  direction?: 'asc' | 'desc';
+  per_page?: number;
+  page?: number;
+}): Promise<{ issues: GitHubIssue[]; total_count: number }> {
+  try {
+    const owner = options.owner || GITHUB_OWNER;
+    const repo = options.repo || GITHUB_REPO;
+    const octokit = await createAuthenticatedOctokit(owner, repo);
+
+    const {
+      query,
+      state = 'all',
+      sort = 'updated',
+      direction = 'desc',
+      per_page = 100,
+      page = 1,
+    } = options;
+
+    // Build deterministic query
+    let searchQuery = query || `repo:${owner}/${repo}`;
+    
+    // Ensure repo is in query if custom query provided
+    if (query && !query.includes('repo:')) {
+      searchQuery = `${query} repo:${owner}/${repo}`;
+    }
+
+    // Add state filter to query (GitHub search API uses 'is:' prefix)
+    if (state !== 'all') {
+      if (!searchQuery.includes('is:')) {
+        searchQuery += ` is:${state}`;
+      }
+    }
+
+    console.log(`Searching GitHub issues: ${searchQuery}`, {
+      owner,
+      repo,
+      sort,
+      direction,
+      per_page,
+      page,
+    });
+
+    const { data } = await octokit.rest.search.issuesAndPullRequests({
+      q: searchQuery,
+      sort: sort as any,
+      order: direction,
+      per_page,
+      page,
+    });
+
+    // Filter out pull requests (search API returns both issues and PRs)
+    const issues = data.items
+      .filter((item: any) => !item.pull_request)
+      .map((item: any): GitHubIssue => ({
+        number: item.number,
+        title: item.title,
+        state: item.state as 'open' | 'closed',
+        html_url: item.html_url,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+        labels: item.labels || [],
+        assignees: item.assignees || [],
+        node_id: item.node_id,
+        body: item.body || null,
+      }));
+
+    console.log(`Found ${issues.length} issues (total: ${data.total_count})`);
+
+    return {
+      issues,
+      total_count: data.total_count,
+    };
+  } catch (error) {
+    console.error('Error searching GitHub issues:', {
+      error: error instanceof Error ? error.message : String(error),
+      owner: options.owner || GITHUB_OWNER,
+      repo: options.repo || GITHUB_REPO,
+    });
+
+    if (error instanceof Error && error.message.includes('Bad credentials')) {
+      throw new Error('GitHub App authentication failed');
+    }
+
+    if (error instanceof Error && error.message.includes('Not Found')) {
+      throw new Error(
+        `GitHub-Repository ${options.owner || GITHUB_OWNER}/${options.repo || GITHUB_REPO} nicht gefunden`
+      );
+    }
+
+    if (error instanceof Error && error.message.includes('rate limit')) {
+      throw new Error('GitHub API-Limit erreicht');
+    }
+
+    throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
   }
 }
