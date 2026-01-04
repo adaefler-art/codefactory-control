@@ -76,9 +76,10 @@ describe('Playbook Registry Tests', () => {
     it('should return all registered playbooks', () => {
       const playbooks = getAllPlaybooks();
       
-      expect(playbooks.length).toBe(2);
+      expect(playbooks.length).toBe(3);
       expect(playbooks.some(p => p.definition.id === 'safe-retry-runner')).toBe(true);
       expect(playbooks.some(p => p.definition.id === 'rerun-post-deploy-verification')).toBe(true);
+      expect(playbooks.some(p => p.definition.id === 'redeploy-lkg')).toBe(true);
     });
   });
 

@@ -216,7 +216,7 @@ describe('RemediationPlaybookExecutor', () => {
 
       expect(result.status).toBe('SKIPPED');
       expect(result.skipReason).toBe('LAWBOOK_DENIED');
-      expect(result.message).toContain('explicitly denied');
+      expect(result.message).toContain('only allowed for redeploy-lkg playbook');
     });
   });
 

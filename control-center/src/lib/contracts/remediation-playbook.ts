@@ -312,11 +312,13 @@ export function stableStringify(value: unknown): string {
 /**
  * Sanitize and redact secrets from data (deny-by-default)
  * Masks values for keys/paths containing SECRET, TOKEN, PASSWORD, KEY, AUTH, COOKIE, HEADER, BEARER
- * Also masks JWT-like patterns and API keys
+ * Also masks JWT-like patterns, API keys, and URLs with query strings (potential tokens)
+ * 
+ * HARDENED: Removes URLs with query strings to prevent token persistence
  */
 export function sanitizeRedact(value: unknown, path: string = ''): any {
   // Secret key patterns (case-insensitive)
-  const secretKeyPattern = /(secret|token|password|key|auth|cookie|header|bearer|credential|api[-_]?key)/i;
+  const secretKeyPattern = /(secret|token|password|key|auth|cookie|header|bearer|credential|api[-_]?key|signature)/i;
   
   // Check if current path contains secret keywords
   const pathParts = path.split('.').filter(Boolean);
@@ -334,6 +336,13 @@ export function sanitizeRedact(value: unknown, path: string = ''): any {
 
   // For strings, check for obvious secret patterns even if not in secret path
   if (typeof value === 'string') {
+    // HARDENING: Remove URLs with query strings (potential tokens)
+    // Example: https://api.github.com/repos/owner/repo/actions/runs/123/logs?token=...
+    if (/^https?:\/\/.*\?/.test(value)) {
+      // Redact entire URL with querystring
+      return '********';
+    }
+    
     // JWT pattern (three base64 segments separated by dots)
     if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value) && value.length > 100) {
       return '********';

@@ -430,3 +430,142 @@ export async function getLatestDeployEvents(
     };
   }
 }
+
+/**
+ * Last Known Good (LKG) deployment record
+ * Represents a deployment that was verified GREEN with PASS verification
+ * 
+ * HARDENED: imageDigests should be complete (all containers), cfnChangeSetId treated with caution
+ */
+export interface LastKnownGoodDeploy {
+  snapshotId: string;
+  deployEventId: string | null;
+  env: string;
+  service: string | null;
+  version: string | null;
+  commitHash: string | null;
+  imageDigest: string | null; // Single digest - may be incomplete
+  imageDigests: string[] | null; // Per-container digests (preferred)
+  cfnChangeSetId: string | null;
+  observedAt: string;
+  verificationRunId: string | null;
+  verificationReportHash: string | null;
+}
+
+/**
+ * Find Last Known Good (LKG) deployment for an environment
+ * 
+ * LKG Definition (I773):
+ * - Deploy status snapshot with status = 'GREEN'
+ * - Verification PASS with reportHash present (in signals.verificationRun)
+ * - Known deploy inputs (commit_hash from deploy_events OR signals metadata)
+ * - Most recent matching record for the environment/service
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param env - Environment identifier (required)
+ * @param service - Optional service filter
+ * @returns LKG deploy record or null if not found
+ */
+export async function findLastKnownGood(
+  pool: Pool,
+  env: DeployEnvironment,
+  service?: string
+): Promise<{
+  success: boolean;
+  lkg?: LastKnownGoodDeploy | null;
+  error?: string;
+}> {
+  try {
+    // Query for most recent GREEN snapshot with verification PASS
+    // Join with deploy_events to get commit/version details
+    const query = `
+      SELECT 
+        dss.id as snapshot_id,
+        dss.related_deploy_event_id as deploy_event_id,
+        dss.env,
+        de.service,
+        de.version,
+        de.commit_hash,
+        dss.observed_at,
+        dss.signals #>> '{verificationRun,runId}' as verification_run_id,
+        dss.signals #>> '{verificationRun,reportHash}' as verification_report_hash,
+        dss.signals #>> '{deploy,imageDigest}' as image_digest,
+        dss.signals #>> '{deploy,cfnChangeSetId}' as cfn_changeset_id
+      FROM deploy_status_snapshots dss
+      LEFT JOIN deploy_events de ON dss.related_deploy_event_id = de.id
+      WHERE dss.env = $1
+        AND dss.status = 'GREEN'
+        AND dss.signals #>> '{verificationRun,status}' = 'success'
+        AND dss.signals #>> '{verificationRun,reportHash}' IS NOT NULL
+        ${service ? 'AND de.service = $2' : ''}
+      ORDER BY dss.observed_at DESC
+      LIMIT 1
+    `;
+
+    const params = service ? [env, service] : [env];
+    const result = await pool.query(query, params);
+
+    if (result.rows.length === 0) {
+      return {
+        success: true,
+        lkg: null,
+      };
+    }
+
+    const row = result.rows[0];
+    
+    // Try to extract imageDigests array from signals if available
+    let imageDigests: string[] | null = null;
+    try {
+      // Query for imageDigests array from signals
+      const digestsQuery = await pool.query(
+        `SELECT dss.signals #> '{deploy,imageDigests}' as image_digests
+         FROM deploy_status_snapshots dss
+         WHERE dss.id = $1`,
+        [row.snapshot_id]
+      );
+      
+      if (digestsQuery.rows.length > 0 && digestsQuery.rows[0].image_digests) {
+        const parsedDigests = digestsQuery.rows[0].image_digests;
+        if (Array.isArray(parsedDigests) && parsedDigests.length > 0) {
+          imageDigests = parsedDigests;
+        }
+      }
+    } catch (error) {
+      // If we can't get imageDigests array, continue with single digest
+      console.warn('[deployStatusSnapshots] Could not extract imageDigests array:', error);
+    }
+    
+    const lkg: LastKnownGoodDeploy = {
+      snapshotId: row.snapshot_id,
+      deployEventId: row.deploy_event_id,
+      env: row.env,
+      service: row.service || null,
+      version: row.version || null,
+      commitHash: row.commit_hash || null,
+      imageDigest: row.image_digest || null,
+      imageDigests: imageDigests,
+      cfnChangeSetId: row.cfn_changeset_id || null,
+      observedAt: row.observed_at,
+      verificationRunId: row.verification_run_id || null,
+      verificationReportHash: row.verification_report_hash || null,
+    };
+
+    return {
+      success: true,
+      lkg,
+    };
+  } catch (error) {
+    console.error('[deployStatusSnapshots] Find LKG failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      env,
+      service,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}

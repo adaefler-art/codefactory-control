@@ -71,6 +71,7 @@ async function loadLawbookGateConfig(): Promise<LawbookGateConfig> {
       'run-verification',
       'safe-retry-runner', // I772: Allow safe retry of GitHub workflows
       'rerun-post-deploy-verification', // I772: Allow re-run of E65.2 verification
+      'redeploy-lkg', // I773: Allow redeploy Last Known Good (E77.3)
     ],
     allowedActionTypes: [
       'RESTART_SERVICE',
@@ -79,7 +80,6 @@ async function loadLawbookGateConfig(): Promise<LawbookGateConfig> {
       'RUN_VERIFICATION',
     ],
     deniedActionTypes: [
-      'ROLLBACK_DEPLOY', // High risk, requires explicit approval
       'SCALE_DOWN', // Can cause capacity issues
       'DRAIN_TASKS', // Can cause service disruption
     ],
@@ -105,11 +105,24 @@ function isPlaybookAllowed(
 
 /**
  * Check if action type is allowed by lawbook
+ * Special handling: ROLLBACK_DEPLOY is allowed only for redeploy-lkg playbook
  */
 function isActionTypeAllowed(
   actionType: string,
-  lawbookConfig: LawbookGateConfig
+  lawbookConfig: LawbookGateConfig,
+  playbookId?: string
 ): { allowed: boolean; reason?: string } {
+  // Special case: ROLLBACK_DEPLOY is only allowed for redeploy-lkg playbook
+  if (actionType === 'ROLLBACK_DEPLOY') {
+    if (playbookId === 'redeploy-lkg') {
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: `Action type 'ROLLBACK_DEPLOY' is only allowed for redeploy-lkg playbook`,
+    };
+  }
+
   if (lawbookConfig.deniedActionTypes.includes(actionType)) {
     return {
       allowed: false,
@@ -289,7 +302,7 @@ export class RemediationPlaybookExecutor {
     
     // Step 4: Lawbook gating - action types allowed?
     for (const step of playbook.steps) {
-      const actionCheck = isActionTypeAllowed(step.actionType, lawbookConfig);
+      const actionCheck = isActionTypeAllowed(step.actionType, lawbookConfig, playbook.id);
       if (!actionCheck.allowed) {
         const inputsHash = computeInputsHash(request.inputs || {});
         const runKey = computeRunKey(incident.incident_key, playbook.id, inputsHash);
