@@ -35,7 +35,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
   });
 
   describe('Environment Normalization', () => {
-    it('should normalize prod/production to prod', async () => {
+    it('should normalize prod/production to production (canonical)', async () => {
       mockIncidentDAO.getIncident.mockResolvedValue({
         id: 'incident-1',
         incident_key: 'test:incident:1',
@@ -45,7 +45,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'production' }, // Production (should normalize to prod)
+          ref: { env: 'production' }, // Production (canonical)
         },
       ]);
 
@@ -60,7 +60,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'prod', // prod (normalized)
+            env: 'prod', // prod (alias, normalized to 'production')
             deployId: 'deploy-123',
           },
         },
@@ -70,10 +70,11 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
 
       expect(result.success).toBe(true);
       expect(result.output?.newStatus).toBe('MITIGATED');
+      expect(result.output?.env).toBe('production'); // Canonical value
       expect(mockIncidentDAO.updateStatus).toHaveBeenCalledWith('incident-1', 'MITIGATED');
     });
 
-    it('should normalize stage/staging to stage', async () => {
+    it('should normalize stage/staging to staging (canonical)', async () => {
       mockIncidentDAO.getIncident.mockResolvedValue({
         id: 'incident-1',
         incident_key: 'test:incident:1',
@@ -83,7 +84,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'staging' }, // Staging (should normalize to stage)
+          ref: { env: 'staging' }, // Staging (canonical)
         },
       ]);
 
@@ -98,7 +99,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'stage', // stage (normalized)
+            env: 'stage', // stage (alias, normalized to 'staging')
             deployId: 'deploy-123',
           },
         },
@@ -108,6 +109,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
 
       expect(result.success).toBe(true);
       expect(result.output?.newStatus).toBe('MITIGATED');
+      expect(result.output?.env).toBe('staging'); // Canonical value
       expect(mockIncidentDAO.updateStatus).toHaveBeenCalledWith('incident-1', 'MITIGATED');
     });
   });
@@ -123,7 +125,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'prod' }, // Incident is for prod
+          ref: { env: 'prod' }, // Incident uses 'prod' (normalized to 'production')
         },
       ]);
 
@@ -138,7 +140,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'stage', // Verification is for stage (different!)
+            env: 'stage', // Verification uses 'stage' (normalized to 'staging' - different!)
             deployId: 'deploy-123',
           },
         },
@@ -150,8 +152,8 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       expect(result.output?.currentStatus).toBe('unchanged');
       expect(result.output?.envMismatch).toBe(true);
       expect(result.output?.message).toContain('not marking MITIGATED');
-      expect(result.output?.incidentEnv).toBe('prod');
-      expect(result.output?.verificationEnv).toBe('stage');
+      expect(result.output?.incidentEnv).toBe('production'); // Canonical
+      expect(result.output?.verificationEnv).toBe('staging'); // Canonical
       
       // Verify incident was NOT updated
       expect(mockIncidentDAO.updateStatus).not.toHaveBeenCalled();
@@ -168,7 +170,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'prod' }, // Incident is for prod
+          ref: { env: 'prod' }, // Incident uses 'prod' (normalized to 'production')
         },
       ]);
 
@@ -183,7 +185,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'prod', // Verification is also for prod (match!)
+            env: 'prod', // Verification uses 'prod' (normalized to 'production' - match!)
             deployId: 'deploy-123',
           },
         },
@@ -193,7 +195,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
 
       expect(result.success).toBe(true);
       expect(result.output?.newStatus).toBe('MITIGATED');
-      expect(result.output?.env).toBe('prod');
+      expect(result.output?.env).toBe('production'); // Canonical value
       
       // Verify incident WAS updated
       expect(mockIncidentDAO.updateStatus).toHaveBeenCalledWith('incident-1', 'MITIGATED');
@@ -210,7 +212,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'production' }, // Incident uses 'production'
+          ref: { env: 'production' }, // Incident uses 'production' (canonical)
         },
       ]);
 
@@ -225,7 +227,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'prod', // Verification uses 'prod' (same after normalization)
+            env: 'prod', // Verification uses 'prod' (alias, normalized to 'production' - match!)
             deployId: 'deploy-123',
           },
         },
@@ -235,7 +237,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
 
       expect(result.success).toBe(true);
       expect(result.output?.newStatus).toBe('MITIGATED');
-      expect(result.output?.env).toBe('prod');
+      expect(result.output?.env).toBe('production'); // Canonical value
       expect(mockIncidentDAO.updateStatus).toHaveBeenCalledWith('incident-1', 'MITIGATED');
     });
 
@@ -265,7 +267,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'prod',
+            env: 'prod', // Normalized to 'production'
             deployId: 'deploy-123',
           },
         },
@@ -276,6 +278,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Hardening', () => {
       // When incident env is unknown, we allow MITIGATED (backward compatibility)
       expect(result.success).toBe(true);
       expect(result.output?.newStatus).toBe('MITIGATED');
+      expect(result.output?.env).toBe('production'); // Canonical value
       expect(mockIncidentDAO.updateStatus).toHaveBeenCalledWith('incident-1', 'MITIGATED');
     });
 

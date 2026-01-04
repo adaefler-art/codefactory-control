@@ -100,7 +100,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
           {
             kind: 'verification',
             ref: {
-              env: 'stage',
+              env: 'staging',
               deployId: 'deploy-123',
             },
           },
@@ -112,7 +112,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
 
       expect(result.success).toBe(true);
       expect(result.output?.status).toBe('success');
-      expect(result.output?.env).toBe('stage');
+      expect(result.output?.env).toBe('staging'); // Now returns canonical value
       expect(result.output?.playbookRunId).toBeDefined();
       expect(result.output?.reportHash).toBeDefined();
       expect(result.error).toBeUndefined();
@@ -129,7 +129,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
         evidence: [
           {
             kind: 'verification',
-            ref: { env: 'stage' },
+            ref: { env: 'staging' },
           },
         ],
         inputs: {},
@@ -151,7 +151,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
         evidence: [
           {
             kind: 'verification',
-            ref: { env: 'stage' },
+            ref: { env: 'staging' },
           },
         ],
         inputs: {},
@@ -224,7 +224,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'stage' },
+          ref: { env: 'staging' },
         },
       ]);
 
@@ -239,7 +239,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'stage', // Matching environment
+            env: 'staging', // Matching environment
             deployId: 'deploy-123',
           },
         },
@@ -256,7 +256,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
         ref: {
           playbookRunId: 'playbook-run-1',
           reportHash: 'abc123',
-          env: 'stage', // Normalized environment
+          env: 'staging', // Normalized environment
           deployId: 'deploy-123',
           status: 'success',
         },
@@ -275,7 +275,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
       mockIncidentDAO.getEvidence.mockResolvedValue([
         {
           kind: 'deploy_status',
-          ref: { env: 'stage' },
+          ref: { env: 'staging' },
         },
       ]);
       
@@ -294,7 +294,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
             status: 'success',
             playbookRunId: 'playbook-run-1',
             reportHash: 'abc123',
-            env: 'stage',
+            env: 'staging',
           },
         },
       };
@@ -317,7 +317,7 @@ describe('RERUN_POST_DEPLOY_VERIFICATION Playbook', () => {
           {
             kind: 'verification',
             ref: {
-              env: 'stage',
+              env: 'staging',
               deployId: 'deploy-123',
             },
           },

@@ -25,21 +25,7 @@ import {
   computeInputsHash,
 } from '../contracts/remediation-playbook';
 import { getIncidentDAO } from '../db/incidents';
-
-/**
- * Normalize environment name for consistent comparison
- * Maps: prod/production → prod, stage/staging → stage
- */
-function normalizeEnvironment(env: string): 'prod' | 'stage' | null {
-  const normalized = env.toLowerCase().trim();
-  if (normalized === 'prod' || normalized === 'production') {
-    return 'prod';
-  }
-  if (normalized === 'stage' || normalized === 'staging') {
-    return 'stage';
-  }
-  return null; // Unknown environment
-}
+import { normalizeEnvironment, type DeployEnvironment } from '../utils/environment';
 
 /**
  * Step 1: Run Verification
@@ -80,6 +66,21 @@ export async function executeRunVerification(
       };
     }
 
+    // Normalize environment to canonical value
+    let normalizedEnv: DeployEnvironment;
+    try {
+      normalizedEnv = normalizeEnvironment(env);
+    } catch (error: any) {
+      return {
+        success: false,
+        error: {
+          code: 'INVALID_ENVIRONMENT',
+          message: `Invalid environment value: ${error.message}`,
+          details: JSON.stringify({ env }),
+        },
+      };
+    }
+
     // In a full implementation, this would call E65.2 playbook executor
     // For now, we simulate a verification run with basic HTTP check
     // This would be replaced with actual playbook execution in production
@@ -90,7 +91,7 @@ export async function executeRunVerification(
     
     // Compute report hash
     const reportJson = JSON.stringify({
-      env,
+      env: normalizedEnv,
       deployId,
       timestamp: new Date().toISOString(),
       checks: [{ type: 'health', status: 'passed' }],
@@ -111,7 +112,7 @@ export async function executeRunVerification(
           durationMs: 1000,
         },
         reportHash,
-        env,
+        env: normalizedEnv, // Use canonical environment value
         deployId,
       },
       error: !verificationPassed ? {
@@ -195,19 +196,33 @@ export async function executeIngestIncidentUpdate(
     const incidentEnv = deployEvidence?.ref?.env;
     const verificationEnv = verificationStepOutput.env;
 
-    // HARDENING: Normalize and compare environments
-    const normalizedIncidentEnv = incidentEnv ? normalizeEnvironment(incidentEnv) : null;
-    const normalizedVerificationEnv = verificationEnv ? normalizeEnvironment(verificationEnv) : null;
+    // HARDENING: Normalize and compare environments using canonical normalization
+    let normalizedIncidentEnv: DeployEnvironment | null = null;
+    let normalizedVerificationEnv: DeployEnvironment;
 
-    if (!normalizedVerificationEnv) {
+    // Try to normalize verification environment (fail-closed if invalid)
+    try {
+      normalizedVerificationEnv = normalizeEnvironment(verificationEnv);
+    } catch (error: any) {
       return {
         success: false,
         error: {
           code: 'INVALID_VERIFICATION_ENV',
-          message: 'Verification environment could not be normalized',
+          message: `Verification environment could not be normalized: ${error.message}`,
           details: JSON.stringify({ verificationEnv }),
         },
       };
+    }
+
+    // Try to normalize incident environment (allow unknown for backward compatibility)
+    if (incidentEnv) {
+      try {
+        normalizedIncidentEnv = normalizeEnvironment(incidentEnv);
+      } catch (error: any) {
+        // Incident env is invalid but we'll proceed without matching check
+        // This maintains backward compatibility for incidents with non-standard env values
+        normalizedIncidentEnv = null;
+      }
     }
 
     // If we have an incident environment, verify it matches
