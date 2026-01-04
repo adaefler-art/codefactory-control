@@ -163,3 +163,4 @@ export function safeValidateIssueStateModel(
 ): ReturnType<typeof IssueStateModelSchema.safeParse> {
   return IssueStateModelSchema.safeParse(data);
 }
+

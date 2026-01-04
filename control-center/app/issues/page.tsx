@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 import { mapToCanonicalStatus, isLegacyStatus, getCanonicalStatuses } from "@/lib/utils/status-mapping";
 import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 
@@ -37,6 +38,23 @@ interface Issue {
   handoffState?: string;
   effectiveStatus?: string;
   githubLastSyncedAt?: string | null;
+  githubSyncError?: string | null;
+  github_sync_error?: string | null;
+  github_last_synced_at?: string | null;
+}
+
+function toGithubMirrorDisplayStatus(
+  githubMirrorStatus: string | null | undefined,
+  githubStatusRaw: string | null | undefined
+): string {
+  const mirror = (githubMirrorStatus ?? 'UNKNOWN').toString();
+  if (mirror && mirror !== 'UNKNOWN') return mirror;
+
+  const raw = (githubStatusRaw ?? '').toString().trim().toLowerCase();
+  if (raw === 'open') return 'OPEN';
+  if (raw === 'closed') return 'CLOSED';
+
+  return 'UNKNOWN';
 }
 
 interface ImportError {
@@ -102,7 +120,7 @@ export default function IssuesPage() {
       const params = new URLSearchParams();
       if (searchQuery) params.append("q", searchQuery);
       
-      const response = await fetch(`/api/issues?${params.toString()}`, {
+      const response = await fetch(`${API_ROUTES.issues.list}?${params.toString()}`, {
         credentials: "include",
         cache: "no-store"
       });
@@ -135,7 +153,7 @@ export default function IssuesPage() {
           return;
         }
 
-        const response = await fetch("/api/issues/import", {
+        const response = await fetch(API_ROUTES.issues.import, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -167,7 +185,7 @@ export default function IssuesPage() {
           return;
         }
 
-        const response = await fetch("/api/import/backlog-file", {
+        const response = await fetch(API_ROUTES.import.backlogFile, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -220,7 +238,7 @@ export default function IssuesPage() {
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/issues/${deleteConfirmIssue.id}`, {
+      const response = await fetch(API_ROUTES.issues.delete(deleteConfirmIssue.id), {
         method: "DELETE",
         credentials: "include",
       });
@@ -591,8 +609,19 @@ export default function IssuesPage() {
                       
                       // Extract state dimensions for secondary display
                       const githubMirror = issue.githubMirrorStatus || 'UNKNOWN';
+                      const githubStatusRaw =
+                        issue.githubStatusRaw ?? issue.github_status_raw ?? null;
+                      const githubMirrorDisplay = toGithubMirrorDisplayStatus(
+                        githubMirror,
+                        githubStatusRaw
+                      );
                       const execution = issue.executionState || 'IDLE';
                       const handoff = issue.handoffState || issue.handoff_state || 'UNSYNCED';
+
+                      const githubLastSyncedAt =
+                        issue.githubLastSyncedAt ?? issue.github_last_synced_at ?? null;
+                      const githubSyncError = issue.githubSyncError ?? issue.github_sync_error ?? null;
+                      const showGithubMirrorBadge = issue.github_issue_number != null;
                       
                       return (
                         <tr
@@ -638,14 +667,14 @@ export default function IssuesPage() {
                               </div>
                               {/* Secondary: State Dimensions (only show non-default values) */}
                               <div className="flex items-center gap-1 flex-wrap">
-                                {githubMirror !== 'UNKNOWN' && (
+                                {showGithubMirrorBadge && (
                                   <span
                                     className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${getGithubMirrorStatusBadgeColor(
-                                      githubMirror
+                                      githubMirrorDisplay
                                     )}`}
-                                    title={`GitHub Mirror: ${githubMirror}`}
+                                    title={`GitHub Mirror: ${githubMirrorDisplay}${githubLastSyncedAt ? ` | Last sync: ${formatDate(githubLastSyncedAt)}` : ''}${githubSyncError ? ` | Error: ${githubSyncError}` : ''}`}
                                   >
-                                    GH:{githubMirror}
+                                    GH:{githubMirrorDisplay}
                                   </span>
                                 )}
                                 {execution !== 'IDLE' && (

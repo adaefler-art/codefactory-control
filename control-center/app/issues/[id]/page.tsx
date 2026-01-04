@@ -46,6 +46,23 @@ interface Issue {
   handoffState?: string;
   effectiveStatus?: string;
   githubLastSyncedAt?: string | null;
+  githubSyncError?: string | null;
+  github_sync_error?: string | null;
+  github_last_synced_at?: string | null;
+}
+
+function toGithubMirrorDisplayStatus(
+  githubMirrorStatus: string | null | undefined,
+  githubStatusRaw: string | null | undefined
+): string {
+  const mirror = (githubMirrorStatus ?? 'UNKNOWN').toString();
+  if (mirror && mirror !== 'UNKNOWN') return mirror;
+
+  const raw = (githubStatusRaw ?? '').toString().trim().toLowerCase();
+  if (raw === 'open') return 'OPEN';
+  if (raw === 'closed') return 'CLOSED';
+
+  return 'UNKNOWN';
 }
 
 interface ActivityEvent {
@@ -706,23 +723,41 @@ export default function IssueDetailPage({
                     {/* GitHub Mirror Status */}
                     <div>
                       <div className="text-xs text-gray-400 mb-1">GitHub Mirror</div>
+                      {(() => {
+                        const githubMirror = issue.githubMirrorStatus ?? 'UNKNOWN';
+                        const githubStatusRaw = issue.githubStatusRaw ?? issue.github_status_raw ?? null;
+                        const githubMirrorDisplay = toGithubMirrorDisplayStatus(
+                          githubMirror,
+                          githubStatusRaw
+                        );
+                        const githubLastSyncedAt = issue.githubLastSyncedAt ?? issue.github_last_synced_at ?? null;
+                        const githubSyncError = issue.githubSyncError ?? issue.github_sync_error ?? null;
+
+                        const title = `GitHub Mirror: ${githubMirrorDisplay}`
+                          + (githubLastSyncedAt ? ` | Last sync: ${githubLastSyncedAt}` : '')
+                          + (githubSyncError ? ` | Error: ${githubSyncError}` : '');
+
+                        return (
                       <span
                         className={`inline-block px-2 py-1 text-xs font-medium rounded-md ${
-                          issue.githubMirrorStatus === 'IN_PROGRESS'
+                          githubMirrorDisplay === 'IN_PROGRESS'
                             ? 'bg-blue-900/30 text-blue-200 border border-blue-700'
-                            : issue.githubMirrorStatus === 'IN_REVIEW'
+                            : githubMirrorDisplay === 'IN_REVIEW'
                             ? 'bg-purple-900/30 text-purple-200 border border-purple-700'
-                            : issue.githubMirrorStatus === 'DONE'
+                            : githubMirrorDisplay === 'DONE'
                             ? 'bg-emerald-900/30 text-emerald-200 border border-emerald-700'
-                            : issue.githubMirrorStatus === 'TODO'
+                            : githubMirrorDisplay === 'TODO'
                             ? 'bg-cyan-900/30 text-cyan-200 border border-cyan-700'
-                            : issue.githubMirrorStatus === 'BLOCKED'
+                            : githubMirrorDisplay === 'BLOCKED'
                             ? 'bg-orange-900/30 text-orange-200 border border-orange-700'
                             : 'bg-gray-700/30 text-gray-200 border border-gray-600'
                         }`}
+                        title={title}
                       >
-                        {issue.githubMirrorStatus ?? 'UNKNOWN'}
+                        {githubMirrorDisplay}
                       </span>
+                        );
+                      })()}
                     </div>
 
                     {/* Execution State */}

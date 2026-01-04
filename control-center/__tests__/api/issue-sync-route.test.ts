@@ -723,7 +723,9 @@ describe('POST /api/ops/issues/sync', () => {
         'afu9-uuid-600',
         expect.objectContaining({
           github_mirror_status: 'UNKNOWN',
-          github_status_raw: null,
+          github_status_raw: 'closed',
+          github_status_updated_at: expect.any(String),
+          status_source: 'github_state',
           github_issue_last_sync_at: expect.any(String),
           github_sync_error: null,
         })

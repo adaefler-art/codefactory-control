@@ -42,7 +42,7 @@ import { isRepoAllowed } from '@/lib/github/auth-wrapper';
 import { sanitizeRedact } from '@/lib/contracts/remediation-playbook';
 import { listAfu9Issues, updateAfu9Issue } from '@/lib/db/afu9Issues';
 import { extractGithubMirrorStatus } from '@/lib/issues/stateModel';
-import { Afu9GithubMirrorStatus } from '@/lib/contracts/afu9Issue';
+import { Afu9GithubMirrorStatus, Afu9StatusSource } from '@/lib/contracts/afu9Issue';
 
 // Constants
 const GITHUB_OWNER = process.env.GITHUB_OWNER || 'adaefler-art';
@@ -268,6 +268,9 @@ export async function POST(request: NextRequest) {
       // I3: Sync GitHub status to AFU9 issues using State Model v1
       // Find AFU9 issues that are linked to GitHub issues and update their github_mirror_status
       let statusSyncedCount = 0;
+      let statusSyncAttemptedCount = 0;
+      let statusFetchOkCount = 0;
+      let statusFetchFailedCount = 0;
       try {
         const afu9IssuesResult = await listAfu9Issues(pool, {});
         if (afu9IssuesResult.success && afu9IssuesResult.data) {
@@ -275,13 +278,19 @@ export async function POST(request: NextRequest) {
             // Skip if not linked to GitHub
             if (!afu9Issue.github_issue_number) continue;
 
+            statusSyncAttemptedCount++;
+
             // Fetch fresh GitHub issue details via REST API
             let githubMirrorStatus: Afu9GithubMirrorStatus = 'UNKNOWN';
             let githubStatusRaw: string | null = null;
+            let githubStatusUpdatedAt: string | null = null;
+            let statusSource: Afu9StatusSource | null = null;
             let githubSyncError: string | null = null;
 
             try {
               const githubDetails = await getIssue(owner, repo, afu9Issue.github_issue_number);
+
+              statusFetchOkCount++;
 
               // I3: Extract GitHub mirror status using State Model v1
               // Priority: Project v2 > Labels > State
@@ -295,22 +304,28 @@ export async function POST(request: NextRequest) {
                 githubDetails.state
               );
 
-              // Determine raw status string for audit trail
-              // I3: Bound and sanitize to prevent unbounded/secret persistence
-              if (githubMirrorStatus !== 'UNKNOWN') {
-                // Store the actual status label or state for audit
-                const statusLabel = labelNames.find((l: string) => 
-                  l.toLowerCase().startsWith('status:')
-                );
-                const rawValue = statusLabel || githubDetails.state;
-                
-                // Sanitize to redact any secrets/URLs with query strings
-                const sanitized = sanitizeRedact(rawValue);
-                
-                // Truncate to max length
-                githubStatusRaw = typeof sanitized === 'string' 
-                  ? sanitized.substring(0, MAX_STATUS_RAW_LENGTH)
-                  : null;
+              // Persist raw audit value even when mirror mapping is UNKNOWN.
+              // This enables deterministic UI display (e.g., OPEN/CLOSED) after a successful fetch.
+              const statusLabel = labelNames.find((l: string) =>
+                l.toLowerCase().trim().startsWith('status:')
+              );
+              const rawValue = statusLabel || githubDetails.state;
+
+              // Determine the source for parity metadata
+              statusSource = statusLabel ? 'github_label' : 'github_state';
+
+              // Sanitize to redact any secrets/URLs with query strings
+              const sanitized = sanitizeRedact(rawValue);
+
+              // Truncate to max length
+              githubStatusRaw = typeof sanitized === 'string'
+                ? sanitized.substring(0, MAX_STATUS_RAW_LENGTH)
+                : null;
+
+              // Persist the upstream GitHub updated timestamp (ISO) when available
+              if (githubDetails.updated_at) {
+                const parsed = new Date(githubDetails.updated_at);
+                githubStatusUpdatedAt = Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
               }
 
               // Clear error on success
@@ -318,6 +333,8 @@ export async function POST(request: NextRequest) {
             } catch (fetchError) {
               // If fetch fails, set error and keep status as UNKNOWN
               const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown fetch error';
+
+              statusFetchFailedCount++;
               
               // Sanitize error message to prevent secret leakage
               githubSyncError = sanitizeRedact(errorMessage);
@@ -338,6 +355,8 @@ export async function POST(request: NextRequest) {
             const updateResult = await updateAfu9Issue(pool, afu9Issue.id, {
               github_mirror_status: githubMirrorStatus,
               github_status_raw: githubStatusRaw,
+              github_status_updated_at: githubStatusUpdatedAt,
+              status_source: statusSource,
               github_issue_last_sync_at: new Date().toISOString(),
               github_sync_error: githubSyncError,
             });
@@ -362,6 +381,9 @@ export async function POST(request: NextRequest) {
         total: totalCount,
         upserted: upsertedCount,
         statusSynced: statusSyncedCount,
+        statusSyncAttempted: statusSyncAttemptedCount,
+        statusFetchOk: statusFetchOkCount,
+        statusFetchFailed: statusFetchFailedCount,
         syncedAt: new Date().toISOString(),
       };
 
