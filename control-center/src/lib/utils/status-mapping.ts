@@ -1,12 +1,14 @@
 /**
  * Status Mapping Utility
  * Maps legacy issue states to canonical states for display purposes.
+ * E7_extra: Extended to map GitHub statuses to AFU9 canonical statuses
  * 
  * Issue: E62.1 - Issue Liste: Filter, Sort, Labels, Status
  * Issue: E62.1 (Fix) - Status dropdown with transition-aware filtering
+ * Issue: E7_extra - GitHub Status Parity
  */
 
-import { Afu9IssueStatus } from '../contracts/afu9Issue';
+import { Afu9IssueStatus, Afu9StatusSource } from '../contracts/afu9Issue';
 import { IssueState, ISSUE_STATE_TRANSITIONS } from '../types/issue-state';
 
 /**
@@ -108,4 +110,139 @@ export function getSelectableStates(currentStatus: string): Afu9IssueStatus[] {
   // Return current state + allowed next states (deduplicated)
   const selectable = new Set([canonicalCurrent, ...allowedNext]);
   return Array.from(selectable);
+}
+
+/**
+ * E7_extra: GitHub Status Mapping
+ * Maps GitHub Project v2 status values, labels, or issue state to AFU9 canonical status
+ * 
+ * Mapping rules (deterministic, fail-closed):
+ * - "Implementing" / "In Progress" / "implementing" → IMPLEMENTING
+ * - "In Review" / "PR" / "Review" → MERGE_READY
+ * - "Done" / "Completed" / "done" → DONE
+ * - "Blocked" / "Hold" / "Waiting" → HOLD
+ * - "Closed" (issue.state) → DONE (fallback)
+ * - Unknown/missing → null (no status change)
+ * 
+ * @param githubStatus - Raw GitHub status from Project v2 field, label, or state
+ * @returns AFU9 canonical status or null if mapping is unknown
+ */
+export function mapGitHubStatusToAfu9(githubStatus: string | null | undefined): Afu9IssueStatus | null {
+  if (!githubStatus || typeof githubStatus !== 'string') {
+    return null;
+  }
+
+  // Normalize: trim and lowercase for case-insensitive matching
+  const normalized = githubStatus.trim().toLowerCase();
+
+  // Map GitHub statuses to AFU9 canonical statuses
+  switch (normalized) {
+    // Implementing states
+    case 'implementing':
+    case 'in progress':
+    case 'in_progress':
+    case 'progress':
+      return Afu9IssueStatus.IMPLEMENTING;
+
+    // Merge/Review states
+    case 'in review':
+    case 'in_review':
+    case 'review':
+    case 'pr':
+    case 'pull request':
+    case 'merge ready':
+    case 'merge_ready':
+      return Afu9IssueStatus.MERGE_READY;
+
+    // Done/Completed states
+    case 'done':
+    case 'completed':
+    case 'closed':
+    case 'complete':
+      return Afu9IssueStatus.DONE;
+
+    // Hold/Blocked states
+    case 'blocked':
+    case 'hold':
+    case 'waiting':
+    case 'on hold':
+    case 'on_hold':
+      return Afu9IssueStatus.HOLD;
+
+    // Verified state (if GitHub uses this)
+    case 'verified':
+    case 'verify':
+      return Afu9IssueStatus.VERIFIED;
+
+    // Spec Ready state (if GitHub uses this)
+    case 'spec ready':
+    case 'spec_ready':
+    case 'ready':
+    case 'to do':
+    case 'todo':
+      return Afu9IssueStatus.SPEC_READY;
+
+    // Unknown status - fail closed (return null, don't guess)
+    default:
+      console.warn(`[status-mapping] Unknown GitHub status "${githubStatus}", no mapping applied`);
+      return null;
+  }
+}
+
+/**
+ * E7_extra: Extract GitHub status from various sources
+ * Determines status from Project v2 field, labels, or issue state in priority order
+ * 
+ * Priority:
+ * 1. Project v2 "Status" field (if available)
+ * 2. Labels with "status:" prefix
+ * 3. Issue state (open/closed) as fallback
+ * 
+ * @param projectStatus - Status from GitHub Project v2 field
+ * @param labels - Array of GitHub issue labels
+ * @param issueState - GitHub issue state (open/closed)
+ * @returns Object with raw status string and source type
+ */
+export function extractGitHubStatus(
+  projectStatus: string | null | undefined,
+  labels: Array<{ name: string }> | null | undefined,
+  issueState: 'open' | 'closed' | null | undefined
+): { raw: string | null; source: Afu9StatusSource | null } {
+  // Priority 1: Project v2 Status field
+  if (projectStatus && projectStatus.trim()) {
+    return {
+      raw: projectStatus.trim(),
+      source: Afu9StatusSource.GITHUB_PROJECT,
+    };
+  }
+
+  // Priority 2: Labels with "status:" prefix
+  if (labels && Array.isArray(labels)) {
+    for (const label of labels) {
+      const name = label.name?.toLowerCase() || '';
+      if (name.startsWith('status:')) {
+        const statusValue = name.replace('status:', '').trim();
+        if (statusValue) {
+          return {
+            raw: statusValue,
+            source: Afu9StatusSource.GITHUB_LABEL,
+          };
+        }
+      }
+    }
+  }
+
+  // Priority 3: Issue state (open/closed)
+  if (issueState === 'closed') {
+    return {
+      raw: 'closed',
+      source: Afu9StatusSource.GITHUB_STATE,
+    };
+  }
+
+  // No status found
+  return {
+    raw: null,
+    source: null,
+  };
 }

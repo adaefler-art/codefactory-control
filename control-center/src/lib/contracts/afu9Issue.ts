@@ -58,6 +58,17 @@ export enum Afu9ExecutionState {
 }
 
 /**
+ * AFU9 Issue Status Source enum
+ * E7_extra: Tracks where the status was derived from
+ */
+export enum Afu9StatusSource {
+  MANUAL = 'manual',
+  GITHUB_PROJECT = 'github_project',
+  GITHUB_LABEL = 'github_label',
+  GITHUB_STATE = 'github_state',
+}
+
+/**
  * AFU9 Issue Input Contract
  * Represents the required and optional fields for creating/updating an issue
  * Updated for E61.3: GitHub Handoff Metadata + Idempotence
@@ -86,6 +97,10 @@ export interface Afu9IssueInput {
   handoff_error?: string | null;
   github_repo?: string | null;
   github_issue_last_sync_at?: string | null;
+  // E7_extra: GitHub status parity fields
+  github_status_raw?: string | null;
+  github_status_updated_at?: string | null;
+  status_source?: Afu9StatusSource | null;
 }
 
 /**
@@ -120,6 +135,10 @@ export interface Afu9IssueRow {
   handoff_error: string | null;
   github_repo: string | null;
   github_issue_last_sync_at: string | null;
+  // E7_extra: GitHub status parity fields
+  github_status_raw: string | null;
+  github_status_updated_at: string | null;
+  status_source: Afu9StatusSource | null;
 }
 
 /**
@@ -416,5 +435,9 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     handoff_error: input.handoff_error === undefined || input.handoff_error === null ? null : input.handoff_error.trim(),
     github_repo: input.github_repo === undefined || input.github_repo === null ? null : input.github_repo.trim(),
     github_issue_last_sync_at: input.github_issue_last_sync_at === undefined ? null : input.github_issue_last_sync_at,
+    // E7_extra: GitHub status parity fields
+    github_status_raw: input.github_status_raw === undefined || input.github_status_raw === null ? null : input.github_status_raw.trim(),
+    github_status_updated_at: input.github_status_updated_at === undefined ? null : input.github_status_updated_at,
+    status_source: input.status_source === undefined ? null : input.status_source,
   };
 }
