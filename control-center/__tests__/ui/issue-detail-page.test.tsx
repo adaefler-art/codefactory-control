@@ -121,6 +121,12 @@ describe('Issue detail page', () => {
       execution_started_at: null,
       execution_completed_at: null,
       execution_output: null,
+      // I4: State Model v1 fields
+      localStatus: 'SPEC_READY',
+      githubMirrorStatus: 'UNKNOWN',
+      executionState: 'IDLE',
+      handoffState: 'UNSYNCED',
+      effectiveStatus: 'SPEC_READY',
     };
 
     // @ts-expect-error - attach mock fetch
@@ -135,8 +141,9 @@ describe('Issue detail page', () => {
     // Wait for the page to load
     expect(await screen.findByText('Test Issue')).toBeInTheDocument();
     
-    // Check that status is displayed as text (not in a select/dropdown)
-    expect(await screen.findByText('SPEC_READY')).toBeInTheDocument();
+    // I4: Check that effectiveStatus is displayed prominently
+    const effectiveStatusBadges = await screen.findAllByText('SPEC_READY');
+    expect(effectiveStatusBadges.length).toBeGreaterThan(0);
     
     // Verify there's no status dropdown (select element with status options)
     const selects = screen.queryAllByRole('combobox');
@@ -146,7 +153,7 @@ describe('Issue detail page', () => {
     );
     expect(statusSelect).toBeUndefined();
     
-    // Verify helper text indicates status changes via actions
-    expect(await screen.findByText(/Status changes via Activate action or workflow/i)).toBeInTheDocument();
+    // I4: Verify State Model v1 label is present
+    expect(await screen.findByText(/State Model v1/i)).toBeInTheDocument();
   });
 });

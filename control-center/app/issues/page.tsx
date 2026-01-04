@@ -11,7 +11,7 @@ interface Issue {
   publicId: string;
   title: string;
   body: string | null;
-  status: string; // Can be canonical or legacy status
+  status: string; // Can be canonical or legacy status (localStatus)
   labels: string[];
   priority: "P0" | "P1" | "P2" | null;
   assignee: string | null;
@@ -29,6 +29,14 @@ interface Issue {
   // E7_extra: GitHub status parity fields
   github_status_raw?: string | null;
   status_source?: "manual" | "github_project" | "github_label" | "github_state" | null;
+  // I4: State Model v1 fields
+  localStatus?: string;
+  githubStatusRaw?: string | null;
+  githubMirrorStatus?: string;
+  executionState?: string;
+  handoffState?: string;
+  effectiveStatus?: string;
+  githubLastSyncedAt?: string | null;
 }
 
 interface ImportError {
@@ -241,14 +249,20 @@ export default function IssuesPage() {
   const filteredAndSortedIssues = useMemo(() => {
     let result = [...issues];
 
-    // Apply status filter (on mapped canonical status)
+    // Apply status filter (on effectiveStatus if available, fallback to mapped canonical status)
     if (statusFilter) {
-      result = result.filter((issue) => mapToCanonicalStatus(issue.status) === statusFilter);
+      result = result.filter((issue) => {
+        const effectiveStatus = issue.effectiveStatus ?? mapToCanonicalStatus(issue.status);
+        return effectiveStatus === statusFilter;
+      });
     }
 
-    // Apply Active-only filter (status === SPEC_READY)
+    // Apply Active-only filter (effectiveStatus === SPEC_READY)
     if (activeOnly) {
-      result = result.filter((issue) => mapToCanonicalStatus(issue.status) === Afu9IssueStatus.SPEC_READY);
+      result = result.filter((issue) => {
+        const effectiveStatus = issue.effectiveStatus ?? mapToCanonicalStatus(issue.status);
+        return effectiveStatus === Afu9IssueStatus.SPEC_READY;
+      });
     }
 
     // Apply label filter
@@ -282,9 +296,9 @@ export default function IssuesPage() {
           break;
         }
         case "status": {
-          // Sort by canonical status alphabetically
-          const aStatus = mapToCanonicalStatus(a.status);
-          const bStatus = mapToCanonicalStatus(b.status);
+          // Sort by effectiveStatus if available, fallback to canonical status alphabetically
+          const aStatus = a.effectiveStatus ?? mapToCanonicalStatus(a.status);
+          const bStatus = b.effectiveStatus ?? mapToCanonicalStatus(b.status);
           comparison = aStatus.localeCompare(bStatus);
           break;
         }
@@ -328,6 +342,41 @@ export default function IssuesPage() {
       case "FAILED":
         return "bg-red-900/30 text-red-200 border border-red-700";
       case "NOT_SENT":
+      case "UNSYNCED":
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+      default:
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+    }
+  };
+
+  const getExecutionStateBadgeColor = (state: string) => {
+    switch (state) {
+      case "RUNNING":
+        return "bg-blue-900/30 text-blue-200 border border-blue-700";
+      case "SUCCEEDED":
+        return "bg-green-900/30 text-green-200 border border-green-700";
+      case "FAILED":
+        return "bg-red-900/30 text-red-200 border border-red-700";
+      case "IDLE":
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+      default:
+        return "bg-gray-700/30 text-gray-200 border border-gray-600";
+    }
+  };
+
+  const getGithubMirrorStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "IN_PROGRESS":
+        return "bg-blue-900/30 text-blue-200 border border-blue-700";
+      case "IN_REVIEW":
+        return "bg-purple-900/30 text-purple-200 border border-purple-700";
+      case "DONE":
+        return "bg-emerald-900/30 text-emerald-200 border border-emerald-700";
+      case "TODO":
+        return "bg-cyan-900/30 text-cyan-200 border border-cyan-700";
+      case "BLOCKED":
+        return "bg-orange-900/30 text-orange-200 border border-orange-700";
+      case "UNKNOWN":
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
       default:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
@@ -535,9 +584,15 @@ export default function IssuesPage() {
                   </thead>
                   <tbody className="bg-gray-900 divide-y divide-gray-800">
                     {filteredAndSortedIssues.map((issue) => {
-                      const canonicalStatus = mapToCanonicalStatus(issue.status);
-                      const isActive = canonicalStatus === Afu9IssueStatus.SPEC_READY;
+                      // I4: Use effectiveStatus as primary, fallback to canonical status
+                      const effectiveStatus = issue.effectiveStatus ?? mapToCanonicalStatus(issue.status);
+                      const isActive = effectiveStatus === Afu9IssueStatus.SPEC_READY;
                       const isLegacy = isLegacyStatus(issue.status);
+                      
+                      // Extract state dimensions for secondary display
+                      const githubMirror = issue.githubMirrorStatus || 'UNKNOWN';
+                      const execution = issue.executionState || 'IDLE';
+                      const handoff = issue.handoffState || issue.handoff_state || 'UNSYNCED';
                       
                       return (
                         <tr
@@ -561,23 +616,59 @@ export default function IssuesPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`px-2 py-1 text-xs font-medium rounded-md ${getStatusBadgeColor(
-                                  canonicalStatus
-                                )}`}
-                              >
-                                {canonicalStatus}
-                              </span>
-                              {isLegacy && (
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              {/* Primary: Effective Status */}
+                              <div className="flex items-center gap-2">
                                 <span
-                                  className="text-xs text-gray-500"
-                                  title={`Legacy status: ${issue.status} → ${canonicalStatus}`}
+                                  className={`px-2 py-1 text-xs font-medium rounded-md ${getStatusBadgeColor(
+                                    effectiveStatus
+                                  )}`}
                                 >
-                                  📜
+                                  {effectiveStatus}
                                 </span>
-                              )}
+                                {isLegacy && (
+                                  <span
+                                    className="text-xs text-gray-500"
+                                    title={`Legacy status: ${issue.status} → ${effectiveStatus}`}
+                                  >
+                                    📜
+                                  </span>
+                                )}
+                              </div>
+                              {/* Secondary: State Dimensions (only show non-default values) */}
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {githubMirror !== 'UNKNOWN' && (
+                                  <span
+                                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${getGithubMirrorStatusBadgeColor(
+                                      githubMirror
+                                    )}`}
+                                    title={`GitHub Mirror: ${githubMirror}`}
+                                  >
+                                    GH:{githubMirror}
+                                  </span>
+                                )}
+                                {execution !== 'IDLE' && (
+                                  <span
+                                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${getExecutionStateBadgeColor(
+                                      execution
+                                    )}`}
+                                    title={`Execution: ${execution}`}
+                                  >
+                                    EX:{execution}
+                                  </span>
+                                )}
+                                {handoff === 'SYNCED' && (
+                                  <span
+                                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${getHandoffStateBadgeColor(
+                                      handoff
+                                    )}`}
+                                    title={`Handoff: ${handoff}`}
+                                  >
+                                    HO:{handoff}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-4">
