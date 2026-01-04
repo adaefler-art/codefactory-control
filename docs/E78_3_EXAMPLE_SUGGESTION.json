@@ -1,0 +1,31 @@
+{
+  "version": "0.7.0",
+  "generatedAt": "2025-01-04T20:00:00.000Z",
+  "suggestionId": "a1b2c3d4e5f6g7h8",
+  "type": "CLASSIFIER_RULE",
+  "title": "Add classifier rules for UNKNOWN incidents",
+  "rationale": "42.0% of incidents (21/50) have UNKNOWN or missing classification. This indicates missing classifier rules or insufficient evidence fields.",
+  "proposedChange": {
+    "action": "ADD_CLASSIFIER_RULES",
+    "targetCategory": "UNKNOWN",
+    "suggestedFields": [
+      "source_primary.kind",
+      "source_primary.ref.deployId",
+      "evidence.kind",
+      "tags"
+    ]
+  },
+  "expectedImpact": "Reduce UNKNOWN classifications by 30%, improving incident routing and response accuracy",
+  "confidence": "high",
+  "references": {
+    "incidentIds": [
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+      "33333333-3333-3333-3333-333333333333"
+    ],
+    "outcomeIds": [],
+    "kpiWindowRefs": [],
+    "evidenceHashes": []
+  },
+  "status": "PROPOSED"
+}
