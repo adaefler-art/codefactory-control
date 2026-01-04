@@ -522,7 +522,7 @@ describe('POST /api/ops/issues/sync', () => {
     test('syncs IN_PROGRESS status from GitHub label to github_mirror_status', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
-      const { searchIssues } = require('../../src/lib/github');
+      const { searchIssues, getIssue } = require('../../src/lib/github');
       const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
 
       const mockRunId = 'run-in-progress';
@@ -552,6 +552,11 @@ describe('POST /api/ops/issues/sync', () => {
       upsertIssueSnapshot.mockResolvedValue({ success: true });
       updateIssueSyncRun.mockResolvedValue({ success: true });
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      getIssue.mockResolvedValue({
+        state: 'open',
+        labels: [{ name: 'status: implementing' }],
+        updated_at: '2025-01-04T12:00:00Z',
+      });
       updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
@@ -579,6 +584,7 @@ describe('POST /api/ops/issues/sync', () => {
           github_mirror_status: 'IN_PROGRESS',
           github_status_raw: 'status: implementing',
           github_issue_last_sync_at: expect.any(String),
+          github_sync_error: null,
         })
       );
     });
@@ -586,7 +592,7 @@ describe('POST /api/ops/issues/sync', () => {
     test('syncs DONE status from closed GitHub issue with explicit done label', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
-      const { searchIssues } = require('../../src/lib/github');
+      const { searchIssues, getIssue } = require('../../src/lib/github');
       const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
 
       const mockRunId = 'run-done';
@@ -616,6 +622,11 @@ describe('POST /api/ops/issues/sync', () => {
       upsertIssueSnapshot.mockResolvedValue({ success: true });
       updateIssueSyncRun.mockResolvedValue({ success: true });
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      getIssue.mockResolvedValue({
+        state: 'closed',
+        labels: [{ name: 'status: done' }],
+        updated_at: '2025-01-04T12:00:00Z',
+      });
       updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
@@ -643,6 +654,7 @@ describe('POST /api/ops/issues/sync', () => {
           github_mirror_status: 'DONE',
           github_status_raw: 'status: done',
           github_issue_last_sync_at: expect.any(String),
+          github_sync_error: null,
         })
       );
     });
@@ -650,7 +662,7 @@ describe('POST /api/ops/issues/sync', () => {
     test('closed GitHub issue WITHOUT done signal maps to UNKNOWN (semantic protection)', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
-      const { searchIssues } = require('../../src/lib/github');
+      const { searchIssues, getIssue } = require('../../src/lib/github');
       const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
 
       const mockRunId = 'run-closed-no-done';
@@ -680,6 +692,11 @@ describe('POST /api/ops/issues/sync', () => {
       upsertIssueSnapshot.mockResolvedValue({ success: true });
       updateIssueSyncRun.mockResolvedValue({ success: true });
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      getIssue.mockResolvedValue({
+        state: 'closed',
+        labels: [{ name: 'bug' }],
+        updated_at: '2025-01-04T12:00:00Z',
+      });
       updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
@@ -708,6 +725,7 @@ describe('POST /api/ops/issues/sync', () => {
           github_mirror_status: 'UNKNOWN',
           github_status_raw: null,
           github_issue_last_sync_at: expect.any(String),
+          github_sync_error: null,
         })
       );
     });
