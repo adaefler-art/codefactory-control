@@ -8,24 +8,24 @@
  */
 
 import { NextRequest } from 'next/server';
-import { POST as syncIssues } from '../../../app/api/ops/issues/sync/route';
+import { POST as syncIssues } from '../../app/api/ops/issues/sync/route';
 
 // Mock database module
-jest.mock('../../../src/lib/db', () => ({
+jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
 // Mock issue sync database helpers
-jest.mock('../../../src/lib/db/issueSync', () => ({
+jest.mock('../../src/lib/db/issueSync', () => ({
   createIssueSyncRun: jest.fn(),
   updateIssueSyncRun: jest.fn(),
   upsertIssueSnapshot: jest.fn(),
 }));
 
 // Mock GitHub client
-jest.mock('../../../src/lib/github', () => ({
+jest.mock('../../src/lib/github', () => ({
   searchIssues: jest.fn(),
 }));
 
@@ -36,8 +36,8 @@ describe('POST /api/ops/issues/sync', () => {
 
   test('successfully syncs issues from GitHub', async () => {
     const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
-      require('../../../src/lib/db/issueSync');
-    const { searchIssues } = require('../../../src/lib/github');
+      require('../../src/lib/db/issueSync');
+    const { searchIssues } = require('../../src/lib/github');
 
     const mockRunId = 'run-123';
     const mockIssues = [
@@ -167,8 +167,8 @@ describe('POST /api/ops/issues/sync', () => {
   });
 
   test('handles sync failure gracefully', async () => {
-    const { createIssueSyncRun, updateIssueSyncRun } = require('../../../src/lib/db/issueSync');
-    const { searchIssues } = require('../../../src/lib/github');
+    const { createIssueSyncRun, updateIssueSyncRun } = require('../../src/lib/db/issueSync');
+    const { searchIssues } = require('../../src/lib/github');
 
     const mockRunId = 'run-456';
 
@@ -211,8 +211,8 @@ describe('POST /api/ops/issues/sync', () => {
 
   test('idempotency: multiple syncs update snapshots correctly', async () => {
     const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
-      require('../../../src/lib/db/issueSync');
-    const { searchIssues } = require('../../../src/lib/github');
+      require('../../src/lib/db/issueSync');
+    const { searchIssues } = require('../../src/lib/github');
 
     const mockRunId1 = 'run-111';
     const mockRunId2 = 'run-222';
