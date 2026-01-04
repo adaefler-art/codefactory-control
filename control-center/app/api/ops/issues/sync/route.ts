@@ -4,6 +4,7 @@
  * AFU-9 Issue Status Sync MVP
  * 
  * Polls GitHub issues and syncs them to issue_snapshots table.
+ * E7_extra: Also updates AFU9 issue status from GitHub status (Project/Label/State).
  * Auth-first (401-first using x-afu9-sub), deterministic pagination, GitHub App only.
  * 
  * SECURITY: The x-afu9-sub header is set by proxy.ts after server-side JWT verification.
@@ -22,6 +23,7 @@
  * - ok: boolean
  * - total: number - Total issues found
  * - upserted: number - Snapshots created/updated
+ * - statusSynced: number - AFU9 issues with status updated (E7_extra)
  * - syncedAt: string - ISO timestamp
  */
 
@@ -38,6 +40,8 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { isRepoAllowed } from '@/lib/github/auth-wrapper';
 import { sanitizeRedact } from '@/lib/contracts/remediation-playbook';
+import { syncGitHubStatusToAfu9 } from '@/lib/github-status-sync';
+import { listAfu9Issues } from '@/lib/db/afu9Issues';
 
 // Constants
 const GITHUB_OWNER = process.env.GITHUB_OWNER || 'adaefler-art';
@@ -177,6 +181,7 @@ export async function POST(request: NextRequest) {
     let totalCount = 0;
     let upsertedCount = 0;
     let error: string | null = null;
+    const allIssues: any[] = []; // E7_extra: Store all fetched issues for status sync
 
     try {
       // Fetch issues from GitHub with deterministic pagination
@@ -201,6 +206,9 @@ export async function POST(request: NextRequest) {
         // Upsert each issue snapshot (with sanitization)
         for (const issue of result.issues) {
           if (upsertedCount >= maxIssues) break;
+
+          // E7_extra: Store issue for later status sync
+          allIssues.push(issue);
 
           const canonicalId = extractCanonicalId(issue.title, issue.labels);
 
@@ -255,10 +263,51 @@ export async function POST(request: NextRequest) {
         `[API /api/ops/issues/sync] Sync completed: ${upsertedCount}/${totalCount} snapshots`
       );
 
+      // E7_extra: Sync GitHub status to AFU9 issues
+      // Find AFU9 issues that are linked to GitHub issues and update their status
+      let statusSyncedCount = 0;
+      try {
+        const afu9IssuesResult = await listAfu9Issues(pool, {});
+        if (afu9IssuesResult.success && afu9IssuesResult.data) {
+          for (const afu9Issue of afu9IssuesResult.data) {
+            // Skip if not linked to GitHub
+            if (!afu9Issue.github_issue_number) continue;
+
+            // Find corresponding GitHub issue in the synced data
+            const githubIssue = allIssues.find(
+              (gh) => gh.number === afu9Issue.github_issue_number
+            );
+
+            if (githubIssue) {
+              // Sync GitHub status to AFU9
+              const syncResult = await syncGitHubStatusToAfu9(pool, afu9Issue.id, {
+                number: githubIssue.number,
+                state: githubIssue.state as 'open' | 'closed',
+                labels: githubIssue.labels,
+                projectStatus: null, // TODO: Fetch from GraphQL in future
+              });
+
+              if (syncResult.success) {
+                statusSyncedCount++;
+                if (syncResult.changed) {
+                  console.log(
+                    `[API /api/ops/issues/sync] Synced status for AFU9 issue ${afu9Issue.id}: ${syncResult.previousStatus} → ${syncResult.newStatus}`
+                  );
+                }
+              }
+            }
+          }
+        }
+      } catch (statusSyncError) {
+        // Log but don't fail the entire sync if status sync fails
+        console.error('[API /api/ops/issues/sync] Status sync error:', statusSyncError);
+      }
+
       const responseBody: any = {
         ok: true,
         total: totalCount,
         upserted: upsertedCount,
+        statusSynced: statusSyncedCount,
         syncedAt: new Date().toISOString(),
       };
 

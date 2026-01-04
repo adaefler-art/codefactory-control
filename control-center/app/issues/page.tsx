@@ -26,6 +26,9 @@ interface Issue {
   updatedAt: string | null;
   deleted_at: string | null;
   deletedAt: string | null;
+  // E7_extra: GitHub status parity fields
+  github_status_raw?: string | null;
+  status_source?: "manual" | "github_project" | "github_label" | "github_state" | null;
 }
 
 interface ImportError {

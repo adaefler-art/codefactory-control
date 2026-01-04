@@ -32,6 +32,10 @@ interface Issue {
   execution_started_at: string | null;
   execution_completed_at: string | null;
   execution_output: Record<string, unknown> | null;
+  // E7_extra: GitHub status parity fields
+  github_status_raw: string | null;
+  github_status_updated_at: string | null;
+  status_source: "manual" | "github_project" | "github_label" | "github_state" | null;
 }
 
 interface ActivityEvent {
@@ -742,6 +746,36 @@ export default function IssueDetailPage({
                   </div>
                 )}
               </div>
+
+              {/* E7_extra: GitHub Status Display */}
+              {issue.github_status_raw && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    GitHub Status
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 text-sm font-medium rounded-md bg-blue-900/30 text-blue-300 border border-blue-700">
+                      {issue.github_status_raw}
+                    </span>
+                    {issue.status_source && (
+                      <span
+                        className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-400"
+                        title={`Status derived from ${issue.status_source.replace("github_", "GitHub ")}`}
+                      >
+                        {issue.status_source === "github_project" && "📋 Project"}
+                        {issue.status_source === "github_label" && "🏷️ Label"}
+                        {issue.status_source === "github_state" && "🔄 State"}
+                        {issue.status_source === "manual" && "✋ Manual"}
+                      </span>
+                    )}
+                  </div>
+                  {issue.github_status_updated_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Last synced: {new Date(issue.github_status_updated_at).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Dates */}
               <div>
