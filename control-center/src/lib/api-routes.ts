@@ -93,6 +93,12 @@ export const API_ROUTES = {
     activeCheck: '/api/issues/active-check',
   },
 
+  // Incidents
+  incidents: {
+    list: '/api/incidents',
+    get: (id: string) => `/api/incidents/${id}`,
+  },
+
   // Playbooks
   playbooks: {
     list: '/api/playbooks',
