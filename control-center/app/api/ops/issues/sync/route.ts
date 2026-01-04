@@ -40,8 +40,9 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { isRepoAllowed } from '@/lib/github/auth-wrapper';
 import { sanitizeRedact } from '@/lib/contracts/remediation-playbook';
-import { syncGitHubStatusToAfu9 } from '@/lib/github-status-sync';
-import { listAfu9Issues } from '@/lib/db/afu9Issues';
+import { listAfu9Issues, updateAfu9Issue } from '@/lib/db/afu9Issues';
+import { extractGithubMirrorStatus } from '@/lib/issues/stateModel';
+import { Afu9GithubMirrorStatus } from '@/lib/contracts/afu9Issue';
 
 // Constants
 const GITHUB_OWNER = process.env.GITHUB_OWNER || 'adaefler-art';
@@ -49,6 +50,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'codefactory-control';
 const MAX_SYNC_PAGES = 10;
 const MAX_ISSUES = 200;
 const PER_PAGE_MAX = 100;
+const MAX_STATUS_RAW_LENGTH = 256; // I3: Bound github_status_raw to prevent unbounded persistence
 
 // Zod schema for request validation
 const SyncRequestSchema = z.object({
@@ -263,8 +265,8 @@ export async function POST(request: NextRequest) {
         `[API /api/ops/issues/sync] Sync completed: ${upsertedCount}/${totalCount} snapshots`
       );
 
-      // E7_extra: Sync GitHub status to AFU9 issues
-      // Find AFU9 issues that are linked to GitHub issues and update their status
+      // I3: Sync GitHub status to AFU9 issues using State Model v1
+      // Find AFU9 issues that are linked to GitHub issues and update their github_mirror_status
       let statusSyncedCount = 0;
       try {
         const afu9IssuesResult = await listAfu9Issues(pool, {});
@@ -279,19 +281,50 @@ export async function POST(request: NextRequest) {
             );
 
             if (githubIssue) {
-              // Sync GitHub status to AFU9
-              const syncResult = await syncGitHubStatusToAfu9(pool, afu9Issue.id, {
-                number: githubIssue.number,
-                state: githubIssue.state as 'open' | 'closed',
-                labels: githubIssue.labels,
-                projectStatus: null, // TODO: Fetch from GraphQL in future
+              // I3: Extract GitHub mirror status using State Model v1
+              // Priority: Project v2 > Labels > State
+              const labelNames = githubIssue.labels.map((l: any) => 
+                typeof l === 'string' ? l : (l.name || '')
+              );
+              
+              const githubMirrorStatus = extractGithubMirrorStatus(
+                null, // projectStatus - TODO: Fetch from GraphQL in future
+                labelNames,
+                githubIssue.state as 'open' | 'closed'
+              );
+
+              // Determine raw status string for audit trail
+              // I3: Bound and sanitize to prevent unbounded/secret persistence
+              let githubStatusRaw: string | null = null;
+              if (githubMirrorStatus !== 'UNKNOWN') {
+                // Store the actual status label or state for audit
+                const statusLabel = labelNames.find((l: string) => 
+                  l.toLowerCase().startsWith('status:')
+                );
+                const rawValue = statusLabel || githubIssue.state;
+                
+                // Sanitize to redact any secrets/URLs with query strings
+                const sanitized = sanitizeRedact(rawValue);
+                
+                // Truncate to max length
+                githubStatusRaw = typeof sanitized === 'string' 
+                  ? sanitized.substring(0, MAX_STATUS_RAW_LENGTH)
+                  : null;
+              }
+
+              // I3: Update AFU9 issue with github_mirror_status and metadata
+              const previousMirrorStatus = afu9Issue.github_mirror_status;
+              const updateResult = await updateAfu9Issue(pool, afu9Issue.id, {
+                github_mirror_status: githubMirrorStatus as Afu9GithubMirrorStatus,
+                github_status_raw: githubStatusRaw,
+                github_issue_last_sync_at: new Date().toISOString(),
               });
 
-              if (syncResult.success) {
+              if (updateResult.success) {
                 statusSyncedCount++;
-                if (syncResult.changed) {
+                if (previousMirrorStatus !== githubMirrorStatus) {
                   console.log(
-                    `[API /api/ops/issues/sync] Synced status for AFU9 issue ${afu9Issue.id}: ${syncResult.previousStatus} → ${syncResult.newStatus}`
+                    `[API /api/ops/issues/sync] Synced GitHub mirror status for AFU9 issue ${afu9Issue.id}: ${previousMirrorStatus} → ${githubMirrorStatus} (raw: ${githubStatusRaw})`
                   );
                 }
               }

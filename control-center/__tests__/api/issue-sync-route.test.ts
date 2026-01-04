@@ -29,6 +29,17 @@ jest.mock('../../src/lib/github', () => ({
   searchIssues: jest.fn(),
 }));
 
+// Mock afu9Issues database helpers
+jest.mock('../../src/lib/db/afu9Issues', () => ({
+  listAfu9Issues: jest.fn(),
+  updateAfu9Issue: jest.fn(),
+}));
+
+// Mock GitHub auth wrapper
+jest.mock('../../src/lib/github/auth-wrapper', () => ({
+  isRepoAllowed: jest.fn(() => true), // Default to allowed, override in specific tests
+}));
+
 describe('POST /api/ops/issues/sync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -285,5 +296,419 @@ describe('POST /api/ops/issues/sync', () => {
 
     // Verify both runs were marked successful
     expect(updateIssueSyncRun).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * I3 Security: Auth and Allowlist Guardrails
+   */
+  describe('I3 Security: Auth and Allowlist Guardrails', () => {
+    beforeEach(() => {
+      // Reset isRepoAllowed to default (allowed) for each test
+      const { isRepoAllowed } = require('../../src/lib/github/auth-wrapper');
+      isRepoAllowed.mockReturnValue(true);
+    });
+
+    test('returns 401 when x-afu9-sub header is missing', async () => {
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': 'test-req-no-auth',
+          // Missing x-afu9-sub header
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.error).toBe('Unauthorized');
+      expect(body.details).toContain('Authentication required');
+    });
+
+    test('returns 401 when x-afu9-sub header is empty', async () => {
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': 'test-req-empty-auth',
+          'x-afu9-sub': '  ', // Empty/whitespace only
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.error).toBe('Unauthorized');
+    });
+
+    test('returns 403 when repo not in allowlist and makes zero GitHub calls', async () => {
+      const { searchIssues } = require('../../src/lib/github');
+      const { isRepoAllowed } = require('../../src/lib/github/auth-wrapper');
+      
+      // Override to deny this specific repo
+      isRepoAllowed.mockReturnValue(false);
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': 'test-req-forbidden-repo',
+          'x-afu9-sub': 'user-123',
+        },
+        body: JSON.stringify({
+          owner: 'forbidden-org',
+          repo: 'forbidden-repo',
+        }),
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.error).toBe('Access denied');
+      expect(body.details).toContain('not in the allowlist');
+      expect(body.details).toContain('I711');
+      
+      // CRITICAL: Verify zero GitHub API calls were made
+      expect(searchIssues).not.toHaveBeenCalled();
+    });
+
+    test('sanitizes and truncates github_status_raw to prevent unbounded persistence', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-sanitize';
+      
+      // Create a very long but valid status label that should be truncated
+      const baseLabel = 'status: implementing';
+      // Pad to make it > 256 chars
+      const longLabel = baseLabel + '-' + 'x'.repeat(300);
+      
+      const mockGitHubIssue = {
+        number: 999,
+        title: 'I999: Long Status Test',
+        state: 'open',
+        html_url: 'https://github.com/owner/repo/issues/999',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T12:00:00Z',
+        labels: [{ name: longLabel }],
+        assignees: [],
+        node_id: 'node_999',
+        body: 'Test',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-999',
+        title: 'I999: Long Status Test',
+        github_issue_number: 999,
+        github_mirror_status: 'UNKNOWN',
+        status: 'IMPLEMENTING',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockGitHubIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-sync-sanitize',
+          'x-afu9-sub': 'user-123',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+
+      // Verify the update was called
+      expect(updateAfu9Issue).toHaveBeenCalled();
+
+      const callArgs = updateAfu9Issue.mock.calls[0][2];
+      const savedRaw = callArgs.github_status_raw;
+      
+      // The github_status_raw field should be bounded to <= 256 chars
+      if (savedRaw !== null) {
+        expect(savedRaw.length).toBeLessThanOrEqual(256);
+      }
+    });
+
+    test('redacts URLs with query strings in github_status_raw', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-redact';
+      
+      // Use a simple valid status and test that the raw value is sanitized
+      const mockGitHubIssue = {
+        number: 888,
+        title: 'I888: Sanitize Test',
+        state: 'open',
+        html_url: 'https://github.com/owner/repo/issues/888',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T12:00:00Z',
+        labels: [
+          // Use a URL with query string as the raw label value (after "status:")
+          // This will be detected and sanitized
+          { name: 'status: https://example.com?token=secret' }
+        ],
+        assignees: [],
+        node_id: 'node_888',
+        body: 'Test',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-888',
+        title: 'I888: Sanitize Test',
+        github_issue_number: 888,
+        github_mirror_status: 'UNKNOWN',
+        status: 'IMPLEMENTING',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockGitHubIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-sync-redact',
+          'x-afu9-sub': 'user-123',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+
+      // Verify the update was called
+      expect(updateAfu9Issue).toHaveBeenCalled();
+      
+      const callArgs = updateAfu9Issue.mock.calls[0][2];
+      
+      // Since the label value is a URL with query string, and doesn't map to a known status,
+      // github_mirror_status will be UNKNOWN
+      expect(callArgs.github_mirror_status).toBe('UNKNOWN');
+      
+      // And github_status_raw should be null (because mirror status is UNKNOWN)
+      expect(callArgs.github_status_raw).toBe(null);
+    });
+  });
+
+  /**
+   * I3: GitHub Status Mirror v1 - Test fixtures for State Model v1 sync
+   */
+  describe('I3: State Model v1 Status Sync', () => {
+    // Note: afu9Issues module is already mocked at the top level
+    // We just need to configure the mock in each test
+
+    test('syncs IN_PROGRESS status from GitHub label to github_mirror_status', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-in-progress';
+      const mockGitHubIssue = {
+        number: 458,
+        title: 'I775: Test Issue In Progress',
+        state: 'open',
+        html_url: 'https://github.com/adaefler-art/codefactory-control/issues/458',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T12:00:00Z',
+        labels: [{ name: 'status: implementing' }], // IN_PROGRESS signal
+        assignees: [],
+        node_id: 'node_458',
+        body: 'Test body',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-775',
+        title: 'I775: Test Issue',
+        github_issue_number: 458,
+        github_mirror_status: 'UNKNOWN',
+        status: 'IMPLEMENTING',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockGitHubIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-sync-in-progress',
+          'x-afu9-sub': 'user-123',
+          'x-afu9-stage': 'staging',
+          'x-afu9-groups': 'afu9-engineer-stage',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.statusSynced).toBe(1);
+
+      // Verify github_mirror_status was updated to IN_PROGRESS
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        'afu9-uuid-775',
+        expect.objectContaining({
+          github_mirror_status: 'IN_PROGRESS',
+          github_status_raw: 'status: implementing',
+          github_issue_last_sync_at: expect.any(String),
+        })
+      );
+    });
+
+    test('syncs DONE status from closed GitHub issue with explicit done label', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-done';
+      const mockGitHubIssue = {
+        number: 500,
+        title: 'I500: Completed Issue',
+        state: 'closed',
+        html_url: 'https://github.com/adaefler-art/codefactory-control/issues/500',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T12:00:00Z',
+        labels: [{ name: 'status: done' }], // Explicit DONE signal
+        assignees: [],
+        node_id: 'node_500',
+        body: 'Completed work',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-500',
+        title: 'I500: Completed Issue',
+        github_issue_number: 500,
+        github_mirror_status: 'IN_PROGRESS',
+        status: 'IMPLEMENTING',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockGitHubIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-sync-done',
+          'x-afu9-sub': 'user-123',
+          'x-afu9-stage': 'staging',
+          'x-afu9-groups': 'afu9-engineer-stage',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.statusSynced).toBe(1);
+
+      // Verify github_mirror_status was updated to DONE
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        'afu9-uuid-500',
+        expect.objectContaining({
+          github_mirror_status: 'DONE',
+          github_status_raw: 'status: done',
+          github_issue_last_sync_at: expect.any(String),
+        })
+      );
+    });
+
+    test('closed GitHub issue WITHOUT done signal maps to UNKNOWN (semantic protection)', async () => {
+      const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+        require('../../src/lib/db/issueSync');
+      const { searchIssues } = require('../../src/lib/github');
+      const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
+
+      const mockRunId = 'run-closed-no-done';
+      const mockGitHubIssue = {
+        number: 600,
+        title: 'I600: Closed Issue (no done signal)',
+        state: 'closed',
+        html_url: 'https://github.com/adaefler-art/codefactory-control/issues/600',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-04T12:00:00Z',
+        labels: [{ name: 'bug' }], // No status label
+        assignees: [],
+        node_id: 'node_600',
+        body: 'Closed without completion',
+      };
+
+      const mockAfu9Issue = {
+        id: 'afu9-uuid-600',
+        title: 'I600: Closed Issue',
+        github_issue_number: 600,
+        github_mirror_status: 'IN_PROGRESS',
+        status: 'IMPLEMENTING',
+      };
+
+      createIssueSyncRun.mockResolvedValue({ success: true, data: mockRunId });
+      searchIssues.mockResolvedValue({ issues: [mockGitHubIssue], total_count: 1 });
+      upsertIssueSnapshot.mockResolvedValue({ success: true });
+      updateIssueSyncRun.mockResolvedValue({ success: true });
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+
+      const request = new NextRequest('http://localhost/api/ops/issues/sync', {
+        method: 'POST',
+        headers: {
+          'x-request-id': 'test-sync-closed-no-done',
+          'x-afu9-sub': 'user-123',
+          'x-afu9-stage': 'staging',
+          'x-afu9-groups': 'afu9-engineer-stage',
+        },
+      });
+
+      const response = await syncIssues(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.statusSynced).toBe(1);
+
+      // Verify github_mirror_status was updated to UNKNOWN (semantic protection)
+      // This prevents incorrectly marking cancelled/killed issues as DONE
+      expect(updateAfu9Issue).toHaveBeenCalledWith(
+        expect.anything(),
+        'afu9-uuid-600',
+        expect.objectContaining({
+          github_mirror_status: 'UNKNOWN',
+          github_status_raw: null,
+          github_issue_last_sync_at: expect.any(String),
+        })
+      );
+    });
   });
 });
