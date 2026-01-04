@@ -134,7 +134,8 @@ describe('REDEPLOY_LKG Playbook', () => {
       expect(result.success).toBe(false);
       expect(result.error?.code).toBe('NO_LKG_FOUND');
       expect(result.error?.message).toContain('No Last Known Good deployment found');
-      expect(mockFindLastKnownGood).toHaveBeenCalledWith(mockPool, 'prod', 'api');
+      // 'prod' normalizes to 'production'
+      expect(mockFindLastKnownGood).toHaveBeenCalledWith(mockPool, 'production', 'api');
     });
 
     it('should return NO_LKG_REFERENCE when LKG has no commit or image digest', async () => {
@@ -249,7 +250,8 @@ describe('REDEPLOY_LKG Playbook', () => {
 
       await executeSelectLkg(mockPool, context);
 
-      expect(mockFindLastKnownGood).toHaveBeenCalledWith(mockPool, 'prod', undefined);
+      // 'production' is already normalized, no change expected
+      expect(mockFindLastKnownGood).toHaveBeenCalledWith(mockPool, 'production', undefined);
     });
   });
 
