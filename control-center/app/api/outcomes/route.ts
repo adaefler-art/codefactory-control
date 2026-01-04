@@ -44,8 +44,21 @@ export async function GET(request: NextRequest) {
     const limitStr = searchParams.get('limit');
     const offsetStr = searchParams.get('offset');
 
-    const limit = limitStr ? Math.min(parseInt(limitStr, 10), 200) : 50;
-    const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
+    // Validate and parse pagination parameters
+    const limitParsed = limitStr ? parseInt(limitStr, 10) : 50;
+    const offsetParsed = offsetStr ? parseInt(offsetStr, 10) : 0;
+
+    // Check for invalid numbers
+    if (isNaN(limitParsed) || isNaN(offsetParsed)) {
+      return errorResponse('Invalid pagination parameters', {
+        status: 400,
+        requestId,
+        details: 'limit and offset must be valid integers',
+      });
+    }
+
+    const limit = Math.min(Math.max(1, limitParsed), 200); // Clamp between 1 and 200
+    const offset = Math.max(0, offsetParsed); // Ensure non-negative
 
     console.log('[API] Listing outcome records:', {
       incidentId,

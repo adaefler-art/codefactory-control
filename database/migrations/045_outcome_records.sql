@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS outcome_records (
 CREATE UNIQUE INDEX IF NOT EXISTS outcome_records_idempotency_idx 
   ON outcome_records(outcome_key, postmortem_hash);
 
+-- Partial index on outcome_key alone for faster idempotency checks
+-- Useful for checking if any outcome exists for a key before generating
+CREATE INDEX IF NOT EXISTS outcome_records_outcome_key_idx 
+  ON outcome_records(outcome_key);
+
 -- Indexes for outcome_records
 CREATE INDEX IF NOT EXISTS outcome_records_entity_type_id_idx 
   ON outcome_records(entity_type, entity_id, created_at DESC);

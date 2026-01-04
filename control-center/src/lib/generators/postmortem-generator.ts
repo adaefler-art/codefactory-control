@@ -81,6 +81,8 @@ export async function generatePostmortemForIncident(
   const postmortemHash = computePostmortemHash(postmortem);
 
   // 7. Compute pack hash (for idempotency key)
+  // Use stableStringify for deterministic hashing
+  const { stableStringify } = require('../contracts/outcome');
   const packData = {
     incidentId: incident.id,
     evidenceCount: evidence.length,
@@ -88,7 +90,7 @@ export async function generatePostmortemForIncident(
     remediationCount: remediationRuns.length,
   };
   const packHash = createHash('sha256')
-    .update(JSON.stringify(packData))
+    .update(stableStringify(packData))
     .digest('hex')
     .substring(0, 16);
 
@@ -136,6 +138,12 @@ export async function generatePostmortemForIncident(
 /**
  * Build postmortem artifact from incident data
  * Evidence-based: only facts, no invention
+ * 
+ * Note: generatedAt timestamp makes each postmortem unique even with same inputs.
+ * This is intentional - each generation is a snapshot at a specific time.
+ * For idempotency, we rely on outcome_key + postmortem_hash.
+ * If the underlying data changes (new evidence, status change), a new outcome record
+ * with a different hash will be created.
  */
 function buildPostmortemArtifact(
   incident: any,
