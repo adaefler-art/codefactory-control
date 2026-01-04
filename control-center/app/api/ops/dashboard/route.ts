@@ -135,11 +135,11 @@ export async function GET(request: NextRequest) {
     
     const categoryResult = await pool.query(categoryQuery, [fromDate, toDate]);
     
-    const totalIncidents = categoryResult.rows.reduce((sum, row) => sum + parseInt(row.count, 10), 0);
+    const totalIncidents = categoryResult.rows.reduce((sum, row) => sum + Number(row.count), 0);
     const topCategories: TopCategory[] = categoryResult.rows.map(row => ({
       category: row.category,
-      count: parseInt(row.count, 10),
-      share: totalIncidents > 0 ? parseFloat(((parseInt(row.count, 10) / totalIncidents) * 100).toFixed(2)) : 0,
+      count: Number(row.count),
+      share: totalIncidents > 0 ? parseFloat(((Number(row.count) / totalIncidents) * 100).toFixed(2)) : 0,
     }));
     
     // 3. Fetch playbook effectiveness from remediation_runs
@@ -166,8 +166,8 @@ export async function GET(request: NextRequest) {
     const playbookResult = await pool.query(playbookQuery, [fromDate, toDate]);
     
     const playbooks: PlaybookMetrics[] = playbookResult.rows.map(row => {
-      const runs = parseInt(row.runs, 10);
-      const succeeded = parseInt(row.succeeded, 10);
+      const runs = Number(row.runs);
+      const succeeded = Number(row.succeeded);
       const successRate = runs > 0 ? parseFloat(((succeeded / runs) * 100).toFixed(2)) : 0;
       const medianTimeMinutes = row.median_time_minutes !== null ? parseFloat(row.median_time_minutes) : null;
       

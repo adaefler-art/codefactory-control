@@ -295,8 +295,8 @@ export default function OpsPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-gray-900 divide-y divide-gray-800">
-                      {data.topCategories.map((cat, idx) => (
-                        <tr key={idx}>
+                      {data.topCategories.map((cat) => (
+                        <tr key={cat.category}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">
                             {cat.category}
                           </td>
@@ -343,8 +343,8 @@ export default function OpsPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-gray-900 divide-y divide-gray-800">
-                      {data.playbooks.map((pb, idx) => (
-                        <tr key={idx}>
+                      {data.playbooks.map((pb) => (
+                        <tr key={pb.playbookId}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">
                             {pb.playbookId}
                           </td>
