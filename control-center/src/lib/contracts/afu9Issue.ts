@@ -478,5 +478,6 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     status_source: input.status_source === undefined ? null : input.status_source,
     // I2: State Model v1 fields
     github_mirror_status: input.github_mirror_status || Afu9GithubMirrorStatus.UNKNOWN,
+    github_sync_error: input.github_sync_error === undefined || input.github_sync_error === null ? null : input.github_sync_error.trim(),
   };
 }
