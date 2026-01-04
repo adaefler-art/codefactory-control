@@ -130,6 +130,7 @@ paths = [
 	'''^cdk\.out/''',
 	'''^coverage/''',
 	'''^\.worktrees/''',
+	'''^E7_EXTRA_VERIFICATION_COMMANDS\.md$''',
 ]
 
 files = [
@@ -147,12 +148,15 @@ regexes = [
 	'''placeholder.*secret''',
 	'''<REDACTED.*>''',
 	'''\*\*\*REMOVED\*\*\*''',
+	'''Authorization:\s*Bearer\s*REDACTED''',
+	'''API key:\s*REDACTED''',
 ]
 
 # Narrow commit allowlist for historical false positives.
 # Generated from a local gitleaks scan report (redacted).
 commits = [
 	"169897fe4e2d2fefecc2fe07c5f30ccab7bd86b9",
+	"26f8cc71629bc36f6819998d2e5f18d096ca0cfa",
 	"1a42499bd6938179a3ff627cb47e342bd97fd141",
 	"1b24bbdc88948bba6aae2bef60eb999f4b485f69",
 	"1c5cd10a9855b0d616be2dacb130012a79f063a3",
