@@ -1,0 +1,105 @@
+{
+  "version": "0.7.0",
+  "generatedAt": "2026-01-04T20:25:00.000Z",
+  "incident": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "key": "deploy_status:prod:deploy-abc123:2026-01-04T19:00:00Z",
+    "severity": "RED",
+    "category": "DEPLOY_VERIFICATION_FAILED",
+    "openedAt": "2026-01-04T19:00:00.000Z",
+    "closedAt": "2026-01-04T19:45:30.000Z"
+  },
+  "detection": {
+    "signalKinds": [
+      "deploy_status",
+      "verification",
+      "ecs"
+    ],
+    "primaryEvidence": {
+      "kind": "deploy_status",
+      "ref": {
+        "env": "prod",
+        "deployId": "deploy-abc123",
+        "status": "RED"
+      },
+      "hash": null
+    }
+  },
+  "impact": {
+    "summary": "Production deployment failed verification checks. ECS task stopped: Essential container in task exited. Verification FAIL",
+    "durationMinutes": 45
+  },
+  "remediation": {
+    "attemptedPlaybooks": [
+      {
+        "playbookId": "rollback-deploy",
+        "status": "SUCCEEDED",
+        "startedAt": "2026-01-04T19:05:00.000Z",
+        "finishedAt": "2026-01-04T19:10:00.000Z",
+        "verificationHash": "sha256:abc123def456..."
+      },
+      {
+        "playbookId": "verify-health",
+        "status": "SUCCEEDED",
+        "startedAt": "2026-01-04T19:10:30.000Z",
+        "finishedAt": "2026-01-04T19:12:00.000Z",
+        "verificationHash": "sha256:def456ghi789..."
+      }
+    ]
+  },
+  "verification": {
+    "result": "PASS",
+    "reportHash": "sha256:def456ghi789..."
+  },
+  "outcome": {
+    "resolved": true,
+    "mttrMinutes": 45,
+    "autoFixed": true
+  },
+  "learnings": {
+    "facts": [
+      "Incident severity: RED",
+      "Classified as: DEPLOY_VERIFICATION_FAILED",
+      "Evidence collected: 5 items",
+      "Signal sources: deploy_status, verification, ecs",
+      "Remediation attempts: 2",
+      "Successful remediation runs: 2",
+      "Final status: CLOSED"
+    ],
+    "unknowns": []
+  },
+  "references": {
+    "used_sources_hashes": [
+      "sha256:1234567890abcdef",
+      "sha256:fedcba0987654321",
+      "sha256:abc123def456789"
+    ],
+    "pointers": [
+      {
+        "kind": "deploy_status",
+        "ref": {
+          "env": "prod",
+          "deployId": "deploy-abc123"
+        },
+        "hash": "sha256:1234567890abcdef"
+      },
+      {
+        "kind": "verification",
+        "ref": {
+          "runId": "run-xyz789",
+          "reportHash": "sha256:def456ghi789..."
+        },
+        "hash": "sha256:fedcba0987654321"
+      },
+      {
+        "kind": "ecs",
+        "ref": {
+          "cluster": "prod-cluster",
+          "taskArn": "arn:aws:ecs:us-east-1:123456789:task/...",
+          "stoppedReason": "Essential container in task exited"
+        },
+        "hash": "sha256:abc123def456789"
+      }
+    ]
+  }
+}
