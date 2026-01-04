@@ -345,3 +345,161 @@ export function calculateKpiFreshnessStatus(freshnessSeconds: number): {
     return { isFresh: false, status: 'expired' };
   }
 }
+
+/**
+ * E78.1: KPI Measurements & Aggregates
+ * Deterministic KPI computation layer
+ */
+
+/**
+ * Entity types for KPI measurements
+ */
+export type KpiEntityType = 'issue' | 'deploy' | 'incident' | 'remediation' | 'release';
+
+/**
+ * KPI Measurement - Atomic measurement or event-derived fact
+ */
+export interface KpiMeasurement {
+  id: string;
+  kpiName: string;
+  entityType: KpiEntityType;
+  entityId: string;
+  occurredAt: string; // ISO 8601
+  valueNum: number | null;
+  unit: string;
+  sourceRefs: Record<string, any>; // Pointers to source records
+  createdAt: string; // ISO 8601
+}
+
+/**
+ * Aggregation window type
+ */
+export type AggregationWindow = 'daily' | 'weekly' | 'release' | 'custom';
+
+/**
+ * KPI Aggregate - Windowed aggregate with versioning
+ */
+export interface KpiAggregate {
+  id: string;
+  window: AggregationWindow;
+  windowStart: string; // ISO 8601
+  windowEnd: string; // ISO 8601
+  kpiName: string;
+  valueNum: number | null;
+  unit: string;
+  computeVersion: string;
+  inputsHash: string; // SHA-256 of canonical input refs
+  metadata?: Record<string, any>;
+  createdAt: string; // ISO 8601
+}
+
+/**
+ * Velocity KPIs (E78.1)
+ */
+
+/**
+ * D2D - Decision to Deploy (hours)
+ * Decision = Issue state enters SPEC_READY
+ * Deploy = deploy event timestamp for that issue/PR
+ */
+export interface D2DMetrics {
+  d2dHours: number;
+  decisionAt: string; // ISO 8601
+  deployAt: string; // ISO 8601
+  issueId: string;
+  deployId: string;
+}
+
+/**
+ * HSH - Human Steering Hours
+ * If explicit tracking exists, use it; otherwise null
+ */
+export interface HSHMetrics {
+  hshHours: number | null;
+  issueId: string;
+  trackingMethod?: string; // e.g., 'manual', 'estimated', 'tracked'
+}
+
+/**
+ * DCU - Delivered Capability Units
+ * Parsed from issue labels/body deterministically
+ */
+export interface DCUMetrics {
+  dcuScore: number | null;
+  issueId: string;
+  parsingMethod?: string; // e.g., 'label', 'body', 'default'
+}
+
+/**
+ * AVS - Autonomy Velocity Score (DCU/HSH ratio)
+ * Only computed when both DCU and HSH are present
+ */
+export interface AVSMetrics {
+  avsRatio: number | null;
+  dcuScore: number;
+  hshHours: number;
+  issueId: string;
+}
+
+/**
+ * Ops KPIs (E78.1)
+ */
+
+/**
+ * Incident Rate - Incidents per time window
+ */
+export interface IncidentRateMetrics {
+  incidentsPerDay: number;
+  totalIncidents: number;
+  windowDays: number;
+  windowStart: string; // ISO 8601
+  windowEnd: string; // ISO 8601
+}
+
+/**
+ * MTTR - Mean Time To Resolve
+ * Mean time from incident OPEN to CLOSED
+ */
+export interface MTTRMetrics {
+  mttrHours: number;
+  incidentCount: number;
+  windowStart: string; // ISO 8601
+  windowEnd: string; // ISO 8601
+}
+
+/**
+ * Auto-fix Rate - Proportion of incidents auto-fixed
+ * SUCCEEDED remediation runs / total remediation runs
+ * Note: Assumes SUCCEEDED = auto-fix (no human intervention flag yet)
+ */
+export interface AutoFixRateMetrics {
+  autofixRatePct: number; // 0-100
+  autofixCount: number; // SUCCEEDED runs
+  totalRuns: number;
+  windowStart: string; // ISO 8601
+  windowEnd: string; // ISO 8601
+  caveat?: string; // e.g., "Assumes SUCCEEDED runs are auto-fixed without human intervention"
+}
+
+/**
+ * Compute KPIs request for a time window
+ */
+export interface ComputeKpisForWindowRequest {
+  window: AggregationWindow;
+  windowStart: string; // ISO 8601
+  windowEnd: string; // ISO 8601
+  kpiNames?: string[]; // Optional: compute specific KPIs only
+  forceRecompute?: boolean; // Optional: recompute even if exists
+}
+
+/**
+ * Compute KPIs response
+ */
+export interface ComputeKpisForWindowResponse {
+  aggregates: KpiAggregate[];
+  inputsHash: string;
+  computeVersion: string;
+  computedAt: string; // ISO 8601
+  windowStart: string; // ISO 8601
+  windowEnd: string; // ISO 8601
+}
