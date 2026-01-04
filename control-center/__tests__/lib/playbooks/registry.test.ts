@@ -64,6 +64,14 @@ describe('Playbook Registry Tests', () => {
       
       expect(playbooks.length).toBeGreaterThan(0);
       expect(playbooks.some(p => p.definition.id === 'rerun-post-deploy-verification')).toBe(true);
+      expect(playbooks.some(p => p.definition.id === 'service-health-reset')).toBe(true);
+    });
+
+    it('should find service-health-reset for ECS_TASK_CRASHLOOP', () => {
+      const playbooks = getPlaybooksByCategory('ECS_TASK_CRASHLOOP');
+      
+      expect(playbooks.length).toBeGreaterThan(0);
+      expect(playbooks.some(p => p.definition.id === 'service-health-reset')).toBe(true);
     });
 
     it('should return empty array for category with no playbooks', () => {
@@ -76,10 +84,11 @@ describe('Playbook Registry Tests', () => {
     it('should return all registered playbooks', () => {
       const playbooks = getAllPlaybooks();
       
-      expect(playbooks.length).toBe(3);
+      expect(playbooks.length).toBe(4);
       expect(playbooks.some(p => p.definition.id === 'safe-retry-runner')).toBe(true);
       expect(playbooks.some(p => p.definition.id === 'rerun-post-deploy-verification')).toBe(true);
       expect(playbooks.some(p => p.definition.id === 'redeploy-lkg')).toBe(true);
+      expect(playbooks.some(p => p.definition.id === 'service-health-reset')).toBe(true);
     });
   });
 
@@ -87,6 +96,7 @@ describe('Playbook Registry Tests', () => {
     it('should return true for existing playbook', () => {
       expect(hasPlaybook('safe-retry-runner')).toBe(true);
       expect(hasPlaybook('rerun-post-deploy-verification')).toBe(true);
+      expect(hasPlaybook('service-health-reset')).toBe(true);
     });
 
     it('should return false for non-existent playbook', () => {
@@ -129,6 +139,17 @@ describe('Playbook Registry Tests', () => {
       expect(playbook).toBeDefined();
       expect(playbook!.idempotencyKeyFns.has('run-verification')).toBe(true);
       expect(playbook!.idempotencyKeyFns.has('ingest-incident-update')).toBe(true);
+    });
+
+    it('should have idempotency key functions for all steps in service-health-reset', () => {
+      const playbook = getPlaybookById('service-health-reset');
+      
+      expect(playbook).toBeDefined();
+      expect(playbook!.idempotencyKeyFns.has('snapshot-state')).toBe(true);
+      expect(playbook!.idempotencyKeyFns.has('apply-reset')).toBe(true);
+      expect(playbook!.idempotencyKeyFns.has('wait-observe')).toBe(true);
+      expect(playbook!.idempotencyKeyFns.has('post-verification')).toBe(true);
+      expect(playbook!.idempotencyKeyFns.has('update-status')).toBe(true);
     });
   });
 });

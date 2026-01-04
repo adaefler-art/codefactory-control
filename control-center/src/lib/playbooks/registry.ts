@@ -33,6 +33,19 @@ import {
   computeVerificationIdempotencyKey as computeLkgVerificationIdempotencyKey,
   computeUpdateStatusIdempotencyKey,
 } from './redeploy-lkg';
+import {
+  SERVICE_HEALTH_RESET_PLAYBOOK,
+  executeSnapshotState,
+  executeApplyReset,
+  executeWaitAndObserve,
+  executePostVerification,
+  executeUpdateStatus,
+  computeSnapshotIdempotencyKey,
+  computeResetIdempotencyKey,
+  computeObserveIdempotencyKey,
+  computeVerificationIdempotencyKey as computeHealthResetVerificationIdempotencyKey,
+  computeStatusUpdateIdempotencyKey,
+} from './service-health-reset';
 import { Pool } from 'pg';
 import { StepContext, StepResult } from '../contracts/remediation-playbook';
 
@@ -113,6 +126,28 @@ const redeployLkgIdempotencyFns = new Map<string, IdempotencyKeyFunction>([
 ]);
 
 /**
+ * Map of step executors for SERVICE_HEALTH_RESET
+ */
+const serviceHealthResetExecutors = new Map<string, StepExecutorFunction>([
+  ['snapshot-state', executeSnapshotState],
+  ['apply-reset', executeApplyReset],
+  ['wait-observe', executeWaitAndObserve],
+  ['post-verification', executePostVerification],
+  ['update-status', executeUpdateStatus],
+]);
+
+/**
+ * Map of idempotency key functions for SERVICE_HEALTH_RESET
+ */
+const serviceHealthResetIdempotencyFns = new Map<string, IdempotencyKeyFunction>([
+  ['snapshot-state', computeSnapshotIdempotencyKey],
+  ['apply-reset', computeResetIdempotencyKey],
+  ['wait-observe', computeObserveIdempotencyKey],
+  ['post-verification', computeHealthResetVerificationIdempotencyKey],
+  ['update-status', computeStatusUpdateIdempotencyKey],
+]);
+
+/**
  * Registry of all playbooks
  */
 const PLAYBOOK_REGISTRY = new Map<string, ExecutablePlaybook>([
@@ -138,6 +173,14 @@ const PLAYBOOK_REGISTRY = new Map<string, ExecutablePlaybook>([
       definition: REDEPLOY_LKG_PLAYBOOK,
       stepExecutors: redeployLkgExecutors,
       idempotencyKeyFns: redeployLkgIdempotencyFns,
+    },
+  ],
+  [
+    'service-health-reset',
+    {
+      definition: SERVICE_HEALTH_RESET_PLAYBOOK,
+      stepExecutors: serviceHealthResetExecutors,
+      idempotencyKeyFns: serviceHealthResetIdempotencyFns,
     },
   ],
 ]);
