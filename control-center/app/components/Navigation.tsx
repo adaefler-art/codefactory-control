@@ -13,6 +13,7 @@ export default function Navigation() {
     { href: "/intent", label: "INTENT" },
     { href: "/timeline", label: "Timeline" },
     { href: "/issues", label: "Issues" },
+    { href: "/incidents", label: "Incidents" },
     { href: "/lawbook", label: "Lawbook" },
     { href: "/operate", label: "Operate" },
     { href: "/settings", label: "Settings" },
