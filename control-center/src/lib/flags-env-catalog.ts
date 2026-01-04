@@ -342,6 +342,17 @@ export const FLAGS_CATALOG: FlagsCatalog = {
       source: 'runtime',
       tags: ['feature-flag', 'debug', 'observability'],
     },
+    {
+      key: 'AFU9_INTENT_ENABLED',
+      type: ConfigType.BOOLEAN,
+      description: 'Enable INTENT Agent MVP (guardrailed LLM responses). When disabled, INTENT endpoints return 404 (fail-closed)',
+      riskClass: RiskClass.MEDIUM,
+      defaultValue: false,
+      allowedEnvironments: [AllowedEnvironment.ALL],
+      required: false,
+      source: 'runtime',
+      tags: ['feature-flag', 'intent', 'llm'],
+    },
 
     // === MCP Server Endpoints ===
     {
