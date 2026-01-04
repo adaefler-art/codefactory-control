@@ -16,6 +16,10 @@ import { GET as getSessions, POST as createSession } from '../../app/api/intent/
 import { GET as getSession } from '../../app/api/intent/sessions/[id]/route';
 import { POST as appendMessage } from '../../app/api/intent/sessions/[id]/messages/route';
 
+// Enable INTENT agent for tests
+process.env.AFU9_INTENT_ENABLED = 'true';
+process.env.OPENAI_API_KEY = 'sk-test-key';
+
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
@@ -29,6 +33,27 @@ jest.mock('../../src/lib/db/intentSessions', () => ({
   createIntentSession: jest.fn(),
   getIntentSession: jest.fn(),
   appendIntentMessage: jest.fn(),
+}));
+
+jest.mock('../../src/lib/db/contextPacks', () => ({
+  generateContextPack: jest.fn().mockResolvedValue({
+    success: true,
+    data: {
+      id: 'pack-123',
+      pack_hash: 'hash123',
+    },
+  }),
+}));
+
+// Mock the INTENT agent
+jest.mock('../../src/lib/intent-agent', () => ({
+  isIntentEnabled: jest.fn(() => true),
+  generateIntentResponse: jest.fn().mockResolvedValue({
+    content: 'Test response',
+    requestId: 'req-123',
+    timestamp: new Date().toISOString(),
+    model: 'gpt-4o-mini',
+  }),
 }));
 
 const TEST_USER_ID = 'user-123';
@@ -239,7 +264,21 @@ describe('GET /api/intent/sessions/[id]', () => {
 
 describe('POST /api/intent/sessions/[id]/messages', () => {
   test('appends user message and assistant reply with deterministic seq', async () => {
-    const { appendIntentMessage } = require('../../src/lib/db/intentSessions');
+    const { appendIntentMessage, getIntentSession } = require('../../src/lib/db/intentSessions');
+
+    // Mock getIntentSession to return conversation history
+    getIntentSession.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-1',
+        user_id: TEST_USER_ID,
+        title: 'Test',
+        created_at: '2025-01-01T00:00:00.000Z',
+        updated_at: '2025-01-01T00:00:00.000Z',
+        status: 'active',
+        messages: [],
+      },
+    });
 
     // Mock two calls: user message then assistant message
     appendIntentMessage
@@ -260,7 +299,7 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
           id: 'msg-2',
           session_id: 'session-1',
           role: 'assistant',
-          content: '[Stub] I received: "Test message"',
+          content: 'Test response',
           created_at: '2025-01-01T00:00:02.000Z',
           seq: 2,
         },
@@ -283,8 +322,6 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
     expect(body.userMessage.seq).toBe(1);
     expect(body.assistantMessage.seq).toBe(2);
     expect(body.userMessage.content).toBe('Test message');
-    expect(body.assistantMessage.content).toContain('[Stub]');
-    expect(body.assistantMessage.content).toContain('Test message');
     expect(appendIntentMessage).toHaveBeenCalledWith(
       expect.anything(),
       'session-1',
@@ -313,9 +350,9 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
   });
 
   test('returns 404 when user tries to append to another user\'s session', async () => {
-    const { appendIntentMessage } = require('../../src/lib/db/intentSessions');
+    const { getIntentSession } = require('../../src/lib/db/intentSessions');
 
-    appendIntentMessage.mockResolvedValue({
+    getIntentSession.mockResolvedValue({
       success: false,
       error: 'Session not found or access denied',
     });
@@ -340,7 +377,21 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
 
 describe('Deterministic ordering and atomic seq increment', () => {
   test('seq increments deterministically using atomic counter', async () => {
-    const { appendIntentMessage } = require('../../src/lib/db/intentSessions');
+    const { appendIntentMessage, getIntentSession } = require('../../src/lib/db/intentSessions');
+
+    // Mock getIntentSession for conversation history
+    getIntentSession.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-1',
+        user_id: TEST_USER_ID,
+        title: 'Test',
+        created_at: '2025-01-01T00:00:00.000Z',
+        updated_at: '2025-01-01T00:00:00.000Z',
+        status: 'active',
+        messages: [],
+      },
+    });
 
     // Simulate multiple sequential message appends with atomic seq
     const messages = [];
@@ -368,7 +419,7 @@ describe('Deterministic ordering and atomic seq increment', () => {
           id: `msg-assistant-${i}`,
           session_id: 'session-1',
           role: 'assistant',
-          content: `[Stub] I received: "Message ${i}"`,
+          content: `Test response`,
           created_at: new Date(Date.now() + assistantSeq * 1000).toISOString(),
           seq: assistantSeq,
         },

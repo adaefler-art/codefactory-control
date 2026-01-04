@@ -287,13 +287,13 @@ export default function IntentPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-950 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-200">
+      <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
+        <div className="p-4 border-b border-gray-800">
           <button
             onClick={createNewSession}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="w-full px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors font-medium"
           >
             + New Session
           </button>
@@ -304,11 +304,11 @@ export default function IntentPage() {
             <button
               key={session.id}
               onClick={() => setCurrentSessionId(session.id)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                currentSessionId === session.id ? "bg-blue-50 border-l-4 border-l-blue-600" : ""
+              className={`w-full text-left px-4 py-3 border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
+                currentSessionId === session.id ? "bg-purple-900/30 border-l-4 border-l-purple-600" : ""
               }`}
             >
-              <div className="font-medium text-sm text-gray-900 truncate">
+              <div className="font-medium text-sm text-gray-200 truncate">
                 {getSessionTitle(session)}
               </div>
               <div className="text-xs text-gray-500 mt-1">
@@ -320,17 +320,17 @@ export default function IntentPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header - Sticky */}
+        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className="text-xl font-semibold text-gray-100">
                 {currentSessionId
                   ? getSessionTitle(sessions.find((s) => s.id === currentSessionId) || { title: null } as IntentSession)
                   : "INTENT Console"}
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-gray-400 mt-1">
                 Session-based chat interface for INTENT steering
               </p>
             </div>
@@ -364,13 +364,13 @@ export default function IntentPage() {
                   <button
                     onClick={exportContextPack}
                     disabled={isExporting}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                   >
                     {isExporting ? "Exporting..." : "Export Context Pack"}
                   </button>
                   
                   {exportedPackHash && exportedPackCreatedAt && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-gray-400">
                       <span title={exportedPackHash}>
                         Hash: {exportedPackHash.substring(0, 12)}...
                       </span>
@@ -387,24 +387,24 @@ export default function IntentPage() {
           
           {/* Context Packs Drawer */}
           {showPacksDrawer && currentSessionId && (
-            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="mt-4 p-4 bg-gray-800 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900">Context Packs</h3>
+                <h3 className="text-sm font-semibold text-gray-100">Context Packs</h3>
                 <button
                   onClick={fetchContextPacks}
                   disabled={isLoadingPacks}
-                  className="text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                  className="text-xs text-purple-400 hover:text-purple-300 disabled:text-gray-600"
                 >
                   {isLoadingPacks ? "Refreshing..." : "Refresh"}
                 </button>
               </div>
               
               {isLoadingPacks ? (
-                <div className="text-center text-sm text-gray-500 py-4">
+                <div className="text-center text-sm text-gray-400 py-4">
                   Loading packs...
                 </div>
               ) : contextPacks.length === 0 ? (
-                <div className="text-center text-sm text-gray-500 py-4">
+                <div className="text-center text-sm text-gray-400 py-4">
                   No context packs yet. Click "Export Context Pack" to create one.
                 </div>
               ) : (
@@ -412,15 +412,15 @@ export default function IntentPage() {
                   {contextPacks.map((pack) => (
                     <div
                       key={pack.id}
-                      className="bg-white p-3 rounded border border-gray-200 hover:shadow-sm transition-shadow"
+                      className="bg-gray-900 p-3 rounded border border-gray-700 hover:border-gray-600 transition-colors"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-mono text-gray-600" title={pack.pack_hash}>
+                            <span className="text-xs font-mono text-gray-400" title={pack.pack_hash}>
                               {pack.pack_hash.substring(0, 12)}...
                             </span>
-                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                            <span className="text-xs bg-purple-900/30 text-purple-200 border border-purple-700 px-2 py-0.5 rounded">
                               v{pack.version}
                             </span>
                           </div>
@@ -448,21 +448,21 @@ export default function IntentPage() {
           )}
         </div>
 
-        {/* Messages */}
+        {/* Messages - Scrollable area */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {!currentSessionId && (
-            <div className="text-center text-gray-500 mt-20">
-              <p className="text-lg mb-2">Welcome to INTENT Console</p>
+            <div className="text-center text-gray-400 mt-20">
+              <p className="text-lg mb-2 text-purple-400">Welcome to INTENT Console</p>
               <p className="text-sm">Create a new session or select an existing one to start chatting.</p>
             </div>
           )}
 
           {currentSessionId && isLoading && (
-            <div className="text-center text-gray-500">Loading messages...</div>
+            <div className="text-center text-gray-400">Loading messages...</div>
           )}
 
           {currentSessionId && !isLoading && messages.length === 0 && (
-            <div className="text-center text-gray-500">
+            <div className="text-center text-gray-400">
               <p>No messages yet. Start the conversation!</p>
             </div>
           )}
@@ -481,14 +481,14 @@ export default function IntentPage() {
               <div
                 className={`max-w-2xl rounded-lg px-4 py-3 ${
                   message.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border border-gray-200 text-gray-900"
+                    ? "bg-purple-600 text-white"
+                    : "bg-gray-800 border border-gray-700 text-gray-100"
                 } ${
                   message.role === "assistant" && message.used_sources && message.used_sources.length > 0
-                    ? "cursor-pointer hover:shadow-md transition-shadow"
+                    ? "cursor-pointer hover:border-gray-600 transition-colors"
                     : ""
                 } ${
-                  selectedMessageId === message.id ? "ring-2 ring-blue-500" : ""
+                  selectedMessageId === message.id ? "ring-2 ring-purple-500" : ""
                 }`}
               >
                 <div className="text-sm whitespace-pre-wrap">{message.content}</div>
@@ -502,7 +502,7 @@ export default function IntentPage() {
                 
                 <div
                   className={`text-xs mt-2 ${
-                    message.role === "user" ? "text-blue-100" : "text-gray-500"
+                    message.role === "user" ? "text-purple-200" : "text-gray-500"
                   }`}
                 >
                   {formatTimestamp(message.created_at)}
@@ -513,8 +513,8 @@ export default function IntentPage() {
 
           {isSending && (
             <div className="flex justify-start">
-              <div className="max-w-2xl rounded-lg px-4 py-3 bg-gray-100 border border-gray-200">
-                <div className="text-sm text-gray-500">Generating response...</div>
+              <div className="max-w-2xl rounded-lg px-4 py-3 bg-gray-800 border border-gray-700">
+                <div className="text-sm text-gray-400">Generating response...</div>
               </div>
             </div>
           )}
@@ -524,13 +524,13 @@ export default function IntentPage() {
 
         {/* Error Display */}
         {error && (
-          <div className="px-6 py-2 bg-red-50 border-t border-red-200">
-            <p className="text-sm text-red-600">{error}</p>
+          <div className="px-6 py-2 bg-red-900/20 border-t border-red-700 shrink-0">
+            <p className="text-sm text-red-300">{error}</p>
           </div>
         )}
 
-        {/* Input Area */}
-        <div className="bg-white border-t border-gray-200 px-6 py-4">
+        {/* Input Area - Sticky bottom */}
+        <div className="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0">
           <form onSubmit={sendMessage} className="flex gap-2">
             <textarea
               value={inputValue}
@@ -539,12 +539,12 @@ export default function IntentPage() {
               placeholder={currentSessionId ? "Type a message... (Enter to send, Shift+Enter for new line)" : "Create a session first"}
               disabled={isSending}
               rows={2}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100"
+              className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none disabled:bg-gray-700 disabled:text-gray-500"
             />
             <button
               type="submit"
               disabled={!inputValue.trim() || isSending}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium"
             >
               {isSending ? "Sending..." : "Send"}
             </button>
@@ -565,7 +565,7 @@ export default function IntentPage() {
       
       {/* CR Drawer */}
       {showCrDrawer && currentSessionId && (
-        <div className="w-[600px] border-l border-gray-200 flex flex-col">
+        <div className="w-[600px] border-l border-gray-800 bg-gray-900 flex flex-col">
           <CrEditor sessionId={currentSessionId} />
         </div>
       )}
