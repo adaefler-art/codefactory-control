@@ -193,6 +193,7 @@ export function normalizeIssueForApi(input: unknown): any {
   const executionState = (normalized?.executionState ?? normalized?.execution_state ?? 'IDLE') as ExecutionState;
   const handoffState = (normalized?.handoffState ?? normalized?.handoff_state ?? 'UNSYNCED') as HandoffState;
   const githubLastSyncedAt = toIsoOrNull(normalized?.githubIssueLastSyncAt ?? normalized?.github_issue_last_sync_at);
+  const githubSyncError = normalized?.githubSyncError ?? normalized?.github_sync_error ?? null;
 
   // I2: Compute effectiveStatus server-side using canonical helpers
   const effectiveStatus = computeEffectiveStatus({
@@ -284,6 +285,7 @@ export function normalizeIssueForApi(input: unknown): any {
     githubMirrorStatus,
     effectiveStatus,
     githubLastSyncedAt,
+    githubSyncError,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
@@ -307,6 +309,7 @@ export function normalizeIssueForApi(input: unknown): any {
   api.github_mirror_status = githubMirrorStatus;
   api.effective_status = effectiveStatus;
   api.github_last_synced_at = githubLastSyncedAt;
+  api.github_sync_error = githubSyncError;
 
   return api;
 }

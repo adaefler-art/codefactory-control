@@ -1213,6 +1213,218 @@ function checkIssueSyncMvp(): ValidationResult {
 }
 
 // ============================================================================
+// State Model v1 Guardrails (I5)
+// ============================================================================
+
+// I5 Guardrails: Maximum allowed direct issue.status references without effectiveStatus
+const MAX_LEGACY_STATUS_REFERENCES = 10;
+
+/**
+ * Check that State Model v1 is used end-to-end
+ * - Migration 043 (github_mirror_status column)
+ * - Sync route updates github_mirror_status
+ * - API returns effectiveStatus
+ * - UI uses effectiveStatus
+ */
+function checkStateModelV1(): ValidationResult {
+  console.log('🔍 Running State Model v1 Guardrails Check...');
+
+  const errors: string[] = [];
+
+  // 1. Check for migration 043 (github_mirror_status column)
+  const migration43Path = path.join(REPO_ROOT, 'database', 'migrations', '043_state_model_v1_fields.sql');
+  if (!fs.existsSync(migration43Path)) {
+    errors.push(
+      `\n❌ State Model v1 migration missing:\n` +
+      `   Expected: database/migrations/043_state_model_v1_fields.sql\n` +
+      `\n` +
+      `   This migration should add:\n` +
+      `   - github_mirror_status column (enum: TODO, IN_PROGRESS, IN_REVIEW, DONE, BLOCKED, UNKNOWN)\n` +
+      `\n` +
+      `   Remedy: Create migration 043 with github_mirror_status column\n`
+    );
+  }
+
+  // 2. Check sync route updates github_mirror_status
+  const syncRoutePath = path.join(CONTROL_CENTER_DIR, 'app', 'api', 'ops', 'issues', 'sync', 'route.ts');
+  if (fs.existsSync(syncRoutePath)) {
+    const syncContent = fs.readFileSync(syncRoutePath, 'utf-8');
+    
+    // Check for github_mirror_status update logic
+    if (!syncContent.includes('github_mirror_status') && !syncContent.includes('githubMirrorStatus')) {
+      errors.push(
+        `\n❌ Sync route does not update github_mirror_status:\n` +
+        `   File: control-center/app/api/ops/issues/sync/route.ts\n` +
+        `\n` +
+        `   The sync route MUST:\n` +
+        `   - Extract GitHub status from Projects/Labels/State\n` +
+        `   - Map to GithubMirrorStatus enum using extractGithubMirrorStatus()\n` +
+        `   - Persist to github_mirror_status column\n` +
+        `\n` +
+        `   Expected pattern:\n` +
+        `   - extractGithubMirrorStatus(projectStatus, labels, issueState)\n` +
+        `   - updateAfu9Issue(pool, id, { github_mirror_status: ... })\n` +
+        `\n` +
+        `   Remedy: Add github_mirror_status update logic to sync route\n`
+      );
+    }
+
+    // Check for extractGithubMirrorStatus usage
+    if (!syncContent.includes('extractGithubMirrorStatus')) {
+      errors.push(
+        `\n❌ Sync route does not use extractGithubMirrorStatus helper:\n` +
+        `   File: control-center/app/api/ops/issues/sync/route.ts\n` +
+        `\n` +
+        `   The sync route MUST use the canonical helper:\n` +
+        `   - import { extractGithubMirrorStatus } from '@/lib/issues/stateModel'\n` +
+        `   - Call extractGithubMirrorStatus(projectStatus, labels, issueState)\n` +
+        `\n` +
+        `   This ensures consistent GitHub status mapping across the system.\n` +
+        `\n` +
+        `   Remedy: Use extractGithubMirrorStatus() from stateModel.ts\n`
+      );
+    }
+  }
+
+  // 3. Check API _shared.ts computes effectiveStatus
+  const sharedApiPath = path.join(CONTROL_CENTER_DIR, 'app', 'api', 'issues', '_shared.ts');
+  if (fs.existsSync(sharedApiPath)) {
+    const sharedContent = fs.readFileSync(sharedApiPath, 'utf-8');
+    
+    if (!sharedContent.includes('effectiveStatus') || !sharedContent.includes('computeEffectiveStatus')) {
+      errors.push(
+        `\n❌ API does not compute effectiveStatus:\n` +
+        `   File: control-center/app/api/issues/_shared.ts\n` +
+        `\n` +
+        `   The API MUST:\n` +
+        `   - Import computeEffectiveStatus from stateModel\n` +
+        `   - Compute effectiveStatus server-side\n` +
+        `   - Include effectiveStatus in API response\n` +
+        `\n` +
+        `   Expected pattern:\n` +
+        `   - const effectiveStatus = computeEffectiveStatus({ localStatus, githubMirrorStatus, executionState, handoffState })\n` +
+        `   - return { ...issue, effectiveStatus }\n` +
+        `\n` +
+        `   Remedy: Add effectiveStatus computation in normalizeIssueForApi()\n`
+      );
+    }
+  } else {
+    errors.push(
+      `\n❌ API shared helpers missing:\n` +
+      `   Expected: control-center/app/api/issues/_shared.ts\n` +
+      `\n` +
+      `   This file should contain:\n` +
+      `   - normalizeIssueForApi() with effectiveStatus computation\n` +
+      `\n` +
+      `   Remedy: Create _shared.ts with State Model v1 support\n`
+    );
+  }
+
+  // 4. Check UI uses effectiveStatus
+  const issuesPagePath = path.join(CONTROL_CENTER_DIR, 'app', 'issues', 'page.tsx');
+  if (fs.existsSync(issuesPagePath)) {
+    const pageContent = fs.readFileSync(issuesPagePath, 'utf-8');
+    
+    if (!pageContent.includes('effectiveStatus')) {
+      errors.push(
+        `\n❌ UI does not use effectiveStatus:\n` +
+        `   File: control-center/app/issues/page.tsx\n` +
+        `\n` +
+        `   The UI MUST:\n` +
+        `   - Read effectiveStatus from API response\n` +
+        `   - Use effectiveStatus for display (primary status badge)\n` +
+        `   - Use effectiveStatus for filtering and sorting\n` +
+        `\n` +
+        `   Expected pattern:\n` +
+        `   - const effectiveStatus = issue.effectiveStatus ?? mapToCanonicalStatus(issue.status)\n` +
+        `   - Display effectiveStatus in status column\n` +
+        `\n` +
+        `   Remedy: Update UI to use effectiveStatus from API\n`
+      );
+    }
+
+    // Check for legacy status usage (regression guard)
+    // Look for patterns like: issue.status (without effectiveStatus on the same line)
+    const statusUsagePattern = /issue\.status(?!\w)/g;
+    const lines = pageContent.split('\n');
+    let directStatusCount = 0;
+    
+    for (const line of lines) {
+      // Skip lines that already use effectiveStatus (proper usage)
+      if (line.includes('effectiveStatus')) continue;
+      
+      // Count lines with issue.status that don't have effectiveStatus
+      if (statusUsagePattern.test(line)) {
+        directStatusCount++;
+        statusUsagePattern.lastIndex = 0; // Reset regex
+      }
+    }
+    
+    // Allow moderate legacy usage (up to MAX_LEGACY_STATUS_REFERENCES) for backward compatibility
+    // and legitimate use cases (e.g., showing legacy status indicator, tooltips)
+    if (directStatusCount > MAX_LEGACY_STATUS_REFERENCES) {
+      errors.push(
+        `\n⚠️  UI has ${directStatusCount} direct issue.status references without effectiveStatus:\n` +
+        `   File: control-center/app/issues/page.tsx\n` +
+        `\n` +
+        `   While some legacy usage is acceptable, excessive direct status\n` +
+        `   access indicates potential regressions where effectiveStatus is ignored.\n` +
+        `\n` +
+        `   Pattern found: issue.status (without effectiveStatus on same line)\n` +
+        `\n` +
+        `   Remedy: Replace with: issue.effectiveStatus ?? mapToCanonicalStatus(issue.status)\n`
+      );
+    }
+  }
+
+  // 5. Check stateModel.ts helpers exist
+  const stateModelPath = path.join(CONTROL_CENTER_DIR, 'src', 'lib', 'issues', 'stateModel.ts');
+  if (fs.existsSync(stateModelPath)) {
+    const stateModelContent = fs.readFileSync(stateModelPath, 'utf-8');
+    
+    const requiredFunctions = [
+      'computeEffectiveStatus',
+      'extractGithubMirrorStatus',
+      'mapGithubMirrorStatusToEffective',
+    ];
+    
+    const missingFunctions = requiredFunctions.filter(fn => !stateModelContent.includes(fn));
+    
+    if (missingFunctions.length > 0) {
+      errors.push(
+        `\n❌ State Model helpers missing required functions:\n` +
+        `   File: control-center/src/lib/issues/stateModel.ts\n` +
+        `\n` +
+        `   Missing functions:\n` +
+        missingFunctions.map(fn => `   - ${fn}()`).join('\n') +
+        `\n\n` +
+        `   Remedy: Implement missing State Model v1 helper functions\n`
+      );
+    }
+  } else {
+    errors.push(
+      `\n❌ State Model helpers missing:\n` +
+      `   Expected: control-center/src/lib/issues/stateModel.ts\n` +
+      `\n` +
+      `   This file should contain:\n` +
+      `   - computeEffectiveStatus()\n` +
+      `   - extractGithubMirrorStatus()\n` +
+      `   - mapGithubMirrorStatusToEffective()\n` +
+      `\n` +
+      `   Remedy: Create stateModel.ts with State Model v1 helpers\n`
+    );
+  }
+
+  if (errors.length > 0) {
+    console.log(`   ❌ State Model v1 Guardrails Check FAILED (${errors.length} violations)`);
+    return { passed: false, errors };
+  }
+
+  console.log('   ✅ State Model v1 Guardrails Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1232,6 +1444,7 @@ async function main() {
     checkDeployEcsWorkflowInvariants(),
     checkMixedScope(),
     checkIssueSyncMvp(),       // AFU-9 Issue Sync MVP
+    checkStateModelV1(),       // I5: State Model v1 Guardrails
   ];
 
   console.log('\n=====================================');
