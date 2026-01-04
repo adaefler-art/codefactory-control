@@ -15,6 +15,8 @@ Non-compliance is considered a deployment governance violation.
 
 ## 📄 `docs/deploy/AFU9_DEPLOY_CHECKLIST.md`
 
+See also: [Lessons Learned — Staging Smoke Key + MCP Runner (v0.6 → v0.7)](../v06/LESSONS_LEARNED_SMOKE_RUNNER.md)
+
 ```md
 # AFU-9 Deploy Checklist (v1 – Canonical)
 
