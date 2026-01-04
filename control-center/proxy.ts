@@ -139,6 +139,8 @@ export async function middleware(request: NextRequest) {
     const allowlisted =
       (request.method === 'GET' && pathname === '/api/timeline/chain') ||
       (request.method === 'GET' && pathname === '/api/issues') ||
+      (request.method === 'POST' && pathname === '/api/issues/sync') ||
+      (request.method === 'POST' && pathname === '/api/issues/refresh') ||
       (request.method === 'POST' && pathname === '/api/ops/issues/sync') ||
       (request.method === 'POST' && pathname === '/api/integrations/github/ingest/issue') ||
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
@@ -146,7 +148,20 @@ export async function middleware(request: NextRequest) {
       (request.method === 'POST' && /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname));
 
     if (allowlisted) {
-      const response = nextWithRequestId();
+      const smokeSubRaw = request.headers.get('x-afu9-sub');
+      const smokeSub = (smokeSubRaw || 'smoke').trim();
+
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.delete('x-afu9-sub');
+      requestHeaders.delete('x-afu9-stage');
+      requestHeaders.delete('x-afu9-groups');
+      requestHeaders.delete('x-afu9-auth-debug');
+      requestHeaders.delete('x-afu9-auth-via');
+      requestHeaders.set('x-request-id', requestId);
+      requestHeaders.set('x-afu9-sub', smokeSub);
+
+      const response = NextResponse.next({ request: { headers: requestHeaders } });
+      response.headers.set('x-request-id', requestId);
       response.headers.set('x-afu9-smoke-auth-used', '1');
       return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
     }
