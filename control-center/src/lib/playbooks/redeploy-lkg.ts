@@ -117,12 +117,34 @@ export async function executeSelectLkg(
 
     const lkg = lkgResult.lkg;
 
-    // HARDENING 1: Deterministic "redeploy same bits" pinning
-    // Require at least ONE immutable artifact pin that cannot drift
-    // Prefer imageDigest (immutable), fail-closed if only commit_hash without verification
-    if (!lkg.imageDigest && !lkg.cfnChangeSetId) {
-      // Only commit_hash is present - this is insufficient for deterministic redeploy
-      // because commit could build different images over time (drift)
+    // HARDENING 1: Deterministic "redeploy same bits" pinning (ENHANCED)
+    // Require immutable artifact pins that prevent drift
+    // Priority: imageDigests (array, all containers) > imageDigest (single) > cfnChangeSetId
+    // REJECT: commit_hash alone OR cfnChangeSetId (may reference mutable tags)
+    
+    // Check if we have per-container image digests (preferred)
+    const hasCompleteDigests = lkg.imageDigests && lkg.imageDigests.length > 0;
+    const hasSingleDigest = lkg.imageDigest && lkg.imageDigest.startsWith('sha256:');
+    const hasCfnChangeSet = lkg.cfnChangeSetId;
+    
+    if (!hasCompleteDigests && !hasSingleDigest) {
+      // cfnChangeSetId alone is insufficient - may reference mutable tags
+      if (hasCfnChangeSet) {
+        return {
+          success: false,
+          error: {
+            code: 'DETERMINISM_REQUIRED',
+            message: 'LKG has cfnChangeSetId but no imageDigest(s). CFN changesets may reference mutable tags. Require imageDigest for drift-proof redeploy.',
+            details: JSON.stringify({ 
+              lkgSnapshotId: lkg.snapshotId,
+              cfnChangeSetId: lkg.cfnChangeSetId,
+              reason: 'CFN changesets can reference :latest or other mutable tags',
+            }),
+          },
+        };
+      }
+      
+      // Only commit_hash is present - insufficient
       if (!lkg.commitHash) {
         return {
           success: false,
@@ -134,12 +156,12 @@ export async function executeSelectLkg(
         };
       }
       
-      // Fail-closed: commit_hash alone is insufficient without immutable image pin
+      // Fail-closed: commit_hash alone is insufficient
       return {
         success: false,
         error: {
           code: 'DETERMINISM_REQUIRED',
-          message: 'LKG has only commit_hash without immutable artifact pin (imageDigest or cfnChangeSetId). Cannot guarantee deterministic redeploy.',
+          message: 'LKG has only commit_hash without immutable artifact pin (imageDigest required). Cannot guarantee deterministic redeploy.',
           details: JSON.stringify({ 
             lkgSnapshotId: lkg.snapshotId,
             commitHash: lkg.commitHash,
@@ -147,6 +169,14 @@ export async function executeSelectLkg(
           }),
         },
       };
+    }
+    
+    // Warn if using single digest instead of per-container digests
+    if (hasSingleDigest && !hasCompleteDigests) {
+      console.warn('[redeploy-lkg] LKG has single imageDigest, not per-container imageDigests. May be incomplete.', {
+        lkgSnapshotId: lkg.snapshotId,
+        imageDigest: lkg.imageDigest,
+      });
     }
 
     return {
@@ -160,6 +190,7 @@ export async function executeSelectLkg(
           version: lkg.version,
           commitHash: lkg.commitHash,
           imageDigest: lkg.imageDigest,
+          imageDigests: lkg.imageDigests,
           cfnChangeSetId: lkg.cfnChangeSetId,
           observedAt: lkg.observedAt,
           verificationRunId: lkg.verificationRunId,

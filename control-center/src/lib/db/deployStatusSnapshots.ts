@@ -434,6 +434,8 @@ export async function getLatestDeployEvents(
 /**
  * Last Known Good (LKG) deployment record
  * Represents a deployment that was verified GREEN with PASS verification
+ * 
+ * HARDENED: imageDigests should be complete (all containers), cfnChangeSetId treated with caution
  */
 export interface LastKnownGoodDeploy {
   snapshotId: string;
@@ -442,7 +444,8 @@ export interface LastKnownGoodDeploy {
   service: string | null;
   version: string | null;
   commitHash: string | null;
-  imageDigest: string | null;
+  imageDigest: string | null; // Single digest - may be incomplete
+  imageDigests: string[] | null; // Per-container digests (preferred)
   cfnChangeSetId: string | null;
   observedAt: string;
   verificationRunId: string | null;
@@ -510,6 +513,29 @@ export async function findLastKnownGood(
     }
 
     const row = result.rows[0];
+    
+    // Try to extract imageDigests array from signals if available
+    let imageDigests: string[] | null = null;
+    try {
+      // Query for imageDigests array from signals
+      const digestsQuery = await pool.query(
+        `SELECT dss.signals #> '{deploy,imageDigests}' as image_digests
+         FROM deploy_status_snapshots dss
+         WHERE dss.id = $1`,
+        [row.snapshot_id]
+      );
+      
+      if (digestsQuery.rows.length > 0 && digestsQuery.rows[0].image_digests) {
+        const parsedDigests = digestsQuery.rows[0].image_digests;
+        if (Array.isArray(parsedDigests) && parsedDigests.length > 0) {
+          imageDigests = parsedDigests;
+        }
+      }
+    } catch (error) {
+      // If we can't get imageDigests array, continue with single digest
+      console.warn('[deployStatusSnapshots] Could not extract imageDigests array:', error);
+    }
+    
     const lkg: LastKnownGoodDeploy = {
       snapshotId: row.snapshot_id,
       deployEventId: row.deploy_event_id,
@@ -518,6 +544,7 @@ export async function findLastKnownGood(
       version: row.version || null,
       commitHash: row.commit_hash || null,
       imageDigest: row.image_digest || null,
+      imageDigests: imageDigests,
       cfnChangeSetId: row.cfn_changeset_id || null,
       observedAt: row.observed_at,
       verificationRunId: row.verification_run_id || null,

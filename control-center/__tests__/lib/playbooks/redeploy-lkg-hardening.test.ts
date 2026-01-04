@@ -18,7 +18,7 @@ import {
   executeUpdateDeployStatus,
   computeDispatchDeployIdempotencyKey,
 } from '@/lib/playbooks/redeploy-lkg';
-import { StepContext } from '@/lib/contracts/remediation-playbook';
+import { StepContext, sanitizeRedact } from '@/lib/contracts/remediation-playbook';
 import * as deployStatusDb from '@/lib/db/deployStatusSnapshots';
 import * as incidentsDb from '@/lib/db/incidents';
 import * as authWrapper from '@/lib/github/auth-wrapper';
@@ -56,6 +56,7 @@ describe('REDEPLOY_LKG Hardening', () => {
           version: 'v1.2.3',
           commitHash: 'abc123def456', // Only commit_hash
           imageDigest: null, // Missing immutable pin
+          imageDigests: null, // Missing per-container digests
           cfnChangeSetId: null, // Missing immutable pin
           observedAt: '2025-01-01T00:00:00Z',
           verificationRunId: 'ver-1',
@@ -99,6 +100,7 @@ describe('REDEPLOY_LKG Hardening', () => {
           version: 'v1.2.3',
           commitHash: 'abc123def456',
           imageDigest: 'sha256:abcd1234...', // Immutable pin
+          imageDigests: null,
           cfnChangeSetId: null,
           observedAt: '2025-01-01T00:00:00Z',
           verificationRunId: 'ver-1',
@@ -126,7 +128,7 @@ describe('REDEPLOY_LKG Hardening', () => {
       expect(result.output?.lkg.imageDigest).toBe('sha256:abcd1234...');
     });
 
-    it('should accept LKG with cfnChangeSetId (immutable)', async () => {
+    it('should REJECT LKG with only cfnChangeSetId (may reference mutable tags)', async () => {
       const mockFindLastKnownGood = deployStatusDb.findLastKnownGood as jest.MockedFunction<
         typeof deployStatusDb.findLastKnownGood
       >;
@@ -140,8 +142,56 @@ describe('REDEPLOY_LKG Hardening', () => {
           service: 'api',
           version: 'v1.2.3',
           commitHash: null,
+          imageDigest: null, // No imageDigest
+          imageDigests: null, // No per-container digests
+          cfnChangeSetId: 'arn:aws:cloudformation:...', // CFN alone insufficient
+          observedAt: '2025-01-01T00:00:00Z',
+          verificationRunId: 'ver-1',
+          verificationReportHash: 'hash123',
+        },
+      });
+
+      const context: StepContext = {
+        incidentId: 'incident-1',
+        incidentKey: 'test:incident:1',
+        runId: 'run-1',
+        lawbookVersion: 'v1',
+        evidence: [
+          {
+            kind: 'deploy_status',
+            ref: { env: 'prod', service: 'api' },
+          },
+        ],
+        inputs: {},
+      };
+
+      const result = await executeSelectLkg(mockPool, context);
+
+      // REJECT: cfnChangeSetId may reference mutable tags like :latest
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('DETERMINISM_REQUIRED');
+      expect(result.error?.message).toContain('cfnChangeSetId but no imageDigest');
+      expect(result.error?.message).toContain('mutable tags');
+    });
+    
+    it('should accept LKG with imageDigests array (per-container, preferred)', async () => {
+      const mockFindLastKnownGood = deployStatusDb.findLastKnownGood as jest.MockedFunction<
+        typeof deployStatusDb.findLastKnownGood
+      >;
+
+      mockFindLastKnownGood.mockResolvedValue({
+        success: true,
+        lkg: {
+          snapshotId: 'snap-1',
+          deployEventId: 'deploy-1',
+          env: 'production',
+          service: 'api',
+          version: 'v1.2.3',
+          commitHash: 'abc123',
           imageDigest: null,
-          cfnChangeSetId: 'arn:aws:cloudformation:...', // Immutable pin
+          imageDigests: null,
+          imageDigests: ['sha256:abc111', 'sha256:abc222'], // Complete per-container digests
+          cfnChangeSetId: null,
           observedAt: '2025-01-01T00:00:00Z',
           verificationRunId: 'ver-1',
           verificationReportHash: 'hash123',
@@ -165,7 +215,7 @@ describe('REDEPLOY_LKG Hardening', () => {
       const result = await executeSelectLkg(mockPool, context);
 
       expect(result.success).toBe(true);
-      expect(result.output?.lkg.cfnChangeSetId).toBe('arn:aws:cloudformation:...');
+      expect(result.output?.lkg.imageDigests).toEqual(['sha256:abc111', 'sha256:abc222']);
     });
   });
 
@@ -199,6 +249,7 @@ describe('REDEPLOY_LKG Hardening', () => {
               version: 'v1.2.3',
               commitHash: 'abc123',
               imageDigest: 'sha256:abcd1234',
+              imageDigests: null,
               cfnChangeSetId: null,
               observedAt: '2025-01-01T00:00:00Z',
               verificationRunId: 'ver-1',
@@ -240,6 +291,7 @@ describe('REDEPLOY_LKG Hardening', () => {
               version: 'v1.2.3',
               commitHash: 'abc123',
               imageDigest: 'sha256:abcd1234',
+              imageDigests: null,
               cfnChangeSetId: null,
               observedAt: '2025-01-01T00:00:00Z',
               verificationRunId: 'ver-1',
@@ -283,6 +335,7 @@ describe('REDEPLOY_LKG Hardening', () => {
               version: 'v1.2.3',
               commitHash: 'abc123',
               imageDigest: 'sha256:abcd1234',
+              imageDigests: null,
               cfnChangeSetId: null,
               observedAt: '2025-01-01T00:00:00Z',
               verificationRunId: 'ver-1',
@@ -308,6 +361,34 @@ describe('REDEPLOY_LKG Hardening', () => {
       expect(result.output).toHaveProperty('env');
       expect(result.output).toHaveProperty('service');
       expect(result.output).toHaveProperty('timestamp');
+    });
+
+    it('should sanitize URLs with query strings using sanitizeRedact', () => {
+      const input = {
+        logsUrl: 'https://api.github.com/repos/owner/repo/actions/runs/123/logs?token=abc123',
+        downloadUrl: 'https://example.com/artifacts?key=secret123',
+        safeUrl: 'https://example.com/artifacts',
+        runId: '12345',
+      };
+
+      const result = sanitizeRedact(input);
+
+      expect(result.logsUrl).toBe('********');
+      expect(result.downloadUrl).toBe('********');
+      expect(result.safeUrl).toBe('https://example.com/artifacts'); // No query string, safe
+      expect(result.runId).toBe('12345');
+    });
+
+    it('should sanitize signature field names', () => {
+      const input = {
+        signature: 'some-signature-value',
+        data: 'safe-data',
+      };
+
+      const result = sanitizeRedact(input);
+
+      expect(result.signature).toBe('********');
+      expect(result.data).toBe('safe-data');
     });
   });
 

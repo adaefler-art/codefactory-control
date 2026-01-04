@@ -110,6 +110,8 @@ describe('findLastKnownGood', () => {
       version: 'v1.2.3',
       commitHash: 'abc123def456',
       imageDigest: null,
+      imageDigests: null,
+      imageDigests: null, // Added field
       cfnChangeSetId: null,
       observedAt: '2025-01-04T12:00:00Z',
       verificationRunId: 'ver-789',

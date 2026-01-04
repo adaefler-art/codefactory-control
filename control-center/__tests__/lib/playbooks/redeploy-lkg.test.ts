@@ -152,7 +152,8 @@ describe('REDEPLOY_LKG Playbook', () => {
           service: 'api',
           version: null,
           commitHash: null, // Missing
-          imageDigest: null, // Missing
+          imageDigest: null,
+          imageDigests: null, // Missing
           cfnChangeSetId: null,
           observedAt: '2025-01-01T00:00:00Z',
           verificationRunId: 'ver-1',
@@ -192,7 +193,8 @@ describe('REDEPLOY_LKG Playbook', () => {
         service: 'api',
         version: 'v1.2.3',
         commitHash: 'abc123def456',
-        imageDigest: 'sha256:abcd1234...', // Determinism: imageDigest required
+        imageDigest: 'sha256:abcd1234...',
+          imageDigests: null, // Determinism: imageDigest required
         cfnChangeSetId: null,
         observedAt: '2025-01-01T00:00:00Z',
         verificationRunId: 'ver-1',
@@ -281,6 +283,7 @@ describe('REDEPLOY_LKG Playbook', () => {
         version: 'v1.2.3',
         commitHash: 'abc123def456',
         imageDigest: null,
+          imageDigests: null,
         cfnChangeSetId: null,
         observedAt: '2025-01-01T00:00:00Z',
         verificationRunId: 'ver-1',
