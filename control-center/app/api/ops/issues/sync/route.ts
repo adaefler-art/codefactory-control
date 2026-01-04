@@ -51,9 +51,9 @@ const SyncRequestSchema = z.object({
   owner: z.string().min(1).max(255).optional(),
   repo: z.string().min(1).max(255).optional(),
   query: z.string().max(500).optional(),
-  maxIssues: z.number().int().min(1).max(MAX_ISSUES).optional(),
-  perPage: z.number().int().min(1).max(PER_PAGE_MAX).optional(),
-  maxPages: z.number().int().min(1).max(MAX_SYNC_PAGES).optional(),
+  maxIssues: z.number().int().min(1).max(200).optional(),
+  perPage: z.number().int().min(1).max(100).optional(),
+  maxPages: z.number().int().min(1).max(10).optional(),
 });
 
 /**

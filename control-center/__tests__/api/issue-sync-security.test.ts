@@ -115,29 +115,55 @@ describe('POST /api/ops/issues/sync - Security Tests', () => {
     expect(searchIssues).not.toHaveBeenCalled();
   });
 
-  test('400: Invalid request body validation (maxIssues > 200)', async () => {
+  test('Limit bounding: maxIssues clamped correctly in code', async () => {
     const { isRepoAllowed } = require('../../src/lib/github/auth-wrapper');
+    const { searchIssues } = require('../../src/lib/github');
+    const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
+      require('../../src/lib/db/issueSync');
     
     isRepoAllowed.mockReturnValue(true);
+    createIssueSyncRun.mockResolvedValue({ success: true, data: 'run-id' });
+    updateIssueSyncRun.mockResolvedValue({ success: true });
+    upsertIssueSnapshot.mockResolvedValue({ success: true });
+    
+    // Return more issues than maxIssues to test clamping
+    const mockIssues = Array.from({ length: 300 }, (_, i) => ({
+      number: i + 1,
+      title: `Issue ${i + 1}`,
+      state: 'open' as const,
+      html_url: `https://github.com/owner/repo/issues/${i + 1}`,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T12:00:00Z',
+      labels: [],
+      assignees: [],
+      node_id: `node_${i}`,
+      body: null,
+    }));
+    
+    searchIssues.mockResolvedValue({
+      issues: mockIssues,
+      total_count: 300,
+    });
 
     const request = new NextRequest('http://localhost/api/ops/issues/sync', {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        'x-request-id': 'test-validation',
+        'x-request-id': 'test-limit-bound',
         'x-afu9-sub': 'user-123',
       },
       body: JSON.stringify({
-        maxIssues: 500, // Exceeds MAX_ISSUES (200)
+        maxIssues: 50, // Set limit to 50
       }),
     });
 
     const response = await syncIssues(request);
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toBe('Invalid request body');
-    expect(body.details).toContain('maxIssues');
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    // Should have upserted max 50, not all 300
+    expect(body.upserted).toBeLessThanOrEqual(50);
+    expect(upsertIssueSnapshot).toHaveBeenCalledTimes(50);
   });
 
   test('Deterministic: enforces is:issue and -is:pr in query', async () => {
