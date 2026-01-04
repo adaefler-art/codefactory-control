@@ -30,6 +30,7 @@ export interface EcsServiceInfo {
 export interface ForceNewDeploymentParams {
   cluster: string;
   service: string;
+  env: string; // Required for target allowlist validation
   correlationId: string; // For tracking/logging
 }
 
@@ -79,6 +80,79 @@ async function isEcsForceNewDeploymentAllowed(pool: Pool): Promise<boolean> {
     
     const value = result.rows[0].value;
     return value === true || value === 'true' || value === 1;
+  } catch (error) {
+    // Fail-safe: deny on any error
+    return false;
+  }
+}
+
+/**
+ * Check if ECS target {cluster, service} is allowlisted for the given environment
+ * Deny-by-default: returns false if allowlist not found or target not in allowlist
+ * 
+ * HARDENING (E77.4): Target allowlist per environment
+ * Lawbook parameters:
+ * - ecs_allowed_clusters_<env>: JSON array of allowed cluster names
+ * - ecs_allowed_services_<env>: JSON array of allowed service names
+ * - ecs_allowed_targets_<env>: JSON array of {cluster, service} pairs
+ * 
+ * Target is allowed if:
+ * - cluster is in ecs_allowed_clusters_<env> AND service is in ecs_allowed_services_<env>, OR
+ * - {cluster, service} pair is in ecs_allowed_targets_<env>
+ */
+async function isEcsTargetAllowed(
+  pool: Pool,
+  cluster: string,
+  service: string,
+  env: string
+): Promise<boolean> {
+  try {
+    // Query all relevant allowlist parameters
+    const result = await pool.query(
+      `SELECT key, value FROM lawbook_parameters 
+       WHERE key IN ($1, $2, $3)`,
+      [
+        `ecs_allowed_clusters_${env}`,
+        `ecs_allowed_services_${env}`,
+        `ecs_allowed_targets_${env}`,
+      ]
+    );
+    
+    if (result.rows.length === 0) {
+      return false; // Deny by default - no allowlist configured
+    }
+    
+    const params = new Map<string, any>();
+    for (const row of result.rows) {
+      params.set(row.key, row.value);
+    }
+    
+    // Check option 1: cluster + service allowlists
+    const allowedClusters = params.get(`ecs_allowed_clusters_${env}`);
+    const allowedServices = params.get(`ecs_allowed_services_${env}`);
+    
+    if (allowedClusters && allowedServices) {
+      const clusters = Array.isArray(allowedClusters) ? allowedClusters : [];
+      const services = Array.isArray(allowedServices) ? allowedServices : [];
+      
+      if (clusters.includes(cluster) && services.includes(service)) {
+        return true;
+      }
+    }
+    
+    // Check option 2: explicit target pairs
+    const allowedTargets = params.get(`ecs_allowed_targets_${env}`);
+    if (allowedTargets && Array.isArray(allowedTargets)) {
+      const found = allowedTargets.some(
+        (target: any) => 
+          target.cluster === cluster && target.service === service
+      );
+      if (found) {
+        return true;
+      }
+    }
+    
+    return false; // Not in any allowlist
   } catch (error) {
     // Fail-safe: deny on any error
     return false;
@@ -145,6 +219,7 @@ export async function describeService(
  * Force new deployment on ECS service
  * HARDENING: Requires lawbook parameter to be enabled
  * HARDENING: Does not modify desiredCount or other service config
+ * HARDENING (E77.4): Requires target allowlist per environment
  */
 export async function forceNewDeployment(
   pool: Pool,
@@ -160,6 +235,46 @@ export async function forceNewDeployment(
           code: 'LAWBOOK_DENIED',
           message: 'ECS force new deployment is not allowed by lawbook',
           details: 'Set lawbook parameter ecs_force_new_deployment_enabled=true to enable',
+        },
+      };
+    }
+    
+    // HARDENING (E77.4): Validate target allowlist per environment
+    // Environment must be provided in params for allowlist check
+    if (!params.env) {
+      return {
+        success: false,
+        error: {
+          code: 'ENVIRONMENT_REQUIRED',
+          message: 'Environment must be provided for target allowlist validation',
+          details: JSON.stringify({ cluster: params.cluster, service: params.service }),
+        },
+      };
+    }
+    
+    const targetAllowed = await isEcsTargetAllowed(
+      pool,
+      params.cluster,
+      params.service,
+      params.env
+    );
+    
+    if (!targetAllowed) {
+      return {
+        success: false,
+        error: {
+          code: 'TARGET_NOT_ALLOWED',
+          message: `ECS target {cluster: ${params.cluster}, service: ${params.service}} is not allowlisted for environment ${params.env}`,
+          details: JSON.stringify({ 
+            cluster: params.cluster, 
+            service: params.service,
+            env: params.env,
+            requiredLawbookParams: [
+              `ecs_allowed_clusters_${params.env}`,
+              `ecs_allowed_services_${params.env}`,
+              `ecs_allowed_targets_${params.env}`,
+            ],
+          }),
         },
       };
     }

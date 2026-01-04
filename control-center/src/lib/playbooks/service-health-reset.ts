@@ -44,8 +44,57 @@ import {
 } from '../ecs/adapter';
 
 /**
+ * Resolve ECS target from ALB evidence using lawbook mapping
+ * HARDENING (E77.4): Deterministic ALB evidence mapping
+ * 
+ * Lawbook parameter:
+ * - alb_to_ecs_mapping_<env>: JSON object mapping targetGroupArn -> {cluster, service}
+ * 
+ * Returns {cluster, service} if mapping exists, null otherwise
+ */
+async function resolveAlbToEcsTarget(
+  pool: Pool,
+  targetGroupArn: string,
+  env: string
+): Promise<{ cluster: string; service: string } | null> {
+  try {
+    const result = await pool.query(
+      `SELECT value FROM lawbook_parameters WHERE key = $1`,
+      [`alb_to_ecs_mapping_${env}`]
+    );
+    
+    if (result.rows.length === 0) {
+      return null; // No mapping configured
+    }
+    
+    const mapping = result.rows[0].value;
+    if (typeof mapping !== 'object' || mapping === null) {
+      return null; // Invalid mapping format
+    }
+    
+    const target = mapping[targetGroupArn];
+    if (!target || !target.cluster || !target.service) {
+      return null; // Target not in mapping or incomplete
+    }
+    
+    return {
+      cluster: target.cluster,
+      service: target.service,
+    };
+  } catch (error) {
+    // Fail-safe: return null on any error
+    return null;
+  }
+}
+
+/**
  * Step 1: Snapshot Current State
  * Collect ECS service state as evidence before any action
+ * 
+ * HARDENING (E77.4):
+ * - ALB evidence requires explicit mapping or {cluster,service} in evidence
+ * - Environment normalization required
+ * - No heuristics for target resolution
  */
 export async function executeSnapshotState(
   pool: Pool,
@@ -68,9 +117,75 @@ export async function executeSnapshotState(
     }
 
     const { ref } = ecsEvidence;
-    const cluster = ref.cluster || context.inputs.cluster;
-    const service = ref.service || ref.serviceName || context.inputs.service;
+    let cluster = ref.cluster || context.inputs.cluster;
+    let service = ref.service || ref.serviceName || context.inputs.service;
     const env = ref.env || ref.environment || context.inputs.env;
+
+    // HARDENING (E77.4): Normalize environment (required for allowlist)
+    if (!env) {
+      return {
+        success: false,
+        error: {
+          code: 'ENVIRONMENT_REQUIRED',
+          message: 'Environment is required for service health reset',
+          details: JSON.stringify({ evidenceKind: ecsEvidence.kind }),
+        },
+      };
+    }
+
+    let normalizedEnv: DeployEnvironment;
+    try {
+      normalizedEnv = normalizeEnvironment(env);
+    } catch (error: any) {
+      return {
+        success: false,
+        error: {
+          code: 'INVALID_ENVIRONMENT',
+          message: `Invalid environment value: ${error.message}`,
+          details: JSON.stringify({ env }),
+        },
+      };
+    }
+
+    // HARDENING (E77.4): Deterministic ALB evidence mapping
+    if (ecsEvidence.kind === 'alb') {
+      // ALB evidence requires either explicit {cluster,service} OR lawbook mapping
+      if (!cluster || !service) {
+        const targetGroupArn = ref.targetGroup || ref.targetGroupArn;
+        
+        if (!targetGroupArn) {
+          return {
+            success: false,
+            error: {
+              code: 'EVIDENCE_INSUFFICIENT',
+              message: 'ALB evidence requires targetGroupArn or explicit {cluster,service}',
+              details: JSON.stringify({ evidenceRef: ref }),
+            },
+          };
+        }
+        
+        // Try lawbook mapping
+        const target = await resolveAlbToEcsTarget(pool, targetGroupArn, normalizedEnv);
+        
+        if (!target) {
+          return {
+            success: false,
+            error: {
+              code: 'ALB_MAPPING_REQUIRED',
+              message: `No lawbook mapping found for ALB target group ${targetGroupArn} in environment ${normalizedEnv}`,
+              details: JSON.stringify({ 
+                targetGroupArn,
+                env: normalizedEnv,
+                requiredLawbookParam: `alb_to_ecs_mapping_${normalizedEnv}`,
+              }),
+            },
+          };
+        }
+        
+        cluster = target.cluster;
+        service = target.service;
+      }
+    }
 
     if (!cluster || !service) {
       return {
@@ -78,26 +193,9 @@ export async function executeSnapshotState(
         error: {
           code: 'INVALID_EVIDENCE',
           message: 'Missing required parameters: cluster and service',
-          details: JSON.stringify({ cluster, service, env }),
+          details: JSON.stringify({ cluster, service, env: normalizedEnv }),
         },
       };
-    }
-
-    // Normalize environment if provided
-    let normalizedEnv: DeployEnvironment | undefined;
-    if (env) {
-      try {
-        normalizedEnv = normalizeEnvironment(env);
-      } catch (error: any) {
-        return {
-          success: false,
-          error: {
-            code: 'INVALID_ENVIRONMENT',
-            message: `Invalid environment value: ${error.message}`,
-            details: JSON.stringify({ env }),
-          },
-        };
-      }
     }
 
     // Describe current service state
@@ -112,9 +210,10 @@ export async function executeSnapshotState(
 
     const serviceInfo = describeResult.service!;
 
+    // HARDENING: Sanitize output to prevent secret persistence
     return {
       success: true,
-      output: {
+      output: sanitizeRedact({
         cluster,
         service,
         env: normalizedEnv,
@@ -124,7 +223,7 @@ export async function executeSnapshotState(
         taskDefinition: serviceInfo.taskDefinition,
         deployments: serviceInfo.deployments,
         snapshotAt: new Date().toISOString(),
-      },
+      }),
     };
   } catch (error: any) {
     return {
@@ -141,17 +240,22 @@ export async function executeSnapshotState(
 /**
  * Step 2: Apply Reset Action
  * Perform forceNewDeployment to trigger service refresh
- * HARDENING: Lawbook-gated, deny-by-default
+ * 
+ * HARDENING (E77.4):
+ * - Lawbook-gated, deny-by-default
+ * - Target allowlist validation (in adapter)
+ * - Frequency limiting via hourly idempotency key
  */
 export async function executeApplyReset(
   pool: Pool,
   context: StepContext
 ): Promise<StepResult> {
   try {
-    // Extract cluster and service from previous step output or evidence
+    // Extract cluster, service, and env from previous step output or evidence
     const snapshotOutput = context.inputs.snapshotOutput;
     const cluster = snapshotOutput?.cluster || context.inputs.cluster;
     const service = snapshotOutput?.service || context.inputs.service;
+    const env = snapshotOutput?.env || context.inputs.env;
 
     if (!cluster || !service) {
       return {
@@ -164,10 +268,22 @@ export async function executeApplyReset(
       };
     }
 
-    // Execute force new deployment (lawbook-gated inside)
+    if (!env) {
+      return {
+        success: false,
+        error: {
+          code: 'ENVIRONMENT_REQUIRED',
+          message: 'Environment is required for force new deployment',
+          details: JSON.stringify({ cluster, service }),
+        },
+      };
+    }
+
+    // Execute force new deployment (lawbook-gated + target allowlist inside)
     const result = await forceNewDeployment(pool, {
       cluster,
       service,
+      env,
       correlationId: `${context.incidentKey}:health-reset`,
     });
 
@@ -178,15 +294,17 @@ export async function executeApplyReset(
       };
     }
 
+    // HARDENING: Sanitize output to prevent secret persistence
     return {
       success: true,
-      output: {
+      output: sanitizeRedact({
         cluster,
         service,
+        env,
         serviceArn: result.serviceArn,
         deploymentId: result.deploymentId,
         resetAt: new Date().toISOString(),
-      },
+      }),
     };
   } catch (error: any) {
     return {
@@ -243,13 +361,14 @@ export async function executeWaitAndObserve(
       };
     }
 
+    // HARDENING: Sanitize output to prevent secret persistence
     return {
       success: true,
-      output: {
+      output: sanitizeRedact({
         stable: pollResult.stable,
         finalState: pollResult.finalState,
         observedAt: new Date().toISOString(),
-      },
+      }),
     };
   } catch (error: any) {
     return {
@@ -291,14 +410,15 @@ export async function executePostVerification(
     const verificationPassed = true;
     const reportHash = `verification-${Date.now()}`;
 
+    // HARDENING: Sanitize output to prevent secret persistence
     return {
       success: true,
-      output: {
+      output: sanitizeRedact({
         status: verificationPassed ? 'success' : 'failed',
         env,
         reportHash,
         verifiedAt: new Date().toISOString(),
-      },
+      }),
     };
   } catch (error: any) {
     return {
@@ -315,6 +435,10 @@ export async function executePostVerification(
 /**
  * Step 5: Update Status
  * Update incident status based on verification result
+ * 
+ * HARDENING (E77.4): Canonical environment semantics
+ * - Only mark MITIGATED when verification env matches incident/target env
+ * - Invalid verification env → fail-closed
  */
 export async function executeUpdateStatus(
   pool: Pool,
@@ -323,12 +447,46 @@ export async function executeUpdateStatus(
   try {
     const verificationOutput = context.inputs.verificationOutput;
     const observeOutput = context.inputs.observeOutput;
+    const snapshotOutput = context.inputs.snapshotOutput;
 
     // Determine if remediation was successful
     const serviceStable = observeOutput?.stable === true;
     const verificationPassed = verificationOutput?.status === 'success' || verificationOutput?.status === 'skipped';
     
-    const remediationSuccessful = serviceStable && verificationPassed;
+    // HARDENING (E77.4): Canonical environment matching for MITIGATED status
+    // Only mark MITIGATED if:
+    // 1. Service is stable AND verification passed
+    // 2. Verification env matches target env (or verification was skipped)
+    let envMatches = true;
+    
+    if (verificationOutput?.status === 'success') {
+      const targetEnv = snapshotOutput?.env;
+      const verificationEnv = verificationOutput?.env;
+      
+      if (targetEnv && verificationEnv) {
+        // Both environments must be normalized and match
+        try {
+          const normalizedTarget = normalizeEnvironment(targetEnv);
+          const normalizedVerification = normalizeEnvironment(verificationEnv);
+          envMatches = normalizedTarget === normalizedVerification;
+        } catch (error: any) {
+          // Invalid environment - fail closed
+          return {
+            success: false,
+            error: {
+              code: 'INVALID_ENV',
+              message: `Invalid environment in verification: ${error.message}`,
+              details: JSON.stringify({ targetEnv, verificationEnv }),
+            },
+          };
+        }
+      } else if (!verificationEnv) {
+        // Verification env missing - cannot confirm match
+        envMatches = false;
+      }
+    }
+    
+    const remediationSuccessful = serviceStable && verificationPassed && envMatches;
 
     // Update incident status
     const incidentDAO = getIncidentDAO(pool);
@@ -340,15 +498,17 @@ export async function executeUpdateStatus(
       await incidentDAO.updateStatus(context.incidentId, 'ACKED');
     }
 
+    // HARDENING: Sanitize output to prevent secret persistence
     return {
       success: true,
-      output: {
+      output: sanitizeRedact({
         incidentStatus: remediationSuccessful ? 'MITIGATED' : 'ACKED',
         remediationSuccessful,
         serviceStable,
         verificationPassed,
+        envMatches,
         updatedAt: new Date().toISOString(),
-      },
+      }),
     };
   } catch (error: any) {
     return {
@@ -364,13 +524,34 @@ export async function executeUpdateStatus(
 
 /**
  * Idempotency key functions
+ * 
+ * HARDENING (E77.4): Frequency limiting via hourly idempotency key
+ * For the ECS write step (apply-reset), include hourKey to limit to once per hour
  */
+
+/**
+ * Get current hour key for frequency limiting
+ * Format: YYYY-MM-DD-HH (UTC)
+ */
+function getHourKey(): string {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  const hour = String(now.getUTCHours()).padStart(2, '0');
+  return `${year}-${month}-${day}-${hour}`;
+}
+
 export function computeSnapshotIdempotencyKey(context: StepContext): string {
   return `${context.incidentKey}:snapshot`;
 }
 
 export function computeResetIdempotencyKey(context: StepContext): string {
-  return `${context.incidentKey}:reset`;
+  // HARDENING (E77.4): Frequency limiting - include hour key and normalized env
+  const hourKey = getHourKey();
+  // Extract env from inputs (should be set by snapshot step)
+  const env = context.inputs.snapshotOutput?.env || context.inputs.env || 'unknown';
+  return `${context.incidentKey}:${env}:reset:${hourKey}`;
 }
 
 export function computeObserveIdempotencyKey(context: StepContext): string {

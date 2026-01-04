@@ -82,7 +82,7 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
       expect(result.error?.code).toBe('EVIDENCE_MISSING');
     });
 
-    it('should fail when evidence is missing cluster or service', async () => {
+    it('should fail when evidence is missing env', async () => {
       const context: StepContext = {
         incidentId: 'incident-1',
         incidentKey: 'test:incident:1',
@@ -91,7 +91,11 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
         evidence: [
           {
             kind: 'ecs',
-            ref: { cluster: 'my-cluster' }, // Missing service
+            ref: {
+              cluster: 'my-cluster',
+              service: 'my-service',
+              // Missing env
+            },
           },
         ],
         inputs: {},
@@ -100,7 +104,7 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
       const result = await executeSnapshotState(mockPool, context);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('INVALID_EVIDENCE');
+      expect(result.error?.code).toBe('ENVIRONMENT_REQUIRED');
     });
 
     it('should snapshot service state successfully', async () => {
@@ -148,7 +152,7 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
       expect(result.success).toBe(true);
       expect(result.output?.cluster).toBe('my-cluster');
       expect(result.output?.service).toBe('my-service');
-      expect(result.output?.env).toBe('staging');
+      expect(result.output?.env).toBe('staging'); // Normalized from 'staging'
       expect(result.output?.desiredCount).toBe(2);
       expect(result.output?.runningCount).toBe(2);
       expect(ecsAdapter.describeService).toHaveBeenCalledWith('my-cluster', 'my-service');
@@ -202,6 +206,7 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
           snapshotOutput: {
             cluster: 'my-cluster',
             service: 'my-service',
+            env: 'production', // Required
           },
         },
       };
@@ -213,6 +218,7 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
       expect(ecsAdapter.forceNewDeployment).toHaveBeenCalledWith(mockPool, {
         cluster: 'my-cluster',
         service: 'my-service',
+        env: 'production',
         correlationId: 'test:incident:1:health-reset',
       });
     });
@@ -425,12 +431,29 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
       expect(key1).toBe(key2);
     });
 
-    it('should generate consistent reset idempotency key', () => {
+    it('should generate reset idempotency key with hour and env', () => {
+      const context: StepContext = {
+        incidentId: 'incident-1',
+        incidentKey: 'test:incident:1',
+        runId: 'run-1',
+        lawbookVersion: 'v1',
+        evidence: [],
+        inputs: {
+          snapshotOutput: {
+            env: 'production',
+          },
+        },
+      };
+
       const key1 = computeResetIdempotencyKey(context);
       const key2 = computeResetIdempotencyKey(context);
       
-      expect(key1).toBe('test:incident:1:reset');
       expect(key1).toBe(key2);
+      expect(key1).toContain('test:incident:1');
+      expect(key1).toContain('production');
+      expect(key1).toContain('reset');
+      // Should include hour key
+      expect(key1).toMatch(/\d{4}-\d{2}-\d{2}-\d{2}/);
     });
 
     it('should generate consistent observe idempotency key', () => {
