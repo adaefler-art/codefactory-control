@@ -832,8 +832,8 @@ export async function transitionIssue(
   }
 
   const currentIssue = issueResult.data;
-  const fromState = currentIssue.status as IssueState;
-  const targetState = toState as IssueState;
+  const fromState = currentIssue.status as unknown as IssueState;
+  const targetState = toState as unknown as IssueState;
 
   // Validate transition
   if (!isValidTransition(fromState, targetState)) {
