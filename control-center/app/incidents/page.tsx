@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface Incident {
   id: string;
@@ -39,7 +40,10 @@ export default function IncidentsPage() {
       if (statusFilter) params.append("status", statusFilter);
       if (severityFilter) params.append("severity", severityFilter);
 
-      const response = await fetch(`/api/incidents?${params.toString()}`, {
+      const qs = params.toString();
+      const url = qs ? `${API_ROUTES.incidents.list}?${qs}` : API_ROUTES.incidents.list;
+
+      const response = await fetch(url, {
         credentials: "include",
         cache: "no-store"
       });
