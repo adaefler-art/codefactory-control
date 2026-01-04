@@ -43,6 +43,10 @@ export const ACTION_TYPES = [
   'NOTIFY_SLACK',
   'CREATE_ISSUE',
   'RUN_VERIFICATION',
+  'FORCE_NEW_DEPLOYMENT',
+  'SNAPSHOT_SERVICE_STATE',
+  'POLL_SERVICE_HEALTH',
+  'UPDATE_INCIDENT_STATUS',
 ] as const;
 
 export type RemediationRunStatus = typeof REMEDIATION_RUN_STATUSES[number];
