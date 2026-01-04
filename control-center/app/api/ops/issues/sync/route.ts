@@ -30,7 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getPool } from '../../../../../src/lib/db';
-import { searchIssues } from '../../../../../src/lib/github';
+import { searchIssues, getIssue } from '../../../../../src/lib/github';
 import {
   createIssueSyncRun,
   updateIssueSyncRun,
@@ -275,33 +275,34 @@ export async function POST(request: NextRequest) {
             // Skip if not linked to GitHub
             if (!afu9Issue.github_issue_number) continue;
 
-            // Find corresponding GitHub issue in the synced data
-            const githubIssue = allIssues.find(
-              (gh) => gh.number === afu9Issue.github_issue_number
-            );
+            // Fetch fresh GitHub issue details via REST API
+            let githubMirrorStatus: Afu9GithubMirrorStatus = 'UNKNOWN';
+            let githubStatusRaw: string | null = null;
+            let githubSyncError: string | null = null;
 
-            if (githubIssue) {
+            try {
+              const githubDetails = await getIssue(owner, repo, afu9Issue.github_issue_number);
+
               // I3: Extract GitHub mirror status using State Model v1
               // Priority: Project v2 > Labels > State
-              const labelNames = githubIssue.labels.map((l: any) => 
+              const labelNames = githubDetails.labels.map((l: any) => 
                 typeof l === 'string' ? l : (l.name || '')
               );
               
-              const githubMirrorStatus = extractGithubMirrorStatus(
+              githubMirrorStatus = extractGithubMirrorStatus(
                 null, // projectStatus - TODO: Fetch from GraphQL in future
                 labelNames,
-                githubIssue.state as 'open' | 'closed'
+                githubDetails.state
               );
 
               // Determine raw status string for audit trail
               // I3: Bound and sanitize to prevent unbounded/secret persistence
-              let githubStatusRaw: string | null = null;
               if (githubMirrorStatus !== 'UNKNOWN') {
                 // Store the actual status label or state for audit
                 const statusLabel = labelNames.find((l: string) => 
                   l.toLowerCase().startsWith('status:')
                 );
-                const rawValue = statusLabel || githubIssue.state;
+                const rawValue = statusLabel || githubDetails.state;
                 
                 // Sanitize to redact any secrets/URLs with query strings
                 const sanitized = sanitizeRedact(rawValue);
@@ -312,21 +313,41 @@ export async function POST(request: NextRequest) {
                   : null;
               }
 
-              // I3: Update AFU9 issue with github_mirror_status and metadata
-              const previousMirrorStatus = afu9Issue.github_mirror_status;
-              const updateResult = await updateAfu9Issue(pool, afu9Issue.id, {
-                github_mirror_status: githubMirrorStatus as Afu9GithubMirrorStatus,
-                github_status_raw: githubStatusRaw,
-                github_issue_last_sync_at: new Date().toISOString(),
-              });
+              // Clear error on success
+              githubSyncError = null;
+            } catch (fetchError) {
+              // If fetch fails, set error and keep status as UNKNOWN
+              const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown fetch error';
+              
+              // Sanitize error message to prevent secret leakage
+              githubSyncError = sanitizeRedact(errorMessage);
+              if (typeof githubSyncError === 'string') {
+                githubSyncError = githubSyncError.substring(0, 500); // Bound error message length
+              } else {
+                githubSyncError = 'Failed to fetch GitHub issue details';
+              }
 
-              if (updateResult.success) {
-                statusSyncedCount++;
-                if (previousMirrorStatus !== githubMirrorStatus) {
-                  console.log(
-                    `[API /api/ops/issues/sync] Synced GitHub mirror status for AFU9 issue ${afu9Issue.id}: ${previousMirrorStatus} → ${githubMirrorStatus} (raw: ${githubStatusRaw})`
-                  );
-                }
+              console.warn(
+                `[API /api/ops/issues/sync] Failed to fetch GitHub issue #${afu9Issue.github_issue_number}:`,
+                errorMessage
+              );
+            }
+
+            // I3: Update AFU9 issue with github_mirror_status and metadata
+            const previousMirrorStatus = afu9Issue.github_mirror_status;
+            const updateResult = await updateAfu9Issue(pool, afu9Issue.id, {
+              github_mirror_status: githubMirrorStatus,
+              github_status_raw: githubStatusRaw,
+              github_issue_last_sync_at: new Date().toISOString(),
+              github_sync_error: githubSyncError,
+            });
+
+            if (updateResult.success) {
+              statusSyncedCount++;
+              if (previousMirrorStatus !== githubMirrorStatus) {
+                console.log(
+                  `[API /api/ops/issues/sync] Synced GitHub mirror status for AFU9 issue ${afu9Issue.id}: ${previousMirrorStatus} → ${githubMirrorStatus} (raw: ${githubStatusRaw})`
+                );
               }
             }
           }

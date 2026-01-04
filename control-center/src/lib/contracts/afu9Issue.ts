@@ -116,6 +116,7 @@ export interface Afu9IssueInput {
   status_source?: Afu9StatusSource | null;
   // I2: State Model v1 fields
   github_mirror_status?: Afu9GithubMirrorStatus | null;
+  github_sync_error?: string | null;
 }
 
 /**
@@ -156,6 +157,7 @@ export interface Afu9IssueRow {
   status_source: Afu9StatusSource | null;
   // I2: State Model v1 fields
   github_mirror_status: Afu9GithubMirrorStatus | null;
+  github_sync_error: string | null;
 }
 
 /**

@@ -31,6 +31,15 @@ export interface GitHubIssue {
 }
 
 /**
+ * Minimal issue details returned by getIssue
+ */
+export interface GitHubIssueDetails {
+  state: 'open' | 'closed';
+  labels: Array<{ name: string }>;
+  updated_at: string;
+}
+
+/**
  * Parameters for creating a GitHub issue
  */
 export interface CreateIssueParams {
@@ -349,6 +358,68 @@ export async function searchIssues(options: {
       throw new Error(
         `GitHub-Repository ${options.owner || GITHUB_OWNER}/${options.repo || GITHUB_REPO} nicht gefunden`
       );
+    }
+
+    if (error instanceof Error && error.message.includes('rate limit')) {
+      throw new Error('GitHub API-Limit erreicht');
+    }
+
+    throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
+  }
+}
+
+/**
+ * Get a single issue by number
+ * 
+ * Fetches fresh issue details from GitHub REST API.
+ * Used for syncing current state/labels during issue sync.
+ * 
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @param issueNumber - Issue number
+ * @returns Issue details with state, labels, and updated_at
+ */
+export async function getIssue(
+  owner: string,
+  repo: string,
+  issueNumber: number
+): Promise<GitHubIssueDetails> {
+  try {
+    const octokit = await createAuthenticatedOctokit(owner, repo);
+
+    console.log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}...`);
+
+    const { data: issue } = await octokit.rest.issues.get({
+      owner,
+      repo,
+      issue_number: issueNumber,
+    });
+
+    console.log(`Successfully fetched issue #${issueNumber}`, {
+      state: issue.state,
+      labels: issue.labels?.length || 0,
+      updated_at: issue.updated_at,
+    });
+
+    return {
+      state: issue.state as 'open' | 'closed',
+      labels: issue.labels || [],
+      updated_at: issue.updated_at,
+    };
+  } catch (error) {
+    console.error('Error fetching GitHub issue:', {
+      error: error instanceof Error ? error.message : String(error),
+      owner,
+      repo,
+      issueNumber,
+    });
+
+    if (error instanceof Error && error.message.includes('Bad credentials')) {
+      throw new Error('GitHub App authentication failed');
+    }
+
+    if (error instanceof Error && error.message.includes('Not Found')) {
+      throw new Error(`GitHub-Issue #${issueNumber} nicht gefunden in ${owner}/${repo}`);
     }
 
     if (error instanceof Error && error.message.includes('rate limit')) {

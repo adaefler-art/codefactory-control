@@ -71,9 +71,9 @@ export async function createAfu9Issue(
         handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
         execution_state, execution_started_at, execution_completed_at, execution_output,
         handoff_at, handoff_error, github_repo, github_issue_last_sync_at,
-        github_status_raw, github_status_updated_at, status_source, github_mirror_status
+        github_status_raw, github_status_updated_at, status_source, github_mirror_status, github_sync_error
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
       RETURNING *`,
       [
         sanitized.title,
@@ -101,6 +101,7 @@ export async function createAfu9Issue(
         sanitized.github_status_updated_at,
         sanitized.status_source,
         sanitized.github_mirror_status,
+        sanitized.github_sync_error,
       ]
     );
 
@@ -489,6 +490,12 @@ export async function updateAfu9Issue(
     if (updates.github_mirror_status !== undefined) {
       fields.push(`github_mirror_status = $${paramIndex}`);
       values.push(updates.github_mirror_status);
+      paramIndex++;
+    }
+
+    if (updates.github_sync_error !== undefined) {
+      fields.push(`github_sync_error = $${paramIndex}`);
+      values.push(updates.github_sync_error);
       paramIndex++;
     }
 
