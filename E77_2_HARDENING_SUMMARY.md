@@ -150,13 +150,15 @@ Existing DAO-level sanitization (`sanitizeRedact()`) already filters secrets fro
 Only mark incident as MITIGATED when verification explicitly passes for the SAME environment.
 
 ### Implementation
-**File**: `control-center/src/lib/playbooks/rerun-post-deploy-verification.ts`
+**Files**: 
+- `control-center/src/lib/utils/environment.ts` (new, shared utility)
+- `control-center/src/lib/playbooks/rerun-post-deploy-verification.ts` (updated)
 
 **Changes**:
-- Added `normalizeEnvironment()` helper function
-  - Maps: `prod`/`production` → `prod`
-  - Maps: `stage`/`staging` → `stage`
-  - Returns `null` for unknown environments
+- Created shared `normalizeEnvironment()` utility matching AFU-9 canonical values
+  - Canonical output: `'production' | 'staging'` (matches deploy-context-resolver, image-matrix)
+  - Accepts aliases case-insensitively: `prod`/`production`, `stage`/`staging`
+  - Fail-closed: throws error for unknown environments
 - Extract incident environment from evidence
 - Compare normalized incident env with normalized verification env
 - Only update status when:
@@ -164,23 +166,57 @@ Only mark incident as MITIGATED when verification explicitly passes for the SAME
   - Incident env is unknown (backward compatibility)
 - Fail when verification env is unknown
 
-**Code**:
+**Canonical Environment Normalization**:
 ```typescript
-function normalizeEnvironment(env: string): 'prod' | 'stage' | null {
-  const normalized = env.toLowerCase().trim();
-  if (normalized === 'prod' || normalized === 'production') {
-    return 'prod';
+// control-center/src/lib/utils/environment.ts
+export type DeployEnvironment = 'production' | 'staging';
+
+export function normalizeEnvironment(input: string): DeployEnvironment {
+  const normalized = input.toLowerCase().trim();
+  
+  // Production aliases
+  if (normalized === 'production' || normalized === 'prod') {
+    return 'production';  // Canonical
   }
-  if (normalized === 'stage' || normalized === 'staging') {
-    return 'stage';
+  
+  // Staging aliases
+  if (normalized === 'staging' || normalized === 'stage') {
+    return 'staging';  // Canonical
   }
-  return null; // Unknown environment
+  
+  throw new Error(
+    `Invalid environment: "${input}". Must be one of: production, prod, staging, stage`
+  );
+}
+```
+
+**Usage in executeIngestIncidentUpdate**:
+```typescript
+// Try to normalize verification environment (fail-closed if invalid)
+try {
+  normalizedVerificationEnv = normalizeEnvironment(verificationEnv);
+} catch (error: any) {
+  return {
+    success: false,
+    error: {
+      code: 'INVALID_VERIFICATION_ENV',
+      message: `Verification environment could not be normalized: ${error.message}`,
+    },
+  };
 }
 
-// In executeIngestIncidentUpdate:
-const normalizedIncidentEnv = incidentEnv ? normalizeEnvironment(incidentEnv) : null;
-const normalizedVerificationEnv = verificationEnv ? normalizeEnvironment(verificationEnv) : null;
+// Try to normalize incident environment (allow unknown for backward compatibility)
+if (incidentEnv) {
+  try {
+    normalizedIncidentEnv = normalizeEnvironment(incidentEnv);
+  } catch (error: any) {
+    // Incident env is invalid but we'll proceed without matching check
+    // This maintains backward compatibility for incidents with non-standard env values
+    normalizedIncidentEnv = null;
+  }
+}
 
+// If we have an incident environment, verify it matches
 if (normalizedIncidentEnv && normalizedIncidentEnv !== normalizedVerificationEnv) {
   return {
     success: true,
@@ -194,30 +230,46 @@ if (normalizedIncidentEnv && normalizedIncidentEnv !== normalizedVerificationEnv
 ```
 
 ### Tests
-**File**: `control-center/__tests__/lib/playbooks/rerun-post-deploy-verification-hardening.test.ts`
+**Files**: 
+- `control-center/__tests__/lib/playbooks/rerun-post-deploy-verification-hardening.test.ts`
+- `control-center/__tests__/lib/utils/environment.test.ts` (new)
 
-- ✅ `production` + `prod` → normalized to same, MITIGATED
-- ✅ `staging` + `stage` → normalized to same, MITIGATED
-- ✅ `prod` (incident) + `stage` (verification) → NOT MITIGATED, envMismatch
-- ✅ `stage` + `stage` → MITIGATED
+- ✅ `production` (incident) + `prod` (verification) → normalized to same (`production`), MITIGATED
+- ✅ `staging` (incident) + `stage` (verification) → normalized to same (`staging`), MITIGATED
+- ✅ `prod` (incident) + `stage` (verification) → different after normalization, NOT MITIGATED, envMismatch
+- ✅ `stage` + `stage` → MITIGATED (canonical: `staging`)
 - ✅ Unknown incident env + `prod` → MITIGATED (backward compat)
 - ✅ `unknown-env` (verification) → error `INVALID_VERIFICATION_ENV`
 - ✅ Verification failed → NOT MITIGATED
+- ✅ Case-insensitive normalization (`PRODUCTION`, `Prod`, `STAGING`, `Stage`)
+- ✅ Whitespace trimming (`' production '`, `' stage '`)
+
+### Consistency with AFU-9
+The canonical environment values now match:
+- **deploy-context-resolver**: `'staging' | 'production'`
+- **image-matrix**: `'staging' | 'production'`
+- **E77.2 playbooks**: `'staging' | 'production'` ✅
+
+This ensures that verification results can correctly match incidents across the entire AFU-9 system.
 
 ## Test Coverage Summary
 
-### New Tests: 18
-**Hardening tests**: `safe-retry-runner-hardening.test.ts` (11 tests) + `rerun-post-deploy-verification-hardening.test.ts` (7 tests)
+### New Tests: 27
+**Hardening tests**:
+- `safe-retry-runner-hardening.test.ts` (11 tests)
+- `rerun-post-deploy-verification-hardening.test.ts` (7 tests)
+- `environment.test.ts` (9 tests - new)
 
 1. **Deterministic retry**: 5 tests
 2. **Repo allowlist**: 3 tests
 3. **Secret sanitization**: 3 tests
 4. **Environment matching**: 7 tests
+5. **Environment normalization**: 9 tests (new)
 
 ### Updated Tests: 5
 **Existing tests updated** to work with hardening requirements:
 - `safe-retry-runner.test.ts`: Added `isRepoAllowed` mock, added `headSha` to evidence
-- `rerun-post-deploy-verification.test.ts`: Added `getIncident`/`getEvidence` mocks
+- `rerun-post-deploy-verification.test.ts`: Added `getIncident`/`getEvidence` mocks, updated to canonical environment values
 
 ### Test Results
 ```bash
@@ -228,12 +280,23 @@ Tests:       89 passed, 89 total
 Time:        ~7.2s
 ```
 
+**Plus environment utils tests**:
+```bash
+$ npm --prefix control-center test -- __tests__/lib/utils/environment.test.ts --no-coverage
+
+Test Suites: 1 passed
+Tests:       9 passed
+```
+
+**Total**: 98 tests passing
+
 All playbook tests pass, including:
 - 15 tests: `safe-retry-runner.test.ts`
 - 14 tests: `rerun-post-deploy-verification.test.ts`
 - 15 tests: `registry.test.ts`
 - 11 tests: `safe-retry-runner-hardening.test.ts`
 - 7 tests: `rerun-post-deploy-verification-hardening.test.ts`
+- 9 tests: `environment.test.ts` (new)
 - Plus framework tests
 
 ## Verification Commands
@@ -255,6 +318,9 @@ npm --prefix control-center test -- __tests__/lib/playbooks/safe-retry-runner-ha
 
 # Rerun verification hardening
 npm --prefix control-center test -- __tests__/lib/playbooks/rerun-post-deploy-verification-hardening.test.ts
+
+# Environment utils tests
+npm --prefix control-center test -- __tests__/lib/utils/environment.test.ts
 ```
 
 ### Run Full Test Suite
@@ -279,16 +345,21 @@ npm run repo:verify
   - Added repo allowlist check
   - Added determinism requirement (headSha/ref)
   - Sanitized outputs (removed URLs with tokens)
-- `control-center/src/lib/playbooks/rerun-post-deploy-verification.ts` (+95 lines)
-  - Added `normalizeEnvironment()` function
+- `control-center/src/lib/utils/environment.ts` (new, 57 lines)
+  - Shared canonical environment normalization
+  - Matches AFU-9 deploy-context and image-matrix
+- `control-center/src/lib/playbooks/rerun-post-deploy-verification.ts` (+110 lines)
+  - Uses shared `normalizeEnvironment()` utility
   - Added environment matching logic
   - Enhanced incident update logic
+  - Normalizes environments in verification output
 
 ### Tests
 - `control-center/__tests__/lib/playbooks/safe-retry-runner-hardening.test.ts` (new, 343 lines)
 - `control-center/__tests__/lib/playbooks/rerun-post-deploy-verification-hardening.test.ts` (new, 292 lines)
+- `control-center/__tests__/lib/utils/environment.test.ts` (new, 70 lines)
 - `control-center/__tests__/lib/playbooks/safe-retry-runner.test.ts` (updated, +8 lines)
-- `control-center/__tests__/lib/playbooks/rerun-post-deploy-verification.test.ts` (updated, +5 lines)
+- `control-center/__tests__/lib/playbooks/rerun-post-deploy-verification.test.ts` (updated, +15 lines)
 
 ## Acceptance Criteria ✅
 
