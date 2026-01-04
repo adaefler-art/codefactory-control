@@ -12,6 +12,13 @@
  * - Returns: 200 (found), 404 (not found), 400 (invalid format)
  * - Guarantees: No 400 for any valid UUID or 8-hex prefix
  * 
+ * **Issue I2: State Model v1**
+ * 
+ * Computes and includes State Model v1 fields in API responses:
+ * - localStatus, githubStatusRaw, githubMirrorStatus
+ * - executionState, handoffState
+ * - effectiveStatus (computed server-side using canonical helpers)
+ * 
  * Features:
  * - Identifier parsing (UUID v4 OR 8-hex publicId)
  * - DB lookup by internal UUID or publicId
@@ -32,6 +39,13 @@ import {
   getAfu9IssueById,
   getAfu9IssueByPublicId,
 } from '../../../src/lib/db/afu9Issues';
+import { computeEffectiveStatus } from '../../../src/lib/issues/stateModel';
+import type {
+  LocalStatus,
+  GithubMirrorStatus,
+  ExecutionState,
+  HandoffState,
+} from '../../../src/lib/schemas/issueStateModel';
 
 export { type IssueIdentifierKind };
 
@@ -141,6 +155,7 @@ export async function fetchIssueRowByIdentifier(pool: Pool, idOrPublicId: string
  * - ISO 8601 timestamps
  * - Contract validation for safety
  * - Both camelCase and snake_case fields for backward compatibility
+ * - State Model v1 fields with computed effectiveStatus (I2)
  * 
  * @param input - Raw database row
  * @returns Normalized API response object
@@ -171,24 +186,40 @@ export function normalizeIssueForApi(input: unknown): any {
   const executionCompletedAt = toIsoOrNull(normalized?.executionCompletedAt ?? normalized?.execution_completed_at);
   const deletedAt = toIsoOrNull(normalized?.deletedAt ?? normalized?.deleted_at);
 
+  // I2: Extract State Model v1 fields
+  const localStatus = (normalized?.status ?? 'CREATED') as LocalStatus;
+  const githubStatusRaw = normalized?.githubStatusRaw ?? normalized?.github_status_raw ?? null;
+  const githubMirrorStatus = (normalized?.githubMirrorStatus ?? normalized?.github_mirror_status ?? 'UNKNOWN') as GithubMirrorStatus;
+  const executionState = (normalized?.executionState ?? normalized?.execution_state ?? 'IDLE') as ExecutionState;
+  const handoffState = (normalized?.handoffState ?? normalized?.handoff_state ?? 'UNSYNCED') as HandoffState;
+  const githubLastSyncedAt = toIsoOrNull(normalized?.githubIssueLastSyncAt ?? normalized?.github_issue_last_sync_at);
+
+  // I2: Compute effectiveStatus server-side using canonical helpers
+  const effectiveStatus = computeEffectiveStatus({
+    localStatus,
+    githubMirrorStatus,
+    executionState,
+    handoffState,
+  });
+
   // Build the core contract fields (snake_case for contract validation)
   const contractData: any = {
     id: internalId,
     title: typeof normalized?.title === 'string' ? normalized.title : '',
     body: normalized?.body ?? null,
-    status: normalized?.status ?? null,
+    status: localStatus,
     labels: Array.isArray(normalized?.labels) ? normalized.labels : [],
     priority: normalized?.priority ?? null,
     assignee: normalized?.assignee ?? null,
     source: normalized?.source ?? null,
-    handoff_state: normalized?.handoffState ?? normalized?.handoff_state ?? null,
+    handoff_state: handoffState,
     github_issue_number: normalized?.githubIssueNumber ?? normalized?.github_issue_number ?? null,
     github_url: normalized?.githubUrl ?? normalized?.github_url ?? null,
     last_error: normalized?.lastError ?? normalized?.last_error ?? null,
     created_at: createdAt,
     updated_at: updatedAt,
     activated_at: activatedAt,
-    execution_state: normalized?.executionState ?? normalized?.execution_state ?? 'IDLE',
+    execution_state: executionState,
     execution_started_at: executionStartedAt,
     execution_completed_at: executionCompletedAt,
     execution_output: normalized?.executionOutput ?? normalized?.execution_output ?? null,
@@ -246,6 +277,13 @@ export function normalizeIssueForApi(input: unknown): any {
     executionCompletedAt,
     executionOutput: contractData.execution_output,
     deletedAt,
+
+    // I2: State Model v1 fields (camelCase)
+    localStatus,
+    githubStatusRaw,
+    githubMirrorStatus,
+    effectiveStatus,
+    githubLastSyncedAt,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
@@ -262,6 +300,13 @@ export function normalizeIssueForApi(input: unknown): any {
   api.execution_completed_at = executionCompletedAt;
   api.execution_output = api.executionOutput;
   api.deleted_at = deletedAt;
+
+  // I2: State Model v1 snake_case aliases
+  api.local_status = localStatus;
+  api.github_status_raw = githubStatusRaw;
+  api.github_mirror_status = githubMirrorStatus;
+  api.effective_status = effectiveStatus;
+  api.github_last_synced_at = githubLastSyncedAt;
 
   return api;
 }

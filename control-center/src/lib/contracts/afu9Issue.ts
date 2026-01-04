@@ -69,6 +69,19 @@ export enum Afu9StatusSource {
 }
 
 /**
+ * AFU9 GitHub Mirror Status enum
+ * I2: State Model v1 - Mapped GitHub status
+ */
+export enum Afu9GithubMirrorStatus {
+  TODO = 'TODO',
+  IN_PROGRESS = 'IN_PROGRESS',
+  IN_REVIEW = 'IN_REVIEW',
+  DONE = 'DONE',
+  BLOCKED = 'BLOCKED',
+  UNKNOWN = 'UNKNOWN',
+}
+
+/**
  * AFU9 Issue Input Contract
  * Represents the required and optional fields for creating/updating an issue
  * Updated for E61.3: GitHub Handoff Metadata + Idempotence
@@ -101,6 +114,8 @@ export interface Afu9IssueInput {
   github_status_raw?: string | null;
   github_status_updated_at?: string | null;
   status_source?: Afu9StatusSource | null;
+  // I2: State Model v1 fields
+  github_mirror_status?: Afu9GithubMirrorStatus | null;
 }
 
 /**
@@ -139,6 +154,8 @@ export interface Afu9IssueRow {
   github_status_raw: string | null;
   github_status_updated_at: string | null;
   status_source: Afu9StatusSource | null;
+  // I2: State Model v1 fields
+  github_mirror_status: Afu9GithubMirrorStatus | null;
 }
 
 /**
@@ -198,6 +215,14 @@ export function isValidPriority(priority: string): priority is Afu9IssuePriority
  */
 export function isValidExecutionState(state: string): state is Afu9ExecutionState {
   return Object.values(Afu9ExecutionState).includes(state as Afu9ExecutionState);
+}
+
+/**
+ * Type guard for Afu9GithubMirrorStatus
+ * I2: State Model v1
+ */
+export function isValidGithubMirrorStatus(status: string): status is Afu9GithubMirrorStatus {
+  return Object.values(Afu9GithubMirrorStatus).includes(status as Afu9GithubMirrorStatus);
 }
 
 /**
