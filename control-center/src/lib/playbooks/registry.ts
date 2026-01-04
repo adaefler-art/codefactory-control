@@ -22,6 +22,17 @@ import {
   computeVerificationIdempotencyKey,
   computeIncidentUpdateIdempotencyKey,
 } from './rerun-post-deploy-verification';
+import {
+  REDEPLOY_LKG_PLAYBOOK,
+  executeSelectLkg,
+  executeDispatchDeploy,
+  executePostDeployVerification,
+  executeUpdateDeployStatus,
+  computeSelectLkgIdempotencyKey,
+  computeDispatchDeployIdempotencyKey,
+  computeVerificationIdempotencyKey as computeLkgVerificationIdempotencyKey,
+  computeUpdateStatusIdempotencyKey,
+} from './redeploy-lkg';
 import { Pool } from 'pg';
 import { StepContext, StepResult } from '../contracts/remediation-playbook';
 
@@ -82,6 +93,26 @@ const rerunPostDeployVerificationIdempotencyFns = new Map<string, IdempotencyKey
 ]);
 
 /**
+ * Map of step executors for REDEPLOY_LKG
+ */
+const redeployLkgExecutors = new Map<string, StepExecutorFunction>([
+  ['select-lkg', executeSelectLkg],
+  ['dispatch-deploy', executeDispatchDeploy],
+  ['post-deploy-verification', executePostDeployVerification],
+  ['update-deploy-status', executeUpdateDeployStatus],
+]);
+
+/**
+ * Map of idempotency key functions for REDEPLOY_LKG
+ */
+const redeployLkgIdempotencyFns = new Map<string, IdempotencyKeyFunction>([
+  ['select-lkg', computeSelectLkgIdempotencyKey],
+  ['dispatch-deploy', computeDispatchDeployIdempotencyKey],
+  ['post-deploy-verification', computeLkgVerificationIdempotencyKey],
+  ['update-deploy-status', computeUpdateStatusIdempotencyKey],
+]);
+
+/**
  * Registry of all playbooks
  */
 const PLAYBOOK_REGISTRY = new Map<string, ExecutablePlaybook>([
@@ -99,6 +130,14 @@ const PLAYBOOK_REGISTRY = new Map<string, ExecutablePlaybook>([
       definition: RERUN_POST_DEPLOY_VERIFICATION_PLAYBOOK,
       stepExecutors: rerunPostDeployVerificationExecutors,
       idempotencyKeyFns: rerunPostDeployVerificationIdempotencyFns,
+    },
+  ],
+  [
+    'redeploy-lkg',
+    {
+      definition: REDEPLOY_LKG_PLAYBOOK,
+      stepExecutors: redeployLkgExecutors,
+      idempotencyKeyFns: redeployLkgIdempotencyFns,
     },
   ],
 ]);
