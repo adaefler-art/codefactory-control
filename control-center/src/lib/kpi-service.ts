@@ -1181,7 +1181,8 @@ export async function calculateMTTRForWindow(
     const query = `SELECT * FROM calculate_mttr_for_window($1, $2)`;
     const result = await pool.query(query, [windowStart, windowEnd]);
     
-    if (result.rows.length === 0 || !result.rows[0].mttr_hours) {
+    // Check if we have results and a valid MTTR value
+    if (result.rows.length === 0 || !result.rows[0]?.mttr_hours) {
       return null;
     }
     

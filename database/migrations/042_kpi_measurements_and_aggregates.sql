@@ -113,6 +113,7 @@ CREATE INDEX IF NOT EXISTS kpi_aggregates_created_at_idx ON kpi_aggregates(creat
 -- Function to calculate D2D (Decision-to-Deploy) hours for an issue
 -- Decision = Issue state enters SPEC_READY
 -- Deploy = deploy event timestamp for that issue/PR
+-- Note: Division by 3600.0 converts seconds to hours (1 hour = 3600 seconds)
 CREATE OR REPLACE FUNCTION calculate_d2d_hours(p_issue_id UUID)
 RETURNS TABLE(
   d2d_hours NUMERIC,
@@ -172,6 +173,7 @@ $$ LANGUAGE plpgsql STABLE;
 
 -- Function to calculate MTTR (Mean Time To Resolve) for incidents in a window
 -- MTTR = AVG(CLOSED.created_at - OPEN.created_at) for closed incidents
+-- Note: Division by 3600.0 converts seconds to hours (1 hour = 3600 seconds)
 CREATE OR REPLACE FUNCTION calculate_mttr_for_window(
   p_window_start TIMESTAMPTZ,
   p_window_end TIMESTAMPTZ
@@ -196,7 +198,7 @@ BEGIN
       AND i.status = 'CLOSED'
   )
   SELECT 
-    AVG(EXTRACT(EPOCH FROM (closed_at - opened_at)) / 3600.0) as mttr_hours,
+    AVG(EXTRACT(EPOCH FROM (closed_at - opened_at)) / 3600.0) as mttr_hours,  -- Convert seconds to hours
     COUNT(*) as incident_count,
     jsonb_build_object(
       'incidentIds', jsonb_agg(id),
@@ -209,6 +211,7 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- Function to calculate Incident Rate (incidents per day) for a window
+-- Note: Division by 86400.0 converts seconds to days (1 day = 86400 seconds)
 CREATE OR REPLACE FUNCTION calculate_incident_rate_for_window(
   p_window_start TIMESTAMPTZ,
   p_window_end TIMESTAMPTZ
@@ -222,6 +225,7 @@ RETURNS TABLE(
 DECLARE
   v_window_days NUMERIC;
 BEGIN
+  -- Calculate window duration in days (1 day = 86400 seconds)
   v_window_days := EXTRACT(EPOCH FROM (p_window_end - p_window_start)) / 86400.0;
   
   RETURN QUERY
