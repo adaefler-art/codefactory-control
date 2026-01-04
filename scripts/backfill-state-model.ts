@@ -38,7 +38,7 @@
 
 import { getPool } from '../control-center/src/lib/db';
 import { listAfu9Issues, updateAfu9Issue } from '../control-center/src/lib/db/afu9Issues';
-import { extractGithubMirrorStatus } from '../control-center/src/lib/issues/stateModel';
+import { mapRawGithubStatus } from '../control-center/src/lib/issues/stateModel';
 import { Afu9GithubMirrorStatus } from '../control-center/src/lib/contracts/afu9Issue';
 
 // ============================================================================
@@ -212,40 +212,19 @@ async function backfillIssues(config: BackfillConfig): Promise<BackfillResult> {
           continue;
         }
 
-        // Extract GitHub mirror status from github_status_raw
-        // Note: We don't have the full GitHub issue data here, so we use what's stored
+        // Extract GitHub mirror status from github_status_raw using canonical State Model v1 helper
+        // This ensures consistent mapping behavior with the sync route
         let newMirrorStatus: Afu9GithubMirrorStatus = Afu9GithubMirrorStatus.UNKNOWN;
         let reason = 'No GitHub status data available';
 
         if (issue.github_status_raw) {
-          // Parse github_status_raw to extract status information
-          // For now, we'll use a simple heuristic based on the raw value
-          // In production, this could be enhanced to parse Project status, labels, etc.
+          // Use canonical mapRawGithubStatus helper from State Model v1
+          // This provides consistent mapping across the entire system
+          newMirrorStatus = mapRawGithubStatus(issue.github_status_raw, false) as Afu9GithubMirrorStatus;
           
-          // Try to extract status from common patterns
-          const raw = issue.github_status_raw.toLowerCase();
-          
-          if (raw.includes('in progress') || raw.includes('implementing')) {
-            newMirrorStatus = Afu9GithubMirrorStatus.IN_PROGRESS;
-            reason = `Extracted from github_status_raw: "${issue.github_status_raw}"`;
-          } else if (raw.includes('in review') || raw.includes('review')) {
-            newMirrorStatus = Afu9GithubMirrorStatus.IN_REVIEW;
-            reason = `Extracted from github_status_raw: "${issue.github_status_raw}"`;
-          } else if (raw.includes('done') || raw.includes('completed')) {
-            newMirrorStatus = Afu9GithubMirrorStatus.DONE;
-            reason = `Extracted from github_status_raw: "${issue.github_status_raw}"`;
-          } else if (raw.includes('todo') || raw.includes('backlog')) {
-            newMirrorStatus = Afu9GithubMirrorStatus.TODO;
-            reason = `Extracted from github_status_raw: "${issue.github_status_raw}"`;
-          } else if (raw.includes('blocked') || raw.includes('hold')) {
-            newMirrorStatus = Afu9GithubMirrorStatus.BLOCKED;
-            reason = `Extracted from github_status_raw: "${issue.github_status_raw}"`;
-          } else if (raw === 'open' || raw === 'closed') {
-            // Don't map plain issue states to mirror status (semantic protection)
-            newMirrorStatus = Afu9GithubMirrorStatus.UNKNOWN;
-            reason = 'Plain issue state, no explicit status';
+          if (newMirrorStatus !== Afu9GithubMirrorStatus.UNKNOWN) {
+            reason = `Mapped from github_status_raw: "${issue.github_status_raw}" → ${newMirrorStatus}`;
           } else {
-            newMirrorStatus = Afu9GithubMirrorStatus.UNKNOWN;
             reason = `Could not map github_status_raw: "${issue.github_status_raw}"`;
           }
         }

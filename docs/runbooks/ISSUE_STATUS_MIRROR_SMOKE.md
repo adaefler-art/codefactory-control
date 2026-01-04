@@ -1,7 +1,7 @@
 # Issue Status Mirror Smoke Test Runbook
 
 **Version:** 1.0  
-**Date:** 2026-01-04  
+**Date:** 2025-01-04  
 **Part of:** I5 — Guardrails + Backfill + Smoke Runbook
 
 ## Overview

@@ -1216,6 +1216,9 @@ function checkIssueSyncMvp(): ValidationResult {
 // State Model v1 Guardrails (I5)
 // ============================================================================
 
+// I5 Guardrails: Maximum allowed direct issue.status references without effectiveStatus
+const MAX_LEGACY_STATUS_REFERENCES = 10;
+
 /**
  * Check that State Model v1 is used end-to-end
  * - Migration 043 (github_mirror_status column)
@@ -1341,21 +1344,33 @@ function checkStateModelV1(): ValidationResult {
     }
 
     // Check for legacy status usage (regression guard)
-    // Look for patterns like: issue.status (without effectiveStatus fallback)
-    const statusUsagePattern = /issue\.status(?!\w)(?!.*effectiveStatus)/g;
-    const matches = pageContent.match(statusUsagePattern);
+    // Look for patterns like: issue.status (without effectiveStatus on the same line)
+    const statusUsagePattern = /issue\.status(?!\w)/g;
+    const lines = pageContent.split('\n');
+    let directStatusCount = 0;
     
-    // Allow moderate legacy usage (up to 10 references) for backward compatibility
+    for (const line of lines) {
+      // Skip lines that already use effectiveStatus (proper usage)
+      if (line.includes('effectiveStatus')) continue;
+      
+      // Count lines with issue.status that don't have effectiveStatus
+      if (statusUsagePattern.test(line)) {
+        directStatusCount++;
+        statusUsagePattern.lastIndex = 0; // Reset regex
+      }
+    }
+    
+    // Allow moderate legacy usage (up to MAX_LEGACY_STATUS_REFERENCES) for backward compatibility
     // and legitimate use cases (e.g., showing legacy status indicator, tooltips)
-    if (matches && matches.length > 10) {
+    if (directStatusCount > MAX_LEGACY_STATUS_REFERENCES) {
       errors.push(
-        `\n⚠️  UI has ${matches.length} direct issue.status references without effectiveStatus:\n` +
+        `\n⚠️  UI has ${directStatusCount} direct issue.status references without effectiveStatus:\n` +
         `   File: control-center/app/issues/page.tsx\n` +
         `\n` +
         `   While some legacy usage is acceptable, excessive direct status\n` +
         `   access indicates potential regressions where effectiveStatus is ignored.\n` +
         `\n` +
-        `   Pattern found: issue.status (without effectiveStatus fallback)\n` +
+        `   Pattern found: issue.status (without effectiveStatus on same line)\n` +
         `\n` +
         `   Remedy: Replace with: issue.effectiveStatus ?? mapToCanonicalStatus(issue.status)\n`
       );
