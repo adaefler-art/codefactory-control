@@ -7,11 +7,10 @@
 # New violations (not in this baseline) will cause CI to fail.
 # To update: npm run routes:verify -- --write-baseline
 
-control-center/app/agents/page.tsx:45|/api/agents?limit=100
 control-center/app/agents/[agentType]/page.tsx:61|/api/agents/${encodeURIComponent(agentType)}
 control-center/app/agents/[agentType]/page.tsx:121|/api/agent/execute
+control-center/app/agents/page.tsx:45|/api/agents?limit=100
 control-center/app/auth/refresh/refresh-client.tsx:23|/api/auth/refresh
-control-center/app/components/Navigation.tsx:25|/api/auth/logout
 control-center/app/dashboard/page.tsx:114|/api/workflow/executions?limit=10
 control-center/app/dashboard/page.tsx:118|/api/workflows
 control-center/app/dashboard/page.tsx:122|/api/agents?limit=100
@@ -25,16 +24,10 @@ control-center/app/factory/page.tsx:19|/api/v1/factory/status?limit=20&errorLimi
 control-center/app/forgot-password/page.tsx:30|/api/auth/forgot-password
 control-center/app/issues/new/page.tsx:63|/api/issues/new
 control-center/app/issues/new/page.tsx:95|/api/issues/new
-control-center/app/issues/page.tsx:94|/api/issues?${params.toString()}
-control-center/app/issues/page.tsx:127|/api/issues/import
-control-center/app/issues/page.tsx:159|/api/import/backlog-file
-control-center/app/issues/page.tsx:212|/api/issues/${deleteConfirmIssue.id}
-control-center/app/issues/[id]/page.tsx:141|/api/issues/${issueId}
-control-center/app/issues/[id]/page.tsx:168|/api/issues/${id}/events
-control-center/app/issues/[id]/page.tsx:184|/api/issues/active-check
-control-center/app/issues/[id]/page.tsx:246|/api/issues/${id}
-control-center/app/issues/[id]/page.tsx:299|/api/issues/${id}/activate
-control-center/app/issues/[id]/page.tsx:346|/api/issues/${id}/handoff
+control-center/app/issues/page.tsx:97|/api/issues?${params.toString()}
+control-center/app/issues/page.tsx:130|/api/issues/import
+control-center/app/issues/page.tsx:162|/api/import/backlog-file
+control-center/app/issues/page.tsx:215|/api/issues/${deleteConfirmIssue.id}
 control-center/app/lawbook/page.tsx:127|/api/lawbook/guardrails
 control-center/app/lawbook/page.tsx:128|/api/lawbook/parameters
 control-center/app/lawbook/page.tsx:129|/api/lawbook/memory
@@ -42,20 +35,14 @@ control-center/app/login/page.tsx:25|/api/build-metadata
 control-center/app/login/page.tsx:36|/api/auth/login
 control-center/app/observability/page.tsx:71|/api/observability/alarms
 control-center/app/observability/page.tsx:91|/api/infrastructure/health
-control-center/app/repositories/page.tsx:28|/api/repositories
 control-center/app/repositories/[id]/page.tsx:85|/api/repositories/${id}
+control-center/app/repositories/page.tsx:28|/api/repositories
 control-center/app/reset-password/page.tsx:34|/api/auth/reset-password
-control-center/app/settings/page.tsx:60|/api/mcp/health
-control-center/app/settings/page.tsx:78|/api/repositories
-control-center/app/settings/page.tsx:86|/api/system/config
-control-center/app/settings/page.tsx:112|/api/repositories
-control-center/app/settings/page.tsx:140|/api/repositories/${id}
-control-center/app/settings/page.tsx:159|/api/repositories/${id}
 control-center/app/webhooks/page.tsx:43|/api/webhooks/events?limit=50
 control-center/app/webhooks/page.tsx:44|/api/webhooks/events?stats=true
-control-center/app/workflows/executions/[id]/page.tsx:66|/api/executions/${id}
-control-center/app/workflows/page.tsx:35|/api/workflows
-control-center/app/workflows/page.tsx:63|/api/workflow/execute
 control-center/app/workflows/[id]/page.tsx:62|/api/workflows/${id}
 control-center/app/workflows/[id]/page.tsx:77|/api/workflows/${id}/executions?limit=20
 control-center/app/workflows/[id]/page.tsx:93|/api/workflows/${id}/trigger
+control-center/app/workflows/executions/[id]/page.tsx:66|/api/executions/${id}
+control-center/app/workflows/page.tsx:35|/api/workflows
+control-center/app/workflows/page.tsx:63|/api/workflow/execute
