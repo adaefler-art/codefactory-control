@@ -100,6 +100,11 @@ export const API_ROUTES = {
     classify: (id: string) => `/api/incidents/${id}/classify`,
   },
 
+  // Ops Dashboard (E78.4)
+  ops: {
+    dashboard: '/api/ops/dashboard',
+  },
+
   // Playbooks
   playbooks: {
     list: '/api/playbooks',
