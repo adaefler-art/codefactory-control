@@ -9,13 +9,15 @@ import { parseLabelsInput } from "@/lib/label-utils";
 import { mapToCanonicalStatus, isLegacyStatus } from "@/lib/utils/status-mapping";
 import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 import { RunsSection } from "../../components/runs/RunsSection";
+import { getEffectiveStatusReason } from "@/lib/issues/stateModel";
+import type { IssueStateModel } from "@/lib/schemas/issueStateModel";
 
 interface Issue {
   id: string;
   publicId: string | null;
   title: string;
   body: string | null;
-  status: string; // Can be canonical or legacy status
+  status: string; // Can be canonical or legacy status (localStatus)
   labels: string[];
   priority: "P0" | "P1" | "P2" | null;
   assignee: string | null;
@@ -36,6 +38,14 @@ interface Issue {
   github_status_raw: string | null;
   github_status_updated_at: string | null;
   status_source: "manual" | "github_project" | "github_label" | "github_state" | null;
+  // I4: State Model v1 fields
+  localStatus?: string;
+  githubStatusRaw?: string | null;
+  githubMirrorStatus?: string;
+  executionState?: string;
+  handoffState?: string;
+  effectiveStatus?: string;
+  githubLastSyncedAt?: string | null;
 }
 
 interface ActivityEvent {
@@ -429,6 +439,7 @@ export default function IssueDetailPage({
       case "FAILED":
         return "bg-red-900/30 text-red-200 border border-red-700";
       case "NOT_SENT":
+      case "UNSYNCED":
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
       default:
         return "bg-gray-700/30 text-gray-200 border border-gray-600";
@@ -440,6 +451,7 @@ export default function IssueDetailPage({
       case "RUNNING":
         return "bg-blue-900/30 text-blue-200 border border-blue-700 animate-pulse";
       case "DONE":
+      case "SUCCEEDED":
         return "bg-green-900/30 text-green-200 border border-green-700";
       case "FAILED":
         return "bg-red-900/30 text-red-200 border border-red-700";
@@ -641,92 +653,113 @@ export default function IssueDetailPage({
           {/* Metadata Section */}
           <div className="p-6 border-b border-gray-800 bg-gray-800/30">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Status - Read-only display */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Status
+              {/* I4: State Model Section - Effective Status + All Dimensions */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  State Model v1 (I4)
                   {isLegacy && (
                     <span className="ml-2 text-xs text-orange-400" title={`Legacy status "${issue.status}" mapped to "${canonicalStatus}"`}>
                       (legacy)
                     </span>
                   )}
                 </label>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-3 py-2 text-sm font-medium rounded-md ${getStatusBadgeColor(
-                      issue.status
-                    )}`}
-                  >
-                    {canonicalStatus}
-                  </span>
+                <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+                  {/* Effective Status - Primary Display */}
+                  <div className="mb-4">
+                    <div className="text-xs text-gray-400 mb-1">Effective Status (Computed)</div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-3 py-2 text-sm font-bold rounded-md ${getStatusBadgeColor(
+                          issue.effectiveStatus ?? canonicalStatus
+                        )}`}
+                      >
+                        {issue.effectiveStatus ?? canonicalStatus}
+                      </span>
+                    </div>
+                    {/* Explanation of why this effective status was chosen */}
+                    {issue.localStatus && issue.githubMirrorStatus && issue.executionState && issue.handoffState && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        {getEffectiveStatusReason({
+                          localStatus: issue.localStatus as any,
+                          githubMirrorStatus: issue.githubMirrorStatus as any,
+                          executionState: issue.executionState as any,
+                          handoffState: issue.handoffState as any,
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* State Dimensions - Secondary Display */}
+                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-700">
+                    {/* Local Status (AFU9 Internal) */}
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">Local Status (AFU9)</div>
+                      <span
+                        className={`inline-block px-2 py-1 text-xs font-medium rounded-md ${getStatusBadgeColor(
+                          issue.localStatus ?? issue.status
+                        )}`}
+                      >
+                        {issue.localStatus ?? issue.status}
+                      </span>
+                    </div>
+
+                    {/* GitHub Mirror Status */}
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">GitHub Mirror</div>
+                      <span
+                        className={`inline-block px-2 py-1 text-xs font-medium rounded-md ${
+                          issue.githubMirrorStatus === 'IN_PROGRESS'
+                            ? 'bg-blue-900/30 text-blue-200 border border-blue-700'
+                            : issue.githubMirrorStatus === 'IN_REVIEW'
+                            ? 'bg-purple-900/30 text-purple-200 border border-purple-700'
+                            : issue.githubMirrorStatus === 'DONE'
+                            ? 'bg-emerald-900/30 text-emerald-200 border border-emerald-700'
+                            : issue.githubMirrorStatus === 'TODO'
+                            ? 'bg-cyan-900/30 text-cyan-200 border border-cyan-700'
+                            : issue.githubMirrorStatus === 'BLOCKED'
+                            ? 'bg-orange-900/30 text-orange-200 border border-orange-700'
+                            : 'bg-gray-700/30 text-gray-200 border border-gray-600'
+                        }`}
+                      >
+                        {issue.githubMirrorStatus ?? 'UNKNOWN'}
+                      </span>
+                    </div>
+
+                    {/* Execution State */}
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">Execution State</div>
+                      <span
+                        className={`inline-block px-2 py-1 text-xs font-medium rounded-md ${getExecutionStateBadgeColor(
+                          issue.executionState ?? issue.execution_state ?? 'IDLE'
+                        )}`}
+                      >
+                        {issue.executionState ?? issue.execution_state ?? 'IDLE'}
+                      </span>
+                    </div>
+
+                    {/* Handoff State */}
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">Handoff State</div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-block px-2 py-1 text-xs font-medium rounded-md ${getHandoffStateBadgeColor(
+                            issue.handoffState ?? issue.handoff_state
+                          )}`}
+                        >
+                          {issue.handoffState ?? issue.handoff_state}
+                        </span>
+                        {(issue.handoff_state === "FAILED" || issue.handoffState === "FAILED") && (
+                          <span className="text-red-400 text-xs" title={issue.last_error || "Failed"}>
+                            ⚠️
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Status changes via Activate action or workflow
-                </p>
               </div>
 
-              {/* Priority */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Priority
-                </label>
-                <select
-                  value={editedPriority || ""}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === "") {
-                      setEditedPriority(null);
-                    } else if (value === "P0" || value === "P1" || value === "P2") {
-                      setEditedPriority(value);
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">No priority set</option>
-                  <option value="P0">P0</option>
-                  <option value="P1">P1</option>
-                  <option value="P2">P2</option>
-                </select>
-              </div>
-
-              {/* Handoff State */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Handoff State
-                </label>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-3 py-1 text-sm font-medium rounded-md ${getHandoffStateBadgeColor(
-                      issue.handoff_state
-                    )}`}
-                  >
-                    {issue.handoff_state}
-                  </span>
-                  {issue.handoff_state === "FAILED" && (
-                    <span className="text-red-400 text-sm" title={issue.last_error || "Failed"}>
-                      ⚠️
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Execution State */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Execution State
-                </label>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-3 py-1 text-sm font-medium rounded-md ${getExecutionStateBadgeColor(
-                      issue.execution_state || "IDLE"
-                    )}`}
-                  >
-                    {issue.execution_state || "IDLE"}
-                  </span>
-                </div>
-              </div>
-
-              {/* GitHub Link */}
+              {/* GitHub Issue Link */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   GitHub Issue
@@ -747,11 +780,11 @@ export default function IssueDetailPage({
                 )}
               </div>
 
-              {/* E7_extra: GitHub Status Display */}
+              {/* GitHub Raw Status (if available) */}
               {issue.github_status_raw && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    GitHub Status
+                    GitHub Status (Raw)
                   </label>
                   <div className="flex items-center gap-2">
                     <span className="px-3 py-1 text-sm font-medium rounded-md bg-blue-900/30 text-blue-300 border border-blue-700">
@@ -776,6 +809,30 @@ export default function IssueDetailPage({
                   )}
                 </div>
               )}
+
+              {/* Priority */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Priority
+                </label>
+                <select
+                  value={editedPriority || ""}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "") {
+                      setEditedPriority(null);
+                    } else if (value === "P0" || value === "P1" || value === "P2") {
+                      setEditedPriority(value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">No priority set</option>
+                  <option value="P0">P0</option>
+                  <option value="P1">P1</option>
+                  <option value="P2">P2</option>
+                </select>
+              </div>
 
               {/* Dates */}
               <div>
