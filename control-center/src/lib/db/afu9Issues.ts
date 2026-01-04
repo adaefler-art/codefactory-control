@@ -70,9 +70,10 @@ export async function createAfu9Issue(
         title, body, status, labels, priority, assignee, source,
         handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
         execution_state, execution_started_at, execution_completed_at, execution_output,
-        handoff_at, handoff_error, github_repo, github_issue_last_sync_at
+        handoff_at, handoff_error, github_repo, github_issue_last_sync_at,
+        github_status_raw, github_status_updated_at, status_source
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
       RETURNING *`,
       [
         sanitized.title,
@@ -96,6 +97,9 @@ export async function createAfu9Issue(
         sanitized.handoff_error,
         sanitized.github_repo,
         sanitized.github_issue_last_sync_at,
+        sanitized.github_status_raw,
+        sanitized.github_status_updated_at,
+        sanitized.status_source,
       ]
     );
 
@@ -458,6 +462,25 @@ export async function updateAfu9Issue(
     if (updates.github_issue_last_sync_at !== undefined) {
       fields.push(`github_issue_last_sync_at = $${paramIndex}`);
       values.push(updates.github_issue_last_sync_at);
+      paramIndex++;
+    }
+
+    // E7_extra: GitHub status parity fields
+    if (updates.github_status_raw !== undefined) {
+      fields.push(`github_status_raw = $${paramIndex}`);
+      values.push(updates.github_status_raw);
+      paramIndex++;
+    }
+
+    if (updates.github_status_updated_at !== undefined) {
+      fields.push(`github_status_updated_at = $${paramIndex}`);
+      values.push(updates.github_status_updated_at);
+      paramIndex++;
+    }
+
+    if (updates.status_source !== undefined) {
+      fields.push(`status_source = $${paramIndex}`);
+      values.push(updates.status_source);
       paramIndex++;
     }
 
