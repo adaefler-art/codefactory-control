@@ -197,6 +197,8 @@ npx cdk deploy Afu9RoutingStack -c afu9-domain=afu-9.com -c afu9-multi-env=true 
 
 If you want to deploy **staging only** in multi-env mode (and avoid any chance of touching prod), deploy only the stage stack:
 
+Note: Smoke-Key wird per Name resolved (rotations-safe). See [Lessons Learned — Staging Smoke Key + MCP Runner (v0.6 → v0.7)](../v06/LESSONS_LEARNED_SMOKE_RUNNER.md).
+
 ```bash
 npx cdk deploy Afu9EcsStageStack -c afu9-domain=afu-9.com -c afu9-multi-env=true --require-approval never
 ```
