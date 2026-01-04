@@ -233,6 +233,84 @@ export async function getSyncStaleness(
 }
 
 /**
+ * List issue snapshots with cursor-based pagination
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param options - Query options with cursor support
+ */
+export async function listIssueSnapshotsWithCursor(
+  pool: Pool,
+  options: {
+    repo_owner?: string;
+    repo_name?: string;
+    state?: 'open' | 'closed';
+    limit?: number;
+    before?: string; // Cursor format: "timestamp:id"
+  } = {}
+): Promise<OperationResult<{ snapshots: IssueSnapshotRow[] }>> {
+  try {
+    const { repo_owner, repo_name, state, limit = 50, before } = options;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (repo_owner) {
+      conditions.push(`repo_owner = $${paramIndex++}`);
+      params.push(repo_owner);
+    }
+
+    if (repo_name) {
+      conditions.push(`repo_name = $${paramIndex++}`);
+      params.push(repo_name);
+    }
+
+    if (state) {
+      conditions.push(`state = $${paramIndex++}`);
+      params.push(state);
+    }
+
+    // Parse cursor for pagination
+    if (before) {
+      const [timestamp, issueNumber] = before.split(':');
+      if (timestamp && issueNumber) {
+        // Cursor-based pagination: WHERE (updated_at, issue_number) < (cursor_timestamp, cursor_id)
+        // Using composite comparison for stable ordering
+        conditions.push(`(updated_at, issue_number) < ($${paramIndex}::timestamptz, $${paramIndex + 1}::integer)`);
+        params.push(timestamp, parseInt(issueNumber, 10));
+        paramIndex += 2;
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    params.push(limit);
+
+    // Deterministic ordering: updated_at DESC, issue_number DESC (stable composite)
+    const result = await pool.query<IssueSnapshotRow>(
+      `SELECT * FROM issue_snapshots
+       ${whereClause}
+       ORDER BY updated_at DESC, issue_number DESC
+       LIMIT $${paramIndex++}`,
+      params
+    );
+
+    return {
+      success: true,
+      data: {
+        snapshots: result.rows,
+      },
+    };
+  } catch (error) {
+    console.error('[listIssueSnapshotsWithCursor] Database error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
  * List issue snapshots with optional filtering
  * 
  * @param pool - PostgreSQL connection pool
