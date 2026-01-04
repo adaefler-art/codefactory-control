@@ -381,6 +381,16 @@ export function validateAfu9IssueInput(input: unknown): ValidationResult {
     }
   }
 
+  // I2: Validate optional field: github_mirror_status
+  if (data.github_mirror_status !== undefined) {
+    if (typeof data.github_mirror_status !== 'string' || !isValidGithubMirrorStatus(data.github_mirror_status)) {
+      errors.push({
+        field: 'github_mirror_status',
+        message: `github_mirror_status must be one of: ${Object.values(Afu9GithubMirrorStatus).join(', ')}`,
+      });
+    }
+  }
+
   // Validate optional field: execution_started_at
   if (data.execution_started_at !== undefined && data.execution_started_at !== null) {
     if (typeof data.execution_started_at !== 'string') {
@@ -464,5 +474,7 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     github_status_raw: input.github_status_raw === undefined || input.github_status_raw === null ? null : input.github_status_raw.trim(),
     github_status_updated_at: input.github_status_updated_at === undefined ? null : input.github_status_updated_at,
     status_source: input.status_source === undefined ? null : input.status_source,
+    // I2: State Model v1 fields
+    github_mirror_status: input.github_mirror_status || Afu9GithubMirrorStatus.UNKNOWN,
   };
 }
