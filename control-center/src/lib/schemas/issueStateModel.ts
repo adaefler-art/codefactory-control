@@ -158,6 +158,8 @@ export function validateIssueStateModel(data: unknown): IssueStateModel {
  * 
  * @returns Validation result with success boolean and data/error
  */
-export function safeValidateIssueStateModel(data: unknown): z.SafeParseReturnType<unknown, IssueStateModel> {
+export function safeValidateIssueStateModel(
+  data: unknown
+): ReturnType<typeof IssueStateModelSchema.safeParse> {
   return IssueStateModelSchema.safeParse(data);
 }
