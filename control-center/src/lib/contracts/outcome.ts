@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod';
+import { createHash } from 'crypto';
 
 // ========================================
 // Enums and Constants
@@ -235,9 +236,8 @@ export function stableStringify(value: unknown): string {
  * Ensures same inputs → same hash
  */
 export function computePostmortemHash(postmortem: PostmortemV0_7_0): string {
-  const crypto = require('crypto');
   const stableJson = stableStringify(postmortem);
-  return crypto.createHash('sha256').update(stableJson).digest('hex');
+  return createHash('sha256').update(stableJson).digest('hex');
 }
 
 /**

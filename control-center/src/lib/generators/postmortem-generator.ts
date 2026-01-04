@@ -9,6 +9,7 @@
  */
 
 import { Pool } from 'pg';
+import { createHash } from 'crypto';
 import {
   PostmortemV0_7_0,
   PostmortemEvidenceRef,
@@ -80,14 +81,13 @@ export async function generatePostmortemForIncident(
   const postmortemHash = computePostmortemHash(postmortem);
 
   // 7. Compute pack hash (for idempotency key)
-  const crypto = require('crypto');
   const packData = {
     incidentId: incident.id,
     evidenceCount: evidence.length,
     eventsCount: events.length,
     remediationCount: remediationRuns.length,
   };
-  const packHash = crypto.createHash('sha256')
+  const packHash = createHash('sha256')
     .update(JSON.stringify(packData))
     .digest('hex')
     .substring(0, 16);
