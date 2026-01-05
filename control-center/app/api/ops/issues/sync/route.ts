@@ -48,6 +48,7 @@ import { sanitizeRedact } from '@/lib/contracts/remediation-playbook';
 import { listAfu9Issues, updateAfu9Issue } from '@/lib/db/afu9Issues';
 import { extractGithubMirrorStatus } from '@/lib/issues/stateModel';
 import { Afu9GithubMirrorStatus, Afu9StatusSource } from '@/lib/contracts/afu9Issue';
+import { checkProdWriteGuard } from '@/lib/api/prod-guard';
 
 // Constants
 const GITHUB_OWNER = process.env.GITHUB_OWNER || 'adaefler-art';
@@ -191,9 +192,16 @@ function sanitizeLabelForSnapshot(name: string): string {
  * 
  * Synchronizes GitHub issues to local database snapshots
  * 401-first authentication, repo allowlist enforcement (I711)
+ * Issue 3: Blocked in production when ENABLE_PROD=false
  */
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
+
+  // Issue 3: Check prod write guard (fail-closed)
+  const guardResponse = checkProdWriteGuard(request);
+  if (guardResponse) {
+    return guardResponse;
+  }
 
   // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
   const userId = request.headers.get('x-afu9-sub');

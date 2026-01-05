@@ -5,6 +5,7 @@
  * 
  * Executes the post-deploy verification playbook for the specified environment.
  * Returns the run ID and status immediately (synchronous execution for MVP).
+ * Issue 3: Blocked in production when ENABLE_PROD=false
  */
 
 import { NextRequest } from 'next/server';
@@ -14,6 +15,7 @@ import { getPool } from '../../../../../src/lib/db';
 import { executePlaybook } from '../../../../../src/lib/playbook-executor';
 import { validatePlaybookDefinition, PlaybookDefinition } from '../../../../../src/lib/contracts/playbook';
 import { jsonResponse, errorResponse, getRequestId } from '../../../../../src/lib/api/response-helpers';
+import { checkProdWriteGuard } from '@/lib/api/prod-guard';
 
 // Load playbook definition
 let cachedPlaybook: PlaybookDefinition | null = null;
@@ -42,6 +44,12 @@ function loadPlaybook(): PlaybookDefinition {
 
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
+
+  // Issue 3: Check prod write guard (fail-closed)
+  const guardResponse = checkProdWriteGuard(request);
+  if (guardResponse) {
+    return guardResponse;
+  }
 
   try {
     // Parse environment from query params

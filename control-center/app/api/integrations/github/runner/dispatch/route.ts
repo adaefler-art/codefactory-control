@@ -2,6 +2,7 @@
  * API Route: POST /api/integrations/github/runner/dispatch
  * 
  * E64.1: Dispatch a GitHub Actions workflow run
+ * Issue 3: Blocked in production when ENABLE_PROD=false
  * 
  * Request body accepts either:
  * - `workflowIdOrFile` (preferred, matches GitHub API terminology)
@@ -13,8 +14,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { dispatchWorkflow } from '@/lib/github-runner/adapter';
 import type { DispatchWorkflowInput } from '@/lib/github-runner/types';
+import { checkProdWriteGuard } from '@/lib/api/prod-guard';
 
 export async function POST(request: NextRequest) {
+  // Issue 3: Check prod write guard (fail-closed)
+  const guardResponse = checkProdWriteGuard(request);
+  if (guardResponse) {
+    return guardResponse;
+  }
+
   try {
     const body = await request.json();
 
