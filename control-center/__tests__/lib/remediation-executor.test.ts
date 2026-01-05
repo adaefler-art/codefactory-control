@@ -30,6 +30,62 @@ jest.mock('@/lawbook/load', () => ({
   }),
 }));
 
+// Mock lawbook version helper (E79.3)
+jest.mock('@/lib/lawbook-version-helper', () => ({
+  requireActiveLawbookVersion: jest.fn().mockResolvedValue('2025-12-30.1'),
+}));
+
+// Mock lawbook database (E79.4)
+jest.mock('@/lib/db/lawbook', () => ({
+  getActiveLawbook: jest.fn().mockResolvedValue({
+    success: true,
+    data: {
+      lawbook_json: {
+        version: '0.7.0',
+        lawbookId: 'AFU9-LAWBOOK',
+        lawbookVersion: '2025-12-30.1',
+        createdAt: new Date().toISOString(),
+        createdBy: 'system',
+        github: { allowedRepos: [] },
+        determinism: {
+          requireDeterminismGate: false,
+          requirePostDeployVerification: false,
+        },
+        remediation: {
+          enabled: true,
+          allowedPlaybooks: [
+            'restart-service',
+            'scale-up',
+            'notify-slack',
+            'run-verification',
+            'safe-retry-runner',
+            'rerun-post-deploy-verification',
+            'redeploy-lkg',
+          ],
+          allowedActions: [
+            'RESTART_SERVICE',
+            'SCALE_UP',
+            'NOTIFY_SLACK',
+            'RUN_VERIFICATION',
+            // ROLLBACK_DEPLOY is NOT in general allowedActions - it's a special case
+            // only allowed for redeploy-lkg playbook
+          ],
+        },
+        evidence: {
+          requiredKindsByCategory: {},
+        },
+        enforcement: {
+          requiredFields: ['lawbookVersion'],
+          strictMode: true,
+        },
+        ui: {
+          displayName: 'Test Lawbook',
+        },
+      },
+    },
+  }),
+}));
+
 import { RemediationPlaybookExecutor } from '@/lib/remediation-executor';
 import { RemediationPlaybookDAO } from '@/lib/db/remediation-playbooks';
 import { IncidentDAO } from '@/lib/db/incidents';
