@@ -42,6 +42,7 @@ export default function IntentPage() {
   const [messages, setMessages] = useState<IntentMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [intentEnabled, setIntentEnabled] = useState<boolean | null>(null);
+  const [intentStatusLoading, setIntentStatusLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +59,26 @@ export default function IntentPage() {
 
   // Fetch sessions on mount
   useEffect(() => {
-    fetchIntentEnabledFlag();
+    fetchIntentStatus();
     fetchSessions();
   }, []);
+
+  const fetchIntentStatus = async () => {
+    setIntentStatusLoading(true);
+    try {
+      const response = await fetch(API_ROUTES.intent.status, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data: any = await safeFetch(response);
+      setIntentEnabled(data.enabled === true);
+    } catch (err) {
+      console.warn("Failed to fetch INTENT status:", err);
+      setIntentEnabled(null);
+    } finally {
+      setIntentStatusLoading(false);
+    }
+  };
 
   const fetchIntentEnabledFlag = async () => {
     try {
@@ -151,13 +169,56 @@ export default function IntentPage() {
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     
+    if (!inputValue.trim()) return;
+
+    // Auto-create session if none selected
     if (!currentSessionId) {
-      // Auto-create session if none selected
-      await createNewSession();
+      const messageContent = inputValue.trim();
+      setInputValue("");
+      setIsSending(true);
+      setError(null);
+
+      try {
+        // Create new session first
+        const createResponse = await fetch(API_ROUTES.intent.sessions.create, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({}),
+        });
+        const newSession = await safeFetch(createResponse);
+        setSessions([newSession, ...sessions]);
+        setCurrentSessionId(newSession.id);
+
+        // Now send the message to the new session
+        const sendResponse = await fetch(
+          API_ROUTES.intent.messages.create(newSession.id),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ content: messageContent }),
+          }
+        );
+        const data = await safeFetch(sendResponse);
+        
+        // Append both user and assistant messages
+        setMessages([
+          data.userMessage,
+          data.assistantMessage,
+        ]);
+
+        // Refresh sessions list to update the title
+        await fetchSessions();
+      } catch (err) {
+        console.error("Failed to send message:", err);
+        setError(formatErrorMessage(err));
+        setInputValue(messageContent); // Restore input on error
+      } finally {
+        setIsSending(false);
+      }
       return;
     }
-
-    if (!inputValue.trim()) return;
 
     const messageContent = inputValue.trim();
     setInputValue("");
@@ -470,13 +531,35 @@ export default function IntentPage() {
             </div>
           )}
 
-          {intentEnabled === false && (
-            <div className="mt-4 rounded border border-gray-700 bg-gray-800/50 px-4 py-3">
-              <div className="text-sm font-medium text-gray-100">INTENT is disabled</div>
-              <div className="mt-1 text-sm text-gray-300">
-                This environment is running with <span className="font-mono">AFU9_INTENT_ENABLED=false</span>.
-                Message generation endpoints fail-closed (404) until enabled.
+          {/* INTENT Status Banner */}
+          {!intentStatusLoading && intentEnabled === false && (
+            <div className="mt-4 rounded border border-yellow-700 bg-yellow-900/20 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <div className="text-yellow-400 mt-0.5">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-yellow-100">INTENT is disabled</div>
+                  <div className="mt-1 text-sm text-yellow-200">
+                    This environment is running with <span className="font-mono bg-yellow-900/40 px-1 py-0.5 rounded">AFU9_INTENT_ENABLED=false</span>.
+                    Message generation endpoints are fail-closed (404) until enabled.
+                  </div>
+                  <div className="mt-2 text-xs text-yellow-300">
+                    Contact your administrator to enable INTENT in this environment.
+                  </div>
+                </div>
               </div>
+            </div>
+          )}
+          
+          {!intentStatusLoading && intentEnabled === true && (
+            <div className="mt-4 flex items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-green-900/30 text-green-300 border border-green-700">
+                <span className="w-2 h-2 bg-green-400 rounded-full mr-1.5"></span>
+                INTENT Enabled
+              </span>
             </div>
           )}
         </div>
@@ -569,7 +652,7 @@ export default function IntentPage() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={currentSessionId ? "Type a message... (Enter to send, Shift+Enter for new line)" : "Create a session first"}
+              placeholder={currentSessionId ? "Type a message... (Enter to send, Shift+Enter for new line)" : "Type a message to start a new session... (auto-creates session)"}
               disabled={isSending}
               rows={2}
               className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none disabled:bg-gray-700 disabled:text-gray-500"
