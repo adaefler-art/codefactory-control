@@ -1,0 +1,180 @@
+/**
+ * API Route: GET /api/ops/db/migrations
+ * 
+ * Migration Parity Check - Deterministic comparison of DB ledger vs. repo migrations
+ * 
+ * SECURITY: Auth-first (401) + Admin-only (403) enforcement
+ * - x-afu9-sub header is set by proxy.ts after server-side JWT verification
+ * - Client-provided x-afu9-* headers are stripped by middleware to prevent spoofing
+ * - Admin allowlist from AFU9_ADMIN_SUBS env var (fail-closed if missing/empty)
+ * 
+ * Query parameters:
+ * - env?: string - Optional environment filter (production|staging)
+ * - limit?: number - Bounded results (default: 200, max: 500)
+ * 
+ * Response:
+ * - version: API version
+ * - generatedAt: ISO timestamp
+ * - lawbookVersion: Current lawbook version
+ * - db: Database reachability info
+ * - repo: Repository migration count and latest
+ * - ledger: DB ledger info (table, count, lastApplied)
+ * - parity: Parity status and discrepancies
+ * 
+ * Error codes:
+ * - 401 UNAUTHORIZED - Missing or empty x-afu9-sub
+ * - 403 FORBIDDEN - Not admin or admin allowlist missing
+ * - 500 MIGRATION_LEDGER_MISSING - Ledger table doesn't exist
+ * - 500 DB_UNREACHABLE - Cannot connect to database
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getPool } from '@/lib/db';
+import {
+  checkDbReachability,
+  checkLedgerExists,
+  listAppliedMigrations,
+  getLastAppliedMigration,
+  getAppliedMigrationCount,
+} from '@/lib/db/migrations';
+import {
+  listRepoMigrations,
+  computeParity,
+  getLatestMigration,
+} from '@/lib/utils/migration-parity';
+import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getLawbookVersion } from '@/lib/lawbook-version-helper';
+import * as path from 'path';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+/**
+ * Check if user sub is in admin allowlist
+ * Fail-closed: empty/missing AFU9_ADMIN_SUBS → deny all
+ */
+function isAdminUser(userId: string): boolean {
+  const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+  if (!adminSubs.trim()) {
+    // Fail-closed: no admin allowlist configured → deny all
+    return false;
+  }
+  
+  const allowedSubs = adminSubs.split(',').map(s => s.trim()).filter(s => s);
+  return allowedSubs.includes(userId);
+}
+
+/**
+ * GET /api/ops/db/migrations
+ * 
+ * Returns deterministic parity report between database ledger and repo migrations
+ */
+export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
+
+  // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+  const userId = request.headers.get('x-afu9-sub');
+  if (!userId || !userId.trim()) {
+    return errorResponse('Unauthorized', {
+      status: 401,
+      requestId,
+      code: 'UNAUTHORIZED',
+      details: 'Authentication required - no verified user context',
+    });
+  }
+
+  // AUTHORIZATION CHECK: Admin-only (fail-closed)
+  if (!isAdminUser(userId)) {
+    return errorResponse('Forbidden', {
+      status: 403,
+      requestId,
+      code: 'FORBIDDEN',
+      details: 'Admin privileges required to access migration parity checks',
+    });
+  }
+
+  try {
+    const pool = getPool();
+    const searchParams = request.nextUrl.searchParams;
+
+    // Parse query parameters with bounds
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '200', 10), 1), 500);
+    const env = searchParams.get('env') || undefined;
+
+    // Check DB reachability
+    const dbInfo = await checkDbReachability(pool);
+    if (!dbInfo.reachable) {
+      return errorResponse('Database unreachable', {
+        status: 500,
+        requestId,
+        code: 'DB_UNREACHABLE',
+        details: dbInfo.error || 'Cannot connect to database',
+      });
+    }
+
+    // Check if migration ledger exists
+    const ledgerExists = await checkLedgerExists(pool);
+    if (!ledgerExists) {
+      return errorResponse('Migration ledger not found', {
+        status: 500,
+        requestId,
+        code: 'MIGRATION_LEDGER_MISSING',
+        details: 'schema_migrations table does not exist. Run migrations to create ledger.',
+      });
+    }
+
+    // Get repo migrations (from database/migrations/ directory)
+    const migrationsDir = path.join(process.cwd(), '..', 'database', 'migrations');
+    const repoMigrations = listRepoMigrations(migrationsDir);
+    const latestRepoMigration = getLatestMigration(repoMigrations);
+
+    // Get DB migrations from ledger
+    const dbMigrations = await listAppliedMigrations(pool, limit);
+    const lastApplied = await getLastAppliedMigration(pool);
+    const appliedCount = await getAppliedMigrationCount(pool);
+
+    // Compute parity
+    const parity = computeParity(repoMigrations, dbMigrations);
+
+    // Get lawbook version
+    const lawbookVersion = await getLawbookVersion();
+
+    // Build response
+    const response = {
+      version: '0.7.0',
+      generatedAt: new Date().toISOString(),
+      lawbookVersion,
+      db: {
+        reachable: dbInfo.reachable,
+        host: dbInfo.host,
+        port: dbInfo.port,
+        database: dbInfo.database,
+      },
+      repo: {
+        migrationCount: repoMigrations.length,
+        latest: latestRepoMigration,
+      },
+      ledger: {
+        table: 'schema_migrations',
+        appliedCount,
+        lastApplied: lastApplied?.filename || null,
+        lastAppliedAt: lastApplied?.applied_at.toISOString() || null,
+      },
+      parity: {
+        status: parity.status,
+        missingInDb: parity.missingInDb.slice(0, limit), // Bounded
+        extraInDb: parity.extraInDb.slice(0, limit), // Bounded
+        hashMismatches: parity.hashMismatches.slice(0, limit), // Bounded
+      },
+    };
+
+    return jsonResponse(response, { requestId });
+  } catch (error) {
+    console.error('[API /api/ops/db/migrations] Error:', error);
+    return errorResponse('Failed to generate migration parity report', {
+      status: 500,
+      requestId,
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
