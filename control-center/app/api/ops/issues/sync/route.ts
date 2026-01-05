@@ -11,6 +11,11 @@
  * Client-provided x-afu9-* headers are stripped by middleware to prevent spoofing.
  * This route trusts x-afu9-sub because it can only come from verified middleware.
  * 
+ * REPO RESOLUTION (I7.0.5 Fix):
+ * - Per-issue repo resolution: extracts owner/repo from github_repo or github_url
+ * - Backfills github_repo field during sync for consistent future syncs
+ * - Fetches each issue from its correct repository (supports multi-repo scenarios)
+ * 
  * Request Body (optional):
  * - owner?: string - Repository owner (default: env GITHUB_OWNER)
  * - repo?: string - Repository name (default: env GITHUB_REPO)
