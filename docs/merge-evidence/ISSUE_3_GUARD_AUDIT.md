@@ -148,11 +148,35 @@ function isAdminUser(userId: string): boolean {
 
 ## Next Steps
 
+✅ **All Packages Complete:**
 1. ✅ **Package 1 Complete:** This audit document
-2. ⏳ **Package 2:** Implement standardized guard helper
-3. ⏳ **Package 3:** Fix /api/ready semantics
-4. ⏳ **Package 4:** Add comprehensive tests
-5. ⏳ **Package 5:** Create runbook and merge evidence
+2. ✅ **Package 2 Complete:** Standardized guard helper (`src/lib/guards/prod-write-guard.ts`)
+3. ✅ **Package 3 Complete:** Fixed /api/ready semantics (ready=true with flags)
+4. ✅ **Package 4 Complete:** Comprehensive tests (guard ordering + no DB calls)
+5. ✅ **Package 5 Complete:** Documentation and runbook
+
+## Summary of Changes
+
+**Files Created:**
+- `control-center/src/lib/guards/prod-write-guard.ts` - Unified guard helper
+- `control-center/__tests__/lib/guards/prod-write-guard.test.ts` - Guard tests
+- `control-center/__tests__/app/api/ready-prod-disabled.test.ts` - Ready endpoint tests
+- `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md` - This audit
+- `docs/runbooks/ISSUE_3_PROD_DEACTIVATION_VERIFY.md` - Verification runbook
+
+**Files Modified:**
+- `control-center/app/api/ops/issues/sync/route.ts` - Uses new guard, correct order
+- `control-center/app/api/playbooks/post-deploy-verify/run/route.ts` - Uses new guard
+- `control-center/app/api/integrations/github/runner/dispatch/route.ts` - Uses new guard
+- `control-center/app/api/ready/route.ts` - Fixed semantics (ready=true with flags)
+
+**Key Improvements:**
+- ✅ Correct guard order: 401 → 409 → 403 (was: 403 → 401)
+- ✅ Correct status code: 409 for prod disabled (was: 403)
+- ✅ Auth now enforced on all guarded endpoints (was: missing on 2 endpoints)
+- ✅ No DB calls before guards pass (proven in tests)
+- ✅ /api/ready returns ready=true (was: ready=false, could cause churn)
+- ✅ Explicit prodControl flags (was: buried in checks)
 
 ## Notes
 
