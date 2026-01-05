@@ -55,7 +55,26 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'codefactory-control';
 const MAX_SYNC_PAGES = 10;
 const MAX_ISSUES = 200;
 const PER_PAGE_MAX = 100;
-const MAX_STATUS_RAW_LENGTH = 256; // I3: Bound github_status_raw to prevent unbounded persistence
+// NOTE: DB schema (migration 041) defines github_status_raw as VARCHAR(100).
+// Keep snapshot <= 100 to avoid persistence failures and ensure non-null on fetch success.
+const MAX_STATUS_RAW_LENGTH = 100;
+
+type PgErrorFields = {
+  code?: string;
+  constraint?: string;
+  table?: string;
+  column?: string;
+};
+
+function extractPgErrorFields(error: unknown): PgErrorFields {
+  const anyErr = error as any;
+  return {
+    code: typeof anyErr?.code === 'string' ? anyErr.code : undefined,
+    constraint: typeof anyErr?.constraint === 'string' ? anyErr.constraint : undefined,
+    table: typeof anyErr?.table === 'string' ? anyErr.table : undefined,
+    column: typeof anyErr?.column === 'string' ? anyErr.column : undefined,
+  };
+}
 
 // Zod schema for request validation
 const SyncRequestSchema = z.object({
@@ -480,12 +499,6 @@ export async function POST(request: NextRequest) {
                 return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
               })();
 
-              const normalizedClosedAt = (() => {
-                if (!githubDetails.closed_at) return null;
-                const parsed = new Date(githubDetails.closed_at);
-                return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-              })();
-
               const rawLabelNames = githubDetails.labels
                 .map((l: any) => (typeof l?.name === 'string' ? l.name : ''))
                 .filter((n: string) => !!n && n.trim().length > 0);
@@ -506,16 +519,11 @@ export async function POST(request: NextRequest) {
                 state: 'open' | 'closed';
                 labels: string[];
                 updatedAt: string;
-                closedAt?: string;
               } = {
                 state: githubDetails.state,
                 labels: [...labelNames],
                 updatedAt: normalizedUpdatedAt,
               };
-
-              if (normalizedClosedAt) {
-                snapshotBase.closedAt = normalizedClosedAt;
-              }
 
               // Bound github_status_raw deterministically to MAX_STATUS_RAW_LENGTH.
               // If too large, drop labels from the end (labels are already sorted).
@@ -529,13 +537,13 @@ export async function POST(request: NextRequest) {
                 rawJson = JSON.stringify(snapshot);
               }
 
-              // As a final safety fallback, persist without labels.
+              // Final safety fallback: persist with empty labels.
               if (rawJson.length > MAX_STATUS_RAW_LENGTH) {
-                const minimal = { ...snapshotBase, labels: [] as string[] };
-                rawJson = JSON.stringify(minimal);
+                rawJson = JSON.stringify({ state: snapshotBase.state, updatedAt: snapshotBase.updatedAt, labels: [] as string[] });
               }
 
-              githubStatusRaw = rawJson.length <= MAX_STATUS_RAW_LENGTH ? rawJson : null;
+              // Fetch-ok invariant: raw snapshot must not be null.
+              githubStatusRaw = rawJson;
 
               // Clear error on success
               githubSyncError = null;
@@ -577,7 +585,14 @@ export async function POST(request: NextRequest) {
             // Also backfill github_repo if it was extracted from github_url
             const previousMirrorStatus = afu9Issue.github_mirror_status;
             statusPersistAttemptedCount++;
-            const updateResult = await updateAfu9Issue(pool, afu9Id, {
+            const publicId = afu9Id.slice(0, 8);
+            const nowIso = new Date().toISOString();
+            const shouldMarkSynced =
+              githubSyncError === null &&
+              githubStatusRaw !== null &&
+              (githubMirrorStatus === 'OPEN' || githubMirrorStatus === 'CLOSED');
+
+            const persistPayload: Record<string, unknown> = {
               // Update by AFU9 UUID id and persist snake_case fields
               github_repo: resolvedGithubRepo,
               github_mirror_status: githubMirrorStatus,
@@ -585,21 +600,73 @@ export async function POST(request: NextRequest) {
               github_status_updated_at: githubStatusUpdatedAt,
               status_source: statusSource,
               github_sync_error: githubSyncError,
-              github_issue_last_sync_at: new Date().toISOString(),
-            });
+            };
 
-            if (!updateResult.success) {
+            // Only mark "last synced" when mirror+raw are successfully persisted (no sync error).
+            if (shouldMarkSynced) {
+              persistPayload.github_issue_last_sync_at = nowIso;
+            }
+
+            let updateResult:
+              | { success: boolean; rowCount?: number; error?: string }
+              | undefined;
+
+            try {
+              updateResult = await updateAfu9Issue(pool, afu9Id, persistPayload as any);
+            } catch (persistError) {
+              updateResult = {
+                success: false,
+                error: persistError instanceof Error ? persistError.message : String(persistError),
+              };
+
+              const pg = extractPgErrorFields(persistError);
+              console.error('[API /api/ops/issues/sync] Persist failed (exception):', {
+                requestId,
+                publicId,
+                githubIssueNumber: afu9Issue.github_issue_number,
+                ...pg,
+              });
+            }
+
+            const rowCount = typeof updateResult?.rowCount === 'number' ? updateResult.rowCount : 0;
+            if (!updateResult?.success || rowCount <= 0) {
               statusPersistFailedCount++;
+
+              const pg = extractPgErrorFields(updateResult);
+              console.error('[API /api/ops/issues/sync] Persist failed:', {
+                requestId,
+                publicId,
+                githubIssueNumber: afu9Issue.github_issue_number,
+                error: updateResult?.error,
+                ...pg,
+              });
+
+              // Best-effort: persist github_sync_error so failures are visible in Issue JSON.
+              const baseMessage = updateResult?.error || 'Failed to persist GitHub mirror fields';
+              const sanitizedMessage = sanitizeRedact(baseMessage);
+              const message = typeof sanitizedMessage === 'string'
+                ? sanitizedMessage.substring(0, 500)
+                : 'Failed to persist GitHub mirror fields';
+
+              const persistSyncError = JSON.stringify({ code: 'PERSIST_FAILED', message });
+              try {
+                await updateAfu9Issue(pool, afu9Id, {
+                  github_sync_error: persistSyncError,
+                } as any);
+              } catch (fallbackError) {
+                const fallbackPg = extractPgErrorFields(fallbackError);
+                console.error('[API /api/ops/issues/sync] Persist github_sync_error failed:', {
+                  requestId,
+                  publicId,
+                  githubIssueNumber: afu9Issue.github_issue_number,
+                  ...fallbackPg,
+                });
+              }
+
               continue;
             }
 
-            // rowCount evidence: do not rely on mirror-status changes
-            const rowCount = typeof updateResult.rowCount === 'number' ? updateResult.rowCount : 1;
-            if (rowCount > 0) {
-              statusPersistOkCount++;
-            } else {
-              statusPersistNoopCount++;
-            }
+            statusPersistOkCount++;
 
             statusSyncedCount++;
             if (previousMirrorStatus !== githubMirrorStatus) {

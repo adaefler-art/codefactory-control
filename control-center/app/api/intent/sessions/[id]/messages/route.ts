@@ -41,7 +41,7 @@ export async function POST(
     }
 
     const pool = getPool();
-    const sessionId = params.id;
+    const sessionId = typeof params?.id === 'string' ? params.id.trim() : '';
     
     // Get authenticated user ID from middleware
     const userId = request.headers.get('x-afu9-sub');
@@ -54,6 +54,12 @@ export async function POST(
     }
     
     if (!sessionId) {
+      console.warn('[API /api/intent/sessions/[id]/messages] Missing session id', {
+        requestId,
+        userId,
+        rawSessionId: params?.id,
+      });
+
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
