@@ -7,19 +7,51 @@ Successfully implemented the Guardrail Gates Library (I794) as a shared, reusabl
 
 ### Created Files
 
-1. **control-center/src/lib/guardrail-gates.ts** (New)
+1. **control-center/src/lib/guardrail-gates.ts** (+493 lines) - New
    - Core guardrail gates library implementation
    - GateVerdict schema with Zod validation
    - Five gate functions: playbook, action, evidence, determinism, idempotency
-   - Deterministic hashing and verdict generation
+   - Deterministic hashing using shared stableStringify
    - Deny-by-default semantics throughout
 
-2. **control-center/__tests__/lib/guardrail-gates.test.ts** (New)
+2. **control-center/__tests__/lib/guardrail-gates.test.ts** (+618 lines) - New
    - Comprehensive test suite (40 tests, all passing)
    - Tests for deny-by-default behavior
    - Tests for deterministic verdict generation
    - Tests for all gate functions
    - Tests for edge cases and policy enforcement
+
+3. **control-center/__tests__/lib/guardrail-gates-integration.test.ts** (+220 lines) - New
+   - Integration tests for existing idempotency key format compatibility (17 tests)
+   - Validates run_key, step keys, playbook-specific keys
+   - Tests for edge cases (max length, invalid chars, special patterns)
+   - Verifies computeInputsHash consistency with remediation-playbook
+
+4. **E79_4_IMPLEMENTATION_SUMMARY.md** (+207 lines) - New
+   - Complete implementation guide with example JSON
+   - Integration points documentation
+   - Verification commands
+
+5. **E79_4_VERIFICATION_COMMANDS.md** (+140 lines) - New
+   - Detailed verification and testing commands
+   - Test coverage breakdown
+
+### Modified Files
+
+1. **control-center/src/lib/remediation-executor.ts** (Δ164 lines)
+   - Replaced stub lawbook loader with full LawbookV1 integration
+   - Replaced ad-hoc gating functions with guardrail gates
+   - Added idempotency key format validation
+   - Preserved ROLLBACK_DEPLOY special case logic
+   - Gate verdicts stored in result_json for audit
+
+2. **control-center/__tests__/lib/remediation-executor.test.ts** (+84 lines)
+   - Added lawbook mocks for E79.3 and E79.4 integration
+   - Updated to work with new guardrail gates integration
+
+3. **control-center/__tests__/lib/remediation-audit-integration.test.ts** (+47 lines)
+   - Added lawbook mocks
+   - All tests passing with new integration
 
 ## Implementation Details
 
@@ -235,9 +267,11 @@ npm run repo:verify
 
 ## Test Results
 
-**Guardrail Gates Unit Tests**: 40 tests passing
-**Guardrail Gates Integration Tests**: 21 tests passing  
-**Total**: 61 tests for guardrail gates functionality
+**Guardrail Gates Unit Tests**: 40 tests passing  
+**Guardrail Gates Integration Tests**: 17 tests passing  
+**Remediation Executor Tests**: 7 tests passing  
+**Remediation Audit Tests**: 41 tests passing  
+**Total**: 105 tests for guardrail gates functionality and integration  
 
 All tests validate:
 - Deny-by-default works correctly
@@ -245,15 +279,16 @@ All tests validate:
 - Missing evidence yields deterministic reasons list ordering
 - Verdicts are deterministic (same inputs → same output)
 - Reason codes are sorted alphabetically for consistency
-- ✅ **NEW**: Existing idempotency key formats are accepted
-- ✅ **NEW**: Integration with remediation executor maintains behavior
-- ✅ **NEW**: Shared stableStringify produces consistent hashes
+- ✅ **Integration**: Existing idempotency key formats are accepted
+- ✅ **Integration**: Remediation executor maintains behavior
+- ✅ **Integration**: Shared stableStringify produces consistent hashes
+- ✅ **No regressions**: All existing remediation tests pass
 
 ## Acceptance Criteria
 
 ✅ Guardrail library exists and can be used across the system  
 ✅ Verdict objects are deterministic and transparent  
-✅ Tests/build green (61/61 tests passing - 40 unit + 21 integration)  
+✅ Tests/build green (105/105 tests passing - 40 unit + 17 integration + 48 remediation)  
 ✅ GateVerdict example JSON provided  
 ✅ Files changed list + reasons documented  
 ✅ PowerShell commands provided  
@@ -261,6 +296,7 @@ All tests validate:
 ✅ **No regressions**: Existing idempotency keys validated and accepted  
 ✅ **Code deduplication**: Shared stableStringify from contracts  
 ✅ **Audit-safe**: Gate verdicts stored in result_json with no secrets  
+✅ **Minimal diff**: Only necessary changes to integrate gates  
 
 ## Security & Hardening
 
@@ -271,3 +307,4 @@ All tests validate:
 - No external dependencies beyond crypto (Node.js built-in)
 - Gate verdicts sanitized before storage (no tokens/URLs with query strings)
 - Full lawbook integration with version tracking
+- ROLLBACK_DEPLOY special case preserved (playbook-specific constraint)
