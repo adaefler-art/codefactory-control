@@ -24,10 +24,16 @@ fi
 # Function to execute psql command
 psql_exec() {
   if [[ -n "${DATABASE_URL:-}" ]]; then
-    psql "$DATABASE_URL" "$@"
+    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 "$@"
   else
-    psql "$@"
+    psql -v ON_ERROR_STOP=1 "$@"
   fi
+}
+
+sql_escape() {
+  local value="$1"
+  # Escape single quotes for safe embedding in SQL strings.
+  echo "${value//\'/\'\'}"
 }
 
 # Function to compute SHA-256 hash of a file
@@ -46,14 +52,24 @@ compute_hash() {
 # Function to check if migration is already applied
 is_migration_applied() {
   local filename="$1"
-  local result=$(psql_exec -t -c "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$filename'" 2>/dev/null || echo "0")
-  echo "$result" | tr -d ' '
+  local escaped
+  escaped=$(sql_escape "$filename")
+  local result
+  result=$(psql_exec -t -c "SELECT 1 FROM schema_migrations WHERE filename = '$escaped' LIMIT 1" 2>/dev/null || true)
+  if echo "$result" | tr -d ' ' | grep -q '^1$'; then
+    echo "1"
+  else
+    echo "0"
+  fi
 }
 
 # Function to get stored hash for a migration
 get_stored_hash() {
   local filename="$1"
-  local result=$(psql_exec -t -c "SELECT sha256 FROM schema_migrations WHERE filename = '$filename'" 2>/dev/null || echo "")
+  local escaped
+  escaped=$(sql_escape "$filename")
+  local result
+  result=$(psql_exec -t -c "SELECT sha256 FROM schema_migrations WHERE filename = '$escaped' LIMIT 1" 2>/dev/null || echo "")
   echo "$result" | tr -d ' '
 }
 
@@ -61,21 +77,36 @@ get_stored_hash() {
 record_migration() {
   local filename="$1"
   local hash="$2"
-  psql_exec -c "INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ('$filename', '$hash', NOW()) ON CONFLICT (filename) DO NOTHING" >/dev/null
+  local escaped
+  escaped=$(sql_escape "$filename")
+  psql_exec -c "INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ('$escaped', '$hash', NOW()) ON CONFLICT (filename) DO NOTHING" >/dev/null
+}
+
+ensure_schema_migrations_ledger() {
+  echo "📋 Ensuring schema_migrations ledger..."
+
+  # Create table if missing (sha256 nullable for legacy compatibility; hashes are enforced by this script).
+  psql_exec -c "CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename TEXT PRIMARY KEY,
+    sha256 TEXT,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )" >/dev/null
+
+  # Backward-compat: older deployments may have a schema_migrations table without sha256.
+  psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sha256 TEXT" >/dev/null
+
+  # Ensure applied_at exists (legacy safety)
+  psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ" >/dev/null
+  psql_exec -c "UPDATE schema_migrations SET applied_at = COALESCE(applied_at, NOW())" >/dev/null
+
+  # Optional index for debugging/history
+  psql_exec -c "CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at DESC)" >/dev/null
 }
 
 echo "🔍 Starting database migration..."
 echo ""
 
-# Ensure schema_migrations table exists
-echo "📋 Checking schema_migrations ledger..."
-psql_exec -c "CREATE TABLE IF NOT EXISTS schema_migrations (
-  filename TEXT PRIMARY KEY,
-  sha256 TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)" >/dev/null 2>&1 || {
-  echo "⚠️  schema_migrations table check skipped (will be created by 048_schema_migrations_ledger.sql)"
-}
+ensure_schema_migrations_ledger
 
 applied_count=0
 skipped_count=0
@@ -95,6 +126,16 @@ for f in $(ls database/migrations/*.sql | sort); do
   if [[ "$is_applied" == "1" ]]; then
     # Migration already applied - verify hash
     stored_hash=$(get_stored_hash "$filename")
+
+    # Backward-compat: legacy schema_migrations rows may have empty sha256.
+    # In that case, backfill with the current hash and continue.
+    if [[ -z "${stored_hash:-}" ]]; then
+      escaped=$(sql_escape "$filename")
+      psql_exec -c "UPDATE schema_migrations SET sha256 = '$current_hash' WHERE filename = '$escaped' AND (sha256 IS NULL OR sha256 = '')" >/dev/null
+      echo "⚠️  Skipped: $filename (already applied; legacy ledger hash backfilled)"
+      skipped_count=$((skipped_count + 1))
+      continue
+    fi
     
     if [[ "$stored_hash" != "$current_hash" ]]; then
       echo "❌ ERROR: MIGRATION_HASH_MISMATCH"
@@ -117,14 +158,19 @@ for f in $(ls database/migrations/*.sql | sort); do
   else
     # Apply new migration
     echo "▶️  Applying: $filename"
-    
-    if psql_exec -f "$f" >/dev/null 2>&1; then
+
+    tmp_log=$(mktemp)
+    if psql_exec -f "$f" >"$tmp_log" 2>&1; then
       # Record in ledger
       record_migration "$filename" "$current_hash"
       echo "✅ Applied:  $filename (hash: ${current_hash:0:12}...)"
       applied_count=$((applied_count + 1))
+      rm -f "$tmp_log" || true
     else
       echo "❌ ERROR: Failed to apply $filename"
+      echo "--- psql output (tail) ---" >&2
+      tail -n 200 "$tmp_log" >&2 || true
+      rm -f "$tmp_log" || true
       exit 1
     fi
   fi
