@@ -26,6 +26,53 @@ jest.mock('@/lawbook/load', () => ({
   }),
 }));
 
+// Mock lawbook version helper (E79.3)
+jest.mock('@/lib/lawbook-version-helper', () => ({
+  requireActiveLawbookVersion: jest.fn().mockResolvedValue('2025-12-30.1'),
+}));
+
+// Mock lawbook database (E79.4)
+jest.mock('@/lib/db/lawbook', () => ({
+  getActiveLawbook: jest.fn().mockResolvedValue({
+    success: true,
+    data: {
+      lawbook_json: {
+        version: '0.7.0',
+        lawbookId: 'AFU9-LAWBOOK',
+        lawbookVersion: '2025-12-30.1',
+        createdAt: new Date().toISOString(),
+        createdBy: 'system',
+        github: { allowedRepos: [] },
+        determinism: {
+          requireDeterminismGate: false,
+          requirePostDeployVerification: false,
+        },
+        remediation: {
+          enabled: true,
+          allowedPlaybooks: [
+            'run-verification',
+            'restart-service',
+          ],
+          allowedActions: [
+            'RUN_VERIFICATION',
+            'RESTART_SERVICE',
+          ],
+        },
+        evidence: {
+          requiredKindsByCategory: {},
+        },
+        enforcement: {
+          requiredFields: ['lawbookVersion'],
+          strictMode: true,
+        },
+        ui: {
+          displayName: 'Test Lawbook',
+        },
+      },
+    },
+  }),
+}));
+
 import { RemediationPlaybookExecutor } from '@/lib/remediation-executor';
 
 // Mock the database pool
