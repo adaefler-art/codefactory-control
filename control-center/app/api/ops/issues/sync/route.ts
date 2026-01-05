@@ -354,6 +354,10 @@ export async function POST(request: NextRequest) {
       let statusSyncAttemptedCount = 0;
       let statusFetchOkCount = 0;
       let statusFetchFailedCount = 0;
+      let statusPersistAttemptedCount = 0;
+      let statusPersistOkCount = 0;
+      let statusPersistNoopCount = 0;
+      let statusPersistFailedCount = 0;
       try {
         // NOTE: listAfu9Issues() defaults to LIMIT 100 which can miss older linked issues.
         // Page through issues to ensure all linked issues are considered (stage evidence: #458).
@@ -400,6 +404,13 @@ export async function POST(request: NextRequest) {
           for (const afu9Issue of linkedIssues) {
 
             statusSyncAttemptedCount++;
+
+            const afu9Id = typeof afu9Issue?.id === 'string' ? afu9Issue.id : '';
+            if (!afu9Id) {
+              statusPersistFailedCount++;
+              console.error('[API /api/ops/issues/sync] Missing AFU9 issue id; cannot persist status update');
+              continue;
+            }
 
             // I3: Repo resolution per issue - deterministic owner/repo from github_repo or github_url
             // This ensures we fetch from the correct repository for each issue
@@ -565,23 +576,36 @@ export async function POST(request: NextRequest) {
             // I3: Update AFU9 issue with github_mirror_status and metadata
             // Also backfill github_repo if it was extracted from github_url
             const previousMirrorStatus = afu9Issue.github_mirror_status;
-            const updateResult = await updateAfu9Issue(pool, afu9Issue.id, {
+            statusPersistAttemptedCount++;
+            const updateResult = await updateAfu9Issue(pool, afu9Id, {
+              // Update by AFU9 UUID id and persist snake_case fields
+              github_repo: resolvedGithubRepo,
               github_mirror_status: githubMirrorStatus,
               github_status_raw: githubStatusRaw,
               github_status_updated_at: githubStatusUpdatedAt,
               status_source: statusSource,
-              github_issue_last_sync_at: new Date().toISOString(),
               github_sync_error: githubSyncError,
-              github_repo: resolvedGithubRepo, // Backfill github_repo if it was null
+              github_issue_last_sync_at: new Date().toISOString(),
             });
 
-            if (updateResult.success) {
-              statusSyncedCount++;
-              if (previousMirrorStatus !== githubMirrorStatus) {
-                console.log(
-                  `[API /api/ops/issues/sync] Synced GitHub mirror status for AFU9 issue ${afu9Issue.id}: ${previousMirrorStatus} → ${githubMirrorStatus}`
-                );
-              }
+            if (!updateResult.success) {
+              statusPersistFailedCount++;
+              continue;
+            }
+
+            // rowCount evidence: do not rely on mirror-status changes
+            const rowCount = typeof updateResult.rowCount === 'number' ? updateResult.rowCount : 1;
+            if (rowCount > 0) {
+              statusPersistOkCount++;
+            } else {
+              statusPersistNoopCount++;
+            }
+
+            statusSyncedCount++;
+            if (previousMirrorStatus !== githubMirrorStatus) {
+              console.log(
+                `[API /api/ops/issues/sync] Synced GitHub mirror status for AFU9 issue ${afu9Id}: ${previousMirrorStatus} → ${githubMirrorStatus}`
+              );
             }
           }
         }
@@ -599,6 +623,10 @@ export async function POST(request: NextRequest) {
         statusSyncAttempted: statusSyncAttemptedCount,
         statusFetchOk: statusFetchOkCount,
         statusFetchFailed: statusFetchFailedCount,
+        statusPersistAttempted: statusPersistAttemptedCount,
+        statusPersistOk: statusPersistOkCount,
+        statusPersistNoop: statusPersistNoopCount,
+        statusPersistFailed: statusPersistFailedCount,
         syncedAt: new Date().toISOString(),
       };
 

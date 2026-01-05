@@ -48,7 +48,7 @@ describe('POST /api/ops/issues/sync', () => {
     mockSearchIssues.mockResolvedValue({ total_count: 0, issues: [] } as never);
     mockUpsertIssueSnapshot.mockResolvedValue({ success: true } as never);
 
-    mockUpdateAfu9Issue.mockResolvedValue({ success: true, data: {} } as never);
+    mockUpdateAfu9Issue.mockResolvedValue({ success: true, data: {}, rowCount: 1 } as never);
   });
 
   it('persists github_status_raw snapshot and sets mirror CLOSED when GitHub state=closed', async () => {
@@ -88,6 +88,10 @@ describe('POST /api/ops/issues/sync', () => {
     expect(data.statusFetchOk).toBe(1);
     expect(data.statusFetchFailed).toBe(0);
     expect(data.statusSynced).toBe(1);
+    expect(data.statusPersistAttempted).toBe(1);
+    expect(data.statusPersistOk).toBe(1);
+    expect(data.statusPersistNoop).toBe(0);
+    expect(data.statusPersistFailed).toBe(0);
 
     expect(mockUpdateAfu9Issue).toHaveBeenCalledTimes(1);
     const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
@@ -136,6 +140,8 @@ describe('POST /api/ops/issues/sync', () => {
     expect(response.status).toBe(200);
     expect(data.statusFetchOk).toBe(1);
     expect(data.routeVersion).toBe('mirror-v1');
+    expect(data.statusPersistAttempted).toBe(1);
+    expect(data.statusPersistOk).toBe(1);
 
     const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
 
@@ -147,6 +153,48 @@ describe('POST /api/ops/issues/sync', () => {
     expect(snapshot.updatedAt).toBe('2026-01-04T01:02:03.000Z');
     expect(updates.github_status_updated_at).toBe('2026-01-04T01:02:03.000Z');
     expect(updates.status_source).toBe('github_state');
+  });
+
+  it('updates github_issue_last_sync_at even when mirror status does not change', async () => {
+    mockListAfu9Issues.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: '55555555-5555-5555-5555-555555555555',
+          github_issue_number: 7,
+          github_mirror_status: 'OPEN',
+        },
+      ],
+    } as never);
+
+    mockGetIssue.mockResolvedValue({
+      state: 'open',
+      updated_at: '2026-01-04T04:05:06.000Z',
+      labels: [],
+    } as never);
+
+    const request = new NextRequest('http://localhost:3000/api/ops/issues/sync', {
+      method: 'POST',
+      headers: {
+        'x-afu9-sub': 'tester',
+      },
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.routeVersion).toBe('mirror-v1');
+    expect(data.statusSyncAttempted).toBe(1);
+    expect(data.statusFetchOk).toBe(1);
+    expect(data.statusPersistAttempted).toBe(1);
+    expect(data.statusPersistOk).toBe(1);
+    expect(data.statusPersistNoop).toBe(0);
+    expect(data.statusPersistFailed).toBe(0);
+
+    const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
+    expect(updates.github_mirror_status).toBe('OPEN');
+    expect(typeof updates.github_issue_last_sync_at).toBe('string');
   });
 
   it('records sync error and increments fetchFailed on GitHub fetch failure', async () => {
@@ -179,6 +227,8 @@ describe('POST /api/ops/issues/sync', () => {
     expect(data.statusFetchOk).toBe(0);
     expect(data.statusFetchFailed).toBe(1);
     expect(data.statusSynced).toBe(1);
+    expect(data.statusPersistAttempted).toBe(1);
+    expect(data.statusPersistOk).toBe(1);
 
     const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
     expect(updates.github_mirror_status).toBe('ERROR');
