@@ -2,7 +2,7 @@
  * Remediation Playbook Executor (E77.1 / I771)
  * 
  * Executes remediation playbooks with:
- * - Deny-by-default lawbook gating
+ * - Deny-by-default lawbook gating (via E79.4 Guardrail Gates)
  * - Evidence gating (require specific evidence before running)
  * - Strict idempotency (same inputs → same run)
  * - Deterministic planning
@@ -36,111 +36,47 @@ import { getIncidentDAO } from './db/incidents';
 import { getRemediationPlaybookDAO } from './db/remediation-playbooks';
 import { loadGuardrails } from '../lawbook/load';
 import { requireActiveLawbookVersion } from './lawbook-version-helper';
+import { getActiveLawbook } from './db/lawbook';
+import { parseLawbook } from '../lawbook/schema';
+import {
+  gatePlaybookAllowed,
+  gateActionAllowed,
+  gateIdempotencyKeyFormat,
+  GateVerdict,
+} from './guardrail-gates';
 
 // ========================================
-// Lawbook Gating
+// Lawbook Gating (E79.4 / I794)
 // ========================================
 
 /**
- * Lawbook gate configuration (stub for E79 integration)
- * In production, this would load from active lawbook version
- */
-interface LawbookGateConfig {
-  version: string;
-  allowedPlaybooks: string[];
-  allowedActionTypes: string[];
-  deniedActionTypes: string[];
-}
-
-/**
- * Load lawbook gate configuration
+ * Load active lawbook for gating operations
  * E79.3 / I793: Uses requireActiveLawbookVersion() for fail-closed behavior.
- * Throws LAWBOOK_NOT_CONFIGURED if no active lawbook exists.
+ * E79.4 / I794: Returns parsed LawbookV1 for use with guardrail gates.
+ * 
+ * @returns LawbookV1 | null (null triggers deny-by-default in gates)
  */
-async function loadLawbookGateConfig(pool?: Pool): Promise<LawbookGateConfig> {
-  // E79.3 / I793: Require active lawbook (fail-closed for gating operations)
-  const lawbookVersion = await requireActiveLawbookVersion(pool);
-  
-  // Load guardrails for allowed playbooks/actions
-  const guardrails = await loadGuardrails();
-  
-  // Return lawbook gate configuration with exact lawbook version
-  return {
-    version: lawbookVersion,
-    allowedPlaybooks: [
-      'restart-service',
-      'scale-up',
-      'notify-slack',
-      'run-verification',
-      'safe-retry-runner', // I772: Allow safe retry of GitHub workflows
-      'rerun-post-deploy-verification', // I772: Allow re-run of E65.2 verification
-      'redeploy-lkg', // I773: Allow redeploy Last Known Good (E77.3)
-    ],
-    allowedActionTypes: [
-      'RESTART_SERVICE',
-      'SCALE_UP',
-      'NOTIFY_SLACK',
-      'RUN_VERIFICATION',
-    ],
-    deniedActionTypes: [
-      'SCALE_DOWN', // Can cause capacity issues
-      'DRAIN_TASKS', // Can cause service disruption
-    ],
-  };
-}
-
-/**
- * Check if playbook is allowed by lawbook
- */
-function isPlaybookAllowed(
-  playbookId: string,
-  lawbookConfig: LawbookGateConfig
-): { allowed: boolean; reason?: string } {
-  if (!lawbookConfig.allowedPlaybooks.includes(playbookId)) {
-    return {
-      allowed: false,
-      reason: `Playbook '${playbookId}' is not in allowed list`,
-    };
-  }
-  
-  return { allowed: true };
-}
-
-/**
- * Check if action type is allowed by lawbook
- * Special handling: ROLLBACK_DEPLOY is allowed only for redeploy-lkg playbook
- */
-function isActionTypeAllowed(
-  actionType: string,
-  lawbookConfig: LawbookGateConfig,
-  playbookId?: string
-): { allowed: boolean; reason?: string } {
-  // Special case: ROLLBACK_DEPLOY is only allowed for redeploy-lkg playbook
-  if (actionType === 'ROLLBACK_DEPLOY') {
-    if (playbookId === 'redeploy-lkg') {
-      return { allowed: true };
+async function loadActiveLawbookForGating(pool?: Pool) {
+  try {
+    // E79.3: Require active lawbook exists (fail-closed)
+    const lawbookVersion = await requireActiveLawbookVersion(pool);
+    
+    // Load the full lawbook document
+    const lawbookResult = await getActiveLawbook('AFU9-LAWBOOK', pool);
+    
+    if (!lawbookResult.success || !lawbookResult.data) {
+      // No active lawbook - gates will deny by default
+      return null;
     }
-    return {
-      allowed: false,
-      reason: `Action type 'ROLLBACK_DEPLOY' is only allowed for redeploy-lkg playbook`,
-    };
+    
+    // Parse and validate lawbook
+    const lawbook = parseLawbook(lawbookResult.data.lawbook_json);
+    return lawbook;
+  } catch (error) {
+    console.error('[Remediation] Failed to load active lawbook for gating:', error);
+    // On error, return null to trigger deny-by-default in gates
+    return null;
   }
-
-  if (lawbookConfig.deniedActionTypes.includes(actionType)) {
-    return {
-      allowed: false,
-      reason: `Action type '${actionType}' is explicitly denied`,
-    };
-  }
-  
-  if (!lawbookConfig.allowedActionTypes.includes(actionType)) {
-    return {
-      allowed: false,
-      reason: `Action type '${actionType}' is not in allowed list`,
-    };
-  }
-  
-  return { allowed: true };
 }
 
 // ========================================
@@ -309,15 +245,30 @@ export class RemediationPlaybookExecutor {
     
     const evidence = await incidentDAO.getEvidence(request.incidentId);
     
-    // Step 2: Load lawbook configuration (E79.3 / I793: fail-closed)
-    const lawbookConfig = await loadLawbookGateConfig(this.pool);
+    // Step 2: Load lawbook for gating (E79.3 / I793: fail-closed, E79.4 / I794: guardrail gates)
+    const lawbook = await loadActiveLawbookForGating(this.pool);
+    const lawbookVersion = lawbook?.lawbookVersion || 'NONE';
     
-    // Step 3: Lawbook gating - playbook allowed?
-    const playbookCheck = isPlaybookAllowed(playbook.id, lawbookConfig);
-    if (!playbookCheck.allowed) {
-      // Create SKIPPED run with reason
+    // Extract evidence kinds for gating
+    const evidenceKinds = evidence.map(e => e.kind);
+    
+    // Step 3: Lawbook gating - playbook allowed? (E79.4 / I794: use guardrail gates)
+    const playbookVerdict = gatePlaybookAllowed(
+      {
+        playbookId: playbook.id,
+        incidentCategory: incident.category,
+        evidenceKinds,
+      },
+      lawbook
+    );
+    
+    if (playbookVerdict.verdict !== 'ALLOW') {
+      // Create SKIPPED run with verdict details
       const inputsHash = computeInputsHash(request.inputs || {});
       const runKey = computeRunKey(incident.incident_key, playbook.id, inputsHash);
+      
+      // Extract primary denial reason
+      const primaryReason = playbookVerdict.reasons.find(r => r.severity === 'ERROR') || playbookVerdict.reasons[0];
       
       const run = await remediationDAO.upsertRunByKey({
         run_key: runKey,
@@ -325,11 +276,12 @@ export class RemediationPlaybookExecutor {
         playbook_id: playbook.id,
         playbook_version: playbook.version,
         status: 'SKIPPED',
-        lawbook_version: lawbookConfig.version,
+        lawbook_version: lawbookVersion,
         inputs_hash: inputsHash,
         result_json: {
           skipReason: 'LAWBOOK_DENIED',
-          message: playbookCheck.reason,
+          message: primaryReason?.message || 'Playbook not allowed',
+          gateVerdict: playbookVerdict, // Store full verdict for audit
         },
       });
       
@@ -337,16 +289,20 @@ export class RemediationPlaybookExecutor {
         runId: run.id,
         status: 'SKIPPED',
         skipReason: 'LAWBOOK_DENIED',
-        message: playbookCheck.reason,
+        message: primaryReason?.message || 'Playbook not allowed',
       };
     }
     
-    // Step 4: Lawbook gating - action types allowed?
+    // Step 4: Lawbook gating - action types allowed? (E79.4 / I794: use guardrail gates)
     for (const step of playbook.steps) {
-      const actionCheck = isActionTypeAllowed(step.actionType, lawbookConfig, playbook.id);
-      if (!actionCheck.allowed) {
+      const actionVerdict = gateActionAllowed({ actionType: step.actionType }, lawbook);
+      
+      if (actionVerdict.verdict !== 'ALLOW') {
         const inputsHash = computeInputsHash(request.inputs || {});
         const runKey = computeRunKey(incident.incident_key, playbook.id, inputsHash);
+        
+        // Extract primary denial reason
+        const primaryReason = actionVerdict.reasons.find(r => r.severity === 'ERROR') || actionVerdict.reasons[0];
         
         const run = await remediationDAO.upsertRunByKey({
           run_key: runKey,
@@ -354,11 +310,12 @@ export class RemediationPlaybookExecutor {
           playbook_id: playbook.id,
           playbook_version: playbook.version,
           status: 'SKIPPED',
-          lawbook_version: lawbookConfig.version,
+          lawbook_version: lawbookVersion,
           inputs_hash: inputsHash,
           result_json: {
             skipReason: 'LAWBOOK_DENIED',
-            message: actionCheck.reason,
+            message: primaryReason?.message || `Action ${step.actionType} not allowed`,
+            gateVerdict: actionVerdict, // Store full verdict for audit
           },
         });
         
@@ -366,7 +323,7 @@ export class RemediationPlaybookExecutor {
           runId: run.id,
           status: 'SKIPPED',
           skipReason: 'LAWBOOK_DENIED',
-          message: actionCheck.reason,
+          message: primaryReason?.message || `Action ${step.actionType} not allowed`,
         };
       }
     }
@@ -383,7 +340,7 @@ export class RemediationPlaybookExecutor {
         playbook_id: playbook.id,
         playbook_version: playbook.version,
         status: 'SKIPPED',
-        lawbook_version: lawbookConfig.version,
+        lawbook_version: lawbookVersion,
         inputs_hash: inputsHash,
         result_json: {
           skipReason: 'EVIDENCE_MISSING',
@@ -405,11 +362,18 @@ export class RemediationPlaybookExecutor {
       playbook,
       incident,
       request.inputs || {},
-      lawbookConfig.version
+      lawbookVersion
     );
     
     // Step 7: Compute run_key and check for existing run (idempotency)
     const runKey = computeRunKey(incident.incident_key, playbook.id, planned.inputsHash);
+    
+    // E79.4 / I794: Validate run_key format
+    const runKeyVerdict = gateIdempotencyKeyFormat({ key: runKey });
+    if (runKeyVerdict.verdict !== 'ALLOW') {
+      const primaryReason = runKeyVerdict.reasons.find(r => r.severity === 'ERROR') || runKeyVerdict.reasons[0];
+      throw new Error(`Invalid run_key format: ${primaryReason?.message}`);
+    }
     
     const existingRun = await remediationDAO.getRunByKey(runKey);
     if (existingRun) {
@@ -431,7 +395,7 @@ export class RemediationPlaybookExecutor {
       playbook_id: playbook.id,
       playbook_version: playbook.version,
       status: 'PLANNED',
-      lawbook_version: lawbookConfig.version,
+      lawbook_version: lawbookVersion,
       inputs_hash: planned.inputsHash,
       planned_json: planned,
     });
@@ -441,7 +405,7 @@ export class RemediationPlaybookExecutor {
       remediation_run_id: run.id,
       incident_id: incident.id,
       event_type: 'PLANNED',
-      lawbook_version: lawbookConfig.version,
+      lawbook_version: lawbookVersion,
       payload_json: {
         playbookId: playbook.id,
         playbookVersion: playbook.version,
@@ -470,7 +434,7 @@ export class RemediationPlaybookExecutor {
         incidentId: incident.id,
         incidentKey: incident.incident_key,
         runId: run.id,
-        lawbookVersion: lawbookConfig.version,
+        lawbookVersion: lawbookVersion,
         evidence,
         inputs: {
           ...plannedStep.resolvedInputs,
@@ -482,6 +446,13 @@ export class RemediationPlaybookExecutor {
       const idempotencyKeyFn = idempotencyKeyFns?.get(stepDef.stepId) || 
         ((ctx: StepContext) => computeStepIdempotencyKeyDefault(stepDef, ctx));
       const stepIdempotencyKey = idempotencyKeyFn(stepContext);
+      
+      // E79.4 / I794: Validate idempotency key format
+      const keyFormatVerdict = gateIdempotencyKeyFormat({ key: stepIdempotencyKey });
+      if (keyFormatVerdict.verdict !== 'ALLOW') {
+        const primaryReason = keyFormatVerdict.reasons.find(r => r.severity === 'ERROR') || keyFormatVerdict.reasons[0];
+        throw new Error(`Invalid idempotency key format for step ${stepDef.stepId}: ${primaryReason?.message}`);
+      }
       
       const step = await remediationDAO.createStep({
         remediation_run_id: run.id,
@@ -497,7 +468,7 @@ export class RemediationPlaybookExecutor {
         remediation_run_id: run.id,
         incident_id: incident.id,
         event_type: 'STEP_STARTED',
-        lawbook_version: lawbookConfig.version,
+        lawbook_version: lawbookVersion,
         payload_json: {
           stepId: stepDef.stepId,
           actionType: stepDef.actionType,
@@ -529,7 +500,7 @@ export class RemediationPlaybookExecutor {
             remediation_run_id: run.id,
             incident_id: incident.id,
             event_type: 'STEP_FINISHED',
-            lawbook_version: lawbookConfig.version,
+            lawbook_version: lawbookVersion,
             payload_json: {
               stepId: stepDef.stepId,
               actionType: stepDef.actionType,
@@ -556,7 +527,7 @@ export class RemediationPlaybookExecutor {
             remediation_run_id: run.id,
             incident_id: incident.id,
             event_type: 'STEP_FINISHED',
-            lawbook_version: lawbookConfig.version,
+            lawbook_version: lawbookVersion,
             payload_json: {
               stepId: stepDef.stepId,
               actionType: stepDef.actionType,
@@ -584,7 +555,7 @@ export class RemediationPlaybookExecutor {
           remediation_run_id: run.id,
           incident_id: incident.id,
           event_type: 'STEP_FINISHED',
-          lawbook_version: lawbookConfig.version,
+          lawbook_version: lawbookVersion,
           payload_json: {
             stepId: stepDef.stepId,
             actionType: stepDef.actionType,
@@ -616,7 +587,7 @@ export class RemediationPlaybookExecutor {
       remediation_run_id: run.id,
       incident_id: incident.id,
       event_type: 'STATUS_UPDATED',
-      lawbook_version: lawbookConfig.version,
+      lawbook_version: lawbookVersion,
       payload_json: {
         status: finalStatus,
         totalSteps: steps.length,
@@ -631,7 +602,7 @@ export class RemediationPlaybookExecutor {
       remediation_run_id: run.id,
       incident_id: incident.id,
       event_type: finalStatus === 'SUCCEEDED' ? 'COMPLETED' : 'FAILED',
-      lawbook_version: lawbookConfig.version,
+      lawbook_version: lawbookVersion,
       payload_json: {
         status: finalStatus,
         totalSteps: steps.length,

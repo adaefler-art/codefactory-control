@@ -19,6 +19,7 @@
 import { z } from 'zod';
 import { createHash } from 'crypto';
 import { LawbookV1 } from '../lawbook/schema';
+import { stableStringify } from './contracts/remediation-playbook';
 
 // ========================================
 // GateVerdict Schema
@@ -56,27 +57,11 @@ export type GateVerdict = z.infer<typeof GateVerdictSchema>;
 /**
  * Compute SHA-256 hash of canonical inputs
  * Ensures deterministic hashing regardless of input order
- * Uses recursive key sorting for nested objects
+ * Uses the shared stableStringify from remediation-playbook contracts
  */
 function computeInputsHash(inputs: Record<string, any>): string {
-  // Recursively normalize the object with sorted keys
-  const normalize = (value: any): any => {
-    if (value === null || value === undefined) return value;
-    if (typeof value !== 'object') return value;
-    if (Array.isArray(value)) return value.map(normalize);
-    
-    // Sort keys and normalize nested values
-    const sortedKeys = Object.keys(value).sort();
-    const normalized: Record<string, any> = {};
-    for (const key of sortedKeys) {
-      normalized[key] = normalize(value[key]);
-    }
-    return normalized;
-  };
-  
-  const canonical = normalize(inputs);
-  const json = JSON.stringify(canonical);
-  return createHash('sha256').update(json, 'utf8').digest('hex');
+  const canonical = stableStringify(inputs);
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
 /**

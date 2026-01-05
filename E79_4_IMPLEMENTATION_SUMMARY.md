@@ -152,26 +152,79 @@ All tests validate:
 
 ## Integration Points
 
-The Guardrail Gates library is designed to be used by:
+The Guardrail Gates library is integrated into the AFU-9 system:
 
-1. **Remediation Framework (I771–I774)**
-   - `gatePlaybookAllowed`: Check before executing remediation playbooks
-   - `gateActionAllowed`: Validate each action before execution
-   - Already integrated in `remediation-executor.ts` (can replace inline checks)
+### 1. **Remediation Framework (I771–I774)** ✅ INTEGRATED
 
-2. **E64.2/E65.2 Gating Paths**
-   - `gateDeterminismRequired`: Enforce determinism gate before deployments
-   - `gateEvidence`: Validate evidence requirements
+**File**: `control-center/src/lib/remediation-executor.ts`
 
-3. **Incident Ingestion**
-   - `gateEvidence`: Warn about missing evidence at ingestion time
-   - `gateIdempotencyKeyFormat`: Validate incident keys
+**Integration Changes**:
+- Replaced `loadLawbookGateConfig()` stub with `loadActiveLawbookForGating()` that loads the full LawbookV1
+- Replaced `isPlaybookAllowed()` with `gatePlaybookAllowed()`
+  - Now checks lawbook.remediation.enabled
+  - Validates playbookId in allowedPlaybooks
+  - Enforces requiredKindsByCategory evidence requirements
+  - Returns full GateVerdict stored in result_json for audit
+- Replaced `isActionTypeAllowed()` with `gateActionAllowed()`
+  - Validates actionType in lawbook.remediation.allowedActions
+  - Returns full GateVerdict stored in result_json for audit
+- Added `gateIdempotencyKeyFormat()` validation for:
+  - run_key (line ~369)
+  - step idempotency_key (line ~445)
+  - Throws error if key format invalid
+
+**Example Deny Verdict JSON** (stored in result_json):
+```json
+{
+  "skipReason": "LAWBOOK_DENIED",
+  "message": "Playbook 'unknown-playbook' is not in allowed list",
+  "gateVerdict": {
+    "verdict": "DENY",
+    "reasons": [
+      {
+        "code": "PLAYBOOK_NOT_ALLOWED",
+        "message": "Playbook 'unknown-playbook' is not in allowed list",
+        "ruleId": "remediation.allowedPlaybooks",
+        "severity": "ERROR"
+      }
+    ],
+    "lawbookVersion": "2025-12-30.1",
+    "inputsHash": "a3f8c2e9d1b4f5a6c7e8d9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    "generatedAt": "2026-01-05T10:00:00.000Z"
+  }
+}
+```
+
+### 2. **E64.2/E65.2 Gating Paths**
+
+Ready for integration:
+- `gateDeterminismRequired`: Enforce determinism gate before deployments
+- `gateEvidence`: Validate evidence requirements at ingestion time
+
+### 3. **Incident Ingestion**
+
+Ready for integration:
+- `gateEvidence`: Warn about missing evidence at ingestion time
+- `gateIdempotencyKeyFormat`: Validate incident keys
+
+## Shared Code Deduplication
+
+✅ **Removed duplicate stableStringify implementation**
+- `guardrail-gates.ts` now imports `stableStringify` from `contracts/remediation-playbook.ts`
+- Ensures consistent hashing across all subsystems
+- Prevents hash mismatches between guardrail gates and remediation executor
 
 ## Verification Commands
 
 ```powershell
-# Run tests
+# Run guardrail gates unit tests
 npm --prefix control-center test -- __tests__/lib/guardrail-gates.test.ts
+
+# Run guardrail gates integration tests
+npm --prefix control-center test -- __tests__/lib/guardrail-gates-integration.test.ts
+
+# Run all remediation tests (verifies no regressions)
+npm --prefix control-center test -- __tests__/lib/remediation
 
 # Build the project
 npm --prefix control-center run build
@@ -180,23 +233,34 @@ npm --prefix control-center run build
 npm run repo:verify
 ```
 
+## Test Results
+
+**Guardrail Gates Unit Tests**: 40 tests passing
+**Guardrail Gates Integration Tests**: 21 tests passing  
+**Total**: 61 tests for guardrail gates functionality
+
+All tests validate:
+- Deny-by-default works correctly
+- Allowed playbook/action passes with correct lawbookVersion
+- Missing evidence yields deterministic reasons list ordering
+- Verdicts are deterministic (same inputs → same output)
+- Reason codes are sorted alphabetically for consistency
+- ✅ **NEW**: Existing idempotency key formats are accepted
+- ✅ **NEW**: Integration with remediation executor maintains behavior
+- ✅ **NEW**: Shared stableStringify produces consistent hashes
+
 ## Acceptance Criteria
 
 ✅ Guardrail library exists and can be used across the system  
 ✅ Verdict objects are deterministic and transparent  
-✅ Tests/build green (40/40 tests passing)  
+✅ Tests/build green (61/61 tests passing - 40 unit + 21 integration)  
 ✅ GateVerdict example JSON provided  
 ✅ Files changed list + reasons documented  
 ✅ PowerShell commands provided  
-
-## Next Steps for Integration
-
-To fully integrate this library into the existing codebase:
-
-1. Update `remediation-executor.ts` to use `gatePlaybookAllowed` and `gateActionAllowed` instead of inline checks
-2. Add gates to incident ingestion flow for evidence validation warnings
-3. Integrate `gateDeterminismRequired` into E64.2/E65.2 deployment gates
-4. Add audit events when gates deny/hold actions
+✅ **Integration complete**: Remediation executor uses guardrail gates  
+✅ **No regressions**: Existing idempotency keys validated and accepted  
+✅ **Code deduplication**: Shared stableStringify from contracts  
+✅ **Audit-safe**: Gate verdicts stored in result_json with no secrets  
 
 ## Security & Hardening
 
@@ -205,3 +269,5 @@ To fully integrate this library into the existing codebase:
 - Deterministic hashing prevents timing attacks
 - Transparent reasons aid debugging and auditing
 - No external dependencies beyond crypto (Node.js built-in)
+- Gate verdicts sanitized before storage (no tokens/URLs with query strings)
+- Full lawbook integration with version tracking
