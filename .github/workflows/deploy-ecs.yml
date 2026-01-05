@@ -960,6 +960,33 @@ jobs:
 
           echo "Migration exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" != "0" ]; then
+            echo "Fetching migration task logs (best-effort)..."
+
+            TASK_ID="${TASK_ARN##*/}"
+
+            # Determine awslogs group/prefix from the task definition.
+            aws ecs describe-task-definition \
+              --task-definition "${{ steps.task-def.outputs.migration_task_def_arn }}" \
+              --region "${{ env.AWS_REGION }}" \
+              --output json > migration-task-def.json || true
+
+            LOG_GROUP=$(jq -r '.taskDefinition.containerDefinitions[] | select(.name=="control-center") | .logConfiguration.options."awslogs-group" // empty' migration-task-def.json 2>/dev/null || true)
+            STREAM_PREFIX=$(jq -r '.taskDefinition.containerDefinitions[] | select(.name=="control-center") | .logConfiguration.options."awslogs-stream-prefix" // empty' migration-task-def.json 2>/dev/null || true)
+
+            if [ -n "${LOG_GROUP:-}" ] && [ -n "${STREAM_PREFIX:-}" ] && [ -n "${TASK_ID:-}" ]; then
+              LOG_STREAM="${STREAM_PREFIX}/control-center/${TASK_ID}"
+              echo "CloudWatch Logs: group=${LOG_GROUP} stream=${LOG_STREAM}"
+              aws logs get-log-events \
+                --log-group-name "${LOG_GROUP}" \
+                --log-stream-name "${LOG_STREAM}" \
+                --region "${{ env.AWS_REGION }}" \
+                --limit 200 \
+                --output json \
+              | jq -r '.events[]?.message' || true
+            else
+              echo "⚠️  Could not resolve awslogs group/stream for migration task." >&2
+            fi
+
             echo "❌ Database migrations failed" >&2
             exit 1
           fi
