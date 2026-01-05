@@ -132,6 +132,36 @@ jobs:
       - name: Build CDK project
         run: npm run build
 
+      - name: "Guard: Block production deploys when ENABLE_PROD=false (Issue 3)"
+        if: ${{ github.event.inputs.environment == 'production' }}
+        run: |
+          set -euo pipefail
+          
+          ENABLE_PROD="${{ vars.ENABLE_PROD || 'false' }}"
+          
+          echo "========================================="
+          echo "Production Deploy Guard (Issue 3)"
+          echo "========================================="
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "ENABLE_PROD: ${ENABLE_PROD}"
+          echo ""
+          
+          if [ "${ENABLE_PROD}" != "true" ]; then
+            echo "❌ BLOCKED: Production deploys are currently disabled"
+            echo ""
+            echo "Production environment is in cost-reduction mode (Issue 3)."
+            echo "All work should be done in staging environment only."
+            echo ""
+            echo "To re-enable production deploys:"
+            echo "  1. Set ENABLE_PROD=true in GitHub repository variables"
+            echo "  2. Follow the re-enable procedure in docs/issues/ISSUE_3_PROD_DEACTIVATION.md"
+            echo ""
+            exit 1
+          fi
+          
+          echo "✅ Production deploys are enabled - proceeding with deployment"
+          echo ""
+
       - name: "CDK Diff Gate - Validate Changes"
         if: ${{ github.event.inputs.skip_diff_gate != 'true' }}
         run: |
