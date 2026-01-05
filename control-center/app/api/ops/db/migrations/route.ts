@@ -3,10 +3,17 @@
  * 
  * Migration Parity Check - Deterministic comparison of DB ledger vs. repo migrations
  * 
- * SECURITY: Auth-first (401) + Admin-only (403) enforcement
+ * AFU-9 GUARDRAILS (strict ordering for fail-closed security):
+ * 1. AUTH CHECK (401-first) - Verify x-afu9-sub, no DB calls
+ * 2. ENV GATING (409) - Block prod/unknown environments, no DB calls
+ * 3. ADMIN CHECK (403) - Verify admin allowlist, no DB calls
+ * 4. DB OPERATIONS - Only executed if all gates pass
+ * 
+ * SECURITY:
  * - x-afu9-sub header is set by proxy.ts after server-side JWT verification
  * - Client-provided x-afu9-* headers are stripped by middleware to prevent spoofing
  * - Admin allowlist from AFU9_ADMIN_SUBS env var (fail-closed if missing/empty)
+ * - Stage-only: prod and unknown environments are blocked before any DB access
  * 
  * Query parameters:
  * - env?: string - Optional environment filter (production|staging)
@@ -23,6 +30,7 @@
  * 
  * Error codes:
  * - 401 UNAUTHORIZED - Missing or empty x-afu9-sub
+ * - 409 ENV_DISABLED - Production or unknown environment (stage-only tool)
  * - 403 FORBIDDEN - Not admin or admin allowlist missing
  * - 500 MIGRATION_LEDGER_MISSING - Ledger table doesn't exist
  * - 500 DB_UNREACHABLE - Cannot connect to database
@@ -69,22 +77,18 @@ function isAdminUser(userId: string): boolean {
  * GET /api/ops/db/migrations
  * 
  * Returns deterministic parity report between database ledger and repo migrations
+ * 
+ * AFU-9 GUARDRAILS (strict ordering):
+ * 1. AUTH CHECK (401-first) - no DB calls
+ * 2. ENV GATING (prod/unknown → disabled) - no DB calls
+ * 3. ADMIN CHECK (403) - no DB calls
+ * 4. DB operations (only if all gates pass)
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
-  const deploymentEnv = getDeploymentEnv();
 
-  // PROD-BLOCK GUARDRAIL: Stage-only endpoint (fail-closed)
-  if (deploymentEnv === 'production') {
-    return errorResponse('Production access disabled', {
-      status: 409,
-      requestId,
-      code: 'PROD_DISABLED',
-      details: 'Migration parity checks are disabled in production to reduce costs and operational risks. Use staging environment.',
-    });
-  }
-
-  // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+  // 1. AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+  // This must happen BEFORE env gating to maintain auth-first principle
   const userId = request.headers.get('x-afu9-sub');
   if (!userId || !userId.trim()) {
     return errorResponse('Unauthorized', {
@@ -95,7 +99,20 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // AUTHORIZATION CHECK: Admin-only (fail-closed)
+  // 2. ENV GATING: Stage-only endpoint (fail-closed for prod/unknown)
+  // Blocks prod and unknown environments before any DB operations
+  const deploymentEnv = getDeploymentEnv();
+  if (deploymentEnv === 'production' || deploymentEnv === 'unknown') {
+    const envLabel = deploymentEnv === 'production' ? 'production' : 'unknown/unconfigured';
+    return errorResponse('Environment access disabled', {
+      status: 409,
+      requestId,
+      code: 'ENV_DISABLED',
+      details: `Migration parity checks are disabled in ${envLabel} environments. This is a stage-only tool.`,
+    });
+  }
+
+  // 3. AUTHORIZATION CHECK: Admin-only (fail-closed)
   if (!isAdminUser(userId)) {
     return errorResponse('Forbidden', {
       status: 403,

@@ -1,51 +1,78 @@
-# Issue 4 Verification Commands
+# Issue 4 Verification Commands (AFU-9 Guardrails)
 
 ## Quick Verification
 
 ### 1. Run All Tests
 
 ```bash
-# Run all migration parity tests (14 tests)
+# Run all migration parity tests (17 tests)
 npm --prefix control-center test -- __tests__/api/migration-parity.test.ts
 
-# Run environment detection tests (18 tests)
+# Run environment detection tests (22 tests)
 npm --prefix control-center test -- __tests__/lib/utils/deployment-env.test.ts
 
 # Run both together
 npm --prefix control-center test -- __tests__/api/migration-parity.test.ts __tests__/lib/utils/deployment-env.test.ts
+
+# Verify repo (includes linting and other checks)
+npm run repo:verify
 ```
 
-**Expected:** ✅ 32 tests pass
+**Expected:** ✅ 39 tests pass (17 migration-parity + 22 deployment-env)
 
 ---
 
-### 2. Verify Prod-Block Behavior
+### 2. Verify AFU-9 Guardrail Ordering (401-first)
 
 ```bash
-# Test 1: Prod-block returns 409
+# Test 1: Unauthenticated returns 401 (auth-first, not env gating)
 cd control-center
-npm test -- -t "409: Production access disabled"
+npm test -- -t "401: Unauthorized without x-afu9-sub header"
 
-# Test 2: Prod-block executes before auth
-npm test -- -t "409: Prod-block happens before auth checks"
+# Test 2: Unauthenticated in prod returns 401 (not 409)
+npm test -- -t "401: Unauthenticated in production returns 401"
+
+# Test 3: Production env disabled (after auth)
+npm test -- -t "409: Production environment disabled"
+
+# Test 4: Unknown env disabled (fail-closed)
+npm test -- -t "409: Unknown environment disabled"
 ```
 
-**Expected:** ✅ Both tests pass
+**Expected:** ✅ All tests pass, proving correct ordering: 401 → 409 → 403
 
 ---
 
-### 3. Check Environment Detection
+### 3. Verify Zero DB Calls in Prod/Unknown
 
 ```bash
-# Test fail-safe behavior
+# All env gating tests verify mockCheckDbReachability is NOT called
 cd control-center
-npm test -- -t "returns \"staging\" for missing ENVIRONMENT"
+npm test -- -t "409:"
+```
+
+**Expected:** ✅ All 409 tests pass with zero DB calls
+
+---
+
+### 4. Check Environment Detection (Fail-Closed)
+
+```bash
+# Test fail-closed behavior (unknown, not staging)
+cd control-center
+npm test -- -t "returns \"unknown\" for missing ENVIRONMENT"
 
 # Test production detection
 npm test -- -t "returns \"production\" for ENVIRONMENT=production"
+
+# Test staging detection
+npm test -- -t "returns \"staging\" for ENVIRONMENT=staging"
+
+# Test isUnknown helper
+npm test -- -t "isUnknown"
 ```
 
-**Expected:** ✅ All environment tests pass
+**Expected:** ✅ All environment tests pass (unknown for invalid/missing)
 
 ---
 
@@ -168,9 +195,27 @@ aws sts get-caller-identity --profile codefactory --region eu-central-1
 
 ## Success Criteria Checklist
 
-- [ ] All 32 tests pass (18 deployment-env + 14 migration-parity)
-- [ ] Prod-block test passes (409 response)
+### AFU-9 Guardrails (Strict Ordering)
+- [ ] All 39 tests pass (22 deployment-env + 17 migration-parity)
+- [ ] Auth-first test passes (401 before env gating)
+- [ ] Unauthenticated in prod returns 401 (not 409)
+- [ ] Production env disabled returns 409 (after auth)
+- [ ] Unknown env disabled returns 409 (fail-closed)
+- [ ] Zero DB calls in prod/unknown (verified in tests)
+
+### Original Requirements
 - [ ] Staging allows admin access (200 response)
+- [ ] Staging blocks non-admin (403 with helpful diagnostic)
+- [ ] Production always returns 409 (ENV_DISABLED)
+- [ ] Unknown/unconfigured env returns 409 (fail-closed)
+- [ ] GitHub Actions workflow succeeds
+- [ ] OIDC authentication works
+- [ ] No secrets in logs or UI
+- [ ] Environment logging works (check console output in tests)
+
+### Repo Verification
+- [ ] `npm run repo:verify` passes
+- [ ] `npm --prefix control-center test` passes
 - [ ] Staging blocks non-admin (403 with helpful diagnostic)
 - [ ] Production always returns 409
 - [ ] GitHub Actions workflow succeeds

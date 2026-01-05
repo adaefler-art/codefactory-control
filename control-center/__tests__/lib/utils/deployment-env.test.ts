@@ -4,7 +4,7 @@
  * @jest-environment node
  */
 
-import { getDeploymentEnv, isProduction, isStaging } from '@/lib/utils/deployment-env';
+import { getDeploymentEnv, isProduction, isStaging, isUnknown } from '@/lib/utils/deployment-env';
 
 describe('Deployment Environment Detection', () => {
   const originalEnv = process.env.ENVIRONMENT;
@@ -49,24 +49,24 @@ describe('Deployment Environment Detection', () => {
       expect(getDeploymentEnv()).toBe('staging');
     });
 
-    test('returns "staging" for missing ENVIRONMENT (fail-safe)', () => {
+    test('returns "unknown" for missing ENVIRONMENT (fail-closed)', () => {
       delete process.env.ENVIRONMENT;
-      expect(getDeploymentEnv()).toBe('staging');
+      expect(getDeploymentEnv()).toBe('unknown');
     });
 
-    test('returns "staging" for empty ENVIRONMENT (fail-safe)', () => {
+    test('returns "unknown" for empty ENVIRONMENT (fail-closed)', () => {
       process.env.ENVIRONMENT = '';
-      expect(getDeploymentEnv()).toBe('staging');
+      expect(getDeploymentEnv()).toBe('unknown');
     });
 
-    test('returns "staging" for whitespace ENVIRONMENT (fail-safe)', () => {
+    test('returns "unknown" for whitespace ENVIRONMENT (fail-closed)', () => {
       process.env.ENVIRONMENT = '   ';
-      expect(getDeploymentEnv()).toBe('staging');
+      expect(getDeploymentEnv()).toBe('unknown');
     });
 
-    test('returns "staging" for invalid ENVIRONMENT (fail-safe)', () => {
+    test('returns "unknown" for invalid ENVIRONMENT (fail-closed)', () => {
       process.env.ENVIRONMENT = 'development';
-      expect(getDeploymentEnv()).toBe('staging');
+      expect(getDeploymentEnv()).toBe('unknown');
     });
   });
 
@@ -108,9 +108,41 @@ describe('Deployment Environment Detection', () => {
       expect(isStaging()).toBe(false);
     });
 
-    test('returns true when ENVIRONMENT is missing (fail-safe)', () => {
+    test('returns false when ENVIRONMENT is missing (unknown)', () => {
       delete process.env.ENVIRONMENT;
-      expect(isStaging()).toBe(true);
+      expect(isStaging()).toBe(false);
+    });
+
+    test('returns false when ENVIRONMENT is unknown', () => {
+      process.env.ENVIRONMENT = 'development';
+      expect(isStaging()).toBe(false);
+    });
+  });
+
+  describe('isUnknown', () => {
+    test('returns true when ENVIRONMENT is missing', () => {
+      delete process.env.ENVIRONMENT;
+      expect(isUnknown()).toBe(true);
+    });
+
+    test('returns true when ENVIRONMENT is empty', () => {
+      process.env.ENVIRONMENT = '';
+      expect(isUnknown()).toBe(true);
+    });
+
+    test('returns true when ENVIRONMENT is invalid', () => {
+      process.env.ENVIRONMENT = 'development';
+      expect(isUnknown()).toBe(true);
+    });
+
+    test('returns false when ENVIRONMENT=production', () => {
+      process.env.ENVIRONMENT = 'production';
+      expect(isUnknown()).toBe(false);
+    });
+
+    test('returns false when ENVIRONMENT=staging', () => {
+      process.env.ENVIRONMENT = 'staging';
+      expect(isUnknown()).toBe(false);
     });
   });
 });

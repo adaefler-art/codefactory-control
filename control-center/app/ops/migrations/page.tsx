@@ -87,12 +87,12 @@ export default function MigrationsOpsPage() {
         cache: "no-store",
       });
 
-      // Check for prod-disabled (409)
+      // Check for env-disabled (409)
       if (response.status === 409) {
         const errorData = await response.json();
         setIs409ProdDisabled(true);
         setErrorInfo(errorData);
-        throw new Error(errorData.details || 'Migration parity checks are disabled in production');
+        throw new Error(errorData.details || 'Migration parity checks are disabled in this environment');
       }
 
       // Check for 403 before processing response
@@ -207,19 +207,19 @@ export default function MigrationsOpsPage() {
             <h3 className="text-sm font-medium text-red-800">Error</h3>
             <p className="mt-1 text-sm text-red-700">{error}</p>
             
-            {/* Production Disabled Message */}
+            {/* Environment Disabled Message */}
             {is409ProdDisabled && (
               <div className="mt-4 pt-4 border-t border-red-300">
                 <h4 className="text-sm font-semibold text-red-900 mb-2">
-                  🚫 Production Access Disabled
+                  🚫 Environment Access Disabled
                 </h4>
                 <div className="bg-white rounded p-3 space-y-2">
                   <p className="text-xs text-red-800">
-                    <strong>Migration parity checks are disabled in production.</strong>
+                    <strong>Migration parity checks are disabled in this environment.</strong>
                   </p>
                   <p className="text-xs text-gray-700 mt-2">
-                    This is a stage-only tool to reduce operational costs and risks in production.
-                    Please use the staging environment to check migration parity.
+                    This is a stage-only tool. It is disabled in production and unconfigured environments
+                    to reduce operational costs and risks.
                   </p>
                   {errorInfo?.code && (
                     <div className="mt-2 pt-2 border-t border-gray-200">

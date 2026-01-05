@@ -61,51 +61,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     mockGetDeploymentEnv.mockReturnValue('staging');
   });
 
-  test('409: Production access disabled (prod-block)', async () => {
-    // Simulate production environment
-    mockGetDeploymentEnv.mockReturnValue('production');
-
-    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
-      method: 'GET',
-      headers: {
-        'x-request-id': 'test-prod-block',
-        'x-afu9-sub': 'admin-123',
-      },
-    });
-
-    const response = await GET(request);
-    const body = await response.json();
-
-    expect(response.status).toBe(409);
-    expect(body.error).toBe('Production access disabled');
-    expect(body.code).toBe('PROD_DISABLED');
-    expect(body.details).toContain('disabled in production');
-
-    // Ensure no DB calls were made (fail-closed)
-    expect(mockCheckDbReachability).not.toHaveBeenCalled();
-  });
-
-  test('409: Prod-block happens before auth checks', async () => {
-    // Simulate production environment
-    mockGetDeploymentEnv.mockReturnValue('production');
-
-    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
-      method: 'GET',
-      headers: {
-        'x-request-id': 'test-prod-before-auth',
-        // No x-afu9-sub header - would normally 401
-      },
-    });
-
-    const response = await GET(request);
-    const body = await response.json();
-
-    // Should get 409 (prod-block) before 401 (auth)
-    expect(response.status).toBe(409);
-    expect(body.code).toBe('PROD_DISABLED');
-  });
-
-  test('401: Unauthorized without x-afu9-sub header', async () => {
+  test('401: Unauthorized without x-afu9-sub header (auth-first)', async () => {
     const request = new NextRequest('http://localhost/api/ops/db/migrations', {
       method: 'GET',
       headers: {
@@ -120,6 +76,79 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.error).toBe('Unauthorized');
     expect(body.code).toBe('UNAUTHORIZED');
     expect(body.details).toContain('Authentication required');
+    
+    // Ensure no DB calls were made (auth-first)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('401: Unauthenticated in production returns 401 (not 409)', async () => {
+    // Simulate production environment
+    mockGetDeploymentEnv.mockReturnValue('production');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-prod-unauth',
+        // No x-afu9-sub header
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    // Auth check happens BEFORE env gating (401-first)
+    expect(response.status).toBe(401);
+    expect(body.code).toBe('UNAUTHORIZED');
+    
+    // Ensure no DB calls were made
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('409: Production environment disabled (env gating)', async () => {
+    // Simulate production environment
+    mockGetDeploymentEnv.mockReturnValue('production');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-prod-env-disabled',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toBe('Environment access disabled');
+    expect(body.code).toBe('ENV_DISABLED');
+    expect(body.details).toContain('production');
+
+    // Ensure no DB calls were made (fail-closed)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('409: Unknown environment disabled (fail-closed)', async () => {
+    // Simulate unknown environment
+    mockGetDeploymentEnv.mockReturnValue('unknown');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-unknown-env',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('ENV_DISABLED');
+    expect(body.details).toContain('unknown');
+
+    // Ensure no DB calls were made (fail-closed for unknown)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
   });
 
   test('401: Unauthorized with empty x-afu9-sub header', async () => {
