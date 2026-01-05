@@ -1,0 +1,195 @@
+name: Migration Parity Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseUrl:
+        description: 'Base URL for AFU-9 API (e.g., https://stage.afu-9.com)'
+        required: true
+        default: 'https://stage.afu-9.com'
+      env:
+        description: 'Environment (production|staging)'
+        required: false
+        default: 'staging'
+      limit:
+        description: 'Result limit (max 500)'
+        required: false
+        default: '200'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  migration-parity-check:
+    name: Check Migration Parity
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-session-name: migration-parity-check
+          aws-region: eu-central-1
+
+      - name: Retrieve smoke key from AWS Secrets Manager
+        id: get-smoke-key
+        run: |
+          SMOKE_KEY=$(aws secretsmanager get-secret-value \
+            --region eu-central-1 \
+            --secret-id "afu9/${{ github.event.inputs.env }}/smoke-key" \
+            --query SecretString \
+            --output text | tr -d '[:space:]')
+          
+          echo "::add-mask::$SMOKE_KEY"
+          echo "smoke_key=$SMOKE_KEY" >> $GITHUB_OUTPUT
+
+      - name: Call Migration Parity Endpoint
+        id: parity-check
+        env:
+          BASE_URL: ${{ github.event.inputs.baseUrl }}
+          SMOKE_KEY: ${{ steps.get-smoke-key.outputs.smoke_key }}
+          ENV_PARAM: ${{ github.event.inputs.env }}
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          echo "🔍 Checking migration parity at $BASE_URL..."
+          
+          # Build URL with query parameters
+          URL="${BASE_URL}/api/ops/db/migrations?limit=${LIMIT}"
+          if [ -n "$ENV_PARAM" ]; then
+            URL="${URL}&env=${ENV_PARAM}"
+          fi
+          
+          # Call the endpoint with smoke headers
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "x-afu9-smoke-key: $SMOKE_KEY" \
+            -H "x-afu9-sub: github-actions-migration-check" \
+            -H "Content-Type: application/json" \
+            "$URL")
+          
+          # Extract status code and body
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          echo "HTTP Status: $HTTP_CODE"
+          
+          # Save response for next steps
+          echo "$BODY" > /tmp/parity-response.json
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          
+          # Check if request was successful
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "❌ Migration parity check failed with HTTP $HTTP_CODE"
+            echo "Response:"
+            cat /tmp/parity-response.json
+            exit 1
+          fi
+
+      - name: Parse and Display Results
+        if: steps.parity-check.outputs.http_code == '200'
+        run: |
+          echo "## Migration Parity Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Parse JSON response
+          STATUS=$(jq -r '.parity.status' /tmp/parity-response.json)
+          REPO_COUNT=$(jq -r '.repo.migrationCount' /tmp/parity-response.json)
+          DB_COUNT=$(jq -r '.ledger.appliedCount' /tmp/parity-response.json)
+          MISSING_COUNT=$(jq -r '.parity.missingInDb | length' /tmp/parity-response.json)
+          EXTRA_COUNT=$(jq -r '.parity.extraInDb | length' /tmp/parity-response.json)
+          MISMATCH_COUNT=$(jq -r '.parity.hashMismatches | length' /tmp/parity-response.json)
+          
+          # Overall status badge
+          if [ "$STATUS" = "PASS" ]; then
+            echo "### ✅ Status: **PASS**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All migrations are in sync between repository and database." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Status: **FAIL**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Discrepancies found between repository and database migrations." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Repository Migrations | $REPO_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| Applied Migrations | $DB_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| Missing in DB | $MISSING_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extra in DB | $EXTRA_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hash Mismatches | $MISMATCH_COUNT |" >> $GITHUB_STEP_SUMMARY
+          
+          # List missing migrations if any
+          if [ "$MISSING_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Missing in Database" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "These migrations exist in the repository but have not been applied:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.parity.missingInDb[]' /tmp/parity-response.json | while read -r file; do
+              echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+          
+          # List extra migrations if any
+          if [ "$EXTRA_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Extra in Database" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "These migrations are in the database but missing from the repository:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.parity.extraInDb[]' /tmp/parity-response.json | while read -r file; do
+              echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+          
+          # List hash mismatches if any
+          if [ "$MISMATCH_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Hash Mismatches" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "These migrations have different content:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -c '.parity.hashMismatches[]' /tmp/parity-response.json | while read -r item; do
+              FILENAME=$(echo "$item" | jq -r '.filename')
+              REPO_HASH=$(echo "$item" | jq -r '.repoHash' | cut -c1-12)
+              DB_HASH=$(echo "$item" | jq -r '.dbHash' | cut -c1-12)
+              echo "- \`$FILENAME\`: repo=\`$REPO_HASH...\`, db=\`$DB_HASH...\`" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+          
+          # Output console summary
+          echo ""
+          echo "=================================================="
+          echo "Migration Parity Check: $STATUS"
+          echo "=================================================="
+          echo "Repository Migrations: $REPO_COUNT"
+          echo "Applied Migrations:    $DB_COUNT"
+          echo "Missing in DB:         $MISSING_COUNT"
+          echo "Extra in DB:           $EXTRA_COUNT"
+          echo "Hash Mismatches:       $MISMATCH_COUNT"
+          echo "=================================================="
+          
+          # Full JSON output
+          echo ""
+          echo "Full JSON Response:"
+          jq '.' /tmp/parity-response.json
+          
+          # Exit with error if FAIL
+          if [ "$STATUS" != "PASS" ]; then
+            exit 1
+          fi
+
+      - name: Upload parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-parity-report
+          path: /tmp/parity-response.json
+          retention-days: 30
