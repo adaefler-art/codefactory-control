@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 import { getBuildInfo } from '@/lib/build/build-info';
+import { isProdEnabled, getProdDisabledReason } from '@/lib/utils/prod-control';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 
 // MCP Server configuration - single source of truth
 const MCP_SERVERS = [
@@ -42,18 +44,20 @@ function getRequiredDependencies(): string[] {
  * - Validates all critical dependencies (database, environment)
  * - Checks optional dependencies (MCP servers) without blocking
  * - Returns 503 if any REQUIRED dependency is unavailable
+ * - Returns 503 if running in PROD and ENABLE_PROD=false (Issue 3)
  * - Can safely fail without triggering deployment rollbacks
  * 
  * Critical dependencies (MUST be available):
  * - Database connectivity (if DATABASE_ENABLED=true)
  * - Essential environment variables
+ * - Production enabled flag (if ENVIRONMENT=production)
  * 
  * Optional dependencies (monitored but non-blocking):
  * - MCP servers (mcp-github, mcp-deploy, mcp-observability)
  * 
  * Returns:
  * - 200 OK if service is ready to accept traffic
- * - 503 Service Unavailable if service is not ready (missing required dependencies)
+ * - 503 Service Unavailable if service is not ready (missing required dependencies or prod disabled)
  * 
  * Response time target: < 5 seconds
  * 
@@ -70,6 +74,18 @@ export async function GET(request: NextRequest) {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
       service: { status: 'ok' },
     };
+
+    // Issue 3: Check if production is disabled
+    const deploymentEnv = getDeploymentEnv();
+    if (deploymentEnv === 'production' && !isProdEnabled()) {
+      checks.prod_enabled = {
+        status: 'error',
+        message: getProdDisabledReason(),
+      };
+    } else if (deploymentEnv === 'production') {
+      checks.prod_enabled = { status: 'ok', message: 'Production environment is enabled' };
+    }
+
 
     // Preflight: if self-propelling is enabled, verify the runtime workflow artifact exists
     const selfPropellingEnabled = process.env.AFU9_ENABLE_SELF_PROPELLING === 'true';

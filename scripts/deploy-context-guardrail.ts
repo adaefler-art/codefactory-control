@@ -186,6 +186,15 @@ function displayTargetSummary(context: DeployContext, artifacts: ArtifactRefs): 
 }
 
 /**
+ * Check if production deployments are enabled
+ * Returns true if ENABLE_PROD=true, false otherwise (fail-closed)
+ */
+function isProdEnabled(): boolean {
+  const enableProd = process.env.ENABLE_PROD;
+  return enableProd === 'true';
+}
+
+/**
  * Main guardrail execution
  */
 function runGuardrail(): number {
@@ -197,6 +206,17 @@ function runGuardrail(): number {
   } catch (err) {
     console.error(`❌ GUARDRAIL FAIL: ${(err as Error).message}`);
     return 2;
+  }
+
+  // Issue 3: Block production deploys when ENABLE_PROD=false (fail-closed)
+  if (context.environment === 'production' && !isProdEnabled()) {
+    console.error('❌ GUARDRAIL FAIL: Production deploys are currently disabled\n');
+    console.error('Production environment is in cost-reduction mode (Issue 3).');
+    console.error('All work should be done in staging environment only.\n');
+    console.error('To re-enable production deploys:');
+    console.error('  1. Set ENABLE_PROD=true environment variable');
+    console.error('  2. Follow the re-enable procedure in docs/issues/ISSUE_3_PROD_DEACTIVATION.md\n');
+    return 1;
   }
 
   const artifacts = extractArtifactRefs();
@@ -233,4 +253,4 @@ if (require.main === module) {
   process.exit(runGuardrail());
 }
 
-export { runGuardrail, validateProdArtifacts, validateStageArtifacts, extractArtifactRefs };
+export { runGuardrail, validateProdArtifacts, validateStageArtifacts, extractArtifactRefs, isProdEnabled };
