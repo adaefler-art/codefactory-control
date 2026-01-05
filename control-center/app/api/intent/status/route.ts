@@ -8,10 +8,25 @@
  * - 401-first: Requires x-afu9-sub header (set by middleware after JWT verification)
  * - NO secrets/keys/env-dumps in response
  * - Only returns boolean enabled status based on AFU9_INTENT_ENABLED
+ * - Cache-Control: no-store (always fetch fresh status)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+
+/**
+ * Strict type for INTENT status mode
+ * Only these three values are permitted in responses
+ */
+type IntentStatusMode = 'enabled' | 'disabled' | 'unknown';
+
+/**
+ * Response schema for /api/intent/status
+ */
+interface IntentStatusResponse {
+  enabled: boolean;
+  mode: IntentStatusMode;
+}
 
 /**
  * GET /api/intent/status
@@ -20,7 +35,7 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
  * Response:
  * {
  *   enabled: boolean,
- *   mode: "enabled" | "disabled"
+ *   mode: "enabled" | "disabled" | "unknown"
  * }
  */
 export async function GET(request: NextRequest) {
@@ -41,12 +56,31 @@ export async function GET(request: NextRequest) {
   try {
     // Read AFU9_INTENT_ENABLED flag from environment
     // This is a boolean flag, not a secret
-    const intentEnabled = process.env.AFU9_INTENT_ENABLED === 'true';
+    const envValue = process.env.AFU9_INTENT_ENABLED;
+    const intentEnabled = envValue === 'true';
     
-    return jsonResponse({
+    // Determine mode with strict enum typing
+    let mode: IntentStatusMode;
+    if (envValue === 'true') {
+      mode = 'enabled';
+    } else if (envValue === 'false' || envValue === undefined) {
+      mode = 'disabled';
+    } else {
+      // Any other value (invalid config) → unknown
+      mode = 'unknown';
+    }
+    
+    const responseData: IntentStatusResponse = {
       enabled: intentEnabled,
-      mode: intentEnabled ? 'enabled' : 'disabled',
-    }, { requestId });
+      mode,
+    };
+    
+    return jsonResponse(responseData, {
+      requestId,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    });
   } catch (error) {
     console.error('[API /api/intent/status] Error retrieving status:', error);
     return errorResponse('Failed to retrieve INTENT status', {
