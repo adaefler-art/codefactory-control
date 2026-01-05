@@ -44,6 +44,7 @@ import {
 } from '@/lib/utils/migration-parity';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { getLawbookVersion } from '@/lib/lawbook-version-helper';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 import * as path from 'path';
 
 export const runtime = 'nodejs';
@@ -71,6 +72,17 @@ function isAdminUser(userId: string): boolean {
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
+  const deploymentEnv = getDeploymentEnv();
+
+  // PROD-BLOCK GUARDRAIL: Stage-only endpoint (fail-closed)
+  if (deploymentEnv === 'production') {
+    return errorResponse('Production access disabled', {
+      status: 409,
+      requestId,
+      code: 'PROD_DISABLED',
+      details: 'Migration parity checks are disabled in production to reduce costs and operational risks. Use staging environment.',
+    });
+  }
 
   // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
   const userId = request.headers.get('x-afu9-sub');
@@ -92,6 +104,9 @@ export async function GET(request: NextRequest) {
       details: 'Admin privileges required to access migration parity checks',
     });
   }
+
+  // Log diagnostic info (no secrets)
+  console.log(`[API /api/ops/db/migrations] RequestId: ${requestId}, Environment: ${deploymentEnv}, User: ${userId}`);
 
   try {
     const pool = getPool();

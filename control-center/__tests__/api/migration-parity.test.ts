@@ -1,13 +1,18 @@
 /**
  * API Tests: GET /api/ops/db/migrations
  * 
- * Tests auth (401/403), bounds, ledger scenarios, and deterministic output.
+ * Tests auth (401/403), prod-block (409), bounds, ledger scenarios, and deterministic output.
  * 
  * @jest-environment node
  */
 
 import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/ops/db/migrations/route';
+
+// Mock deployment-env module
+jest.mock('@/lib/utils/deployment-env', () => ({
+  getDeploymentEnv: jest.fn(() => 'staging'),
+}));
 
 // Mock database module
 jest.mock('@/lib/db', () => ({
@@ -39,6 +44,7 @@ jest.mock('@/lib/lawbook-version-helper', () => ({
 }));
 
 describe('GET /api/ops/db/migrations - Security Tests', () => {
+  const mockGetDeploymentEnv = require('@/lib/utils/deployment-env').getDeploymentEnv;
   const mockCheckDbReachability = require('@/lib/db/migrations').checkDbReachability;
   const mockCheckLedgerExists = require('@/lib/db/migrations').checkLedgerExists;
   const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
@@ -51,6 +57,52 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.AFU9_ADMIN_SUBS;
+    // Default to staging
+    mockGetDeploymentEnv.mockReturnValue('staging');
+  });
+
+  test('409: Production access disabled (prod-block)', async () => {
+    // Simulate production environment
+    mockGetDeploymentEnv.mockReturnValue('production');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-prod-block',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toBe('Production access disabled');
+    expect(body.code).toBe('PROD_DISABLED');
+    expect(body.details).toContain('disabled in production');
+
+    // Ensure no DB calls were made (fail-closed)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('409: Prod-block happens before auth checks', async () => {
+    // Simulate production environment
+    mockGetDeploymentEnv.mockReturnValue('production');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-prod-before-auth',
+        // No x-afu9-sub header - would normally 401
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    // Should get 409 (prod-block) before 401 (auth)
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('PROD_DISABLED');
   });
 
   test('401: Unauthorized without x-afu9-sub header', async () => {
