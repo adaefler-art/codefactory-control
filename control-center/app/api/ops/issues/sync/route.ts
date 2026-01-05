@@ -90,10 +90,23 @@ function extractCanonicalId(title: string, labels: Array<{ name: string }>): str
 }
 
 /**
- * Extract owner/repo from GitHub URL
+ * Extract owner/repo from GitHub URL with strict validation
+ * 
+ * GitHub Constraints (as per GitHub API documentation):
+ * - Owner (username/org): alphanumeric and hyphen only, no underscore
+ * - Repo: alphanumeric, hyphen, underscore, and dot allowed
+ * - Both must start with alphanumeric character
+ * - Hostname must be exactly github.com (not subdomain)
+ * 
  * Examples: 
  * - "https://github.com/adaefler-art/codefactory-control/issues/458" -> { owner: "adaefler-art", repo: "codefactory-control" }
- * - "https://github.com/owner/repo/issues/123" -> { owner: "owner", repo: "repo" }
+ * - "https://github.com/owner/repo.js/issues/123" -> { owner: "owner", repo: "repo.js" }
+ * 
+ * Rejects:
+ * - "https://api.github.com/..." (wrong hostname)
+ * - "https://github.com/user_name/repo" (underscore in owner)
+ * - "https://github.com/../../../etc/passwd" (path traversal)
+ * 
  * Returns null if URL is invalid or doesn't match expected pattern
  */
 function extractOwnerRepoFromGithubUrl(url: string | null): { owner: string; repo: string } | null {
@@ -101,8 +114,9 @@ function extractOwnerRepoFromGithubUrl(url: string | null): { owner: string; rep
     return null;
   }
 
-  // Match pattern: https://github.com/{owner}/{repo}/...
-  const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)/);
+  // Strict hostname and path structure validation
+  // Must be exactly https://github.com/{owner}/{repo}/... (no subdomains, no www, etc.)
+  const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)(?:\/|$)/);
   if (!match) {
     return null;
   }
@@ -110,11 +124,22 @@ function extractOwnerRepoFromGithubUrl(url: string | null): { owner: string; rep
   const owner = match[1];
   const repo = match[2];
 
-  // Validate owner and repo are not empty and don't contain path traversal attempts
-  // GitHub usernames/repos must match: alphanumeric, hyphen, underscore (no special chars, no ../, etc.)
-  const validPattern = /^[a-zA-Z0-9._-]+$/;
-  if (!owner || !repo || owner.trim() === '' || repo.trim() === '' ||
-      !validPattern.test(owner) || !validPattern.test(repo)) {
+  // Validate owner: alphanumeric and hyphen only (no underscore per GitHub rules)
+  // Must start with alphanumeric
+  const ownerPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/;
+  if (!owner || !ownerPattern.test(owner)) {
+    return null;
+  }
+
+  // Validate repo: alphanumeric, hyphen, underscore, and dot allowed
+  // Must start with alphanumeric
+  const repoPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+  if (!repo || !repoPattern.test(repo)) {
+    return null;
+  }
+
+  // Additional security: prevent common path traversal patterns
+  if (owner.includes('..') || repo.includes('..')) {
     return null;
   }
 
