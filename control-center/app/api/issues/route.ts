@@ -21,6 +21,10 @@ import {
 } from '../../../src/lib/contracts/afu9Issue';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 
+// Avoid stale reads of sync metadata in production/CDN layers.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * GET /api/issues
  * List issues with optional filtering and sorting
@@ -140,7 +144,13 @@ export async function GET(request: NextRequest) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
 
-    return jsonResponse(responseBody, { requestId });
+    return jsonResponse(responseBody, {
+      requestId,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+        Pragma: 'no-cache',
+      },
+    });
   } catch (error) {
     console.error('[API /api/issues] Error listing issues:', error);
     return errorResponse('Failed to list issues', {
