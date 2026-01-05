@@ -179,6 +179,7 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
           snapshotOutput: {
             cluster: 'my-cluster',
             service: 'my-service',
+            env: 'production',
           },
         },
       };
@@ -369,6 +370,10 @@ describe('SERVICE_HEALTH_RESET Playbook', () => {
           },
           verificationOutput: {
             status: 'success',
+            env: 'staging',
+          },
+          snapshotOutput: {
+            env: 'staging',
           },
         },
       };

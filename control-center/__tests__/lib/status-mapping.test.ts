@@ -207,9 +207,8 @@ describe('status-mapping utility', () => {
       expect(mapGitHubStatusToAfu9('Closed', true)).toBeNull();
     });
 
-    it('should map "closed" from Project/Label to DONE (explicit signal)', () => {
-      // When isFromIssueState = false, "closed" is treated as explicit "done" signal
-      expect(mapGitHubStatusToAfu9('closed', false)).toBe(Afu9IssueStatus.DONE);
+    it('should NOT map "closed" from Project/Label without explicit done signal', () => {
+      expect(mapGitHubStatusToAfu9('closed', false)).toBeNull();
     });
 
     it('should map blocked states to HOLD', () => {
@@ -362,48 +361,7 @@ describe('status-mapping utility', () => {
       expect(result.isFromIssueState).toBe(false);
     });
   });
-          { name: 'status: implementing' },
-          { name: 'status: done' },
-        ],
-        'open'
-      );
-      expect(result.raw).toBe('implementing');
-      expect(result.source).toBe('github_label');
-    });
 
-    it('should handle labels without "status:" prefix', () => {
-      const result = extractGitHubStatus(
-        null,
-        [{ name: 'bug' }, { name: 'enhancement' }],
-        'open'
-      );
-      expect(result.raw).toBeNull();
-      expect(result.source).toBeNull();
-    });
-
-    it('should handle empty labels array', () => {
-      const result = extractGitHubStatus(null, [], 'open');
-      expect(result.raw).toBeNull();
-      expect(result.source).toBeNull();
-    });
-
-    it('should handle null/undefined labels', () => {
-      const result1 = extractGitHubStatus(null, null, 'open');
-      expect(result1.raw).toBeNull();
-      expect(result1.source).toBeNull();
-
-      const result2 = extractGitHubStatus(null, undefined, 'open');
-      expect(result2.raw).toBeNull();
-      expect(result2.source).toBeNull();
-    });
-
-    it('should trim whitespace from project status', () => {
-      const result = extractGitHubStatus('  Implementing  ', [], 'open');
-      expect(result.raw).toBe('Implementing');
-      expect(result.source).toBe('github_project');
-      expect(result.isFromIssueState).toBe(false);
-    });
-  });
 
   // Integration tests for complete scenarios (E7_extra feedback)
   describe('Integration: closed-without-done-signal', () => {

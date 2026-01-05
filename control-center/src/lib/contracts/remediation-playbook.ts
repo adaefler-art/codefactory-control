@@ -403,8 +403,10 @@ export function sanitizeRedact(value: unknown, path: string = ''): any {
       return '********';
     }
     
-    // API key patterns (sk-, pk-, sk_live_, etc.)
-    if (/^(sk|pk|api|key)[-_]/i.test(value)) {
+    // API key patterns (sk-, pk-, api_key- etc.)
+    // NOTE: Avoid overly-broad prefixes like "api-" which can match benign values
+    // (e.g., ECS service names like "api-service").
+    if (/^(sk|pk)[-_]/i.test(value) || /^api[-_]?key[-_]/i.test(value)) {
       return '********';
     }
     
