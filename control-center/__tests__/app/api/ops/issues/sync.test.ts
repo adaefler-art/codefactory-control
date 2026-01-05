@@ -83,6 +83,7 @@ describe('POST /api/ops/issues/sync', () => {
     expect(response.status).toBe(200);
 
     expect(data.ok).toBe(true);
+    expect(data.routeVersion).toBe('mirror-v1');
     expect(data.statusSyncAttempted).toBe(1);
     expect(data.statusFetchOk).toBe(1);
     expect(data.statusFetchFailed).toBe(0);
@@ -134,6 +135,7 @@ describe('POST /api/ops/issues/sync', () => {
 
     expect(response.status).toBe(200);
     expect(data.statusFetchOk).toBe(1);
+    expect(data.routeVersion).toBe('mirror-v1');
 
     const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
 
@@ -172,6 +174,7 @@ describe('POST /api/ops/issues/sync', () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
+    expect(data.routeVersion).toBe('mirror-v1');
     expect(data.statusSyncAttempted).toBe(1);
     expect(data.statusFetchOk).toBe(0);
     expect(data.statusFetchFailed).toBe(1);
@@ -224,6 +227,9 @@ describe('POST /api/ops/issues/sync', () => {
     const response = await POST(request);
     expect(response.status).toBe(200);
 
+    const data = await response.json();
+    expect(data.routeVersion).toBe('mirror-v1');
+
     const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
     expect(typeof updates.github_status_raw).toBe('string');
     expect(updates.github_status_raw.length).toBeLessThanOrEqual(256);
@@ -262,6 +268,9 @@ describe('POST /api/ops/issues/sync', () => {
 
     const response = await POST(request);
     expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.routeVersion).toBe('mirror-v1');
 
     // getIssue call order should be issue_number asc: 2, 2, 10
     expect(mockGetIssue.mock.calls.map((c) => c[2])).toEqual([2, 2, 10]);

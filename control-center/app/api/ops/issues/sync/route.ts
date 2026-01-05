@@ -293,9 +293,38 @@ export async function POST(request: NextRequest) {
       let statusFetchOkCount = 0;
       let statusFetchFailedCount = 0;
       try {
-        const afu9IssuesResult = await listAfu9Issues(pool, {});
-        if (afu9IssuesResult.success && afu9IssuesResult.data) {
-          const linkedIssues = afu9IssuesResult.data
+        // NOTE: listAfu9Issues() defaults to LIMIT 100 which can miss older linked issues.
+        // Page through issues to ensure all linked issues are considered (stage evidence: #458).
+        const PAGE_LIMIT = 200;
+        const MAX_PAGES = 50; // hard cap to avoid unbounded DB scans
+        const allAfu9Issues: any[] = [];
+
+        for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex++) {
+          const pageResult = await listAfu9Issues(pool, {
+            limit: PAGE_LIMIT,
+            offset: pageIndex * PAGE_LIMIT,
+          });
+
+          if (!pageResult) {
+            console.error('[API /api/ops/issues/sync] listAfu9Issues returned no result for status sync');
+            break;
+          }
+
+          if (!pageResult.success) {
+            console.error('[API /api/ops/issues/sync] Failed to list AFU9 issues for status sync:', pageResult.error);
+            break;
+          }
+
+          const rows = pageResult.data ?? [];
+          allAfu9Issues.push(...rows);
+
+          if (rows.length < PAGE_LIMIT) {
+            break;
+          }
+        }
+
+        if (allAfu9Issues.length > 0) {
+          const linkedIssues = allAfu9Issues
             .filter((i) => !!i.github_issue_number)
             .sort((a, b) => {
               const an = a.github_issue_number ?? 0;
@@ -456,6 +485,7 @@ export async function POST(request: NextRequest) {
       }
 
       const responseBody: any = {
+        routeVersion: 'mirror-v1',
         ok: true,
         total: totalCount,
         upserted: upsertedCount,
