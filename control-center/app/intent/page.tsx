@@ -57,6 +57,10 @@ export default function IntentPage() {
   const [showCrDrawer, setShowCrDrawer] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const isValidSessionId = (value: unknown): value is string => {
+    return typeof value === "string" && value.trim().length > 0 && value !== "undefined" && value !== "null";
+  };
+
   // Fetch sessions on mount
   useEffect(() => {
     fetchIntentStatus();
@@ -103,7 +107,7 @@ export default function IntentPage() {
 
   // Fetch messages when session changes
   useEffect(() => {
-    if (currentSessionId) {
+    if (isValidSessionId(currentSessionId)) {
       fetchMessages(currentSessionId);
     } else {
       setMessages([]);
@@ -156,7 +160,7 @@ export default function IntentPage() {
         body: JSON.stringify({}),
       });
       const newSession = await safeFetch(response);
-      setSessions([newSession, ...sessions]);
+      setSessions((prev) => [newSession, ...prev]);
       setCurrentSessionId(newSession.id);
       setMessages([]);
       setInputValue("");
@@ -172,7 +176,7 @@ export default function IntentPage() {
     if (!inputValue.trim()) return;
 
     // Auto-create session if none selected
-    if (!currentSessionId) {
+    if (!isValidSessionId(currentSessionId)) {
       const messageContent = inputValue.trim();
       setInputValue("");
       setIsSending(true);
@@ -187,7 +191,7 @@ export default function IntentPage() {
           body: JSON.stringify({}),
         });
         const newSession = await safeFetch(createResponse);
-        setSessions([newSession, ...sessions]);
+        setSessions((prev) => [newSession, ...prev]);
         setCurrentSessionId(newSession.id);
 
         // Now send the message to the new session
@@ -203,10 +207,7 @@ export default function IntentPage() {
         const data = await safeFetch(sendResponse);
         
         // Append both user and assistant messages
-        setMessages([
-          data.userMessage,
-          data.assistantMessage,
-        ]);
+        setMessages([data.userMessage, data.assistantMessage]);
 
         // Refresh sessions list to update the title
         await fetchSessions();
@@ -220,6 +221,7 @@ export default function IntentPage() {
       return;
     }
 
+    const sessionId = currentSessionId;
     const messageContent = inputValue.trim();
     setInputValue("");
     setIsSending(true);
@@ -227,7 +229,7 @@ export default function IntentPage() {
 
     try {
       const response = await fetch(
-        API_ROUTES.intent.messages.create(currentSessionId),
+        API_ROUTES.intent.messages.create(sessionId),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -238,11 +240,7 @@ export default function IntentPage() {
       const data = await safeFetch(response);
       
       // Append both user and assistant messages
-      setMessages([
-        ...messages,
-        data.userMessage,
-        data.assistantMessage,
-      ]);
+      setMessages((prev) => [...prev, data.userMessage, data.assistantMessage]);
 
       // Refresh sessions list to update the title
       await fetchSessions();
