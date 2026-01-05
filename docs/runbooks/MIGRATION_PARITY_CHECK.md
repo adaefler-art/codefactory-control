@@ -89,6 +89,221 @@ workflow_dispatch:
 3. Enter parameters
 4. View results in workflow summary
 
+## Migration Runner with Ledger Tracking
+
+**Script**: `scripts/db-migrate.sh`
+
+The migration runner automatically tracks all applied migrations in the `schema_migrations` ledger table. This ensures parity checks work correctly.
+
+### Features
+
+- **Deterministic ordering**: Applies migrations in lexicographic filename order
+- **Hash verification**: Computes SHA-256 hash of each migration file
+- **Idempotent**: Safely reruns without duplicating migrations
+- **Fail-closed**: Detects and rejects modified migrations with `MIGRATION_HASH_MISMATCH` error
+- **Ledger tracking**: Records `filename`, `sha256`, and `applied_at` for each migration
+
+### Running Migrations
+
+**PowerShell**:
+```powershell
+# Set database credentials
+$env:DATABASE_HOST = "localhost"
+$env:DATABASE_PORT = "5432"
+$env:DATABASE_NAME = "afu9"
+$env:DATABASE_USER = "postgres"
+$env:DATABASE_PASSWORD = "your-password"
+
+# Run migrations
+npm --prefix control-center run db:migrate
+```
+
+**Bash**:
+```bash
+# Set database credentials
+export DATABASE_HOST=localhost
+export DATABASE_PORT=5432
+export DATABASE_NAME=afu9
+export DATABASE_USER=postgres
+export DATABASE_PASSWORD=your-password
+
+# Run migrations
+cd control-center
+npm run db:migrate
+```
+
+### Migration Runner Behavior
+
+**First run** (fresh database):
+```
+🔍 Starting database migration...
+
+📋 Checking schema_migrations ledger...
+▶️  Applying: 001_initial_schema.sql
+✅ Applied:  001_initial_schema.sql (hash: abc123def456...)
+▶️  Applying: 002_add_example_workflows.sql
+✅ Applied:  002_add_example_workflows.sql (hash: def456abc789...)
+...
+════════════════════════════════════════
+✅ Migration run completed successfully
+════════════════════════════════════════
+Total migrations:   49
+Applied:            49
+Skipped (verified): 0
+════════════════════════════════════════
+```
+
+**Subsequent runs** (all migrations already applied):
+```
+🔍 Starting database migration...
+
+📋 Checking schema_migrations ledger...
+⏭️  Skipped: 001_initial_schema.sql (already applied, hash verified ✓)
+⏭️  Skipped: 002_add_example_workflows.sql (already applied, hash verified ✓)
+...
+════════════════════════════════════════
+✅ Migration run completed successfully
+════════════════════════════════════════
+Total migrations:   49
+Applied:            0
+Skipped (verified): 49
+════════════════════════════════════════
+```
+
+**Hash mismatch detected** (migration modified after application):
+```
+🔍 Starting database migration...
+
+📋 Checking schema_migrations ledger...
+⏭️  Skipped: 001_initial_schema.sql (already applied, hash verified ✓)
+❌ ERROR: MIGRATION_HASH_MISMATCH
+   File: 002_add_example_workflows.sql
+   Stored hash:  def456abc789...
+   Current hash: xyz789ghi012...
+
+Migration file has been modified after being applied!
+This is a critical error. Migrations must be immutable once applied.
+
+Actions:
+  1. Revert changes to 002_add_example_workflows.sql
+  2. Create a new migration file for schema changes
+  3. Never modify applied migrations
+
+Exit code: 1
+```
+
+### Testing the Migration Runner
+
+Run the test suite to verify migration runner behavior:
+
+```bash
+# Set test database credentials
+export TEST_DATABASE_HOST=localhost
+export TEST_DATABASE_PORT=5432
+export TEST_DATABASE_NAME=afu9_test_migrations
+export TEST_DATABASE_USER=postgres
+export TEST_DATABASE_PASSWORD=your-password
+
+# Run tests
+bash scripts/test-db-migrate.sh
+```
+
+**Expected output**:
+```
+════════════════════════════════════════════════════════
+  Migration Runner Test Suite (E80.1)
+════════════════════════════════════════════════════════
+Database: afu9_test_migrations @ localhost:5432
+
+═══════════════════════════════════════════════════════
+Test 1: Fresh database applies all migrations
+═══════════════════════════════════════════════════════
+✓ PASS: schema_migrations table created
+✓ PASS: All 49 migrations recorded in ledger
+✓ PASS: All migrations have SHA-256 hashes
+✓ PASS: Migrations applied in lexicographic order
+
+═══════════════════════════════════════════════════════
+Test 2: Rerun does not duplicate or modify ledger
+═══════════════════════════════════════════════════════
+✓ PASS: Ledger count unchanged (49 entries)
+✓ PASS: Ledger hashes unchanged (idempotent)
+
+═══════════════════════════════════════════════════════
+Test 3: Ledger hashes match actual file hashes
+═══════════════════════════════════════════════════════
+✓ PASS: All 5 checked migrations have matching hashes
+
+═══════════════════════════════════════════════════════
+Test 4: Hash mismatch fails migration with error code
+═══════════════════════════════════════════════════════
+✓ PASS: Hash mismatch detected and migration failed
+
+════════════════════════════════════════════════════════
+  Test Summary
+════════════════════════════════════════════════════════
+Total tests:   9
+Passed:        9
+Failed:        0
+════════════════════════════════════════════════════════
+```
+
+### Pass/Fail Criteria
+
+**PASS**: Migration runner succeeds when:
+- All migrations applied successfully (or already applied with matching hashes)
+- Ledger entries created for all migrations
+- Hash verification passes for all previously applied migrations
+- No critical errors encountered
+
+**FAIL**: Migration runner fails when:
+- Database connection fails
+- SQL execution errors occur
+- Hash mismatch detected (migration modified after application)
+- Ledger table cannot be created/accessed
+
+### Troubleshooting
+
+#### Hash Mismatch Error
+
+**Cause**: Migration file was modified after being applied to the database.
+
+**Resolution**:
+1. **DO NOT** modify the migration file to match the stored hash
+2. Revert the migration file to its original state
+3. Create a new migration file for any schema changes
+4. Principle: **Migrations are immutable once applied**
+
+**Example**:
+```bash
+# Revert the modified file
+git checkout HEAD -- database/migrations/002_modified_file.sql
+
+# Create new migration for changes
+touch database/migrations/050_new_schema_changes.sql
+# Edit the new file with your changes
+```
+
+#### Ledger Table Missing
+
+**Cause**: `schema_migrations` table doesn't exist (fresh database).
+
+**Resolution**: Migration runner automatically creates the table on first run. If it fails:
+
+```bash
+# Manually create the ledger table
+psql -h localhost -U postgres -d afu9 -c "
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"
+
+# Then rerun migrations
+npm --prefix control-center run db:migrate
+```
+
 ## PowerShell Verification Commands
 
 ### Local Development Check
