@@ -11,6 +11,7 @@ import {
   getLatestDeployStatusSnapshot,
 } from '@/lib/db/deployStatusSnapshots';
 import { resolveDeployStatusFromVerificationRuns } from '@/lib/deploy-status/verification-resolver';
+import { getActiveLawbookVersion } from '@/lib/lawbook-version-helper';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -170,9 +171,13 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    // E79.3 / I793: Get active lawbook version (passive ingestion - null if not configured)
+    const lawbookVersion = await getActiveLawbookVersion(pool);
+
     const resolved = await resolveDeployStatusFromVerificationRuns(pool, {
       env,
       correlationId,
+      lawbookVersion,
     });
 
     // Idempotency: avoid inserting duplicates for the same correlation/run.

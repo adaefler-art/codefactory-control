@@ -24,6 +24,7 @@ import {
 import { getIncidentDAO } from '../db/incidents';
 import { getRemediationPlaybookDAO } from '../db/remediation-playbooks';
 import { getOutcomeRecordsDAO } from '../db/outcomes';
+import { getActiveLawbookVersion } from '../lawbook-version-helper';
 
 /**
  * Generate postmortem for an incident
@@ -113,6 +114,11 @@ export async function generatePostmortemForIncident(
   // 11. Build source refs
   const sourceRefs = buildSourceRefs(incident, remediationRuns, events);
 
+  // E79.3 / I793: Use lawbookVersion from parameter, incident, or active lawbook (passive)
+  const finalLawbookVersion = lawbookVersion 
+    || incident.lawbook_version 
+    || await getActiveLawbookVersion(pool);
+
   // 12. Create outcome record (idempotent)
   const outcomeRecordInput: OutcomeRecordInput = {
     entity_type: 'incident',
@@ -122,7 +128,7 @@ export async function generatePostmortemForIncident(
     metrics_json: metrics,
     postmortem_json: postmortem,
     postmortem_hash: postmortemHash,
-    lawbook_version: lawbookVersion || incident.lawbook_version || null,
+    lawbook_version: finalLawbookVersion,
     source_refs: sourceRefs,
   };
 
