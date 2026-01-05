@@ -110,8 +110,11 @@ function extractOwnerRepoFromGithubUrl(url: string | null): { owner: string; rep
   const owner = match[1];
   const repo = match[2];
 
-  // Validate owner and repo are not empty
-  if (!owner || !repo || owner.trim() === '' || repo.trim() === '') {
+  // Validate owner and repo are not empty and don't contain path traversal attempts
+  // GitHub usernames/repos must match: alphanumeric, hyphen, underscore (no special chars, no ../, etc.)
+  const validPattern = /^[a-zA-Z0-9._-]+$/;
+  if (!owner || !repo || owner.trim() === '' || repo.trim() === '' ||
+      !validPattern.test(owner) || !validPattern.test(repo)) {
     return null;
   }
 
@@ -382,11 +385,12 @@ export async function POST(request: NextRequest) {
             // Step 1: Try to use existing github_repo field (format: "owner/repo")
             if (resolvedGithubRepo && typeof resolvedGithubRepo === 'string' && resolvedGithubRepo.includes('/')) {
               const parts = resolvedGithubRepo.split('/');
-              if (parts.length >= 2 && parts[0] && parts[1]) {
+              // Validate exactly 2 parts (owner/repo) to prevent malformed data
+              if (parts.length === 2 && parts[0] && parts[1]) {
                 issueOwner = parts[0];
                 issueRepo = parts[1];
               } else {
-                // Invalid github_repo format, try to extract from URL
+                // Invalid github_repo format (not exactly owner/repo), try to extract from URL
                 const extracted = extractOwnerRepoFromGithubUrl(afu9Issue.github_url);
                 if (extracted) {
                   issueOwner = extracted.owner;
