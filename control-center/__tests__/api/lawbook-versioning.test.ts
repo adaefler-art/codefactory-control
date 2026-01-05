@@ -90,7 +90,10 @@ describe('POST /api/lawbook/versions - Create Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
       method: 'POST',
-      headers: { 'x-afu9-sub': 'test-user' },
+      headers: { 
+        'x-afu9-sub': 'test-user',
+        'content-type': 'application/json',
+      },
       body: JSON.stringify(MOCK_LAWBOOK_1),
     });
 
@@ -116,7 +119,10 @@ describe('POST /api/lawbook/versions - Create Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
       method: 'POST',
-      headers: { 'x-afu9-sub': 'test-user' },
+      headers: { 
+        'x-afu9-sub': 'test-user',
+        'content-type': 'application/json',
+      },
       body: JSON.stringify(MOCK_LAWBOOK_1),
     });
 
@@ -138,7 +144,10 @@ describe('POST /api/lawbook/versions - Create Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
       method: 'POST',
-      headers: { 'x-afu9-sub': 'test-user' },
+      headers: { 
+        'x-afu9-sub': 'test-user',
+        'content-type': 'application/json',
+      },
       body: JSON.stringify(invalidLawbook),
     });
 
@@ -225,8 +234,21 @@ describe('GET /api/lawbook/versions - List Versions', () => {
 });
 
 describe('POST /api/lawbook/activate - Activate Version', () => {
+  const originalEnv = process.env.AFU9_ADMIN_SUBS;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    // Set admin allowlist for these tests
+    process.env.AFU9_ADMIN_SUBS = 'test-user,admin-user';
+  });
+
+  afterEach(() => {
+    // Restore original env
+    if (originalEnv !== undefined) {
+      process.env.AFU9_ADMIN_SUBS = originalEnv;
+    } else {
+      delete process.env.AFU9_ADMIN_SUBS;
+    }
   });
 
   test('activates version successfully', async () => {
@@ -466,6 +488,213 @@ describe('Auth: 401-first checks', () => {
 
     expect(response.status).toBe(401);
     expect(data.error).toBe('Unauthorized');
+  });
+});
+
+// ========================================
+// Authorization Tests (Admin-only)
+// ========================================
+
+describe('Authorization: Admin-only for activation', () => {
+  const originalEnv = process.env.AFU9_ADMIN_SUBS;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Restore original env
+    if (originalEnv !== undefined) {
+      process.env.AFU9_ADMIN_SUBS = originalEnv;
+    } else {
+      delete process.env.AFU9_ADMIN_SUBS;
+    }
+  });
+
+  test('POST /api/lawbook/activate returns 403 when user not in admin allowlist', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-sub-1,admin-sub-2';
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
+      method: 'POST',
+      headers: { 'x-afu9-sub': 'regular-user' },
+      body: JSON.stringify({ lawbookVersionId: TEST_VERSION_ID_1 }),
+    });
+
+    const response = await activateVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error).toBe('Forbidden');
+    expect(data.message).toContain('Admin privileges required');
+  });
+
+  test('POST /api/lawbook/activate returns 403 when AFU9_ADMIN_SUBS empty (fail-closed)', async () => {
+    process.env.AFU9_ADMIN_SUBS = '';
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
+      method: 'POST',
+      headers: { 'x-afu9-sub': 'any-user' },
+      body: JSON.stringify({ lawbookVersionId: TEST_VERSION_ID_1 }),
+    });
+
+    const response = await activateVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error).toBe('Forbidden');
+  });
+
+  test('POST /api/lawbook/activate returns 403 when AFU9_ADMIN_SUBS missing (fail-closed)', async () => {
+    delete process.env.AFU9_ADMIN_SUBS;
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
+      method: 'POST',
+      headers: { 'x-afu9-sub': 'any-user' },
+      body: JSON.stringify({ lawbookVersionId: TEST_VERSION_ID_1 }),
+    });
+
+    const response = await activateVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error).toBe('Forbidden');
+  });
+
+  test('POST /api/lawbook/activate succeeds when user is admin', async () => {
+    const { activateLawbookVersion } = require('../../src/lib/db/lawbook');
+    
+    process.env.AFU9_ADMIN_SUBS = 'admin-sub-1,admin-sub-2';
+
+    activateLawbookVersion.mockResolvedValue({
+      success: true,
+      data: {
+        lawbook_id: TEST_LAWBOOK_ID,
+        active_lawbook_version_id: TEST_VERSION_ID_1,
+        updated_at: '2025-12-30T12:00:00.000Z',
+      },
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
+      method: 'POST',
+      headers: { 'x-afu9-sub': 'admin-sub-1' },
+      body: JSON.stringify({ lawbookVersionId: TEST_VERSION_ID_1 }),
+    });
+
+    const response = await activateVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.message).toContain('activated successfully');
+    expect(activateLawbookVersion).toHaveBeenCalled();
+  });
+
+  test('POST /api/lawbook/activate does not call DB when user not admin', async () => {
+    const { activateLawbookVersion } = require('../../src/lib/db/lawbook');
+    
+    process.env.AFU9_ADMIN_SUBS = 'admin-sub-1';
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
+      method: 'POST',
+      headers: { 'x-afu9-sub': 'regular-user' },
+      body: JSON.stringify({ lawbookVersionId: TEST_VERSION_ID_1 }),
+    });
+
+    const response = await activateVersion(request);
+
+    expect(response.status).toBe(403);
+    expect(activateLawbookVersion).not.toHaveBeenCalled();
+  });
+});
+
+// ========================================
+// Content-Type and Body Size Tests
+// ========================================
+
+describe('Input Validation: Content-Type and Body Size', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('POST /api/lawbook/versions returns 415 for missing Content-Type', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
+      body: JSON.stringify(MOCK_LAWBOOK_1),
+    });
+
+    // Remove Content-Type header
+    request.headers.delete('content-type');
+
+    const response = await createVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(415);
+    expect(data.error).toBe('Unsupported Media Type');
+    expect(data.message).toContain('application/json');
+  });
+
+  test('POST /api/lawbook/versions returns 415 for wrong Content-Type', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      method: 'POST',
+      headers: { 
+        'x-afu9-sub': 'test-user',
+        'content-type': 'text/plain',
+      },
+      body: JSON.stringify(MOCK_LAWBOOK_1),
+    });
+
+    const response = await createVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(415);
+    expect(data.error).toBe('Unsupported Media Type');
+  });
+
+  test('POST /api/lawbook/versions returns 413 for body exceeding 200KB', async () => {
+    // Create a large body (over 200KB)
+    const largeBody = {
+      ...MOCK_LAWBOOK_1,
+      notes: 'x'.repeat(250 * 1024), // 250KB of text
+    };
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      method: 'POST',
+      headers: { 
+        'x-afu9-sub': 'test-user',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(largeBody),
+    });
+
+    const response = await createVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(data.error).toBe('Payload Too Large');
+    expect(data.message).toContain('204800');
+  });
+
+  test('POST /api/lawbook/versions accepts valid Content-Type and size', async () => {
+    const { createLawbookVersion } = require('../../src/lib/db/lawbook');
+
+    createLawbookVersion.mockResolvedValue({
+      success: true,
+      data: MOCK_VERSION_RECORD_1,
+      isExisting: false,
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      method: 'POST',
+      headers: { 
+        'x-afu9-sub': 'test-user',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(MOCK_LAWBOOK_1),
+    });
+
+    const response = await createVersion(request);
+
+    expect(response.status).toBe(201);
   });
 });
 

@@ -127,6 +127,8 @@ export const GET = withApi(async (request: NextRequest) => {
 // POST - Create Version
 // ========================================
 
+const MAX_BODY_SIZE_BYTES = 200 * 1024; // 200KB
+
 export const POST = withApi(async (request: NextRequest) => {
   // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
   const userId = request.headers.get('x-afu9-sub');
@@ -137,10 +139,51 @@ export const POST = withApi(async (request: NextRequest) => {
     );
   }
 
+  // CONTENT-TYPE CHECK: Enforce application/json
+  const contentType = request.headers.get('content-type');
+  if (!contentType || !contentType.toLowerCase().includes('application/json')) {
+    return NextResponse.json(
+      { 
+        error: 'Unsupported Media Type', 
+        message: 'Content-Type must be application/json' 
+      },
+      { status: 415 }
+    );
+  }
+
+  // BODY SIZE CHECK: Enforce max body size before parsing
+  const contentLength = request.headers.get('content-length');
+  if (contentLength) {
+    const size = parseInt(contentLength, 10);
+    if (!isNaN(size) && size > MAX_BODY_SIZE_BYTES) {
+      return NextResponse.json(
+        { 
+          error: 'Payload Too Large', 
+          message: `Request body must not exceed ${MAX_BODY_SIZE_BYTES} bytes` 
+        },
+        { status: 413 }
+      );
+    }
+  }
+
   let body: any;
+  let bodyText: string;
   
   try {
-    body = await request.json();
+    bodyText = await request.text();
+    
+    // Additional size check after reading body (defense in depth)
+    if (bodyText.length > MAX_BODY_SIZE_BYTES) {
+      return NextResponse.json(
+        { 
+          error: 'Payload Too Large', 
+          message: `Request body must not exceed ${MAX_BODY_SIZE_BYTES} bytes` 
+        },
+        { status: 413 }
+      );
+    }
+    
+    body = JSON.parse(bodyText);
   } catch {
     return NextResponse.json(
       { error: 'Invalid JSON body' },

@@ -7,8 +7,10 @@
  * Client-provided x-afu9-* headers are stripped by proxy.ts (lines 415-419) to prevent spoofing.
  * This route trusts x-afu9-sub because it can only come from verified middleware.
  * 
- * AUTH POLICY: All authenticated users allowed (activation records append-only audit event,
- * immutable versions prevent destructive changes, system-level operation).
+ * AUTH POLICY: Admin-only (fail-closed).
+ * - Allowed subs from ENV: AFU9_ADMIN_SUBS (comma-separated list of admin sub IDs)
+ * - If AFU9_ADMIN_SUBS is empty/missing: deny all (403)
+ * - Activation is privileged operation (changes active lawbook pointer system-wide)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,6 +20,21 @@ import { withApi } from '@/lib/http/withApi';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * Check if user sub is in admin allowlist
+ * Fail-closed: empty/missing AFU9_ADMIN_SUBS → deny all
+ */
+function isAdminUser(userId: string): boolean {
+  const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+  if (!adminSubs.trim()) {
+    // Fail-closed: no admin allowlist configured → deny all
+    return false;
+  }
+  
+  const allowedSubs = adminSubs.split(',').map(s => s.trim()).filter(s => s);
+  return allowedSubs.includes(userId);
+}
+
 export const POST = withApi(async (request: NextRequest) => {
   // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
   const userId = request.headers.get('x-afu9-sub');
@@ -25,6 +42,17 @@ export const POST = withApi(async (request: NextRequest) => {
     return NextResponse.json(
       { error: 'Unauthorized', message: 'Authentication required' },
       { status: 401 }
+    );
+  }
+
+  // AUTHORIZATION CHECK: Admin-only (fail-closed)
+  if (!isAdminUser(userId)) {
+    return NextResponse.json(
+      { 
+        error: 'Forbidden', 
+        message: 'Admin privileges required to activate lawbook versions' 
+      },
+      { status: 403 }
     );
   }
 
