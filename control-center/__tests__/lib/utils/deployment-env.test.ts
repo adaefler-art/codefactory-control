@@ -4,10 +4,11 @@
  * @jest-environment node
  */
 
-import { getDeploymentEnv, isProduction, isStaging, isUnknown } from '@/lib/utils/deployment-env';
+import { getDeploymentEnv, isProduction, isStaging, isDevelopment, isUnknown } from '@/lib/utils/deployment-env';
 
 describe('Deployment Environment Detection', () => {
   const originalEnv = process.env.ENVIRONMENT;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   afterEach(() => {
     // Restore original
@@ -15,6 +16,11 @@ describe('Deployment Environment Detection', () => {
       process.env.ENVIRONMENT = originalEnv;
     } else {
       delete process.env.ENVIRONMENT;
+    }
+    if (originalNodeEnv !== undefined) {
+      process.env.NODE_ENV = originalNodeEnv;
+    } else {
+      delete process.env.NODE_ENV;
     }
   });
 
@@ -49,23 +55,45 @@ describe('Deployment Environment Detection', () => {
       expect(getDeploymentEnv()).toBe('staging');
     });
 
-    test('returns "unknown" for missing ENVIRONMENT (fail-closed)', () => {
+    test('returns "development" for missing ENVIRONMENT + NODE_ENV=development', () => {
       delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'development';
+      expect(getDeploymentEnv()).toBe('development');
+    });
+
+    test('returns "unknown" for missing ENVIRONMENT + NODE_ENV=production (fail-closed)', () => {
+      delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'production';
+      expect(getDeploymentEnv()).toBe('unknown');
+    });
+
+    test('returns "unknown" for missing ENVIRONMENT + NODE_ENV=test (fail-closed)', () => {
+      delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'test';
+      expect(getDeploymentEnv()).toBe('unknown');
+    });
+
+    test('returns "unknown" for missing ENVIRONMENT + missing NODE_ENV (fail-closed)', () => {
+      delete process.env.ENVIRONMENT;
+      delete process.env.NODE_ENV;
       expect(getDeploymentEnv()).toBe('unknown');
     });
 
     test('returns "unknown" for empty ENVIRONMENT (fail-closed)', () => {
       process.env.ENVIRONMENT = '';
-      expect(getDeploymentEnv()).toBe('unknown');
+      process.env.NODE_ENV = 'development';
+      expect(getDeploymentEnv()).toBe('development');
     });
 
     test('returns "unknown" for whitespace ENVIRONMENT (fail-closed)', () => {
       process.env.ENVIRONMENT = '   ';
-      expect(getDeploymentEnv()).toBe('unknown');
+      process.env.NODE_ENV = 'development';
+      expect(getDeploymentEnv()).toBe('development');
     });
 
-    test('returns "unknown" for invalid ENVIRONMENT (fail-closed)', () => {
-      process.env.ENVIRONMENT = 'development';
+    test('returns "unknown" for invalid ENVIRONMENT string (fail-closed)', () => {
+      process.env.ENVIRONMENT = 'testing';
+      process.env.NODE_ENV = 'development';
       expect(getDeploymentEnv()).toBe('unknown');
     });
   });
@@ -108,30 +136,77 @@ describe('Deployment Environment Detection', () => {
       expect(isStaging()).toBe(false);
     });
 
-    test('returns false when ENVIRONMENT is missing (unknown)', () => {
+    test('returns false when ENVIRONMENT is missing (unknown or development)', () => {
       delete process.env.ENVIRONMENT;
+      delete process.env.NODE_ENV;
+      expect(isStaging()).toBe(false);
+    });
+
+    test('returns false when in development', () => {
+      delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'development';
       expect(isStaging()).toBe(false);
     });
 
     test('returns false when ENVIRONMENT is unknown', () => {
-      process.env.ENVIRONMENT = 'development';
+      process.env.ENVIRONMENT = 'testing';
       expect(isStaging()).toBe(false);
     });
   });
 
-  describe('isUnknown', () => {
-    test('returns true when ENVIRONMENT is missing', () => {
+  describe('isDevelopment', () => {
+    test('returns true when ENVIRONMENT is missing and NODE_ENV=development', () => {
       delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'development';
+      expect(isDevelopment()).toBe(true);
+    });
+
+    test('returns false when ENVIRONMENT=staging', () => {
+      process.env.ENVIRONMENT = 'staging';
+      process.env.NODE_ENV = 'development';
+      expect(isDevelopment()).toBe(false);
+    });
+
+    test('returns false when ENVIRONMENT=production', () => {
+      process.env.ENVIRONMENT = 'production';
+      process.env.NODE_ENV = 'development';
+      expect(isDevelopment()).toBe(false);
+    });
+
+    test('returns false when NODE_ENV is not development', () => {
+      delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'production';
+      expect(isDevelopment()).toBe(false);
+    });
+
+    test('returns false when ENVIRONMENT is invalid (not development)', () => {
+      process.env.ENVIRONMENT = 'testing';
+      process.env.NODE_ENV = 'development';
+      expect(isDevelopment()).toBe(false);
+    });
+  });
+
+  describe('isUnknown', () => {
+    test('returns true when ENVIRONMENT is missing and NODE_ENV is not development', () => {
+      delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'production';
       expect(isUnknown()).toBe(true);
     });
 
-    test('returns true when ENVIRONMENT is empty', () => {
+    test('returns true when ENVIRONMENT is missing and NODE_ENV is missing', () => {
+      delete process.env.ENVIRONMENT;
+      delete process.env.NODE_ENV;
+      expect(isUnknown()).toBe(true);
+    });
+
+    test('returns true when ENVIRONMENT is empty and NODE_ENV is not development', () => {
       process.env.ENVIRONMENT = '';
+      process.env.NODE_ENV = 'production';
       expect(isUnknown()).toBe(true);
     });
 
     test('returns true when ENVIRONMENT is invalid', () => {
-      process.env.ENVIRONMENT = 'development';
+      process.env.ENVIRONMENT = 'testing';
       expect(isUnknown()).toBe(true);
     });
 
@@ -142,6 +217,12 @@ describe('Deployment Environment Detection', () => {
 
     test('returns false when ENVIRONMENT=staging', () => {
       process.env.ENVIRONMENT = 'staging';
+      expect(isUnknown()).toBe(false);
+    });
+
+    test('returns false when in development', () => {
+      delete process.env.ENVIRONMENT;
+      process.env.NODE_ENV = 'development';
       expect(isUnknown()).toBe(false);
     });
   });

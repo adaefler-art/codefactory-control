@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
 
   // 2. ENV GATING: Stage-only endpoint (fail-closed for prod/unknown)
   // Blocks prod and unknown environments before any DB operations
+  // Development environment is allowed for local dev
   const deploymentEnv = getDeploymentEnv();
   if (deploymentEnv === 'production' || deploymentEnv === 'unknown') {
     const envLabel = deploymentEnv === 'production' ? 'production' : 'unknown/unconfigured';
