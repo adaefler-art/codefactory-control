@@ -18,7 +18,7 @@
 
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { LawbookV1 } from '../lawbook/types';
+import { LawbookV1 } from '../lawbook/schema';
 
 // ========================================
 // GateVerdict Schema
@@ -56,15 +56,25 @@ export type GateVerdict = z.infer<typeof GateVerdictSchema>;
 /**
  * Compute SHA-256 hash of canonical inputs
  * Ensures deterministic hashing regardless of input order
+ * Uses recursive key sorting for nested objects
  */
 function computeInputsHash(inputs: Record<string, any>): string {
-  // Sort keys for deterministic ordering
-  const sortedKeys = Object.keys(inputs).sort();
-  const canonical: Record<string, any> = {};
-  for (const key of sortedKeys) {
-    canonical[key] = inputs[key];
-  }
+  // Recursively normalize the object with sorted keys
+  const normalize = (value: any): any => {
+    if (value === null || value === undefined) return value;
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(normalize);
+    
+    // Sort keys and normalize nested values
+    const sortedKeys = Object.keys(value).sort();
+    const normalized: Record<string, any> = {};
+    for (const key of sortedKeys) {
+      normalized[key] = normalize(value[key]);
+    }
+    return normalized;
+  };
   
+  const canonical = normalize(inputs);
   const json = JSON.stringify(canonical);
   return createHash('sha256').update(json, 'utf8').digest('hex');
 }
@@ -458,9 +468,25 @@ export function gateIdempotencyKeyFormat(
 }
 
 // ========================================
-// Exports
+// Public Exports
 // ========================================
 
+/**
+ * Compute deterministic SHA-256 hash of inputs
+ * 
+ * Useful for:
+ * - Creating deterministic cache keys
+ * - Verifying input integrity
+ * - Comparing input sets
+ * 
+ * @param inputs - Input object to hash (nested objects supported)
+ * @returns SHA-256 hash (hex string)
+ * 
+ * @example
+ * const hash1 = computeInputsHash({ a: 1, b: { c: 2 } });
+ * const hash2 = computeInputsHash({ b: { c: 2 }, a: 1 }); // Different order
+ * console.log(hash1 === hash2); // true - deterministic
+ */
 export {
   computeInputsHash,
 };

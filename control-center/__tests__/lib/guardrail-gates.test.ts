@@ -17,8 +17,7 @@ import {
   GateVerdict,
   computeInputsHash,
 } from '../../src/lib/guardrail-gates';
-import { createMinimalLawbook } from '../../src/lawbook/schema';
-import { LawbookV1 } from '../../src/lawbook/types';
+import { createMinimalLawbook, LawbookV1 } from '../../src/lawbook/schema';
 
 describe('Guardrail Gates Library', () => {
   describe('computeInputsHash', () => {
@@ -41,6 +40,26 @@ describe('Guardrail Gates Library', () => {
       const hash2 = computeInputsHash(inputs2);
       
       expect(hash1).not.toBe(hash2);
+    });
+    
+    it('should handle nested objects deterministically', () => {
+      const inputs1 = { a: 1, b: { x: 10, y: 20 }, c: 3 };
+      const inputs2 = { c: 3, b: { y: 20, x: 10 }, a: 1 }; // Different order at all levels
+      
+      const hash1 = computeInputsHash(inputs1);
+      const hash2 = computeInputsHash(inputs2);
+      
+      expect(hash1).toBe(hash2);
+    });
+    
+    it('should handle arrays in inputs', () => {
+      const inputs1 = { a: [1, 2, 3], b: 'test' };
+      const inputs2 = { b: 'test', a: [1, 2, 3] };
+      
+      const hash1 = computeInputsHash(inputs1);
+      const hash2 = computeInputsHash(inputs2);
+      
+      expect(hash1).toBe(hash2);
     });
   });
   
