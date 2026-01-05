@@ -11,7 +11,7 @@ import {
   getLatestMigration,
   type MigrationFile,
   type MigrationLedgerEntry,
-} from '../../../src/lib/utils/migration-parity';
+} from '@/lib/utils/migration-parity';
 
 describe('Migration Parity Utility', () => {
   describe('computeParity', () => {

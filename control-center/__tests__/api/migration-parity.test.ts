@@ -7,10 +7,10 @@
  */
 
 import { NextRequest } from 'next/server';
-import { GET } from '../../../app/api/ops/db/migrations/route';
+import { GET } from '../../app/api/ops/db/migrations/route';
 
 // Mock database module
-jest.mock('../../../src/lib/db', () => ({
+jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
     connect: jest.fn(),
@@ -18,7 +18,7 @@ jest.mock('../../../src/lib/db', () => ({
 }));
 
 // Mock migration DAO
-jest.mock('../../../src/lib/db/migrations', () => ({
+jest.mock('@/lib/db/migrations', () => ({
   checkDbReachability: jest.fn(),
   checkLedgerExists: jest.fn(),
   listAppliedMigrations: jest.fn(),
@@ -27,26 +27,26 @@ jest.mock('../../../src/lib/db/migrations', () => ({
 }));
 
 // Mock migration parity utility
-jest.mock('../../../src/lib/utils/migration-parity', () => ({
+jest.mock('@/lib/utils/migration-parity', () => ({
   listRepoMigrations: jest.fn(),
   computeParity: jest.fn(),
   getLatestMigration: jest.fn(),
 }));
 
 // Mock lawbook version helper
-jest.mock('../../../src/lib/lawbook-version-helper', () => ({
+jest.mock('@/lib/lawbook-version-helper', () => ({
   getLawbookVersion: jest.fn().mockResolvedValue('v0.7.0'),
 }));
 
 describe('GET /api/ops/db/migrations - Security Tests', () => {
-  const mockCheckDbReachability = require('../../../src/lib/db/migrations').checkDbReachability;
-  const mockCheckLedgerExists = require('../../../src/lib/db/migrations').checkLedgerExists;
-  const mockListAppliedMigrations = require('../../../src/lib/db/migrations').listAppliedMigrations;
-  const mockGetLastAppliedMigration = require('../../../src/lib/db/migrations').getLastAppliedMigration;
-  const mockGetAppliedMigrationCount = require('../../../src/lib/db/migrations').getAppliedMigrationCount;
-  const mockListRepoMigrations = require('../../../src/lib/utils/migration-parity').listRepoMigrations;
-  const mockComputeParity = require('../../../src/lib/utils/migration-parity').computeParity;
-  const mockGetLatestMigration = require('../../../src/lib/utils/migration-parity').getLatestMigration;
+  const mockCheckDbReachability = require('@/lib/db/migrations').checkDbReachability;
+  const mockCheckLedgerExists = require('@/lib/db/migrations').checkLedgerExists;
+  const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
+  const mockGetLastAppliedMigration = require('@/lib/db/migrations').getLastAppliedMigration;
+  const mockGetAppliedMigrationCount = require('@/lib/db/migrations').getAppliedMigrationCount;
+  const mockListRepoMigrations = require('@/lib/utils/migration-parity').listRepoMigrations;
+  const mockComputeParity = require('@/lib/utils/migration-parity').computeParity;
+  const mockGetLatestMigration = require('@/lib/utils/migration-parity').getLatestMigration;
 
   beforeEach(() => {
     jest.clearAllMocks();
