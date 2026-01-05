@@ -41,6 +41,9 @@ export const GithubMirrorStatusSchema = z.enum([
   'IN_REVIEW',
   'DONE',
   'BLOCKED',
+  'OPEN',
+  'CLOSED',
+  'ERROR',
   'UNKNOWN',
 ]);
 
