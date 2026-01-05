@@ -51,19 +51,28 @@ interface WhoamiData {
   isAdmin: boolean;
 }
 
+interface ErrorInfo {
+  code?: string;
+  details?: string;
+}
+
 export default function MigrationsOpsPage() {
   const [data, setData] = useState<MigrationParityData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
   const [limit, setLimit] = useState<number>(200);
   const [is403Error, setIs403Error] = useState(false);
+  const [is409ProdDisabled, setIs409ProdDisabled] = useState(false);
   const [whoamiData, setWhoamiData] = useState<WhoamiData | null>(null);
   const [whoami401, setWhoami401] = useState(false);
 
   const fetchMigrationParity = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setErrorInfo(null);
     setIs403Error(false);
+    setIs409ProdDisabled(false);
     setWhoamiData(null);
     setWhoami401(false);
 
@@ -77,6 +86,14 @@ export default function MigrationsOpsPage() {
         credentials: "include",
         cache: "no-store",
       });
+
+      // Check for env-disabled (409)
+      if (response.status === 409) {
+        const errorData = await response.json();
+        setIs409ProdDisabled(true);
+        setErrorInfo(errorData);
+        throw new Error(errorData.details || 'Migration parity checks are disabled in this environment');
+      }
 
       // Check for 403 before processing response
       if (response.status === 403) {
@@ -190,6 +207,32 @@ export default function MigrationsOpsPage() {
             <h3 className="text-sm font-medium text-red-800">Error</h3>
             <p className="mt-1 text-sm text-red-700">{error}</p>
             
+            {/* Environment Disabled Message */}
+            {is409ProdDisabled && (
+              <div className="mt-4 pt-4 border-t border-red-300">
+                <h4 className="text-sm font-semibold text-red-900 mb-2">
+                  🚫 Environment Access Disabled
+                </h4>
+                <div className="bg-white rounded p-3 space-y-2">
+                  <p className="text-xs text-red-800">
+                    <strong>Migration parity checks are disabled in this environment.</strong>
+                  </p>
+                  <p className="text-xs text-gray-700 mt-2">
+                    This is a stage-only tool. It is disabled in production and unconfigured environments
+                    to reduce operational costs and risks.
+                  </p>
+                  {errorInfo?.code && (
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <span className="text-xs font-medium text-gray-600">Error Code:</span>
+                      <code className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded text-gray-900 font-mono">
+                        {errorInfo.code}
+                      </code>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* 403 Diagnostic Information */}
             {is403Error && whoami401 && (
               <div className="mt-4 pt-4 border-t border-red-300">
@@ -213,6 +256,12 @@ export default function MigrationsOpsPage() {
                   🔍 Diagnostic Information
                 </h4>
                 <div className="bg-white rounded p-3 space-y-2">
+                  <div>
+                    <span className="text-xs font-medium text-gray-700">Environment:</span>
+                    <span className="ml-2 text-xs px-2 py-1 rounded font-medium bg-blue-100 text-blue-800">
+                      Staging (Production would return 409)
+                    </span>
+                  </div>
                   <div>
                     <span className="text-xs font-medium text-gray-700">Your sub:</span>
                     <code className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded text-gray-900 font-mono">

@@ -1,13 +1,18 @@
 /**
  * API Tests: GET /api/ops/db/migrations
  * 
- * Tests auth (401/403), bounds, ledger scenarios, and deterministic output.
+ * Tests auth (401/403), prod-block (409), bounds, ledger scenarios, and deterministic output.
  * 
  * @jest-environment node
  */
 
 import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/ops/db/migrations/route';
+
+// Mock deployment-env module
+jest.mock('@/lib/utils/deployment-env', () => ({
+  getDeploymentEnv: jest.fn(() => 'staging'),
+}));
 
 // Mock database module
 jest.mock('@/lib/db', () => ({
@@ -39,6 +44,7 @@ jest.mock('@/lib/lawbook-version-helper', () => ({
 }));
 
 describe('GET /api/ops/db/migrations - Security Tests', () => {
+  const mockGetDeploymentEnv = require('@/lib/utils/deployment-env').getDeploymentEnv;
   const mockCheckDbReachability = require('@/lib/db/migrations').checkDbReachability;
   const mockCheckLedgerExists = require('@/lib/db/migrations').checkLedgerExists;
   const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
@@ -51,9 +57,11 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.AFU9_ADMIN_SUBS;
+    // Default to staging
+    mockGetDeploymentEnv.mockReturnValue('staging');
   });
 
-  test('401: Unauthorized without x-afu9-sub header', async () => {
+  test('401: Unauthorized without x-afu9-sub header (auth-first)', async () => {
     const request = new NextRequest('http://localhost/api/ops/db/migrations', {
       method: 'GET',
       headers: {
@@ -68,6 +76,79 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.error).toBe('Unauthorized');
     expect(body.code).toBe('UNAUTHORIZED');
     expect(body.details).toContain('Authentication required');
+    
+    // Ensure no DB calls were made (auth-first)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('401: Unauthenticated in production returns 401 (not 409)', async () => {
+    // Simulate production environment
+    mockGetDeploymentEnv.mockReturnValue('production');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-prod-unauth',
+        // No x-afu9-sub header
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    // Auth check happens BEFORE env gating (401-first)
+    expect(response.status).toBe(401);
+    expect(body.code).toBe('UNAUTHORIZED');
+    
+    // Ensure no DB calls were made
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('409: Production environment disabled (env gating)', async () => {
+    // Simulate production environment
+    mockGetDeploymentEnv.mockReturnValue('production');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-prod-env-disabled',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toBe('Environment access disabled');
+    expect(body.code).toBe('ENV_DISABLED');
+    expect(body.details).toContain('production');
+
+    // Ensure no DB calls were made (fail-closed)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
+  });
+
+  test('409: Unknown environment disabled (fail-closed)', async () => {
+    // Simulate unknown environment
+    mockGetDeploymentEnv.mockReturnValue('unknown');
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-unknown-env',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('ENV_DISABLED');
+    expect(body.details).toContain('unknown');
+
+    // Ensure no DB calls were made (fail-closed for unknown)
+    expect(mockCheckDbReachability).not.toHaveBeenCalled();
   });
 
   test('401: Unauthorized with empty x-afu9-sub header', async () => {
