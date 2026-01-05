@@ -7,7 +7,7 @@
  * Values:
  * - 'prod' or 'production' → production
  * - 'stage' or 'staging' → staging
- * - Missing/invalid → defaults to staging (fail-safe for dev)
+ * - Missing/invalid → defaults to staging (fail-safe for non-production environments)
  */
 
 export type DeploymentEnv = 'production' | 'staging';
@@ -16,7 +16,7 @@ export type DeploymentEnv = 'production' | 'staging';
  * Get current deployment environment.
  * 
  * Checks ENVIRONMENT env var (canonical in ECS).
- * Falls back to staging for safety (ops routes block in prod anyway).
+ * Falls back to staging for safety (fail-safe default for non-production).
  * 
  * @returns 'production' | 'staging'
  */

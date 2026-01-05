@@ -259,7 +259,7 @@ export default function MigrationsOpsPage() {
                   <div>
                     <span className="text-xs font-medium text-gray-700">Environment:</span>
                     <span className="ml-2 text-xs px-2 py-1 rounded font-medium bg-blue-100 text-blue-800">
-                      Staging
+                      Staging (Production would return 409)
                     </span>
                   </div>
                   <div>
