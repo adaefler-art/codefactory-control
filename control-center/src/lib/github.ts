@@ -37,6 +37,7 @@ export interface GitHubIssueDetails {
   state: 'open' | 'closed';
   labels: Array<{ name: string }>;
   updated_at: string;
+  closed_at?: string | null;
 }
 
 /**
@@ -403,8 +404,11 @@ export async function getIssue(
 
     return {
       state: issue.state as 'open' | 'closed',
-      labels: issue.labels || [],
+      labels: (issue.labels || []).map((label: any) => ({
+        name: typeof label === 'string' ? label : (label?.name || ''),
+      })),
       updated_at: issue.updated_at,
+      closed_at: (issue as any).closed_at ?? null,
     };
   } catch (error) {
     console.error('Error fetching GitHub issue:', {

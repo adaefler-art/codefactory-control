@@ -379,7 +379,7 @@ describe('POST /api/ops/issues/sync', () => {
     test('sanitizes and truncates github_status_raw to prevent unbounded persistence', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
-      const { searchIssues } = require('../../src/lib/github');
+      const { searchIssues, getIssue } = require('../../src/lib/github');
       const { listAfu9Issues, updateAfu9Issue } = require('../../src/lib/db/afu9Issues');
 
       const mockRunId = 'run-sanitize';
@@ -415,6 +415,11 @@ describe('POST /api/ops/issues/sync', () => {
       upsertIssueSnapshot.mockResolvedValue({ success: true });
       updateIssueSyncRun.mockResolvedValue({ success: true });
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
+      getIssue.mockResolvedValue({
+        state: 'open',
+        labels: [{ name: 'status: https://example.com?token=secret' }],
+        updated_at: '2025-01-04T12:00:00Z',
+      });
       updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
@@ -503,12 +508,13 @@ describe('POST /api/ops/issues/sync', () => {
       
       const callArgs = updateAfu9Issue.mock.calls[0][2];
       
-      // Since the label value is a URL with query string, and doesn't map to a known status,
-      // github_mirror_status will be UNKNOWN
-      expect(callArgs.github_mirror_status).toBe('UNKNOWN');
-      
-      // And github_status_raw should be null (because mirror status is UNKNOWN)
-      expect(callArgs.github_status_raw).toBe(null);
+      expect(callArgs.github_mirror_status).toBe('OPEN');
+      expect(typeof callArgs.github_status_raw).toBe('string');
+
+      const snapshot = JSON.parse(callArgs.github_status_raw);
+      expect(snapshot.state).toBe('open');
+      // Ensure query string is not persisted
+      expect(JSON.stringify(snapshot)).not.toContain('?');
     });
   });
 
@@ -519,7 +525,7 @@ describe('POST /api/ops/issues/sync', () => {
     // Note: afu9Issues module is already mocked at the top level
     // We just need to configure the mock in each test
 
-    test('syncs IN_PROGRESS status from GitHub label to github_mirror_status', async () => {
+    test('syncs GitHub OPEN state to github_mirror_status and stores snapshot labels', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
       const { searchIssues, getIssue } = require('../../src/lib/github');
@@ -576,20 +582,26 @@ describe('POST /api/ops/issues/sync', () => {
       expect(body.ok).toBe(true);
       expect(body.statusSynced).toBe(1);
 
-      // Verify github_mirror_status was updated to IN_PROGRESS
+      // Verify github_mirror_status was updated to OPEN
       expect(updateAfu9Issue).toHaveBeenCalledWith(
         expect.anything(),
         'afu9-uuid-775',
         expect.objectContaining({
-          github_mirror_status: 'IN_PROGRESS',
-          github_status_raw: 'status: implementing',
+          github_mirror_status: 'OPEN',
+          github_status_raw: expect.any(String),
+          status_source: 'github_state',
           github_issue_last_sync_at: expect.any(String),
           github_sync_error: null,
         })
       );
+
+      const callArgs = updateAfu9Issue.mock.calls[0][2];
+      const snapshot = JSON.parse(callArgs.github_status_raw);
+      expect(snapshot.state).toBe('open');
+      expect(snapshot.labels).toContain('status: implementing');
     });
 
-    test('syncs DONE status from closed GitHub issue with explicit done label', async () => {
+    test('syncs GitHub CLOSED state to github_mirror_status and includes closedAt when available', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
       const { searchIssues, getIssue } = require('../../src/lib/github');
@@ -626,6 +638,7 @@ describe('POST /api/ops/issues/sync', () => {
         state: 'closed',
         labels: [{ name: 'status: done' }],
         updated_at: '2025-01-04T12:00:00Z',
+        closed_at: '2025-01-04T12:30:00Z',
       });
       updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
 
@@ -646,20 +659,26 @@ describe('POST /api/ops/issues/sync', () => {
       expect(body.ok).toBe(true);
       expect(body.statusSynced).toBe(1);
 
-      // Verify github_mirror_status was updated to DONE
+      // Verify github_mirror_status was updated to CLOSED
       expect(updateAfu9Issue).toHaveBeenCalledWith(
         expect.anything(),
         'afu9-uuid-500',
         expect.objectContaining({
-          github_mirror_status: 'DONE',
-          github_status_raw: 'status: done',
+          github_mirror_status: 'CLOSED',
+          github_status_raw: expect.any(String),
+          status_source: 'github_state',
           github_issue_last_sync_at: expect.any(String),
           github_sync_error: null,
         })
       );
+
+      const callArgs = updateAfu9Issue.mock.calls[0][2];
+      const snapshot = JSON.parse(callArgs.github_status_raw);
+      expect(snapshot.state).toBe('closed');
+      expect(snapshot.closedAt).toBeTruthy();
     });
 
-    test('closed GitHub issue WITHOUT done signal maps to UNKNOWN (semantic protection)', async () => {
+    test('closed GitHub issue maps to CLOSED regardless of labels', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
       const { searchIssues, getIssue } = require('../../src/lib/github');
@@ -716,14 +735,13 @@ describe('POST /api/ops/issues/sync', () => {
       expect(body.ok).toBe(true);
       expect(body.statusSynced).toBe(1);
 
-      // Verify github_mirror_status was updated to UNKNOWN (semantic protection)
-      // This prevents incorrectly marking cancelled/killed issues as DONE
+      // Verify github_mirror_status was updated to CLOSED
       expect(updateAfu9Issue).toHaveBeenCalledWith(
         expect.anything(),
         'afu9-uuid-600',
         expect.objectContaining({
-          github_mirror_status: 'UNKNOWN',
-          github_status_raw: 'closed',
+          github_mirror_status: 'CLOSED',
+          github_status_raw: expect.any(String),
           github_status_updated_at: expect.any(String),
           status_source: 'github_state',
           github_issue_last_sync_at: expect.any(String),
@@ -806,12 +824,17 @@ describe('POST /api/ops/issues/sync', () => {
         expect.anything(),
         'afu9-uuid-700',
         expect.objectContaining({
-          github_mirror_status: 'IN_PROGRESS',
-          github_status_raw: 'status:implementing',
+          github_mirror_status: 'OPEN',
+          github_status_raw: expect.any(String),
+          status_source: 'github_state',
           github_issue_last_sync_at: expect.any(String),
           github_sync_error: null, // No error on success
         })
       );
+
+      const callArgs = updateAfu9Issue.mock.calls[0][2];
+      const snapshot = JSON.parse(callArgs.github_status_raw);
+      expect(snapshot.labels).toContain('status:implementing');
     });
 
     test('handles REST fetch failure gracefully and sets sync error', async () => {
@@ -875,17 +898,22 @@ describe('POST /api/ops/issues/sync', () => {
         800
       );
 
-      // Verify error was captured and status set to UNKNOWN
+      // Verify error was captured and status set to ERROR
       expect(updateAfu9Issue).toHaveBeenCalledWith(
         expect.anything(),
         'afu9-uuid-800',
         expect.objectContaining({
-          github_mirror_status: 'UNKNOWN',
+          github_mirror_status: 'ERROR',
           github_status_raw: null,
           github_issue_last_sync_at: expect.any(String),
-          github_sync_error: expect.stringContaining('GitHub API-Limit'), // Error message captured
+          github_sync_error: expect.any(String),
         })
       );
+
+      const callArgs = updateAfu9Issue.mock.calls[0][2];
+      const err = JSON.parse(callArgs.github_sync_error);
+      expect(typeof err.code).toBe('string');
+      expect(String(err.message)).toContain('GitHub API-Limit');
     });
   });
 });

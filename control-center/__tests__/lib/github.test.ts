@@ -51,6 +51,7 @@ describe('getIssue', () => {
         { name: 'priority:P0' },
       ],
       updated_at: '2026-01-04T10:00:00Z',
+      closed_at: null,
     });
 
     expect(mockGetIssue).toHaveBeenCalledWith({
@@ -75,6 +76,7 @@ describe('getIssue', () => {
       state: 'closed',
       labels: [{ name: 'status:done' }],
       updated_at: '2026-01-04T11:00:00Z',
+      closed_at: null,
     });
   });
 
@@ -93,6 +95,7 @@ describe('getIssue', () => {
       state: 'open',
       labels: [],
       updated_at: '2026-01-04T12:00:00Z',
+      closed_at: null,
     });
   });
 

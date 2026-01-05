@@ -78,6 +78,9 @@ export enum Afu9GithubMirrorStatus {
   IN_REVIEW = 'IN_REVIEW',
   DONE = 'DONE',
   BLOCKED = 'BLOCKED',
+  OPEN = 'OPEN',
+  CLOSED = 'CLOSED',
+  ERROR = 'ERROR',
   UNKNOWN = 'UNKNOWN',
 }
 
