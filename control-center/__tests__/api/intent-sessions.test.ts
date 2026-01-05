@@ -330,6 +330,41 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
       'Test message'
     );
   });
+
+  test('returns 400 when session id is blank/whitespace', async () => {
+    const request = new NextRequest('http://localhost/api/intent/sessions/%20%20%20/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'test-req-message-missing-session-id',
+        'x-afu9-sub': TEST_USER_ID,
+      },
+      body: JSON.stringify({ content: 'Hello' }),
+    });
+
+    const response = await appendMessage(request, { params: { id: '   ' } });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe('Session ID required');
+  });
+
+  test('returns 401 when user is not authenticated', async () => {
+    const request = new NextRequest('http://localhost/api/intent/sessions/session-1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'test-req-message-unauth',
+      },
+      body: JSON.stringify({ content: 'Hello' }),
+    });
+
+    const response = await appendMessage(request, { params: { id: 'session-1' } });
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe('Unauthorized');
+  });
   test('returns 404 when INTENT is disabled (fail-closed)', async () => {
     const { isIntentEnabled, generateIntentResponse } = require('../../src/lib/intent-agent');
     const { getPool } = require('../../src/lib/db');
