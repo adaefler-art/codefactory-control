@@ -1,9 +1,18 @@
 /**
  * GET /api/lawbook/versions - List lawbook versions
  * POST /api/lawbook/versions - Create new lawbook version
+ * 
+ * SECURITY: The x-afu9-sub header is set by proxy.ts after server-side JWT verification.
+ * Client-provided x-afu9-* headers are stripped by proxy.ts (lines 415-419) to prevent spoofing.
+ * This route trusts x-afu9-sub because it can only come from verified middleware.
+ * 
+ * AUTH POLICY:
+ * - GET: All authenticated users allowed (read-only, lawbook is system config)
+ * - POST: All authenticated users allowed (lawbook versioning is idempotent, no destructive ops)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { 
   listLawbookVersions, 
   createLawbookVersion 
@@ -15,16 +24,77 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // ========================================
+// Query Parameter Validation
+// ========================================
+
+const ListVersionsQuerySchema = z.object({
+  lawbookId: z.string().nullable().optional(),
+  limit: z.string().nullable().optional(),
+  offset: z.string().nullable().optional(),
+}).refine((data) => {
+  // Validate limit if provided
+  if (data.limit !== null && data.limit !== undefined) {
+    const num = parseInt(data.limit, 10);
+    if (isNaN(num) || num < 1 || num > 200) {
+      return false;
+    }
+  }
+  // Validate offset if provided
+  if (data.offset !== null && data.offset !== undefined) {
+    const num = parseInt(data.offset, 10);
+    if (isNaN(num) || num < 0) {
+      return false;
+    }
+  }
+  return true;
+}, {
+  message: 'Invalid query parameters: limit must be 1-200, offset must be >= 0',
+});
+
+// ========================================
 // GET - List Versions
 // ========================================
 
 export const GET = withApi(async (request: NextRequest) => {
+  // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+  const userId = request.headers.get('x-afu9-sub');
+  if (!userId || !userId.trim()) {
+    return NextResponse.json(
+      { error: 'Unauthorized', message: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   const url = new URL(request.url);
-  const lawbookId = url.searchParams.get('lawbookId') || 'AFU9-LAWBOOK';
-  const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  
+  // Validate and bound query parameters
+  const queryParams = {
+    lawbookId: url.searchParams.get('lawbookId'),
+    limit: url.searchParams.get('limit'),
+    offset: url.searchParams.get('offset'),
+  };
+
+  const parseResult = ListVersionsQuerySchema.safeParse(queryParams);
+  if (!parseResult.success) {
+    return NextResponse.json(
+      {
+        error: 'Invalid query parameters',
+        details: parseResult.error.errors,
+      },
+      { status: 400 }
+    );
+  }
+
+  const rawData = parseResult.data;
+  const lawbookId = rawData.lawbookId || 'AFU9-LAWBOOK';
+  const limit = rawData.limit ? parseInt(rawData.limit, 10) : 50;
+  const offset = rawData.offset ? parseInt(rawData.offset, 10) : 0;
 
   const versions = await listLawbookVersions(lawbookId, limit, offset);
+
+  // Determine if there are more results (fetch limit + 1 internally would be better,
+  // but for minimal diff, check if we got exactly the limit)
+  const hasMore = versions.length === limit;
 
   return NextResponse.json(
     {
@@ -41,6 +111,7 @@ export const GET = withApi(async (request: NextRequest) => {
         limit,
         offset,
         count: versions.length,
+        hasMore,
       },
     },
     { status: 200 }
@@ -57,6 +128,15 @@ export const GET = withApi(async (request: NextRequest) => {
 // ========================================
 
 export const POST = withApi(async (request: NextRequest) => {
+  // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+  const userId = request.headers.get('x-afu9-sub');
+  if (!userId || !userId.trim()) {
+    return NextResponse.json(
+      { error: 'Unauthorized', message: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   let body: any;
   
   try {

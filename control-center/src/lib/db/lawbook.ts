@@ -232,6 +232,8 @@ export async function getActiveLawbook(
 
 /**
  * List all lawbook versions (newest first)
+ * 
+ * Bounded pagination with deterministic ordering (created_at DESC, id DESC).
  */
 export async function listLawbookVersions(
   lawbookId: string = 'AFU9-LAWBOOK',
@@ -248,7 +250,7 @@ export async function listLawbookVersions(
         lawbook_json, lawbook_hash, schema_version
       FROM lawbook_versions
       WHERE lawbook_id = $1
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT $2 OFFSET $3
     `;
 

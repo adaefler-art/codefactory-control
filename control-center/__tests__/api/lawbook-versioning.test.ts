@@ -90,6 +90,7 @@ describe('POST /api/lawbook/versions - Create Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
       method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
       body: JSON.stringify(MOCK_LAWBOOK_1),
     });
 
@@ -115,6 +116,7 @@ describe('POST /api/lawbook/versions - Create Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
       method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
       body: JSON.stringify(MOCK_LAWBOOK_1),
     });
 
@@ -136,6 +138,7 @@ describe('POST /api/lawbook/versions - Create Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
       method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
       body: JSON.stringify(invalidLawbook),
     });
 
@@ -187,7 +190,9 @@ describe('GET /api/lawbook/versions - List Versions', () => {
       MOCK_VERSION_RECORD_1,
     ]);
 
-    const request = new NextRequest('http://localhost:3000/api/lawbook/versions');
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      headers: { 'x-afu9-sub': 'test-user' },
+    });
 
     const response = await listVersions(request);
     const data = await response.json();
@@ -205,7 +210,10 @@ describe('GET /api/lawbook/versions - List Versions', () => {
     listLawbookVersions.mockResolvedValue([MOCK_VERSION_RECORD_1]);
 
     const request = new NextRequest(
-      'http://localhost:3000/api/lawbook/versions?limit=10&offset=5'
+      'http://localhost:3000/api/lawbook/versions?limit=10&offset=5',
+      {
+        headers: { 'x-afu9-sub': 'test-user' },
+      }
     );
 
     const response = await listVersions(request);
@@ -235,6 +243,7 @@ describe('POST /api/lawbook/activate - Activate Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
       method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
       body: JSON.stringify({
         lawbookVersionId: TEST_VERSION_ID_1,
         activatedBy: 'admin',
@@ -260,6 +269,7 @@ describe('POST /api/lawbook/activate - Activate Version', () => {
 
     const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
       method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
       body: JSON.stringify({
         lawbookVersionId: 'invalid-id',
       }),
@@ -275,6 +285,7 @@ describe('POST /api/lawbook/activate - Activate Version', () => {
   test('requires lawbookVersionId', async () => {
     const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
       method: 'POST',
+      headers: { 'x-afu9-sub': 'test-user' },
       body: JSON.stringify({}),
     });
 
@@ -299,7 +310,9 @@ describe('GET /api/lawbook/active - Get Active Lawbook', () => {
       data: MOCK_VERSION_RECORD_1,
     });
 
-    const request = new NextRequest('http://localhost:3000/api/lawbook/active');
+    const request = new NextRequest('http://localhost:3000/api/lawbook/active', {
+      headers: { 'x-afu9-sub': 'test-user' },
+    });
 
     const response = await getActiveLawbook(request);
     const data = await response.json();
@@ -320,7 +333,9 @@ describe('GET /api/lawbook/active - Get Active Lawbook', () => {
       notConfigured: true,
     });
 
-    const request = new NextRequest('http://localhost:3000/api/lawbook/active');
+    const request = new NextRequest('http://localhost:3000/api/lawbook/active', {
+      headers: { 'x-afu9-sub': 'test-user' },
+    });
 
     const response = await getActiveLawbook(request);
     const data = await response.json();
@@ -339,7 +354,10 @@ describe('GET /api/lawbook/active - Get Active Lawbook', () => {
     });
 
     const request = new NextRequest(
-      'http://localhost:3000/api/lawbook/active?lawbookId=CUSTOM-LAWBOOK'
+      'http://localhost:3000/api/lawbook/active?lawbookId=CUSTOM-LAWBOOK',
+      {
+        headers: { 'x-afu9-sub': 'test-user' },
+      }
     );
 
     const response = await getActiveLawbook(request);
@@ -379,5 +397,177 @@ describe('Lawbook Hash Determinism', () => {
     const hash = computeLawbookHash(lawbook);
 
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+// ========================================
+// Auth Tests (401-first)
+// ========================================
+
+describe('Auth: 401-first checks', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('GET /api/lawbook/active returns 401 when x-afu9-sub missing', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/active');
+    // No x-afu9-sub header
+
+    const response = await getActiveLawbook(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  test('GET /api/lawbook/active returns 401 when x-afu9-sub empty', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/active', {
+      headers: { 'x-afu9-sub': '' },
+    });
+
+    const response = await getActiveLawbook(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  test('GET /api/lawbook/versions returns 401 when x-afu9-sub missing', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions');
+
+    const response = await listVersions(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  test('POST /api/lawbook/versions returns 401 when x-afu9-sub missing', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      method: 'POST',
+      body: JSON.stringify(MOCK_LAWBOOK_1),
+    });
+
+    const response = await createVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  test('POST /api/lawbook/activate returns 401 when x-afu9-sub missing', async () => {
+    const request = new NextRequest('http://localhost:3000/api/lawbook/activate', {
+      method: 'POST',
+      body: JSON.stringify({ lawbookVersionId: TEST_VERSION_ID_1 }),
+    });
+
+    const response = await activateVersion(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+});
+
+// ========================================
+// Pagination Bounds Tests
+// ========================================
+
+describe('Pagination: Bounds and validation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('GET /api/lawbook/versions clamps limit to max 200', async () => {
+    const { listLawbookVersions } = require('../../src/lib/db/lawbook');
+    listLawbookVersions.mockResolvedValue([]);
+
+    const request = new NextRequest(
+      'http://localhost:3000/api/lawbook/versions?limit=500',
+      {
+        headers: { 'x-afu9-sub': 'test-user' },
+      }
+    );
+
+    const response = await listVersions(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid query parameters');
+  });
+
+  test('GET /api/lawbook/versions returns 400 for negative limit', async () => {
+    const request = new NextRequest(
+      'http://localhost:3000/api/lawbook/versions?limit=-1',
+      {
+        headers: { 'x-afu9-sub': 'test-user' },
+      }
+    );
+
+    const response = await listVersions(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid query parameters');
+  });
+
+  test('GET /api/lawbook/versions returns 400 for negative offset', async () => {
+    const request = new NextRequest(
+      'http://localhost:3000/api/lawbook/versions?offset=-5',
+      {
+        headers: { 'x-afu9-sub': 'test-user' },
+      }
+    );
+
+    const response = await listVersions(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid query parameters');
+  });
+
+  test('GET /api/lawbook/versions includes hasMore indicator', async () => {
+    const { listLawbookVersions } = require('../../src/lib/db/lawbook');
+    
+    // Mock returning exactly the limit (indicates more may exist)
+    const mockVersions = Array.from({ length: 50 }, (_, i) => ({
+      id: `id-${i}`,
+      lawbook_version: `2025-12-30.${i}`,
+      created_at: new Date().toISOString(),
+      created_by: 'system',
+      lawbook_hash: `hash-${i}`,
+      schema_version: '0.7.0',
+    }));
+    listLawbookVersions.mockResolvedValue(mockVersions);
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      headers: { 'x-afu9-sub': 'test-user' },
+    });
+
+    const response = await listVersions(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pagination.hasMore).toBe(true);
+    expect(data.pagination.limit).toBe(50);
+    expect(data.pagination.count).toBe(50);
+  });
+
+  test('GET /api/lawbook/versions hasMore=false when fewer than limit', async () => {
+    const { listLawbookVersions } = require('../../src/lib/db/lawbook');
+    
+    const mockVersions = [MOCK_VERSION_RECORD_1, MOCK_VERSION_RECORD_2];
+    listLawbookVersions.mockResolvedValue(mockVersions);
+
+    const request = new NextRequest('http://localhost:3000/api/lawbook/versions', {
+      headers: { 'x-afu9-sub': 'test-user' },
+    });
+
+    const response = await listVersions(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pagination.hasMore).toBe(false);
+    expect(data.pagination.count).toBe(2);
   });
 });
