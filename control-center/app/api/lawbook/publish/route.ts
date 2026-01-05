@@ -76,9 +76,12 @@ export const POST = withApi(async (request: NextRequest) => {
     }
     
     body = JSON.parse(bodyText);
-  } catch {
+  } catch (parseError) {
     return NextResponse.json(
-      { error: 'Invalid JSON body' },
+      { 
+        error: 'Invalid JSON body',
+        details: parseError instanceof Error ? parseError.message : 'Parse error'
+      },
       { status: 400 }
     );
   }

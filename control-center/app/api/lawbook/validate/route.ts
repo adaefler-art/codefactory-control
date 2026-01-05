@@ -81,7 +81,7 @@ export const POST = withApi(async (request: NextRequest) => {
         ok: false,
         errors: [{
           path: '$',
-          message: 'Invalid JSON: ' + (parseError instanceof Error ? parseError.message : 'Parse error'),
+          message: `Invalid JSON: ${parseError instanceof Error ? parseError.message : 'Parse error'}`,
           code: 'INVALID_JSON'
         }],
         hash: null
