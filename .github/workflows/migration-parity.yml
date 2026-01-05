@@ -29,10 +29,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate AWS auth configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.AWS_ROLE_TO_ASSUME }}" ] && [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "Missing AWS configuration for OIDC auth."
+            echo "Set ONE of:"
+            echo "  - Repository secret AWS_ROLE_TO_ASSUME (recommended; full role ARN)"
+            echo "  - Repository secret AWS_ACCOUNT_ID (used to build arn:aws:iam::<id>:role/GitHubActionsRole)"
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME || format('arn:aws:iam::{0}:role/GitHubActionsRole', secrets.AWS_ACCOUNT_ID) }}
           role-session-name: migration-parity-check
           aws-region: eu-central-1
 
