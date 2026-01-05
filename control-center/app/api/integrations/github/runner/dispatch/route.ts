@@ -2,7 +2,11 @@
  * API Route: POST /api/integrations/github/runner/dispatch
  * 
  * E64.1: Dispatch a GitHub Actions workflow run
- * Issue 3: Blocked in production when ENABLE_PROD=false
+ * 
+ * GUARDS (strict ordering, Issue 3):
+ * 1. AUTH CHECK (401-first) - Verify x-afu9-sub, NO DB calls
+ * 2. PROD DISABLED (409) - Check ENABLE_PROD, NO DB calls
+ * 3. DB operations - Only executed if all guards pass
  * 
  * Request body accepts either:
  * - `workflowIdOrFile` (preferred, matches GitHub API terminology)
@@ -14,14 +18,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { dispatchWorkflow } from '@/lib/github-runner/adapter';
 import type { DispatchWorkflowInput } from '@/lib/github-runner/types';
-import { checkProdWriteGuard } from '@/lib/api/prod-guard';
+import { checkProdWriteGuard } from '@/lib/guards/prod-write-guard';
+import { getRequestId } from '@/lib/api/response-helpers';
 
 export async function POST(request: NextRequest) {
-  // Issue 3: Check prod write guard (fail-closed)
-  const guardResponse = checkProdWriteGuard(request);
-  if (guardResponse) {
-    return guardResponse;
+  const requestId = getRequestId(request);
+
+  // GUARDS (401 → 409): Auth and prod disabled check, NO DB calls
+  const guard = checkProdWriteGuard(request, { requestId });
+  if (guard.errorResponse) {
+    return guard.errorResponse;
   }
+  
+  // Guard passed - userId is guaranteed to be set
+  const userId = guard.userId!;
 
   try {
     const body = await request.json();

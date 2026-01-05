@@ -5,7 +5,11 @@
  * 
  * Executes the post-deploy verification playbook for the specified environment.
  * Returns the run ID and status immediately (synchronous execution for MVP).
- * Issue 3: Blocked in production when ENABLE_PROD=false
+ * 
+ * GUARDS (strict ordering, Issue 3):
+ * 1. AUTH CHECK (401-first) - Verify x-afu9-sub, NO DB calls
+ * 2. PROD DISABLED (409) - Check ENABLE_PROD, NO DB calls
+ * 3. DB operations - Only executed if all guards pass
  */
 
 import { NextRequest } from 'next/server';
@@ -15,7 +19,7 @@ import { getPool } from '../../../../../src/lib/db';
 import { executePlaybook } from '../../../../../src/lib/playbook-executor';
 import { validatePlaybookDefinition, PlaybookDefinition } from '../../../../../src/lib/contracts/playbook';
 import { jsonResponse, errorResponse, getRequestId } from '../../../../../src/lib/api/response-helpers';
-import { checkProdWriteGuard } from '@/lib/api/prod-guard';
+import { checkProdWriteGuard } from '@/lib/guards/prod-write-guard';
 
 // Load playbook definition
 let cachedPlaybook: PlaybookDefinition | null = null;
@@ -45,11 +49,14 @@ function loadPlaybook(): PlaybookDefinition {
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  // Issue 3: Check prod write guard (fail-closed)
-  const guardResponse = checkProdWriteGuard(request);
-  if (guardResponse) {
-    return guardResponse;
+  // GUARDS (401 → 409): Auth and prod disabled check, NO DB calls
+  const guard = checkProdWriteGuard(request, { requestId });
+  if (guard.errorResponse) {
+    return guard.errorResponse;
   }
+  
+  // Guard passed - userId is guaranteed to be set
+  const userId = guard.userId!;
 
   try {
     // Parse environment from query params
