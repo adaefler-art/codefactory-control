@@ -186,4 +186,20 @@ describe('GET /api/whoami - Authentication and Authorization Tests', () => {
 
     expect(response.headers.get('x-request-id')).toBe('test-request-id-123');
   });
+
+  test('Response includes Cache-Control: no-store header', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-1';
+
+    const request = new NextRequest('http://localhost/api/whoami', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-cache-control',
+        'x-afu9-sub': 'admin-1',
+      },
+    });
+
+    const response = await GET(request);
+
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
 });

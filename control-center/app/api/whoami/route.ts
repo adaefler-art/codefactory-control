@@ -66,6 +66,11 @@ export async function GET(request: NextRequest) {
       sub: userId,
       isAdmin,
     },
-    { requestId }
+    { 
+      requestId,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    }
   );
 }

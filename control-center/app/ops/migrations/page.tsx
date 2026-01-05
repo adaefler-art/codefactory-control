@@ -58,12 +58,14 @@ export default function MigrationsOpsPage() {
   const [limit, setLimit] = useState<number>(200);
   const [is403Error, setIs403Error] = useState(false);
   const [whoamiData, setWhoamiData] = useState<WhoamiData | null>(null);
+  const [whoami401, setWhoami401] = useState(false);
 
   const fetchMigrationParity = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     setIs403Error(false);
     setWhoamiData(null);
+    setWhoami401(false);
 
     try {
       const params = new URLSearchParams();
@@ -87,7 +89,9 @@ export default function MigrationsOpsPage() {
             cache: "no-store",
           });
           
-          if (whoamiResponse.ok) {
+          if (whoamiResponse.status === 401) {
+            setWhoami401(true);
+          } else if (whoamiResponse.ok) {
             const whoami = await whoamiResponse.json();
             setWhoamiData(whoami);
           }
@@ -187,6 +191,22 @@ export default function MigrationsOpsPage() {
             <p className="mt-1 text-sm text-red-700">{error}</p>
             
             {/* 403 Diagnostic Information */}
+            {is403Error && whoami401 && (
+              <div className="mt-4 pt-4 border-t border-red-300">
+                <h4 className="text-sm font-semibold text-red-900 mb-2">
+                  🔍 Diagnostic Information
+                </h4>
+                <div className="bg-white rounded p-3 space-y-2">
+                  <p className="text-xs text-red-800">
+                    <strong>Not authenticated.</strong> You need to be logged in to access this page.
+                  </p>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Please sign in and try again.
+                  </p>
+                </div>
+              </div>
+            )}
+            
             {is403Error && whoamiData && (
               <div className="mt-4 pt-4 border-t border-red-300">
                 <h4 className="text-sm font-semibold text-red-900 mb-2">
