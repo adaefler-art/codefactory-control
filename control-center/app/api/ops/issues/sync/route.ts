@@ -84,6 +84,35 @@ function extractCanonicalId(title: string, labels: Array<{ name: string }>): str
   return null;
 }
 
+/**
+ * Extract owner/repo from GitHub URL
+ * Examples: 
+ * - "https://github.com/adaefler-art/codefactory-control/issues/458" -> { owner: "adaefler-art", repo: "codefactory-control" }
+ * - "https://github.com/owner/repo/issues/123" -> { owner: "owner", repo: "repo" }
+ * Returns null if URL is invalid or doesn't match expected pattern
+ */
+function extractOwnerRepoFromGithubUrl(url: string | null): { owner: string; repo: string } | null {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+
+  // Match pattern: https://github.com/{owner}/{repo}/...
+  const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)/);
+  if (!match) {
+    return null;
+  }
+
+  const owner = match[1];
+  const repo = match[2];
+
+  // Validate owner and repo are not empty
+  if (!owner || !repo || owner.trim() === '' || repo.trim() === '') {
+    return null;
+  }
+
+  return { owner, repo };
+}
+
 function stripUrlQueryAndHash(input: string): string {
   return input.replace(/\bhttps?:\/\/[^\s]+/gi, (raw) => {
     const match = raw.match(/^(.*?)([\)\]\.\,;:!?]+)?$/);
@@ -339,6 +368,47 @@ export async function POST(request: NextRequest) {
 
             statusSyncAttemptedCount++;
 
+            // I3: Repo resolution per issue - deterministic owner/repo from github_repo or github_url
+            // This ensures we fetch from the correct repository for each issue
+            let issueOwner: string;
+            let issueRepo: string;
+            let resolvedGithubRepo: string | null = afu9Issue.github_repo;
+
+            // Step 1: Try to use existing github_repo field (format: "owner/repo")
+            if (resolvedGithubRepo && typeof resolvedGithubRepo === 'string' && resolvedGithubRepo.includes('/')) {
+              const parts = resolvedGithubRepo.split('/');
+              if (parts.length >= 2 && parts[0] && parts[1]) {
+                issueOwner = parts[0];
+                issueRepo = parts[1];
+              } else {
+                // Invalid github_repo format, try to extract from URL
+                const extracted = extractOwnerRepoFromGithubUrl(afu9Issue.github_url);
+                if (extracted) {
+                  issueOwner = extracted.owner;
+                  issueRepo = extracted.repo;
+                  resolvedGithubRepo = `${issueOwner}/${issueRepo}`;
+                } else {
+                  // Fallback to defaults from env
+                  issueOwner = owner;
+                  issueRepo = repo;
+                  resolvedGithubRepo = `${owner}/${repo}`;
+                }
+              }
+            } else {
+              // github_repo is null/empty, try to extract from github_url
+              const extracted = extractOwnerRepoFromGithubUrl(afu9Issue.github_url);
+              if (extracted) {
+                issueOwner = extracted.owner;
+                issueRepo = extracted.repo;
+                resolvedGithubRepo = `${issueOwner}/${issueRepo}`;
+              } else {
+                // Fallback to defaults from env
+                issueOwner = owner;
+                issueRepo = repo;
+                resolvedGithubRepo = `${owner}/${repo}`;
+              }
+            }
+
             // Fetch fresh GitHub issue details via REST API
             let githubMirrorStatus: Afu9GithubMirrorStatus = 'UNKNOWN';
             let githubStatusRaw: string | null = null;
@@ -347,7 +417,7 @@ export async function POST(request: NextRequest) {
             let githubSyncError: string | null = null;
 
             try {
-              const githubDetails = await getIssue(owner, repo, afu9Issue.github_issue_number);
+              const githubDetails = await getIssue(issueOwner, issueRepo, afu9Issue.github_issue_number);
 
               statusFetchOkCount++;
 
@@ -459,6 +529,7 @@ export async function POST(request: NextRequest) {
             }
 
             // I3: Update AFU9 issue with github_mirror_status and metadata
+            // Also backfill github_repo if it was extracted from github_url
             const previousMirrorStatus = afu9Issue.github_mirror_status;
             const updateResult = await updateAfu9Issue(pool, afu9Issue.id, {
               github_mirror_status: githubMirrorStatus,
@@ -467,6 +538,7 @@ export async function POST(request: NextRequest) {
               status_source: statusSource,
               github_issue_last_sync_at: new Date().toISOString(),
               github_sync_error: githubSyncError,
+              github_repo: resolvedGithubRepo, // Backfill github_repo if it was null
             });
 
             if (updateResult.success) {

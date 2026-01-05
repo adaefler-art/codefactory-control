@@ -24,7 +24,7 @@ import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 import { validateAndNormalizeLabelsForHandoff } from '../../../../../src/lib/label-utils';
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
-const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
+const GITHUB_REPO = process.env.GITHUB_REPO || "codefactory-control";
 
 /**
  * POST /api/issues/[id]/handoff
