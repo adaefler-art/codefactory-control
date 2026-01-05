@@ -752,6 +752,18 @@ jobs:
               )
             ' new-task-def.json > new-task-def.tmp.json
             mv new-task-def.tmp.json new-task-def.json
+
+            # Enable INTENT agent MVP for staging only (fail-closed remains for prod).
+            jq '
+              .containerDefinitions |= map(
+                if .name == "control-center" then
+                  .environment = ((.environment // [])
+                    | map(select(.name != "AFU9_INTENT_ENABLED"))
+                    + [{name: "AFU9_INTENT_ENABLED", value: "true"}])
+                else . end
+              )
+            ' new-task-def.json > new-task-def.tmp.json
+            mv new-task-def.tmp.json new-task-def.json
           fi
 
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.

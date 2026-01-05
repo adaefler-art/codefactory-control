@@ -330,6 +330,34 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
       'Test message'
     );
   });
+  test('returns 404 when INTENT is disabled (fail-closed)', async () => {
+    const { isIntentEnabled, generateIntentResponse } = require('../../src/lib/intent-agent');
+    const { getPool } = require('../../src/lib/db');
+
+    // Ensure this test is isolated from earlier calls in the suite.
+    generateIntentResponse.mockClear();
+    getPool.mockClear();
+    isIntentEnabled.mockReturnValueOnce(false);
+
+    const request = new NextRequest('http://localhost/api/intent/sessions/session-1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'test-req-intent-disabled',
+        'x-afu9-sub': TEST_USER_ID,
+      },
+      body: JSON.stringify({ content: 'Hello' }),
+    });
+
+    const response = await appendMessage(request, { params: { id: 'session-1' } });
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBe('INTENT agent is not enabled');
+    expect(String(body.details || '')).toContain('AFU9_INTENT_ENABLED=true');
+    expect(generateIntentResponse).not.toHaveBeenCalled();
+    expect(getPool).not.toHaveBeenCalled();
+  });
 
   test('returns 400 when content is missing', async () => {
     const request = new NextRequest('http://localhost/api/intent/sessions/session-1/messages', {
