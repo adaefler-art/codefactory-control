@@ -41,6 +41,7 @@ export default function IntentPage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IntentMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [intentEnabled, setIntentEnabled] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,8 +58,30 @@ export default function IntentPage() {
 
   // Fetch sessions on mount
   useEffect(() => {
+    fetchIntentEnabledFlag();
     fetchSessions();
   }, []);
+
+  const fetchIntentEnabledFlag = async () => {
+    try {
+      const response = await fetch(API_ROUTES.system.flagsEnv, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data: any = await safeFetch(response);
+
+      const values: any[] = data?.effective?.values || [];
+      const enabledEntry = values.find((v) => v?.key === "AFU9_INTENT_ENABLED");
+      if (typeof enabledEntry?.value === "boolean") {
+        setIntentEnabled(enabledEntry.value);
+      } else {
+        setIntentEnabled(Boolean(enabledEntry?.value));
+      }
+    } catch (err) {
+      console.warn("Failed to resolve AFU9_INTENT_ENABLED:", err);
+      setIntentEnabled(null);
+    }
+  };
 
   // Fetch messages when session changes
   useEffect(() => {
@@ -320,9 +343,9 @@ export default function IntentPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Header - Sticky */}
-        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0">
+        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0 sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-semibold text-gray-100">
@@ -446,10 +469,20 @@ export default function IntentPage() {
               )}
             </div>
           )}
+
+          {intentEnabled === false && (
+            <div className="mt-4 rounded border border-gray-700 bg-gray-800/50 px-4 py-3">
+              <div className="text-sm font-medium text-gray-100">INTENT is disabled</div>
+              <div className="mt-1 text-sm text-gray-300">
+                This environment is running with <span className="font-mono">AFU9_INTENT_ENABLED=false</span>.
+                Message generation endpoints fail-closed (404) until enabled.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Messages - Scrollable area */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
           {!currentSessionId && (
             <div className="text-center text-gray-400 mt-20">
               <p className="text-lg mb-2 text-purple-400">Welcome to INTENT Console</p>
