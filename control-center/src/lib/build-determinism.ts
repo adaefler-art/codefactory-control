@@ -77,6 +77,12 @@ export interface BuildManifest {
     durationMs: number;
     reproducible: boolean;
   };
+
+  /**
+   * Active lawbook version at time of build (E79.3 / I793)
+   * Null if no active lawbook configured
+   */
+  lawbookVersion?: string | null;
 }
 
 /**
@@ -149,13 +155,16 @@ export function computeOutputsHash(outputs: BuildOutputs): string {
 
 /**
  * Create a build manifest
+ * 
+ * E79.3 / I793: Includes lawbookVersion for determinism traceability.
  */
 export function createBuildManifest(
   buildId: string,
   inputs: BuildInputs,
   outputs: BuildOutputs,
   startedAt: Date,
-  completedAt: Date
+  completedAt: Date,
+  lawbookVersion?: string | null
 ): BuildManifest {
   const inputsHash = computeInputsHash(inputs);
   const outputsHash = computeOutputsHash(outputs);
@@ -172,6 +181,7 @@ export function createBuildManifest(
       durationMs: completedAt.getTime() - startedAt.getTime(),
       reproducible: true, // Will be validated separately
     },
+    lawbookVersion: lawbookVersion ?? null,
   };
 }
 
