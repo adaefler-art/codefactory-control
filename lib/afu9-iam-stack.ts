@@ -262,6 +262,24 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // ========================================
+    // CloudWatch Logs Permissions (Deploy Observability)
+    // ========================================
+    // Allow the deploy workflow to fetch ECS task logs (e.g., DB migration task failures).
+    // This is required for `aws logs get-log-events` in CI.
+    const controlCenterLogGroupArn = `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9EcsStack-ControlCenterLogGroup*`;
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsReadForEcsTasks',
+        effect: iam.Effect.ALLOW,
+        actions: ['logs:DescribeLogStreams', 'logs:GetLogEvents', 'logs:FilterLogEvents'],
+        resources: [
+          controlCenterLogGroupArn,
+          `${controlCenterLogGroupArn}:log-stream:*`,
+        ],
+      })
+    );
+
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'ELBv2DescribeGlobal',
