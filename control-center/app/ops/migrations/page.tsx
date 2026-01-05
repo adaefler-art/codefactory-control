@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface DbInfo {
   reachable: boolean;
@@ -45,26 +46,55 @@ interface MigrationParityData {
   parity: ParityInfo;
 }
 
+interface WhoamiData {
+  sub: string;
+  isAdmin: boolean;
+}
+
 export default function MigrationsOpsPage() {
   const [data, setData] = useState<MigrationParityData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState<number>(200);
+  const [is403Error, setIs403Error] = useState(false);
+  const [whoamiData, setWhoamiData] = useState<WhoamiData | null>(null);
 
   const fetchMigrationParity = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setIs403Error(false);
+    setWhoamiData(null);
 
     try {
       const params = new URLSearchParams();
       params.append("limit", limit.toString());
 
-      const url = `/api/ops/db/migrations?${params.toString()}`;
+      const url = `${API_ROUTES.ops.migrations}?${params.toString()}`;
 
       const response = await fetch(url, {
         credentials: "include",
         cache: "no-store",
       });
+
+      // Check for 403 before processing response
+      if (response.status === 403) {
+        setIs403Error(true);
+        
+        // Fetch whoami to get diagnostic info
+        try {
+          const whoamiResponse = await fetch(API_ROUTES.ops.whoami, {
+            credentials: "include",
+            cache: "no-store",
+          });
+          
+          if (whoamiResponse.ok) {
+            const whoami = await whoamiResponse.json();
+            setWhoamiData(whoami);
+          }
+        } catch (whoamiErr) {
+          console.error("Error fetching whoami:", whoamiErr);
+        }
+      }
 
       const result = await safeFetch(response);
       setData(result);
@@ -155,6 +185,46 @@ export default function MigrationsOpsPage() {
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-medium text-red-800">Error</h3>
             <p className="mt-1 text-sm text-red-700">{error}</p>
+            
+            {/* 403 Diagnostic Information */}
+            {is403Error && whoamiData && (
+              <div className="mt-4 pt-4 border-t border-red-300">
+                <h4 className="text-sm font-semibold text-red-900 mb-2">
+                  🔍 Diagnostic Information
+                </h4>
+                <div className="bg-white rounded p-3 space-y-2">
+                  <div>
+                    <span className="text-xs font-medium text-gray-700">Your sub:</span>
+                    <code className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded text-gray-900 font-mono">
+                      {whoamiData.sub}
+                    </code>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-gray-700">Admin status:</span>
+                    <span className={`ml-2 text-xs px-2 py-1 rounded font-medium ${
+                      whoamiData.isAdmin 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {whoamiData.isAdmin ? '✓ Admin' : '✗ Not Admin'}
+                    </span>
+                  </div>
+                  {!whoamiData.isAdmin && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs text-gray-800">
+                        <strong>To fix:</strong> Set the <code className="bg-gray-100 px-1 rounded">AFU9_ADMIN_SUBS</code> environment variable to include this sub:
+                      </p>
+                      <code className="block mt-2 text-xs bg-gray-800 text-green-400 px-3 py-2 rounded font-mono">
+                        AFU9_ADMIN_SUBS={whoamiData.sub}
+                      </code>
+                      <p className="text-xs text-gray-600 mt-2">
+                        For multiple admins, use comma-separated values.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
