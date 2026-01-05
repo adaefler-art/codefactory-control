@@ -1,7 +1,7 @@
 import { createAuthenticatedClient } from "./github/auth-wrapper";
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
-const GITHUB_REPO = process.env.GITHUB_REPO || "rhythmologicum-connect";
+const GITHUB_REPO = process.env.GITHUB_REPO || "codefactory-control";
 
 /**
  * Minimal issue fields returned by listIssuesByLabel

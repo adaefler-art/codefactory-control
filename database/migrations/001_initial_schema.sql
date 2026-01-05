@@ -29,6 +29,7 @@ CREATE INDEX idx_workflows_enabled ON workflows(enabled);
 CREATE TABLE workflow_executions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE,
+  repository_id UUID,
   status VARCHAR(50) NOT NULL DEFAULT 'pending',
   input JSONB,
   output JSONB,
@@ -44,6 +45,7 @@ CREATE TABLE workflow_executions (
 );
 
 CREATE INDEX idx_executions_workflow_id ON workflow_executions(workflow_id);
+CREATE INDEX idx_executions_repository_id ON workflow_executions(repository_id);
 CREATE INDEX idx_executions_status ON workflow_executions(status);
 CREATE INDEX idx_executions_started_at ON workflow_executions(started_at DESC);
 

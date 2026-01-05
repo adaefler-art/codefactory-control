@@ -210,7 +210,7 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
         rows: [
           {
             id: 'agg-1',
-            window: 'daily',
+            window_type: 'daily',
             window_start: new Date('2024-01-01T00:00:00Z'),
             window_end: new Date('2024-01-02T00:00:00Z'),
             kpi_name: 'incident_rate',
@@ -243,7 +243,7 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
         rows: [
           {
             id: 'agg-2',
-            window: 'daily',
+            window_type: 'daily',
             window_start: new Date('2024-01-01T00:00:00Z'),
             window_end: new Date('2024-01-02T00:00:00Z'),
             kpi_name: 'mttr',
@@ -277,7 +277,7 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
         rows: [
           {
             id: 'agg-3',
-            window: 'daily',
+            window_type: 'daily',
             window_start: new Date('2024-01-01T00:00:00Z'),
             window_end: new Date('2024-01-02T00:00:00Z'),
             kpi_name: 'autofix_rate',
@@ -375,7 +375,7 @@ describe('E78.1: KPI Measurements & Aggregates', () => {
         rows: [
           {
             id: 'agg-1',
-            window: 'daily',
+            window_type: 'daily',
             window_start: mockTimestamp,
             window_end: new Date('2024-01-02T00:00:00Z'),
             kpi_name: 'mttr',

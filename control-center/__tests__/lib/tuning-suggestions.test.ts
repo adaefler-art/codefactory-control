@@ -50,14 +50,16 @@ describeIfDb('Tuning Suggestions Generator', () => {
     // Clean up test suggestions
     await pool.query(`
       DELETE FROM tuning_suggestions 
-      WHERE window = 'daily' 
+      WHERE window_type = 'daily' 
       AND window_start >= NOW() - INTERVAL '1 day'
     `);
   });
 
   test('returns empty suggestions with insufficient data', async () => {
-    const windowStart = new Date(Date.now() - 3600 * 1000); // 1 hour ago
-    const windowEnd = new Date();
+    // Use a time window that is guaranteed to be empty to avoid picking up
+    // leftover DB records from other tests/runs.
+    const windowStart = new Date('2000-01-01T00:00:00.000Z');
+    const windowEnd = new Date('2000-01-01T01:00:00.000Z');
 
     const result = await generateTuningSuggestions(pool, {
       window: 'daily',
@@ -284,27 +286,31 @@ describeIfDb('Tuning Suggestions Generator', () => {
 
   test('retrieves suggestions by window and date range', async () => {
     const windowStart = new Date(Date.now() - 7200 * 1000);
-    const windowEnd = new Date(Date.now() - 3600 * 1000);
+    const windowEnd = new Date();
 
-    // Create test incident
-    const incidentResult = await pool.query(`
-      INSERT INTO incidents (
-        incident_key, severity, status, title, classification,
-        lawbook_version, source_primary, created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id
-    `, [
-      `test:tuning:retrieve:${Date.now()}`,
-      'RED',
-      'OPEN',
-      'Test Retrieve',
-      JSON.stringify({ category: 'UNKNOWN' }),
-      'v1.0.0-test',
-      JSON.stringify({ kind: 'deploy_status', ref: { deployId: 'test-retrieve' } }),
-      windowStart,
-    ]);
-    testIncidentIds.push(incidentResult.rows[0].id);
+    // Create enough incidents to reliably generate at least one suggestion
+    // (e.g., UNKNOWN rate high enough to trigger a classifier suggestion)
+    for (let i = 0; i < 5; i++) {
+      const incidentResult = await pool.query(`
+        INSERT INTO incidents (
+          incident_key, severity, status, title, classification,
+          lawbook_version, source_primary, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+      `, [
+        `test:tuning:retrieve:${Date.now()}:${i}`,
+        'RED',
+        'OPEN',
+        `Test Retrieve ${i}`,
+        i < 3 ? JSON.stringify({ category: 'UNKNOWN' }) : JSON.stringify({ category: 'DEPLOY_FAILURE' }),
+        'v1.0.0-test',
+        JSON.stringify({ kind: 'deploy_status', ref: { deployId: `test-retrieve-${i}` } }),
+        windowStart,
+      ]);
+
+      testIncidentIds.push(incidentResult.rows[0].id);
+    }
 
     // Generate suggestions
     await generateTuningSuggestions(pool, {

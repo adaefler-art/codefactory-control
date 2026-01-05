@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS kpi_aggregates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Window classification
-  window TEXT NOT NULL CHECK (window IN ('daily', 'weekly', 'release', 'custom')),
+  window_type TEXT NOT NULL CHECK (window_type IN ('daily', 'weekly', 'release', 'custom')),
   window_start TIMESTAMPTZ NOT NULL,
   window_end TIMESTAMPTZ NOT NULL,
   
@@ -96,11 +96,11 @@ CREATE TABLE IF NOT EXISTS kpi_aggregates (
 
 -- Unique constraint: prevent duplicate aggregates for same window/kpi/version/inputs
 CREATE UNIQUE INDEX IF NOT EXISTS kpi_aggregates_unique_idx
-  ON kpi_aggregates(window, window_start, window_end, kpi_name, compute_version, inputs_hash);
+  ON kpi_aggregates(window_type, window_start, window_end, kpi_name, compute_version, inputs_hash);
 
 -- Indexes for kpi_aggregates
 CREATE INDEX IF NOT EXISTS kpi_aggregates_kpi_name_idx ON kpi_aggregates(kpi_name);
-CREATE INDEX IF NOT EXISTS kpi_aggregates_window_idx ON kpi_aggregates(window);
+CREATE INDEX IF NOT EXISTS kpi_aggregates_window_type_idx ON kpi_aggregates(window_type);
 CREATE INDEX IF NOT EXISTS kpi_aggregates_window_start_idx ON kpi_aggregates(window_start DESC);
 CREATE INDEX IF NOT EXISTS kpi_aggregates_window_end_idx ON kpi_aggregates(window_end DESC);
 CREATE INDEX IF NOT EXISTS kpi_aggregates_compute_version_idx ON kpi_aggregates(compute_version);
@@ -305,7 +305,7 @@ COMMENT ON COLUMN kpi_measurements.unit IS 'Measurement unit (hours, count, rati
 COMMENT ON COLUMN kpi_measurements.source_refs IS 'JSONB pointers to source records (issueId, eventId, deployId, incidentId, remediationRunId)';
 
 COMMENT ON TABLE kpi_aggregates IS 'E78.1: Windowed KPI aggregates with deterministic computation and versioning';
-COMMENT ON COLUMN kpi_aggregates.window IS 'Aggregation window: daily, weekly, release, custom';
+COMMENT ON COLUMN kpi_aggregates.window_type IS 'Aggregation window: daily, weekly, release, custom';
 COMMENT ON COLUMN kpi_aggregates.window_start IS 'Window start timestamp (inclusive)';
 COMMENT ON COLUMN kpi_aggregates.window_end IS 'Window end timestamp (exclusive)';
 COMMENT ON COLUMN kpi_aggregates.kpi_name IS 'KPI identifier';
