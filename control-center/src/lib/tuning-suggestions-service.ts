@@ -462,7 +462,7 @@ async function collectDataInputs(
   
   // Collect KPI aggregates
   const kpiResult = await pool.query(`
-    SELECT window, window_start, window_end, kpi_name, value_num, metadata
+    SELECT window_type as window, window_start, window_end, kpi_name, value_num, metadata
     FROM kpi_aggregates
     WHERE window_start >= $1 AND window_end <= $2
     ORDER BY window_start DESC
@@ -561,12 +561,12 @@ export async function generateTuningSuggestions(
     try {
       const result = await pool.query(`
         INSERT INTO tuning_suggestions (
-          window, window_start, window_end, suggestion_hash, suggestion_json
+          window_type, window_start, window_end, suggestion_hash, suggestion_json
         )
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (window, window_start, window_end, suggestion_hash) 
+        ON CONFLICT (window_type, window_start, window_end, suggestion_hash) 
         DO UPDATE SET created_at = tuning_suggestions.created_at
-        RETURNING id, window, window_start, window_end, suggestion_hash, suggestion_json, created_at
+        RETURNING id, window_type as window, window_start, window_end, suggestion_hash, suggestion_json, created_at
       `, [
         window,
         windowStart,
@@ -630,12 +630,12 @@ export async function getTuningSuggestions(
 ): Promise<TuningSuggestionRecord[]> {
   const { window, fromDate, toDate, limit = 100 } = options;
   
-  let query = 'SELECT id, window, window_start, window_end, suggestion_hash, suggestion_json, created_at FROM tuning_suggestions WHERE 1=1';
+  let query = 'SELECT id, window_type as window, window_start, window_end, suggestion_hash, suggestion_json, created_at FROM tuning_suggestions WHERE 1=1';
   const params: any[] = [];
   let paramIndex = 1;
   
   if (window) {
-    query += ` AND window = $${paramIndex}`;
+    query += ` AND window_type = $${paramIndex}`;
     params.push(window);
     paramIndex++;
   }

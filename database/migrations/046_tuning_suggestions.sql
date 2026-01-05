@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS tuning_suggestions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Window classification (same as kpi_aggregates)
-  window TEXT NOT NULL CHECK (window IN ('daily', 'weekly', 'release', 'custom')),
+  window_type TEXT NOT NULL CHECK (window_type IN ('daily', 'weekly', 'release', 'custom')),
   window_start TIMESTAMPTZ NOT NULL,
   window_end TIMESTAMPTZ NOT NULL,
   
@@ -44,11 +44,11 @@ CREATE TABLE IF NOT EXISTS tuning_suggestions (
 -- Unique constraint: prevent duplicate suggestions for same window
 -- Same window + suggestion_hash = idempotent
 CREATE UNIQUE INDEX IF NOT EXISTS tuning_suggestions_window_hash_idx 
-  ON tuning_suggestions(window, window_start, window_end, suggestion_hash);
+  ON tuning_suggestions(window_type, window_start, window_end, suggestion_hash);
 
 -- Index for querying suggestions by window
 CREATE INDEX IF NOT EXISTS tuning_suggestions_window_idx 
-  ON tuning_suggestions(window, window_start DESC);
+  ON tuning_suggestions(window_type, window_start DESC);
 
 -- Index for querying by creation time
 CREATE INDEX IF NOT EXISTS tuning_suggestions_created_at_idx 
@@ -67,7 +67,7 @@ CREATE INDEX IF NOT EXISTS tuning_suggestions_json_idx
 -- ========================================
 
 COMMENT ON TABLE tuning_suggestions IS 'Deterministic tuning suggestions for playbooks/rules/guardrails (E78.3/I783)';
-COMMENT ON COLUMN tuning_suggestions.window IS 'Aggregation window: daily, weekly, release, custom';
+COMMENT ON COLUMN tuning_suggestions.window_type IS 'Aggregation window: daily, weekly, release, custom';
 COMMENT ON COLUMN tuning_suggestions.window_start IS 'Window start timestamp (inclusive)';
 COMMENT ON COLUMN tuning_suggestions.window_end IS 'Window end timestamp (exclusive)';
 COMMENT ON COLUMN tuning_suggestions.suggestion_hash IS 'SHA-256 hash of stable suggestion content (deterministic)';

@@ -1391,7 +1391,7 @@ export async function computeKpisForWindow(
       if (!forceRecompute) {
         const checkQuery = `
           SELECT id FROM kpi_aggregates
-          WHERE window = $1
+          WHERE window_type = $1
             AND window_start = $2
             AND window_end = $3
             AND kpi_name = $4
@@ -1417,15 +1417,15 @@ export async function computeKpisForWindow(
       // Insert aggregate (or update if force recompute)
       const insertQuery = `
         INSERT INTO kpi_aggregates (
-          window, window_start, window_end, kpi_name, value_num, unit,
+          window_type, window_start, window_end, kpi_name, value_num, unit,
           compute_version, inputs_hash, metadata
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (window, window_start, window_end, kpi_name, compute_version, inputs_hash)
+        ON CONFLICT (window_type, window_start, window_end, kpi_name, compute_version, inputs_hash)
         DO UPDATE SET
           value_num = EXCLUDED.value_num,
           metadata = EXCLUDED.metadata
         RETURNING 
-          id, window, window_start, window_end, kpi_name, value_num, unit,
+          id, window_type, window_start, window_end, kpi_name, value_num, unit,
           compute_version, inputs_hash, metadata, created_at
       `;
       
@@ -1444,7 +1444,7 @@ export async function computeKpisForWindow(
       const row = insertResult.rows[0];
       aggregates.push({
         id: row.id,
-        window: row.window,
+        window: row.window_type,
         windowStart: row.window_start.toISOString(),
         windowEnd: row.window_end.toISOString(),
         kpiName: row.kpi_name,
@@ -1497,10 +1497,10 @@ export async function getKpiAggregates(params: {
   
   const query = `
     SELECT 
-      id, window, window_start, window_end, kpi_name, value_num, unit,
+      id, window_type, window_start, window_end, kpi_name, value_num, unit,
       compute_version, inputs_hash, metadata, created_at
     FROM kpi_aggregates
-    WHERE ($1::TEXT IS NULL OR window = $1)
+    WHERE ($1::TEXT IS NULL OR window_type = $1)
       AND ($2::TIMESTAMPTZ IS NULL OR window_start >= $2)
       AND ($3::TIMESTAMPTZ IS NULL OR window_end <= $3)
       AND ($4::TEXT[] IS NULL OR kpi_name = ANY($4))
@@ -1519,7 +1519,7 @@ export async function getKpiAggregates(params: {
     
     return result.rows.map((row) => ({
       id: row.id,
-      window: row.window,
+      window: row.window_type,
       windowStart: row.window_start.toISOString(),
       windowEnd: row.window_end.toISOString(),
       kpiName: row.kpi_name,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createMinimalLawbook } from "@/lawbook/schema";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface LawbookVersion {
   id: string;
@@ -57,7 +58,7 @@ export default function AdminLawbookPage() {
 
   const loadVersions = async () => {
     try {
-      const response = await fetch("/api/lawbook/versions?limit=100", {
+      const response = await fetch(API_ROUTES.lawbook.versions.list(100), {
         credentials: "include",
       });
 
@@ -75,7 +76,7 @@ export default function AdminLawbookPage() {
 
   const loadActiveVersion = async () => {
     try {
-      const response = await fetch("/api/lawbook/active", {
+      const response = await fetch(API_ROUTES.lawbook.active, {
         credentials: "include",
       });
 
@@ -97,7 +98,7 @@ export default function AdminLawbookPage() {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/lawbook/versions/${versionId}`, {
+      const response = await fetch(API_ROUTES.lawbook.versions.get(versionId), {
         credentials: "include",
       });
 
@@ -126,7 +127,7 @@ export default function AdminLawbookPage() {
     try {
       const lawbookJson = JSON.parse(editorText);
 
-      const response = await fetch("/api/lawbook/validate", {
+      const response = await fetch(API_ROUTES.lawbook.validate, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -158,7 +159,7 @@ export default function AdminLawbookPage() {
     try {
       const lawbookJson = JSON.parse(editorText);
 
-      const response = await fetch("/api/lawbook/publish", {
+      const response = await fetch(API_ROUTES.lawbook.publish, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -197,7 +198,7 @@ export default function AdminLawbookPage() {
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("/api/lawbook/activate", {
+      const response = await fetch(API_ROUTES.lawbook.activate, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -241,7 +242,7 @@ export default function AdminLawbookPage() {
     setDiffResult(null);
 
     try {
-      const response = await fetch("/api/lawbook/diff", {
+      const response = await fetch(API_ROUTES.lawbook.diff, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

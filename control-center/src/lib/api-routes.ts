@@ -179,6 +179,15 @@ export const API_ROUTES = {
     guardrails: '/api/lawbook/guardrails',
     memory: '/api/lawbook/memory',
     parameters: '/api/lawbook/parameters',
+    versions: {
+      list: (limit: number = 100) => `/api/lawbook/versions?limit=${limit}`,
+      get: (versionId: string) => `/api/lawbook/versions/${versionId}`,
+    },
+    active: '/api/lawbook/active',
+    validate: '/api/lawbook/validate',
+    publish: '/api/lawbook/publish',
+    activate: '/api/lawbook/activate',
+    diff: '/api/lawbook/diff',
   },
 
   // Deploy Events & Status

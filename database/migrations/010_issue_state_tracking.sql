@@ -210,13 +210,23 @@ ORDER BY
 
 -- View: State transition flow analysis
 CREATE VIEW issue_transition_analysis AS
-SELECT 
+WITH transitions AS (
+  SELECT
+    issue_tracking_id,
+    from_state,
+    to_state,
+    EXTRACT(EPOCH FROM (
+      transition_at - LAG(transition_at) OVER (PARTITION BY issue_tracking_id ORDER BY transition_at)
+    )) / 3600 as hours_since_previous_transition
+  FROM issue_state_history
+  WHERE from_state IS NOT NULL
+)
+SELECT
   from_state,
   to_state,
   COUNT(*) as transition_count,
-  AVG(EXTRACT(EPOCH FROM (transition_at - LAG(transition_at) OVER (PARTITION BY issue_tracking_id ORDER BY transition_at))) / 3600) as avg_hours_between_transitions
-FROM issue_state_history
-WHERE from_state IS NOT NULL
+  AVG(hours_since_previous_transition) as avg_hours_between_transitions
+FROM transitions
 GROUP BY from_state, to_state
 ORDER BY transition_count DESC;
 

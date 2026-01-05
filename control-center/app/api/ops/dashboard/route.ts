@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
         window_start AS t,
         value_num AS value
       FROM kpi_aggregates
-      WHERE window = $1
+      WHERE window_type = $1
         AND kpi_name IN ('incident_rate', 'mttr', 'autofix_rate')
         AND ($2::TIMESTAMPTZ IS NULL OR window_start >= $2)
         AND ($3::TIMESTAMPTZ IS NULL OR window_end <= $3)
