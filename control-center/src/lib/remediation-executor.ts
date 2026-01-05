@@ -35,6 +35,7 @@ import { Incident, Evidence } from './contracts/incident';
 import { getIncidentDAO } from './db/incidents';
 import { getRemediationPlaybookDAO } from './db/remediation-playbooks';
 import { loadGuardrails } from '../lawbook/load';
+import { requireActiveLawbookVersion } from './lawbook-version-helper';
 
 // ========================================
 // Lawbook Gating
@@ -53,17 +54,19 @@ interface LawbookGateConfig {
 
 /**
  * Load lawbook gate configuration
- * For now, stubbed with config-based approach
- * TODO: Integrate with E79 lawbook service when available
+ * E79.3 / I793: Uses requireActiveLawbookVersion() for fail-closed behavior.
+ * Throws LAWBOOK_NOT_CONFIGURED if no active lawbook exists.
  */
-async function loadLawbookGateConfig(): Promise<LawbookGateConfig> {
-  // Stub: Load from guardrails for version tracking
+async function loadLawbookGateConfig(pool?: Pool): Promise<LawbookGateConfig> {
+  // E79.3 / I793: Require active lawbook (fail-closed for gating operations)
+  const lawbookVersion = await requireActiveLawbookVersion(pool);
+  
+  // Load guardrails for allowed playbooks/actions
   const guardrails = await loadGuardrails();
   
-  // Default deny-by-default configuration
-  // In production, this would be loaded from lawbook service
+  // Return lawbook gate configuration with exact lawbook version
   return {
-    version: guardrails.hash.substring(0, 8), // Use guardrails hash as version
+    version: lawbookVersion,
     allowedPlaybooks: [
       'restart-service',
       'scale-up',
@@ -306,8 +309,8 @@ export class RemediationPlaybookExecutor {
     
     const evidence = await incidentDAO.getEvidence(request.incidentId);
     
-    // Step 2: Load lawbook configuration
-    const lawbookConfig = await loadLawbookGateConfig();
+    // Step 2: Load lawbook configuration (E79.3 / I793: fail-closed)
+    const lawbookConfig = await loadLawbookGateConfig(this.pool);
     
     // Step 3: Lawbook gating - playbook allowed?
     const playbookCheck = isPlaybookAllowed(playbook.id, lawbookConfig);

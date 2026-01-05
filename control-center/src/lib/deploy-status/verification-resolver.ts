@@ -88,10 +88,12 @@ export async function resolveDeployStatusFromVerificationRuns(
   options: {
     env: DeployEnvironment;
     correlationId?: string;
+    lawbookVersion?: string | null;
   }
 ): Promise<CreateDeployStatusInput> {
   const nowIso = new Date().toISOString();
   const correlationId = options.correlationId?.trim() || undefined;
+  const lawbookVersion = options.lawbookVersion ?? null;
 
   // Optional correlationId support (MVP):
   // - If it looks like a UUID, treat it as a playbook run ID.
@@ -117,6 +119,7 @@ export async function resolveDeployStatusFromVerificationRuns(
           checkedAt: nowIso,
           correlationId,
           verificationRun: null,
+          lawbookVersion,
         },
         stalenessSeconds: 0,
       };
@@ -152,6 +155,7 @@ export async function resolveDeployStatusFromVerificationRuns(
             startedAt: runResult.startedAt,
             completedAt: runResult.completedAt,
           },
+          lawbookVersion,
         },
         stalenessSeconds: Math.max(
           0,
@@ -191,6 +195,7 @@ export async function resolveDeployStatusFromVerificationRuns(
           startedAt: runResult.startedAt,
           completedAt: runResult.completedAt,
         },
+        lawbookVersion,
       },
       stalenessSeconds: Math.max(0, Math.floor((Date.now() - new Date(observedAt).getTime()) / 1000)),
     };
@@ -217,6 +222,7 @@ export async function resolveDeployStatusFromVerificationRuns(
       checkedAt: nowIso,
       ...(correlationId ? { correlationId } : {}),
       verificationRun: null,
+      lawbookVersion,
     };
 
     return {
@@ -258,6 +264,7 @@ export async function resolveDeployStatusFromVerificationRuns(
       startedAt: run.started_at,
       completedAt: run.completed_at,
     },
+    lawbookVersion,
   };
 
   return {

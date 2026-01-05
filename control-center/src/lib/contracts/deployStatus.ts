@@ -63,6 +63,12 @@ export interface StatusSignals {
         completedAt: string | null;
       }
     | null;
+
+  /**
+   * Active lawbook version at time of status determination (E79.3 / I793)
+   * Null if no active lawbook configured
+   */
+  lawbookVersion?: string | null;
 }
 
 /**

@@ -77,6 +77,12 @@ export interface BuildManifest {
     durationMs: number;
     reproducible: boolean;
   };
+
+  /**
+   * Active lawbook version at time of build (E79.3 / I793)
+   * Null if no active lawbook configured
+   */
+  lawbookVersion?: string | null;
 }
 
 /**

@@ -9,6 +9,9 @@
  * 
  * All operations are safe to retry - same input produces same result.
  * 
+ * E79.3 / I793: All incidents include lawbookVersion from active lawbook.
+ * Passive ingestion: sets null + warning if lawbook not configured.
+ * 
  * Reference: I762 (E76.2 - Incident Ingestion Pipelines)
  */
 
@@ -33,6 +36,8 @@ import {
   EcsStoppedTaskSignal,
   RunnerStepFailureSignal,
 } from './mappers';
+import { getActiveLawbookVersion } from '../lawbook-version-helper';
+import { logger } from '../logger';
 
 // ========================================
 // Ingestion Result Types
@@ -95,23 +100,43 @@ function computeEvidenceHash(evidence: EvidenceInput): string {
 /**
  * Generic incident ingestion function
  * 
+ * E79.3 / I793: Attaches lawbookVersion from active lawbook.
+ * If no active lawbook, sets null and logs warning (passive ingestion).
+ * 
  * @param dao - Incident DAO instance
+ * @param pool - PostgreSQL connection pool
  * @param incident - IncidentInput from mapper
  * @param additionalEvidence - Optional array of additional evidence to attach
  * @returns IncidentIngestionResult with incident and metadata
  */
 async function ingestIncident(
   dao: IncidentDAO,
+  pool: Pool,
   incident: any, // IncidentInput
   additionalEvidence: Omit<EvidenceInput, 'incident_id' | 'sha256'>[] = []
 ): Promise<IncidentIngestionResult> {
   try {
+    // E79.3 / I793: Attach lawbookVersion from active lawbook (passive ingestion)
+    const lawbookVersion = await getActiveLawbookVersion(pool);
+    
+    if (lawbookVersion === null) {
+      logger.warn('No active lawbook configured - incident lawbookVersion will be null', {
+        incidentKey: incident.incident_key,
+      }, 'IncidentIngestion');
+    }
+    
+    // Attach lawbookVersion to incident
+    const incidentWithLawbook = {
+      ...incident,
+      lawbook_version: lawbookVersion,
+    };
+
     // Check if incident already exists
     const existing = await dao.getIncidentByKey(incident.incident_key);
     const isNew = !existing;
 
     // Upsert incident (idempotent)
-    const upserted = await dao.upsertIncidentByKey(incident);
+    const upserted = await dao.upsertIncidentByKey(incidentWithLawbook);
 
     // Prepare evidence list
     const evidenceList: EvidenceInput[] = [];
@@ -157,6 +182,7 @@ async function ingestIncident(
         payload: {
           signal_type: incident.source_primary.kind,
           incident_key: incident.incident_key,
+          lawbookVersion,
         },
       });
     } else {
@@ -166,6 +192,7 @@ async function ingestIncident(
         payload: {
           signal_type: incident.source_primary.kind,
           incident_key: incident.incident_key,
+          lawbookVersion,
         },
       });
     }
@@ -226,7 +253,7 @@ export async function ingestDeployStatusSignal(
     },
   ];
 
-  return ingestIncident(dao, incident, additionalEvidence);
+  return ingestIncident(dao, pool, incident, additionalEvidence);
 }
 
 // ========================================
@@ -271,7 +298,7 @@ export async function ingestVerificationFailureSignal(
     },
   ];
 
-  return ingestIncident(dao, incident, additionalEvidence);
+  return ingestIncident(dao, pool, incident, additionalEvidence);
 }
 
 // ========================================
@@ -316,7 +343,7 @@ export async function ingestEcsStoppedTaskSignal(
     },
   ];
 
-  return ingestIncident(dao, incident, additionalEvidence);
+  return ingestIncident(dao, pool, incident, additionalEvidence);
 }
 
 // ========================================
@@ -361,7 +388,7 @@ export async function ingestRunnerStepFailureSignal(
     },
   ];
 
-  return ingestIncident(dao, incident, additionalEvidence);
+  return ingestIncident(dao, pool, incident, additionalEvidence);
 }
 
 // ========================================
