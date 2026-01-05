@@ -272,6 +272,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       expect(stats.cached).toBe(false);
       expect(stats.version).toBeNull();
       expect(stats.age).toBeNull();
+      expect(stats.lawbookId).toBeNull();
     });
 
     it('should provide accurate cache statistics', async () => {
@@ -301,8 +302,104 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const stats = getLawbookVersionCacheStats();
       expect(stats.cached).toBe(true);
       expect(stats.version).toBe('v2025.01.05-stats');
+      expect(stats.lawbookId).toBe('AFU9-LAWBOOK');
       expect(stats.age).toBeGreaterThanOrEqual(0);
       expect(stats.age).toBeLessThan(1000); // Should be very recent
+    });
+
+    it('should invalidate cache after activation to prevent stale versions', async () => {
+      const pool = getPool();
+      
+      // Create and activate first lawbook version
+      const lawbook1: LawbookV1 = {
+        version: '1.0.0',
+        lawbookId: 'AFU9-LAWBOOK',
+        lawbookVersion: 'v1.0.0',
+        modules: [],
+        parameters: {},
+        guardrails: {
+          maxConcurrentDeploys: 2,
+          maxDeployRetries: 3,
+          requiredApprovers: 1,
+          autoRollbackEnabled: true,
+        },
+      };
+
+      const createResult1 = await createLawbookVersion(lawbook1, 'admin', pool);
+      await activateLawbookVersion(createResult1.data!.id, 'admin', pool);
+
+      // Fetch and cache v1.0.0
+      const version1 = await getActiveLawbookVersion(pool);
+      expect(version1).toBe('v1.0.0');
+
+      // Cache should be populated
+      let stats = getLawbookVersionCacheStats();
+      expect(stats.cached).toBe(true);
+      expect(stats.version).toBe('v1.0.0');
+
+      // Create and activate second lawbook version
+      const lawbook2: LawbookV1 = {
+        version: '1.0.0',
+        lawbookId: 'AFU9-LAWBOOK',
+        lawbookVersion: 'v2.0.0',
+        modules: [],
+        parameters: {},
+        guardrails: {
+          maxConcurrentDeploys: 3,
+          maxDeployRetries: 3,
+          requiredApprovers: 1,
+          autoRollbackEnabled: true,
+        },
+      };
+
+      const createResult2 = await createLawbookVersion(lawbook2, 'admin', pool);
+      await activateLawbookVersion(createResult2.data!.id, 'admin', pool);
+
+      // Invalidate cache (simulating what activate route does)
+      clearLawbookVersionCache('AFU9-LAWBOOK');
+
+      // Cache should be cleared
+      stats = getLawbookVersionCacheStats();
+      expect(stats.cached).toBe(false);
+
+      // Next fetch should get v2.0.0, not cached v1.0.0
+      const version2 = await getActiveLawbookVersion(pool);
+      expect(version2).toBe('v2.0.0');
+
+      // Verify cache now has v2.0.0
+      stats = getLawbookVersionCacheStats();
+      expect(stats.cached).toBe(true);
+      expect(stats.version).toBe('v2.0.0');
+    });
+
+    it('should support forceRefresh parameter to bypass cache', async () => {
+      const pool = getPool();
+      
+      // Create and activate a lawbook
+      const testLawbook: LawbookV1 = {
+        version: '1.0.0',
+        lawbookId: 'AFU9-LAWBOOK',
+        lawbookVersion: 'v1.0.0-force',
+        modules: [],
+        parameters: {},
+        guardrails: {
+          maxConcurrentDeploys: 2,
+          maxDeployRetries: 3,
+          requiredApprovers: 1,
+          autoRollbackEnabled: true,
+        },
+      };
+
+      const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
+      await activateLawbookVersion(createResult.data!.id, 'admin', pool);
+
+      // First call - populates cache
+      const version1 = await getActiveLawbookVersion(pool);
+      expect(version1).toBe('v1.0.0-force');
+
+      // Second call with forceRefresh=true should bypass cache
+      const version2 = await getActiveLawbookVersion(pool, 'AFU9-LAWBOOK', true);
+      expect(version2).toBe('v1.0.0-force');
     });
   });
 

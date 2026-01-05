@@ -25,10 +25,11 @@ const CACHE_TTL_MS = 60 * 1000;
 // Error code for missing lawbook
 export const LAWBOOK_NOT_CONFIGURED_ERROR = 'LAWBOOK_NOT_CONFIGURED';
 
-// Cache state
+// Cache state - keyed by lawbook_id to prevent cross-contamination
 interface CacheEntry {
   version: string | null;
   timestamp: number;
+  lawbookId: string;
 }
 
 let cache: CacheEntry | null = null;
@@ -41,15 +42,22 @@ let cache: CacheEntry | null = null;
  * - null: No active lawbook configured
  * 
  * Use this for passive/ingestion operations where null is acceptable.
+ * 
+ * @param pool - Optional database pool
+ * @param lawbookId - Lawbook ID to fetch (defaults to 'AFU9-LAWBOOK')
+ * @param forceRefresh - Force cache refresh (e.g., after activation)
  */
 export async function getActiveLawbookVersion(
-  pool?: Pool
+  pool?: Pool,
+  lawbookId: string = 'AFU9-LAWBOOK',
+  forceRefresh: boolean = false
 ): Promise<string | null> {
-  // Check cache
+  // Check cache (keyed by lawbookId)
   const now = Date.now();
-  if (cache && (now - cache.timestamp) < CACHE_TTL_MS) {
+  if (!forceRefresh && cache && cache.lawbookId === lawbookId && (now - cache.timestamp) < CACHE_TTL_MS) {
     logger.debug('Lawbook version cache hit', {
       version: cache.version,
+      lawbookId: cache.lawbookId,
       age: now - cache.timestamp,
     }, 'LawbookVersionHelper');
     return cache.version;
@@ -57,19 +65,22 @@ export async function getActiveLawbookVersion(
 
   // Fetch from database
   try {
-    const result = await getActiveLawbook('AFU9-LAWBOOK', pool);
+    const result = await getActiveLawbook(lawbookId, pool);
     
     if (result.success && result.data) {
       const version = result.data.lawbook_version;
       
-      // Update cache
+      // Update cache with lawbookId
       cache = {
         version,
         timestamp: now,
+        lawbookId,
       };
       
       logger.debug('Fetched active lawbook version', {
         version,
+        lawbookId,
+        forceRefresh,
       }, 'LawbookVersionHelper');
       
       return version;
@@ -78,10 +89,12 @@ export async function getActiveLawbookVersion(
       cache = {
         version: null,
         timestamp: now,
+        lawbookId,
       };
       
       logger.warn('No active lawbook configured', {
         error: result.error,
+        lawbookId,
       }, 'LawbookVersionHelper');
       
       return null;
@@ -89,6 +102,7 @@ export async function getActiveLawbookVersion(
       // Error fetching lawbook
       logger.error('Failed to fetch active lawbook', {
         error: result.error,
+        lawbookId,
       }, 'LawbookVersionHelper');
       
       // Don't cache errors
@@ -97,6 +111,7 @@ export async function getActiveLawbookVersion(
   } catch (error) {
     logger.error('Exception fetching active lawbook version', {
       error: error instanceof Error ? error.message : String(error),
+      lawbookId,
     }, 'LawbookVersionHelper');
     
     // Don't cache errors
@@ -113,11 +128,14 @@ export async function getActiveLawbookVersion(
  * Use this for gating/automated operations where lawbook is REQUIRED.
  * 
  * @throws Error with code LAWBOOK_NOT_CONFIGURED if no active lawbook
+ * @param pool - Optional database pool
+ * @param lawbookId - Lawbook ID to fetch (defaults to 'AFU9-LAWBOOK')
  */
 export async function requireActiveLawbookVersion(
-  pool?: Pool
+  pool?: Pool,
+  lawbookId: string = 'AFU9-LAWBOOK'
 ): Promise<string> {
-  const version = await getActiveLawbookVersion(pool);
+  const version = await getActiveLawbookVersion(pool, lawbookId);
   
   if (version === null) {
     const error = new Error(
@@ -127,6 +145,7 @@ export async function requireActiveLawbookVersion(
     
     logger.error('Lawbook required but not configured - failing closed', {
       errorCode: LAWBOOK_NOT_CONFIGURED_ERROR,
+      lawbookId,
     }, 'LawbookVersionHelper');
     
     throw error;
@@ -143,11 +162,13 @@ export async function requireActiveLawbookVersion(
  * 
  * @param obj Object to attach lawbookVersion to
  * @param pool Optional database pool
+ * @param lawbookId Lawbook ID to fetch (defaults to 'AFU9-LAWBOOK')
  * @returns Copy of object with lawbookVersion field
  */
 export async function attachLawbookVersion<T extends Record<string, any>>(
   obj: T,
-  pool?: Pool
+  pool?: Pool,
+  lawbookId: string = 'AFU9-LAWBOOK'
 ): Promise<T & { lawbookVersion: string | null }> {
   // If already has lawbookVersion, return as-is
   if ('lawbookVersion' in obj) {
@@ -155,7 +176,7 @@ export async function attachLawbookVersion<T extends Record<string, any>>(
   }
   
   // Fetch active lawbook version
-  const version = await getActiveLawbookVersion(pool);
+  const version = await getActiveLawbookVersion(pool, lawbookId);
   
   // Return copy with lawbookVersion
   return {
@@ -165,11 +186,15 @@ export async function attachLawbookVersion<T extends Record<string, any>>(
 }
 
 /**
- * Clear the cache (useful for testing)
+ * Clear the cache (useful for testing and after lawbook activation)
+ * 
+ * @param lawbookId - Optional lawbook ID to clear (clears all if not specified)
  */
-export function clearLawbookVersionCache(): void {
-  cache = null;
-  logger.debug('Lawbook version cache cleared', {}, 'LawbookVersionHelper');
+export function clearLawbookVersionCache(lawbookId?: string): void {
+  if (!lawbookId || (cache && cache.lawbookId === lawbookId)) {
+    cache = null;
+    logger.debug('Lawbook version cache cleared', { lawbookId }, 'LawbookVersionHelper');
+  }
 }
 
 /**
@@ -179,12 +204,14 @@ export function getLawbookVersionCacheStats(): {
   cached: boolean;
   version: string | null;
   age: number | null;
+  lawbookId: string | null;
 } {
   if (!cache) {
     return {
       cached: false,
       version: null,
       age: null,
+      lawbookId: null,
     };
   }
   
@@ -192,5 +219,6 @@ export function getLawbookVersionCacheStats(): {
     cached: true,
     version: cache.version,
     age: Date.now() - cache.timestamp,
+    lawbookId: cache.lawbookId,
   };
 }

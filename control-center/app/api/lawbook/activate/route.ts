@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { activateLawbookVersion } from '@/lib/db/lawbook';
 import { withApi } from '@/lib/http/withApi';
+import { clearLawbookVersionCache } from '@/lib/lawbook-version-helper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,9 @@ export const POST = withApi(async (request: NextRequest) => {
   }
 
   const active = result.data!;
+
+  // E79.3 / I793: Invalidate cache after lawbook activation to prevent stale versions
+  clearLawbookVersionCache(active.lawbook_id);
 
   return NextResponse.json(
     {
