@@ -92,6 +92,7 @@ describe('GET /api/intent/status', () => {
 
   test('does not leak secrets in response', async () => {
     process.env.AFU9_INTENT_ENABLED = 'true';
+    const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = 'unit-test-not-a-real-key';
 
     const request = new NextRequest('http://localhost/api/intent/status', {
@@ -110,6 +111,12 @@ describe('GET /api/intent/status', () => {
     expect(responseText).not.toContain('secret');
     expect(responseText).not.toContain('OPENAI_API_KEY');
     expect(Object.keys(body)).toEqual(['enabled', 'mode']);
+
+    if (originalOpenAiApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    }
   });
 
   test('returns mode as strict enum (enabled/disabled/unknown)', async () => {
