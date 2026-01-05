@@ -15,7 +15,7 @@ Successfully implemented the Guardrail Gates Library (I794) as a shared, reusabl
    - Deny-by-default semantics throughout
 
 2. **control-center/__tests__/lib/guardrail-gates.test.ts** (New)
-   - Comprehensive test suite (38 tests, all passing)
+   - Comprehensive test suite (40 tests, all passing)
    - Tests for deny-by-default behavior
    - Tests for deterministic verdict generation
    - Tests for all gate functions
@@ -85,7 +85,7 @@ Successfully implemented the Guardrail Gates Library (I794) as a shared, reusabl
 
 ```
 Test Suites: 1 passed, 1 total
-Tests:       38 passed, 38 total
+Tests:       40 passed, 40 total
 ```
 
 All tests validate:
@@ -184,7 +184,7 @@ npm run repo:verify
 
 ✅ Guardrail library exists and can be used across the system  
 ✅ Verdict objects are deterministic and transparent  
-✅ Tests/build green (38/38 tests passing)  
+✅ Tests/build green (40/40 tests passing)  
 ✅ GateVerdict example JSON provided  
 ✅ Files changed list + reasons documented  
 ✅ PowerShell commands provided  
