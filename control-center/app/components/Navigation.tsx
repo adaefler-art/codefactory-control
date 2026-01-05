@@ -16,6 +16,7 @@ export default function Navigation() {
     { href: "/incidents", label: "Incidents" },
     { href: "/lawbook", label: "Lawbook" },
     { href: "/operate", label: "Operate" },
+    { href: "/admin/lawbook", label: "Admin" },
     { href: "/settings", label: "Settings" },
   ];
 
