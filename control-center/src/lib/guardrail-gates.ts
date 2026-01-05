@@ -169,7 +169,8 @@ export function gatePlaybookAllowed(
   if (params.incidentCategory && params.evidenceKinds && lawbook.evidence.requiredKindsByCategory) {
     const requiredKinds = lawbook.evidence.requiredKindsByCategory[params.incidentCategory];
     if (requiredKinds && requiredKinds.length > 0) {
-      const missingKinds = requiredKinds.filter(k => !params.evidenceKinds!.includes(k));
+      const presentKinds = params.evidenceKinds; // Already checked above
+      const missingKinds = requiredKinds.filter(k => !presentKinds.includes(k));
       if (missingKinds.length > 0) {
         reasons.push({
           code: 'EVIDENCE_MISSING',
