@@ -14,41 +14,162 @@
 
 import { GET } from '../../app/api/ops/dashboard/route';
 import { getPool } from '../../src/lib/db';
-import { Pool } from 'pg';
+import { NextRequest } from 'next/server';
 
 // Mock NextRequest for testing
 function createMockRequest(options: {
   url?: string;
   requestId?: string;
-}) {
+  userId?: string;
+}): NextRequest {
   const headers = new Headers();
   if (options.requestId) {
     headers.set('x-request-id', options.requestId);
   }
+  if (options.userId !== undefined) {
+    headers.set('x-afu9-sub', options.userId);
+  }
 
-  const url = options.url || 'http://localhost:3000/api/ops/dashboard?window=weekly';
+  const url = options.url || 'http://localhost:3000/api/ops/dashboard?window=daily';
 
   return {
     method: 'GET',
     headers,
     url,
-  } as any;
+  } as NextRequest;
 }
 
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
 describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
-  let pool: Pool;
-
   beforeAll(() => {
-    pool = getPool();
+    getPool(); // Ensure pool is initialized
+  });
+
+  describe('Authentication', () => {
+    it('should return 401 when x-afu9-sub header is missing', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily',
+        requestId: 'test-auth-1',
+        // userId explicitly not set
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(401);
+
+      const data = await response.json();
+      expect(data.error).toBeTruthy();
+    });
+
+    it('should return 401 when x-afu9-sub header is empty string', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily',
+        requestId: 'test-auth-2',
+        userId: '', // Empty string
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(401);
+    });
+
+    it('should accept request with valid x-afu9-sub header', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily',
+        requestId: 'test-auth-3',
+        userId: 'test-user-123',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('Input Validation', () => {
+    it('should reject invalid window parameter', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=invalid',
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(400);
+      
+      const data = await response.json();
+      expect(data.error).toBeTruthy();
+    });
+
+    it('should reject invalid from date format', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily&from=invalid-date',
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject invalid to date format', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily&to=not-a-date',
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject when start date is after end date', async () => {
+      const start = '2024-02-01T00:00:00Z';
+      const end = '2024-01-01T00:00:00Z';
+      
+      const request = createMockRequest({
+        url: `http://localhost:3000/api/ops/dashboard?window=daily&from=${start}&to=${end}`,
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(400);
+      
+      const data = await response.json();
+      expect(data.details).toContain('before or equal');
+    });
+
+    it('should reject date range exceeding 90 days', async () => {
+      const start = '2024-01-01T00:00:00Z';
+      const end = '2024-05-01T00:00:00Z'; // 121 days
+      
+      const request = createMockRequest({
+        url: `http://localhost:3000/api/ops/dashboard?window=daily&from=${start}&to=${end}`,
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(400);
+      
+      const data = await response.json();
+      expect(data.details).toContain('90 days');
+    });
+
+    it('should accept valid date range within 90 days', async () => {
+      const start = '2024-01-01T00:00:00Z';
+      const end = '2024-03-01T00:00:00Z'; // ~60 days
+      
+      const request = createMockRequest({
+        url: `http://localhost:3000/api/ops/dashboard?window=daily&from=${start}&to=${end}`,
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('Response Structure', () => {
     it('should return all required fields', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily',
         requestId: 'test-req-1',
+        userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -75,9 +196,24 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
       expect(Array.isArray(data.recentIncidents)).toBe(true);
     });
 
+    it('should respect bounded limits on results', async () => {
+      const request = createMockRequest({
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily',
+        userId: 'test-user',
+      });
+
+      const response = await GET(request);
+      const data = await response.json();
+
+      // Verify limits are respected
+      expect(data.topCategories.length).toBeLessThanOrEqual(10);
+      expect(data.playbooks.length).toBeLessThanOrEqual(10);
+      expect(data.recentIncidents.length).toBeLessThanOrEqual(50);
+    });
+
     it('should validate KPI structure', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -103,7 +239,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should validate topCategories structure', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -128,7 +264,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should validate playbooks structure', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -155,7 +291,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should validate recentIncidents structure', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -183,7 +319,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
   describe('Deterministic Ordering', () => {
     it('should return KPIs in deterministic order (sorted by kpi_name)', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -199,7 +335,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should return KPI points in deterministic order (sorted by time DESC)', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -219,7 +355,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should return topCategories in deterministic order (count DESC, category ASC)', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -246,7 +382,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should return playbooks in deterministic order (runs DESC, playbookId ASC)', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -273,7 +409,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should return recentIncidents in deterministic order (lastSeenAt DESC, id ASC)', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily', userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -303,6 +439,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
     it('should accept daily window', async () => {
       const request = createMockRequest({
         url: 'http://localhost:3000/api/ops/dashboard?window=daily',
+        userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -315,6 +452,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
     it('should accept weekly window', async () => {
       const request = createMockRequest({
         url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -324,25 +462,17 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
       expect(data.filters.window).toBe('weekly');
     });
 
-    it('should reject invalid window parameter', async () => {
-      const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=invalid',
-      });
-
-      const response = await GET(request);
-      expect(response.status).toBe(400);
-    });
-
-    it('should default to weekly when no window specified', async () => {
+    it('should default to daily when no window specified', async () => {
       const request = createMockRequest({
         url: 'http://localhost:3000/api/ops/dashboard',
+        userId: 'test-user',
       });
 
       const response = await GET(request);
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.filters.window).toBe('weekly');
+      expect(data.filters.window).toBe('daily');
     });
   });
 
@@ -353,6 +483,7 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
       
       const request = createMockRequest({
         url: `http://localhost:3000/api/ops/dashboard?window=daily&from=${from}&to=${to}`,
+        userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -365,7 +496,8 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
     it('should work without date parameters', async () => {
       const request = createMockRequest({
-        url: 'http://localhost:3000/api/ops/dashboard?window=weekly',
+        url: 'http://localhost:3000/api/ops/dashboard?window=daily',
+        userId: 'test-user',
       });
 
       const response = await GET(request);
@@ -379,13 +511,13 @@ describeIfDb('Ops Dashboard API - GET /api/ops/dashboard', () => {
 
   describe('Idempotency', () => {
     it('should return the same results for identical requests', async () => {
-      const url = 'http://localhost:3000/api/ops/dashboard?window=weekly';
+      const url = 'http://localhost:3000/api/ops/dashboard?window=daily';
 
-      const request1 = createMockRequest({ url });
+      const request1 = createMockRequest({ url, userId: 'test-user' });
       const response1 = await GET(request1);
       const data1 = await response1.json();
 
-      const request2 = createMockRequest({ url });
+      const request2 = createMockRequest({ url, userId: 'test-user' });
       const response2 = await GET(request2);
       const data2 = await response2.json();
 

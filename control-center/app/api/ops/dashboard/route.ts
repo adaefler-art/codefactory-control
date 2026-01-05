@@ -10,11 +10,18 @@
  * - Recent incidents
  * 
  * All data is deterministically ordered.
+ * 
+ * Authentication: Required (x-afu9-sub header)
+ * 
+ * SECURITY NOTE:
+ * The x-afu9-sub header is set by proxy.ts after JWT verification.
+ * Client-provided x-afu9-* headers are stripped by the middleware.
  */
 
 import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { getPool } from '@/lib/db';
+import { z } from 'zod';
 
 interface DashboardKpi {
   kpi_name: string;
@@ -62,7 +69,7 @@ interface DashboardResponse {
  * GET /api/ops/dashboard
  * 
  * Query parameters:
- * - window: Aggregation window (daily, weekly) - default: weekly
+ * - window: Aggregation window (daily, weekly) - default: daily
  * - from: Start timestamp (ISO 8601) - optional
  * - to: End timestamp (ISO 8601) - optional
  */
@@ -70,18 +77,67 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   
   try {
-    const { searchParams } = new URL(request.url);
-    const window = searchParams.get('window') || 'weekly';
-    const fromDate = searchParams.get('from') || null;
-    const toDate = searchParams.get('to') || null;
+    // Authentication: fail-closed, require x-afu9-sub BEFORE any DB calls
+    const userId = request.headers.get('x-afu9-sub');
+    if (!userId) {
+      return errorResponse('Unauthorized', {
+        status: 401,
+        requestId,
+        details: 'User authentication required',
+      });
+    }
     
-    // Validate window parameter
-    if (!['daily', 'weekly'].includes(window)) {
-      return errorResponse('Invalid window parameter', {
+    const { searchParams } = new URL(request.url);
+    const windowParam = searchParams.get('window') || 'daily';
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
+    
+    // Validate query parameters with Zod
+    const querySchema = z.object({
+      window: z.enum(['daily', 'weekly']),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+    });
+    
+    const validationResult = querySchema.safeParse({
+      window: windowParam,
+      from: fromParam || undefined,
+      to: toParam || undefined,
+    });
+    
+    if (!validationResult.success) {
+      return errorResponse('Invalid query parameters', {
         status: 400,
         requestId,
-        details: 'window must be "daily" or "weekly"',
+        details: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
       });
+    }
+    
+    const { window, from, to } = validationResult.data;
+    const fromDate = from || null;
+    const toDate = to || null;
+    
+    // Validate date range: start <= end and max 90 days
+    if (fromDate && toDate) {
+      const startTime = new Date(fromDate).getTime();
+      const endTime = new Date(toDate).getTime();
+      
+      if (startTime > endTime) {
+        return errorResponse('Invalid date range', {
+          status: 400,
+          requestId,
+          details: 'Start date must be before or equal to end date',
+        });
+      }
+      
+      const maxRangeMs = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
+      if (endTime - startTime > maxRangeMs) {
+        return errorResponse('Date range too large', {
+          status: 400,
+          requestId,
+          details: 'Date range must not exceed 90 days',
+        });
+      }
     }
     
     const pool = getPool();
@@ -190,7 +246,7 @@ export async function GET(request: NextRequest) {
         status
       FROM incidents
       ORDER BY last_seen_at DESC, id ASC
-      LIMIT 20
+      LIMIT 50
     `;
     
     const incidentsResult = await pool.query(incidentsQuery);
