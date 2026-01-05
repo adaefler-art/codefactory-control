@@ -122,6 +122,7 @@ describe('POST /api/ops/issues/sync', () => {
     expect(body).toEqual(
       expect.objectContaining({
         ok: true,
+        routeVersion: 'mirror-v1',
         total: 2,
         upserted: 2,
         syncedAt: expect.any(String),
@@ -269,6 +270,7 @@ describe('POST /api/ops/issues/sync', () => {
 
     expect(response1.status).toBe(200);
     expect(body1.ok).toBe(true);
+    expect(body1.routeVersion).toBe('mirror-v1');
     expect(body1.upserted).toBe(1);
 
     // Second sync (idempotent)
@@ -287,6 +289,7 @@ describe('POST /api/ops/issues/sync', () => {
 
     expect(response2.status).toBe(200);
     expect(body2.ok).toBe(true);
+    expect(body2.routeVersion).toBe('mirror-v1');
     expect(body2.upserted).toBe(1);
 
     // Verify both syncs created separate run records
