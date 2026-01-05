@@ -44,6 +44,10 @@ export function mapGithubMirrorStatusToEffective(
       return 'DONE';
     case 'BLOCKED':
       return 'HOLD';
+    case 'OPEN':
+    case 'CLOSED':
+    case 'ERROR':
+      return null;
     case 'UNKNOWN':
       return null;
     default:
@@ -79,10 +83,13 @@ export function computeEffectiveStatus(state: IssueStateModel): LocalStatus {
     return localStatus;
   }
 
-  // Rule 2: If GitHub has known status, map and use it
-  // Rationale: When not executing, GitHub is source of truth for external coordination
+  // Rule 2: If GitHub has known status, attempt to map and use it.
+  // Some mirror values (e.g., OPEN/CLOSED/ERROR) are informational and do not map to a LocalStatus.
   if (githubMirrorStatus !== 'UNKNOWN') {
-    return mapGithubMirrorStatusToEffective(githubMirrorStatus)!;
+    const mapped = mapGithubMirrorStatusToEffective(githubMirrorStatus);
+    if (mapped !== null) {
+      return mapped;
+    }
   }
 
   // Rule 3: Fall back to local AFU9 status
