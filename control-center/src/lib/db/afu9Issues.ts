@@ -27,6 +27,7 @@ export interface OperationResult<T = Afu9IssueRow> {
   success: boolean;
   data?: T;
   error?: string;
+  rowCount?: number;
 }
 
 /**
@@ -521,6 +522,7 @@ export async function updateAfu9Issue(
     if (result.rows.length === 0) {
       return {
         success: false,
+        rowCount: result.rowCount ?? 0,
         error: `Issue not found: ${id}`,
       };
     }
@@ -528,6 +530,7 @@ export async function updateAfu9Issue(
     return {
       success: true,
       data: result.rows[0],
+      rowCount: result.rowCount ?? result.rows.length,
     };
   } catch (error) {
     console.error('[afu9Issues] Update failed:', {
