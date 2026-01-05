@@ -102,7 +102,6 @@ describe('POST /api/ops/issues/sync', () => {
     expect(snapshot.state).toBe('closed');
     expect(snapshot.labels).toEqual([]);
     expect(snapshot.updatedAt).toBe('2026-01-04T00:00:00.000Z');
-    expect(snapshot.closedAt).toBe('2026-01-04T00:00:10.000Z');
     expect(updates.github_status_updated_at).toBe('2026-01-04T00:00:00.000Z');
     expect(updates.status_source).toBe('github_state');
     expect(updates.github_sync_error).toBeNull();
@@ -282,13 +281,70 @@ describe('POST /api/ops/issues/sync', () => {
 
     const [, , updates] = mockUpdateAfu9Issue.mock.calls[0];
     expect(typeof updates.github_status_raw).toBe('string');
-    expect(updates.github_status_raw.length).toBeLessThanOrEqual(256);
+    expect(updates.github_status_raw.length).toBeLessThanOrEqual(100);
 
     const parsed = JSON.parse(updates.github_status_raw);
     const sorted = labels.map((l) => l.name).sort((a, b) => a.localeCompare(b));
     const isSorted = (arr: string[]) => arr.every((v, i) => i === 0 || arr[i - 1].localeCompare(v) <= 0);
     expect(isSorted(parsed.labels)).toBe(true);
     expect(sorted.slice(0, parsed.labels.length)).toEqual(parsed.labels);
+  });
+
+  it('persists github_sync_error and does not update github_issue_last_sync_at when persistence fails', async () => {
+    mockListAfu9Issues.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: '66666666-6666-6666-6666-666666666666',
+          github_issue_number: 366,
+          github_mirror_status: 'UNKNOWN',
+          github_issue_last_sync_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    } as never);
+
+    mockGetIssue.mockResolvedValue({
+      state: 'open',
+      updated_at: '2026-01-05T00:00:00.000Z',
+      labels: [],
+    } as never);
+
+    // First persist attempt fails (e.g. constraint/DB error). Second attempt (error-only) succeeds.
+    mockUpdateAfu9Issue
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error('value too long for type character varying(100)'), {
+          code: '22001',
+          table: 'afu9_issues',
+          column: 'github_status_raw',
+        });
+      })
+      .mockResolvedValueOnce({ success: true, data: {}, rowCount: 1 } as never);
+
+    const request = new NextRequest('http://localhost:3000/api/ops/issues/sync', {
+      method: 'POST',
+      headers: {
+        'x-afu9-sub': 'tester',
+      },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    expect(data.statusSyncAttempted).toBe(1);
+    expect(data.statusFetchOk).toBe(1);
+    expect(data.statusPersistAttempted).toBe(1);
+    expect(data.statusPersistOk).toBe(0);
+    expect(data.statusPersistFailed).toBe(1);
+
+    expect(mockUpdateAfu9Issue).toHaveBeenCalledTimes(2);
+    const firstUpdates = mockUpdateAfu9Issue.mock.calls[0][2] as any;
+    expect(firstUpdates.github_mirror_status).toBe('OPEN');
+    expect(firstUpdates.github_status_raw).toBeTruthy();
+
+    const secondUpdates = mockUpdateAfu9Issue.mock.calls[1][2] as any;
+    expect(secondUpdates.github_sync_error).toBeTruthy();
+    expect(secondUpdates.github_issue_last_sync_at).toBeUndefined();
   });
 
   it('processes linked AFU9 issues in stable order (github_issue_number asc, then id asc)', async () => {

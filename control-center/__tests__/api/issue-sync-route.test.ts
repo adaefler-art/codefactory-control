@@ -566,7 +566,7 @@ describe('POST /api/ops/issues/sync', () => {
         labels: [{ name: 'status: implementing' }],
         updated_at: '2025-01-04T12:00:00Z',
       });
-      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+      updateAfu9Issue.mockResolvedValue({ success: true, rowCount: 1, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
         method: 'POST',
@@ -604,7 +604,7 @@ describe('POST /api/ops/issues/sync', () => {
       expect(snapshot.labels).toContain('status: implementing');
     });
 
-    test('syncs GitHub CLOSED state to github_mirror_status and includes closedAt when available', async () => {
+    test('syncs GitHub CLOSED state to github_mirror_status and stores snapshot labels', async () => {
       const { createIssueSyncRun, updateIssueSyncRun, upsertIssueSnapshot } =
         require('../../src/lib/db/issueSync');
       const { searchIssues, getIssue } = require('../../src/lib/github');
@@ -643,7 +643,7 @@ describe('POST /api/ops/issues/sync', () => {
         updated_at: '2025-01-04T12:00:00Z',
         closed_at: '2025-01-04T12:30:00Z',
       });
-      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+      updateAfu9Issue.mockResolvedValue({ success: true, rowCount: 1, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
         method: 'POST',
@@ -678,7 +678,7 @@ describe('POST /api/ops/issues/sync', () => {
       const callArgs = updateAfu9Issue.mock.calls[0][2];
       const snapshot = JSON.parse(callArgs.github_status_raw);
       expect(snapshot.state).toBe('closed');
-      expect(snapshot.closedAt).toBeTruthy();
+      expect(snapshot.labels).toContain('status: done');
     });
 
     test('closed GitHub issue maps to CLOSED regardless of labels', async () => {
@@ -719,7 +719,7 @@ describe('POST /api/ops/issues/sync', () => {
         labels: [{ name: 'bug' }],
         updated_at: '2025-01-04T12:00:00Z',
       });
-      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+      updateAfu9Issue.mockResolvedValue({ success: true, rowCount: 1, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
         method: 'POST',
@@ -796,7 +796,7 @@ describe('POST /api/ops/issues/sync', () => {
       updateIssueSyncRun.mockResolvedValue({ success: true });
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
       getIssue.mockResolvedValue(mockRestIssue); // Fresh REST fetch
-      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+      updateAfu9Issue.mockResolvedValue({ success: true, rowCount: 1, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
         method: 'POST',
@@ -875,7 +875,7 @@ describe('POST /api/ops/issues/sync', () => {
       updateIssueSyncRun.mockResolvedValue({ success: true });
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockAfu9Issue] });
       getIssue.mockRejectedValue(new Error('GitHub API-Limit erreicht')); // Simulate API error
-      updateAfu9Issue.mockResolvedValue({ success: true, data: mockAfu9Issue });
+      updateAfu9Issue.mockResolvedValue({ success: true, rowCount: 1, data: mockAfu9Issue });
 
       const request = new NextRequest('http://localhost/api/ops/issues/sync', {
         method: 'POST',
@@ -908,12 +908,12 @@ describe('POST /api/ops/issues/sync', () => {
         expect.objectContaining({
           github_mirror_status: 'ERROR',
           github_status_raw: null,
-          github_issue_last_sync_at: expect.any(String),
           github_sync_error: expect.any(String),
         })
       );
 
       const callArgs = updateAfu9Issue.mock.calls[0][2];
+      expect(callArgs.github_issue_last_sync_at).toBeUndefined();
       const err = JSON.parse(callArgs.github_sync_error);
       expect(typeof err.code).toBe('string');
       expect(String(err.message)).toContain('GitHub API-Limit');
