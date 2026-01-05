@@ -295,6 +295,34 @@ export class RemediationPlaybookExecutor {
     
     // Step 4: Lawbook gating - action types allowed? (E79.4 / I794: use guardrail gates)
     for (const step of playbook.steps) {
+      // Special case: ROLLBACK_DEPLOY is only allowed for redeploy-lkg playbook
+      // This is a playbook-specific constraint, not a general lawbook policy
+      if (step.actionType === 'ROLLBACK_DEPLOY' && playbook.id !== 'redeploy-lkg') {
+        const inputsHash = computeInputsHash(request.inputs || {});
+        const runKey = computeRunKey(incident.incident_key, playbook.id, inputsHash);
+        
+        const run = await remediationDAO.upsertRunByKey({
+          run_key: runKey,
+          incident_id: incident.id,
+          playbook_id: playbook.id,
+          playbook_version: playbook.version,
+          status: 'SKIPPED',
+          lawbook_version: lawbookVersion,
+          inputs_hash: inputsHash,
+          result_json: {
+            skipReason: 'LAWBOOK_DENIED',
+            message: `Action type 'ROLLBACK_DEPLOY' is only allowed for redeploy-lkg playbook`,
+          },
+        });
+        
+        return {
+          runId: run.id,
+          status: 'SKIPPED',
+          skipReason: 'LAWBOOK_DENIED',
+          message: `Action type 'ROLLBACK_DEPLOY' is only allowed for redeploy-lkg playbook`,
+        };
+      }
+      
       const actionVerdict = gateActionAllowed({ actionType: step.actionType }, lawbook);
       
       if (actionVerdict.verdict !== 'ALLOW') {
