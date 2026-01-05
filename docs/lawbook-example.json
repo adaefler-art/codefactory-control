@@ -1,0 +1,58 @@
+{
+  "version": "0.7.0",
+  "lawbookId": "AFU9-LAWBOOK",
+  "lawbookVersion": "2025-12-30.1",
+  "createdAt": "2025-12-30T10:00:00.000Z",
+  "createdBy": "system",
+  "notes": "Initial AFU-9 lawbook for enforcement and remediation gates",
+  "github": {
+    "allowedRepos": [
+      "adaefler-art/codefactory-control",
+      "adaefler-art/afu9-examples"
+    ]
+  },
+  "determinism": {
+    "requireDeterminismGate": true,
+    "requirePostDeployVerification": true
+  },
+  "remediation": {
+    "enabled": true,
+    "allowedPlaybooks": [
+      "SAFE_RETRY_RUNNER",
+      "RERUN_VERIFICATION",
+      "ECS_FORCE_NEW_DEPLOY"
+    ],
+    "allowedActions": [
+      "runner_dispatch",
+      "verification_run",
+      "ecs_force_new_deploy",
+      "github_workflow_dispatch"
+    ],
+    "maxRunsPerIncident": 3,
+    "cooldownMinutes": 15
+  },
+  "evidence": {
+    "requiredKindsByCategory": {
+      "deployment": [
+        "deploy_status",
+        "verification_result"
+      ],
+      "security": [
+        "code_scan",
+        "secret_scan"
+      ]
+    },
+    "maxEvidenceItems": 100
+  },
+  "enforcement": {
+    "requiredFields": [
+      "lawbookVersion",
+      "verdictId",
+      "timestamp"
+    ],
+    "strictMode": true
+  },
+  "ui": {
+    "displayName": "AFU-9 Production Lawbook v1"
+  }
+}
