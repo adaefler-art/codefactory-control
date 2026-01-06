@@ -17,13 +17,12 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const requestId = getRequestId(request);
   
   try {
     const pool = getPool();
-    const sessionId = params.id;
     
     // Get authenticated user ID from middleware
     const userId = request.headers.get('x-afu9-sub');
@@ -34,6 +33,9 @@ export async function GET(
         details: 'User authentication required',
       });
     }
+    
+    // Await params (Next.js 13.4+)
+    const { id: sessionId } = await context.params;
     
     if (!sessionId) {
       return errorResponse('Session ID required', {

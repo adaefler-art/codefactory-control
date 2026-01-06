@@ -196,7 +196,7 @@ describe('GET /api/intent/sessions/[id]', () => {
       },
     });
 
-    const response = await getSession(request, { params: { id: 'session-1' } });
+    const response = await getSession(request, { params: Promise.resolve({ id: 'session-1' }) });
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -227,7 +227,7 @@ describe('GET /api/intent/sessions/[id]', () => {
       },
     });
 
-    const response = await getSession(request, { params: { id: 'nonexistent' } });
+    const response = await getSession(request, { params: Promise.resolve({ id: 'nonexistent' }) });
     const body = await response.json();
 
     expect(response.status).toBe(404);
@@ -250,7 +250,7 @@ describe('GET /api/intent/sessions/[id]', () => {
       },
     });
 
-    const response = await getSession(request, { params: { id: 'other-user-session' } });
+    const response = await getSession(request, { params: Promise.resolve({ id: 'other-user-session' }) });
     const body = await response.json();
 
     expect(response.status).toBe(404);
@@ -342,7 +342,7 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
       body: JSON.stringify({ content: 'Hello' }),
     });
 
-    const response = await appendMessage(request, { params: { id: '   ' } });
+    const response = await appendMessage(request, { params: Promise.resolve({ id: '   ' }) });
     const body = await response.json();
 
     expect(response.status).toBe(400);
@@ -430,7 +430,7 @@ describe('POST /api/intent/sessions/[id]/messages', () => {
       body: JSON.stringify({ content: 'Hacking attempt' }),
     });
 
-    const response = await appendMessage(request, { params: { id: 'other-session' } });
+    const response = await appendMessage(request, { params: Promise.resolve({ id: 'other-session' }) });
     const body = await response.json();
 
     expect(response.status).toBe(404);

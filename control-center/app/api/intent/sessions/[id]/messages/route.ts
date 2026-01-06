@@ -26,7 +26,7 @@ import { ZodError } from 'zod';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const requestId = getRequestId(request);
   
@@ -41,7 +41,6 @@ export async function POST(
     }
 
     const pool = getPool();
-    const sessionId = typeof params?.id === 'string' ? params.id.trim() : '';
     
     // Get authenticated user ID from middleware
     const userId = request.headers.get('x-afu9-sub');
@@ -53,20 +52,24 @@ export async function POST(
       });
     }
     
+    // Await params (Next.js 13.4+)
+    const { id } = await context.params;
+    const sessionId = typeof id === 'string' ? id.trim() : '';
+    
     if (!sessionId) {
       console.warn('[API /api/intent/sessions/[id]/messages] Missing or invalid session id', {
         requestId,
         userId,
-        rawParamsId: params?.id,
-        paramsIdType: typeof params?.id,
-        trimmedValue: typeof params?.id === 'string' ? `"${params.id.trim()}"` : 'N/A',
-        isEmpty: typeof params?.id === 'string' && params.id.trim() === '',
+        rawParamsId: id,
+        paramsIdType: typeof id,
+        trimmedValue: typeof id === 'string' ? `"${id.trim()}"` : 'N/A',
+        isEmpty: typeof id === 'string' && id.trim() === '',
       });
 
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
-        details: `Invalid session ID received. Type: ${typeof params?.id}, Value: "${params?.id && typeof params?.id === 'string' && params.id.length > 20 ? params.id.substring(0, 20) + '...' : params?.id || 'null/undefined'}"`,
+        details: `Invalid session ID received. Type: ${typeof id}, Value: "${id && typeof id === 'string' && id.length > 20 ? id.substring(0, 20) + '...' : id || 'null/undefined'}"`,
       });
     }
     
