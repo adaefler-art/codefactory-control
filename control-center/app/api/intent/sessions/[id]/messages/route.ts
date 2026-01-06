@@ -54,18 +54,19 @@ export async function POST(
     }
     
     if (!sessionId) {
-      console.warn('[API /api/intent/sessions/[id]/messages] Missing session id', {
+      console.warn('[API /api/intent/sessions/[id]/messages] Missing or invalid session id', {
         requestId,
         userId,
-        rawSessionId: params?.id,
-        type: typeof params?.id,
-        trimmed: typeof params?.id === 'string' ? params.id.trim() : 'N/A',
+        rawParamsId: params?.id,
+        paramsIdType: typeof params?.id,
+        trimmedValue: typeof params?.id === 'string' ? `"${params.id.trim()}"` : 'N/A',
+        isEmpty: typeof params?.id === 'string' && params.id.trim() === '',
       });
 
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
-        details: `Received session ID: "${params?.id}" (type: ${typeof params?.id})`,
+        details: `Invalid session ID received. Type: ${typeof params?.id}, Value: "${params?.id || 'null/undefined'}"`,
       });
     }
     

@@ -173,17 +173,24 @@ export default function IntentPage() {
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     
-    console.log('[INTENT sendMessage] State:', {
-      currentSessionId,
-      inputValue: inputValue.substring(0, 50),
-      isValid: isValidSessionId(currentSessionId),
-    });
-    
     if (!inputValue.trim()) return;
 
-    // Auto-create session if none selected
-    if (!isValidSessionId(currentSessionId)) {
-      const messageContent = inputValue.trim();
+    const messageContent = inputValue.trim();
+    
+    // STRICT validation: Check if we have a valid session
+    const hasValidSession = isValidSessionId(currentSessionId);
+    
+    console.log('[INTENT sendMessage]', {
+      hasValidSession,
+      currentSessionId,
+      sessionIdType: typeof currentSessionId,
+      sessionIdValue: currentSessionId?.substring(0, 20) || 'null/undefined',
+    });
+
+    // Auto-create session if NO valid session
+    if (!hasValidSession) {
+      console.log('[INTENT] Auto-creating session (no valid session found)');
+      
       setInputValue("");
       setIsSending(true);
       setError(null);
@@ -197,10 +204,15 @@ export default function IntentPage() {
           body: JSON.stringify({}),
         });
         const newSession = await safeFetch(createResponse);
+        
+        console.log('[INTENT] Created new session:', newSession.id);
+        
         setSessions((prev) => [newSession, ...prev]);
         setCurrentSessionId(newSession.id);
 
         // Now send the message to the new session
+        console.log('[INTENT] Sending message to new session:', newSession.id.substring(0, 20));
+        
         const sendResponse = await fetch(
           API_ROUTES.intent.messages.create(newSession.id),
           {
@@ -218,7 +230,7 @@ export default function IntentPage() {
         // Refresh sessions list to update the title
         await fetchSessions();
       } catch (err) {
-        console.error("Failed to send message:", err);
+        console.error("Failed to auto-create session and send message:", err);
         setError(formatErrorMessage(err));
         setInputValue(messageContent); // Restore input on error
       } finally {
@@ -227,13 +239,14 @@ export default function IntentPage() {
       return;
     }
 
-    const sessionId = currentSessionId;
-    const messageContent = inputValue.trim();
+    // At this point, we KNOW we have a valid session ID
+    const sessionId = currentSessionId; // TypeScript now knows this is a valid string
+    
+    console.log('[INTENT] Sending message to existing session:', sessionId.substring(0, 20));
+    
     setInputValue("");
     setIsSending(true);
     setError(null);
-    
-    console.log('[INTENT sendMessage] Sending to session:', sessionId.substring(0, 20) + '...');
 
     try {
       const response = await fetch(
@@ -247,16 +260,17 @@ export default function IntentPage() {
       );
       const data = await safeFetch(response);
       
+      console.log('[INTENT] Message sent successfully, received response');
+      
       // Append both user and assistant messages
       setMessages((prev) => [...prev, data.userMessage, data.assistantMessage]);
 
       // Refresh sessions list to update the title
       await fetchSessions();
     } catch (err) {
-      console.error('[INTENT sendMessage] Failed to send message:', {
+      console.error("[INTENT] Failed to send message:", {
         error: err,
-        sessionIdPrefix: sessionId.substring(0, 20),
-        endpoint: API_ROUTES.intent.messages.create(sessionId),
+        sessionId: sessionId.substring(0, 20),
       });
       setError(formatErrorMessage(err));
       setInputValue(messageContent); // Restore input on error
@@ -397,7 +411,10 @@ export default function IntentPage() {
           {sessions.map((session) => (
             <button
               key={session.id}
-              onClick={() => setCurrentSessionId(session.id)}
+              onClick={() => {
+                console.log('[INTENT] Selecting session:', session.id.substring(0, 20));
+                setCurrentSessionId(session.id);
+              }}
               className={`w-full text-left px-4 py-3 border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
                 currentSessionId === session.id ? "bg-purple-900/30 border-l-4 border-l-purple-600" : ""
               }`}
