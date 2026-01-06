@@ -280,7 +280,7 @@ Q4 2024: 0
 
 ## References
 
-- [IAM Policy Audit Procedure](IAM_POLICY_AUDIT_PROCEDURE.md)
+- [IAM Policy Audit Procedure](../audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md)
 - [IAM Roles Justification](IAM-ROLES-JUSTIFICATION.md)
 - [Security IAM Guide](SECURITY-IAM.md)
 - [AWS IAM Best Practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
