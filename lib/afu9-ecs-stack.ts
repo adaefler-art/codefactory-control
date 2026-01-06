@@ -573,23 +573,12 @@ export class Afu9EcsStack extends cdk.Stack {
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
 
+    // E80.1: Grant execution role access to admin-subs secrets (stage/prod)
+    // Uses grantRead() which creates properly scoped IAM policy automatically
     for (const secret of Object.values(adminSubsSecretsByEnv)) {
       secret.grantRead(taskExecutionRole);
     }
-    const adminSubsSecretArns = Object.keys(adminSubsSecretsByEnv).map(
-      (envName) =>
-        `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:afu9/${envName}/admin-subs-*`
-    );
-    if (adminSubsSecretArns.length > 0) {
-      taskExecutionRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: 'AdminSubsRead',
-          effect: iam.Effect.ALLOW,
-          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
-          resources: adminSubsSecretArns,
-        })
-      );
-    }
+
     if (smokeKeySecret) {
       smokeKeySecret.grantRead(taskExecutionRole);
 
