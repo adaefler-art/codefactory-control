@@ -601,7 +601,7 @@ export async function POST(request: NextRequest) {
               githubStatusRaw !== null &&
               (githubMirrorStatus === 'OPEN' || githubMirrorStatus === 'CLOSED');
 
-            const persistPayload: Record<string, unknown> = {
+            const persistPayload: Partial<Afu9IssueInput> = {
               // Update by AFU9 UUID id and persist snake_case fields
               github_repo: resolvedGithubRepo,
               github_mirror_status: githubMirrorStatus,
@@ -621,7 +621,7 @@ export async function POST(request: NextRequest) {
               | undefined;
 
             try {
-              updateResult = await updateAfu9Issue(pool, afu9Id, persistPayload as any);
+              updateResult = await updateAfu9Issue(pool, afu9Id, persistPayload);
             } catch (persistError) {
               updateResult = {
                 success: false,
