@@ -53,23 +53,23 @@ export async function POST(
     }
     
     // Await params (Next.js 13.4+)
-    const { id } = await context.params;
-    const sessionId = typeof id === 'string' ? id.trim() : '';
+    const { id: rawId } = await context.params;
+    const sessionId = typeof rawId === 'string' ? rawId.trim() : '';
     
     if (!sessionId) {
       console.warn('[API /api/intent/sessions/[id]/messages] Missing or invalid session id', {
         requestId,
         userId,
-        rawParamsId: id,
-        paramsIdType: typeof id,
-        trimmedValue: typeof id === 'string' ? `"${id.trim()}"` : 'N/A',
-        isEmpty: typeof id === 'string' && id.trim() === '',
+        rawParamsId: rawId,
+        paramsIdType: typeof rawId,
+        trimmedValue: typeof rawId === 'string' ? `"${rawId.trim()}"` : 'N/A',
+        isEmpty: typeof rawId === 'string' && rawId.trim() === '',
       });
 
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
-        details: `Invalid session ID received. Type: ${typeof id}, Value: "${id && typeof id === 'string' && id.length > 20 ? id.substring(0, 20) + '...' : id || 'null/undefined'}"`,
+        details: `Invalid session ID received. Type: ${typeof rawId}, Value: "${rawId && typeof rawId === 'string' && rawId.length > 20 ? rawId.substring(0, 20) + '...' : rawId || 'null/undefined'}"`,
       });
     }
     
