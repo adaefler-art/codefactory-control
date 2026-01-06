@@ -1,0 +1,58 @@
+Bundling asset CodefactoryControlStack/Afu9IssueInterpreterFn/Code/Stage...
+
+  ...371646ab9fa74a4a199d73c4d2f2dadb06b811c0a4babca1a45f4f7\index.js  277.8kb
+
+Done in 30ms
+Bundling asset CodefactoryControlStack/Afu9PatchGeneratorFn/Code/Stage...
+
+  ...0e729baea59fce21c0b1e92154c127481490a014457b6dcd35445ed2c\index.js  4.0kb
+
+Done in 5ms
+Bundling asset CodefactoryControlStack/Afu9PrCreatorFn/Code/Stage...
+
+  ...31f1e80dd1798e71e5238599ff81ecccf3a41fff17481cdd41e7ade\index.js  280.7kb
+
+Done in 25ms
+Bundling asset CodefactoryControlStack/Afu9OrchestratorFn/Code/Stage...
+
+  ...a044399414cccfa2bc522b69ac208107373fddd59cc14beb589129022\index.js  5.0kb
+
+Done in 16ms
+[WARNING] aws-cdk-lib.aws_stepfunctions.StateMachineProps#definition is deprecated.
+  use definitionBody: DefinitionBody.fromChainable()
+  This API will be removed in the next major release.
+[WARNING] aws-cdk-lib.aws_stepfunctions.StateMachineProps#definition is deprecated.
+  use definitionBody: DefinitionBody.fromChainable()
+  This API will be removed in the next major release.
+AFU-9 ECS Stack Configuration:
+  Environment: prod
+  Database Enabled: true
+  Image Tag: prod-latest
+  Desired Count: 1
+  CPU: 2048, Memory: 4096
+  Create Staging Service: false
+[Warning at /Afu9EcsStack] DATABASE_ENABLED=true but no dbSecretArn/dbSecretName provided; defaulting dbSecretName to "afu9/database".
+[Info at /Afu9RoutingSingleEnvStack] DNS record creation skipped (afu9-manage-dns=false).
+Successfully synthesized to C:\dev\codefactory\cdk.out
+Supply a stack id (CodefactoryControlStack, Afu9DnsStack, Afu9NetworkStack, Afu9DatabaseStack, Afu9EcsStack, Afu9RoutingSingleEnvStack, Afu9AlarmsStack, Afu9IamStack, Afu9AuthStack, Afu9DeployMemoryStack) to display its template.
+
+NOTICES         (What's this? https://github.com/aws/aws-cdk/wiki/CLI-Notices)
+
+34892	CDK CLI will collect telemetry data on command usage starting at version 2.1100.0 (unless opted out)
+
+	Overview: We do not collect customer content and we anonymize the
+	          telemetry we do collect. See the attached issue for more
+	          information on what data is collected, why, and how to
+	          opt-out. Telemetry will NOT be collected for any CDK CLI
+	          version prior to version 2.1100.0 - regardless of
+	          opt-in/out. You can also preview the telemetry we will start
+	          collecting by logging it to a local file, by adding
+	          `--unstable=telemetry --telemetry-file=my/local/file` to any
+	          `cdk` command.
+
+	Affected versions: cli: >=2.0.0 <2.1100.0
+
+	More information at: https://github.com/aws/aws-cdk/issues/34892
+
+
+If you donÔÇÖt want to see a notice anymore, use "cdk acknowledge <id>". For example, "cdk acknowledge 34892".
