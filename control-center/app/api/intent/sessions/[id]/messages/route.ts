@@ -66,7 +66,7 @@ export async function POST(
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
-        details: `Invalid session ID received. Type: ${typeof params?.id}, Value: "${params?.id || 'null/undefined'}"`,
+        details: `Invalid session ID received. Type: ${typeof params?.id}, Value: "${params?.id && typeof params?.id === 'string' && params.id.length > 20 ? params.id.substring(0, 20) + '...' : params?.id || 'null/undefined'}"`,
       });
     }
     

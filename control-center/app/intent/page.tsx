@@ -182,9 +182,9 @@ export default function IntentPage() {
     
     console.log('[INTENT sendMessage]', {
       hasValidSession,
-      currentSessionId,
+      currentSessionId: currentSessionId && typeof currentSessionId === 'string' ? currentSessionId.substring(0, 20) : 'null/undefined',
       sessionIdType: typeof currentSessionId,
-      sessionIdValue: currentSessionId?.substring(0, 20) || 'null/undefined',
+      sessionIdValue: currentSessionId && typeof currentSessionId === 'string' ? currentSessionId.substring(0, 20) : 'null/undefined',
     });
 
     // Auto-create session if NO valid session
@@ -205,7 +205,7 @@ export default function IntentPage() {
         });
         const newSession = await safeFetch(createResponse);
         
-        console.log('[INTENT] Created new session:', newSession.id);
+        console.log('[INTENT] Created new session:', newSession.id.substring(0, 20));
         
         setSessions((prev) => [newSession, ...prev]);
         setCurrentSessionId(newSession.id);
