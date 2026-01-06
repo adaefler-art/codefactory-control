@@ -72,7 +72,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(401);
       const body = await res.json();
@@ -90,7 +90,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(401);
     });
@@ -132,7 +132,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -166,7 +166,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         body: 'invalid json{',
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(400);
       const body = await res.json();
@@ -221,7 +221,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(422); // Unprocessable Entity for validation errors
       const body = await res.json();
@@ -254,7 +254,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(403);
       const body = await res.json();
@@ -287,7 +287,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(502); // Bad Gateway for upstream errors
       const body = await res.json();
@@ -330,7 +330,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -375,7 +375,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -425,7 +425,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -474,7 +474,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       expect(res.status).toBe(200);
       
@@ -536,7 +536,7 @@ describe('POST /api/intent/sessions/[id]/github-issue', () => {
         headers: { 'x-afu9-sub': 'user-123' },
       });
 
-      const res = await POST(req, { params: { id: 'test-session' } });
+      const res = await POST(req, { params: Promise.resolve({ id: 'test-session' }) });
       
       // Request should still succeed
       expect(res.status).toBe(200);

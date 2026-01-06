@@ -28,13 +28,12 @@ import type { ChangeRequest } from '@/lib/schemas/changeRequest';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const requestId = getRequestId(request);
   
   try {
     const pool = getPool();
-    const sessionId = params.id;
     
     // Get authenticated user ID from middleware
     // Middleware validates JWT and sets x-afu9-sub header with verified user sub
@@ -47,6 +46,9 @@ export async function POST(
         details: 'Authentication required - no verified user context',
       });
     }
+    
+    // Await params (Next.js 13.4+)
+    const { id: sessionId } = await context.params;
     
     if (!sessionId) {
       return errorResponse('Session ID required', {

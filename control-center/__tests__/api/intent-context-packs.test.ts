@@ -160,7 +160,7 @@ describe('POST /api/intent/sessions/[id]/context-pack', () => {
       }
     );
 
-    const response = await generateContextPack(request, { params: { id: 'nonexistent' } });
+    const response = await generateContextPack(request, { params: Promise.resolve({ id: 'nonexistent' }) });
     const body = await response.json();
 
     expect(response.status).toBe(404);
@@ -286,7 +286,7 @@ describe('GET /api/intent/context-packs/[id]', () => {
       }
     );
 
-    const response = await downloadContextPack(request, { params: { id: 'nonexistent' } });
+    const response = await downloadContextPack(request, { params: Promise.resolve({ id: 'nonexistent' }) });
     const body = await response.json();
 
     expect(response.status).toBe(404);
@@ -706,7 +706,7 @@ describe('E73.4: Versioning and Retrieval', () => {
         }
       );
 
-      const response = await listContextPacks(request, { params: { id: 'nonexistent' } });
+      const response = await listContextPacks(request, { params: Promise.resolve({ id: 'nonexistent' }) });
       const body = await response.json();
 
       expect(response.status).toBe(404);
