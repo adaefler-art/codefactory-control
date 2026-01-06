@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
+set -u
+
+# Best-effort: enable pipefail when supported.
+set -o pipefail 2>/dev/null || true
 
 # Enhanced migration runner with schema_migrations ledger tracking
 # E80.1: Deterministic migration tracking with SHA-256 hash verification

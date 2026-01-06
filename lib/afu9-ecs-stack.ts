@@ -428,6 +428,25 @@ export class Afu9EcsStack extends cdk.Stack {
       ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
       : undefined;
 
+    // E80.1: Admin subscription IDs for ops endpoints (migration parity, etc.)
+    // Stage/prod are supported; legacy deployments can omit this secret.
+    const adminSubsSecretsByEnv: Record<string, secretsmanager.ISecret> = {};
+    if (environment !== ENVIRONMENT.LEGACY) {
+      adminSubsSecretsByEnv[environment] = secretsmanager.Secret.fromSecretNameV2(
+        this,
+        'AdminSubsSecret',
+        `afu9/${environment}/admin-subs`
+      );
+    }
+    // Shared-cluster deployments may create a separate staging service even when the primary env is prod.
+    if (props.stageTargetGroup && createStagingService && !adminSubsSecretsByEnv['stage']) {
+      adminSubsSecretsByEnv['stage'] = secretsmanager.Secret.fromSecretNameV2(
+        this,
+        'AdminSubsSecretStage',
+        'afu9/stage/admin-subs'
+      );
+    }
+
     // ========================================
     // Secret Key Validation (Guardrail I-ECS-DB-02)
     // ========================================
@@ -473,6 +492,10 @@ export class Afu9EcsStack extends cdk.Stack {
         [],
         'Stage smoke key'
       );
+    }
+
+    for (const [envName, secret] of Object.entries(adminSubsSecretsByEnv)) {
+      validateSecretKeys(this, secret, ['admin_subs'], `Admin subs (${envName})`);
     }
 
     // ========================================
@@ -549,6 +572,24 @@ export class Afu9EcsStack extends cdk.Stack {
     }
     githubSecret.grantRead(taskExecutionRole);
     llmSecret.grantRead(taskExecutionRole);
+
+    for (const secret of Object.values(adminSubsSecretsByEnv)) {
+      secret.grantRead(taskExecutionRole);
+    }
+    const adminSubsSecretArns = Object.keys(adminSubsSecretsByEnv).map(
+      (envName) =>
+        `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:afu9/${envName}/admin-subs-*`
+    );
+    if (adminSubsSecretArns.length > 0) {
+      taskExecutionRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'AdminSubsRead',
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+          resources: adminSubsSecretArns,
+        })
+      );
+    }
     if (smokeKeySecret) {
       smokeKeySecret.grantRead(taskExecutionRole);
 
@@ -802,6 +843,14 @@ export class Afu9EcsStack extends cdk.Stack {
           ...(shouldInjectSmokeKey
             ? {
                 AFU9_SMOKE_KEY: ecs.Secret.fromSecretsManager(smokeKeySecret),
+              }
+            : {}),
+          ...(adminSubsSecretsByEnv[environmentLabel]
+            ? {
+                AFU9_ADMIN_SUBS: ecs.Secret.fromSecretsManager(
+                  adminSubsSecretsByEnv[environmentLabel],
+                  'admin_subs'
+                ),
               }
             : {}),
           GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),

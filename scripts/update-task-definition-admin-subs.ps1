@@ -95,22 +95,42 @@ Write-Host ""
 Write-Header "Step 1: Checking Infrastructure Code"
 
 $infraPath = Join-Path $PSScriptRoot ".." "infra" "lib" "control-center-service.ts"
+$altPath = Join-Path $PSScriptRoot ".." "lib" "afu9-ecs-stack.ts"
+
+function Test-AdminSubsPresent {
+    param([string]$Path)
+    try {
+        $content = Get-Content -Path $Path -Raw
+        return ($content -match "AFU9_ADMIN_SUBS")
+    } catch {
+        return $false
+    }
+}
 
 if (Test-Path $infraPath) {
     Write-Success "Found infrastructure code: $infraPath"
     
     # Check if AFU9_ADMIN_SUBS is already configured
-    $content = Get-Content -Path $infraPath -Raw
-    
-    if ($content -match "AFU9_ADMIN_SUBS") {
+    if (Test-AdminSubsPresent -Path $infraPath) {
+        Write-Warning-Message "AFU9_ADMIN_SUBS already present in task definition"
+        Write-Info "Review the existing configuration to ensure it's correct"
+    } else {
+        Write-Info "AFU9_ADMIN_SUBS not yet configured in task definition"
+    }
+} elseif (Test-Path $altPath) {
+    Write-Success "Found infrastructure code: $altPath"
+
+    if (Test-AdminSubsPresent -Path $altPath) {
         Write-Warning-Message "AFU9_ADMIN_SUBS already present in task definition"
         Write-Info "Review the existing configuration to ensure it's correct"
     } else {
         Write-Info "AFU9_ADMIN_SUBS not yet configured in task definition"
     }
 } else {
-    Write-Warning-Message "Infrastructure code not found at expected location"
-    Write-Info "This repository may not contain infra code (standalone/lib pattern)"
+    Write-Warning-Message "Infrastructure code not found at expected locations"
+    Write-Info "Looked for:"
+    Write-Info "  - $infraPath"
+    Write-Info "  - $altPath"
     Write-Info "You'll need to apply this change in your infrastructure repository"
 }
 
@@ -135,7 +155,7 @@ $codeSnippet = @(
     "    secretsmanager.Secret.fromSecretNameV2(",
     "      this,",
     "      'AdminSubsSecret',",
-    "      '`afu9/`${props.environment}/admin-subs`'  // TypeScript template literal",
+    '      `afu9/${props.environment}/admin-subs`  // TypeScript template literal',
     "    ),",
     "    'admin_subs'  // JSON key within the secret",
     "  ),",
@@ -181,7 +201,7 @@ $alternativeSnippet = @(
     "      secretsmanager.Secret.fromSecretNameV2(",
     "        this,",
     "        'AdminSubsSecret',",
-    "        '`afu9/`${props.environment}/admin-subs`'  // TypeScript template literal",
+    '        `afu9/${props.environment}/admin-subs`  // TypeScript template literal',
     "      ),",
     "      'admin_subs'",
     "    ),",

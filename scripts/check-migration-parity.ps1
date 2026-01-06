@@ -428,6 +428,135 @@ try {
     
 } catch {
     Write-Error-Message "API call failed: $_"
+
+    # Local fallback: if the API isn't reachable (e.g., Control Center not running),
+    # perform parity directly by comparing repo migrations vs schema_migrations ledger.
+    if ($Environment -eq 'local' -and -not $_.Exception.Response) {
+        Write-Warning-Message "Falling back to direct DB parity check (API unavailable)"
+
+        try {
+            $env:PGPASSWORD = $dbPassword
+
+            # Load ledger rows (filename|sha256)
+            $ledgerRows = psql -h $dbHost -p $dbPort -U $dbUser -d $dbName -A -t -F "|" -c "SELECT filename, COALESCE(sha256,'') FROM schema_migrations ORDER BY filename;" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error-Message "Failed to read schema_migrations ledger via psql"
+                Write-Host $ledgerRows -ForegroundColor Red
+                exit 1
+            }
+
+            $ledgerMap = @{}
+            foreach ($line in ($ledgerRows -split "`n")) {
+                $trimmed = $line.Trim()
+                if (-not $trimmed) { continue }
+                $parts = $trimmed -split "\|", 2
+                if ($parts.Count -lt 1) { continue }
+                $fname = $parts[0].Trim()
+                $hash = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
+                if ($fname) { $ledgerMap[$fname] = $hash }
+            }
+
+            $repoMap = @{}
+            foreach ($file in $sqlFiles) {
+                $repoMap[$file.Name] = (Get-FileHash -Algorithm SHA256 -Path $file.FullName).Hash.ToLowerInvariant()
+            }
+
+            $missingInDb = @()
+            foreach ($k in $repoMap.Keys) {
+                if (-not $ledgerMap.ContainsKey($k)) { $missingInDb += $k }
+            }
+
+            $extraInDb = @()
+            foreach ($k in $ledgerMap.Keys) {
+                if (-not $repoMap.ContainsKey($k)) { $extraInDb += $k }
+            }
+
+            $hashMismatches = @()
+            foreach ($k in $repoMap.Keys) {
+                if (-not $ledgerMap.ContainsKey($k)) { continue }
+                $dbHash = ($ledgerMap[$k] ?? "").ToLowerInvariant()
+                if (-not $dbHash) { continue }
+                if ($dbHash -ne $repoMap[$k]) {
+                    $hashMismatches += @{
+                        filename = $k
+                        repoHash = $repoMap[$k]
+                        dbHash   = $dbHash
+                    }
+                }
+            }
+
+            $status = if ($missingInDb.Count -eq 0 -and $extraInDb.Count -eq 0 -and $hashMismatches.Count -eq 0) { "PASS" } else { "FAIL" }
+            $statusColor = if ($status -eq "PASS") { "Green" } else { "Red" }
+
+            $latestRepo = if ($sqlFiles.Count -gt 0) { $sqlFiles[-1].Name } else { "(none)" }
+            $latestDb = if ($ledgerMap.Keys.Count -gt 0) { ($ledgerMap.Keys | Sort-Object | Select-Object -Last 1) } else { "(none)" }
+
+            $resultLines = @(
+                "Status: $status",
+                "",
+                "Repository Migrations: $($repoMap.Keys.Count)",
+                "Database Applied:      $($ledgerMap.Keys.Count)",
+                "Latest (Repo):         $latestRepo",
+                "Latest (DB):           $latestDb",
+                "",
+                "Discrepancies:",
+                "  Missing in DB:       $($missingInDb.Count)",
+                "  Extra in DB:         $($extraInDb.Count)",
+                "  Hash Mismatches:     $($hashMismatches.Count)"
+            )
+
+            Write-Box -Title "MIGRATION PARITY RESULT (DB FALLBACK)" -Lines $resultLines -Color $statusColor
+
+            if ($status -ne "PASS") {
+                Write-Header "Discrepancy Details"
+
+                if ($missingInDb.Count -gt 0) {
+                    Write-Host "Missing in Database (repo has, DB doesn't):" -ForegroundColor Yellow
+                    foreach ($m in ($missingInDb | Sort-Object)) { Write-Host "  - $m" -ForegroundColor Yellow }
+                    Write-Host ""
+                }
+
+                if ($extraInDb.Count -gt 0) {
+                    Write-Host "Extra in Database (DB has, repo doesn't):" -ForegroundColor DarkYellow
+                    foreach ($e in ($extraInDb | Sort-Object)) { Write-Host "  - $e" -ForegroundColor DarkYellow }
+                    Write-Host ""
+                }
+
+                if ($hashMismatches.Count -gt 0) {
+                    Write-Host "Hash Mismatches (file modified after application):" -ForegroundColor Red
+                    foreach ($mm in $hashMismatches) {
+                        Write-Host "  - $($mm.filename)" -ForegroundColor Red
+                        Write-Host "    Repo hash: $($mm.repoHash)" -ForegroundColor Gray
+                        Write-Host "    DB hash:   $($mm.dbHash)" -ForegroundColor Gray
+                    }
+                    Write-Host ""
+                }
+
+                Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Red
+                Write-Host "  PARITY CHECK FAILED" -ForegroundColor Red
+                Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Red
+                Write-Host ""
+                Write-Host "Next steps:" -ForegroundColor Yellow
+                Write-Host "  1. Start Control Center: npm --prefix control-center run dev" -ForegroundColor Yellow
+                Write-Host "  2. Re-run this script to verify API parity" -ForegroundColor Yellow
+                Write-Host ""
+                exit 1
+            }
+
+            Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
+            Write-Host "  ✅ PARITY CHECK PASSED (DB FALLBACK)" -ForegroundColor Green
+            Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "Note: Control Center API was not reachable; run it to verify API parity." -ForegroundColor Yellow
+            Write-Host ""
+            exit 0
+        } catch {
+            Write-Error-Message "Fallback parity check failed: $_"
+            exit 1
+        } finally {
+            Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        }
+    }
     
     if ($_.Exception.Response) {
         $statusCode = $_.Exception.Response.StatusCode.value__
