@@ -34,9 +34,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  AFU-9 Low-Cost Pause Mode - PAUSE PROD" -ForegroundColor Cyan
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Check if we're in the right directory
@@ -77,9 +77,9 @@ if (-not $SkipConfirmation) {
 }
 
 Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host "Step 1: Previewing changes with CDK diff" -ForegroundColor Cyan
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
 try {
@@ -107,9 +107,9 @@ if (-not $SkipConfirmation) {
 }
 
 Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host "Step 2: Deploying pause configuration" -ForegroundColor Cyan
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
 try {
@@ -132,9 +132,9 @@ try {
 }
 
 Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host "Step 3: Verifying pause state" -ForegroundColor Cyan
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
 Start-Sleep -Seconds 5
@@ -158,9 +158,9 @@ try {
 }
 
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
 Write-Host "  ✓ PROD environment paused successfully!" -ForegroundColor Green
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  • Verify PROD returns 503: curl -I https://prod.afu-9.com" -ForegroundColor White
