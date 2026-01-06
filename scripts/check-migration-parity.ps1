@@ -131,7 +131,8 @@ Write-Host ""
 if ($FixAdmin -and $Environment -eq 'local') {
     Write-Header "Step 1: Setting Admin Permissions (Local)"
     
-    $testAdminSub = "test-admin-user-local-$(Get-Date -Format 'yyyyMMddHHmmss')"
+    # Use cryptographically secure random GUID for test admin sub
+    $testAdminSub = "test-admin-user-local-$([Guid]::NewGuid().ToString())"
     $env:AFU9_ADMIN_SUBS = $testAdminSub
     
     Write-Success "Set AFU9_ADMIN_SUBS = $testAdminSub"
@@ -156,12 +157,19 @@ try {
     exit 1
 }
 
-# Check database environment variables
+# Check database environment variables and validate them
 $dbHost = $env:DATABASE_HOST ?? "localhost"
 $dbPort = $env:DATABASE_PORT ?? "5432"
 $dbName = $env:DATABASE_NAME ?? "afu9"
 $dbUser = $env:DATABASE_USER ?? "postgres"
 $dbPassword = $env:DATABASE_PASSWORD
+
+# Validate database parameters to prevent command injection
+if ($dbHost -match '[;&|`$]' -or $dbPort -match '[^0-9]' -or $dbName -match '[;&|`$]' -or $dbUser -match '[;&|`$]') {
+    Write-Error-Message "Invalid database connection parameters detected"
+    Write-Info "Database parameters must not contain special shell characters"
+    exit 1
+}
 
 if (-not $dbPassword) {
     Write-Warning-Message "DATABASE_PASSWORD not set - connection may fail"
@@ -171,6 +179,8 @@ Write-Info "Database: $dbName @ ${dbHost}:${dbPort}"
 Write-Info "User: $dbUser"
 
 # Test database connection
+# Note: PGPASSWORD is used for automated scripts. For production use,
+# prefer .pgpass file or connection service files for better security.
 try {
     $env:PGPASSWORD = $dbPassword
     $testQuery = "SELECT 1 as test;"
@@ -186,6 +196,9 @@ try {
 } catch {
     Write-Error-Message "Database connection error: $_"
     exit 1
+} finally {
+    # Clear password from environment
+    Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
@@ -212,6 +225,9 @@ try {
     }
 } catch {
     Write-Warning-Message "Could not check ledger table: $_"
+} finally {
+    # Clear password from environment
+    Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
@@ -247,7 +263,22 @@ if ($Environment -eq 'local') {
     Write-Host ""
     
     try {
-        Push-Location (Join-Path $PSScriptRoot "..")
+        $repoRoot = Join-Path $PSScriptRoot ".."
+        $controlCenterPath = Join-Path $repoRoot "control-center"
+        
+        # Validate control-center directory exists
+        if (-not (Test-Path $controlCenterPath)) {
+            Write-Error-Message "control-center directory not found at: $controlCenterPath"
+            exit 1
+        }
+        
+        # Validate package.json exists
+        if (-not (Test-Path (Join-Path $controlCenterPath "package.json"))) {
+            Write-Error-Message "package.json not found in control-center directory"
+            exit 1
+        }
+        
+        Push-Location $repoRoot
         
         # Run migrations
         npm --prefix control-center run db:migrate

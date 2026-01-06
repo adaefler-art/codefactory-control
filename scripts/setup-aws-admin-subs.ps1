@@ -78,6 +78,13 @@ $ErrorActionPreference = "Stop"
 # ============================================================================
 
 $AWS_REGION = "eu-central-1"
+
+# Validate environment parameter (additional check beyond [ValidateSet])
+if ($Environment -match '[;&|`$]') {
+    Write-Error-Message "Invalid environment parameter"
+    exit 1
+}
+
 $SECRET_NAME = "afu9/$Environment/admin-subs"
 
 # ============================================================================
