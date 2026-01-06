@@ -48,6 +48,7 @@ import { sanitizeRedact } from '@/lib/contracts/remediation-playbook';
 import { listAfu9Issues, updateAfu9Issue } from '@/lib/db/afu9Issues';
 import { extractGithubMirrorStatus } from '@/lib/issues/stateModel';
 import { Afu9GithubMirrorStatus, Afu9StatusSource } from '@/lib/contracts/afu9Issue';
+import { checkProdWriteGuard } from '@/lib/guards/prod-write-guard';
 
 // Constants
 const GITHUB_OWNER = process.env.GITHUB_OWNER || 'adaefler-art';
@@ -190,20 +191,28 @@ function sanitizeLabelForSnapshot(name: string): string {
  * POST /api/ops/issues/sync
  * 
  * Synchronizes GitHub issues to local database snapshots
- * 401-first authentication, repo allowlist enforcement (I711)
+ * 
+ * GUARDS (strict ordering, Issue 3):
+ * 1. AUTH CHECK (401-first) - Verify x-afu9-sub, NO DB calls
+ * 2. PROD DISABLED (409) - Check ENABLE_PROD, NO DB calls
+ * 3. DB operations - Only executed if all guards pass
+ * 
+ * SECURITY:
+ * - x-afu9-sub header is set by proxy.ts after server-side JWT verification
+ * - Client-provided x-afu9-* headers are stripped by middleware
+ * - Repo allowlist enforcement (I711)
  */
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
-  const userId = request.headers.get('x-afu9-sub');
-  if (!userId || !userId.trim()) {
-    return errorResponse('Unauthorized', {
-      status: 401,
-      requestId,
-      details: 'Authentication required - no verified user context',
-    });
+  // GUARDS (401 → 409): Auth and prod disabled check, NO DB calls
+  const guard = checkProdWriteGuard(request, { requestId });
+  if (guard.errorResponse) {
+    return guard.errorResponse;
   }
+  
+  // Guard passed - userId is guaranteed to be set
+  const userId = guard.userId!;
 
   try {
     const pool = getPool();

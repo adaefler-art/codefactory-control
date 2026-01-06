@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 import { getBuildInfo } from '@/lib/build/build-info';
+import { isProdEnabled, getProdDisabledReason } from '@/lib/utils/prod-control';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 
 // MCP Server configuration - single source of truth
 const MCP_SERVERS = [
@@ -42,6 +44,7 @@ function getRequiredDependencies(): string[] {
  * - Validates all critical dependencies (database, environment)
  * - Checks optional dependencies (MCP servers) without blocking
  * - Returns 503 if any REQUIRED dependency is unavailable
+ * - **Issue 3:** Returns ready=true with explicit flags when ENABLE_PROD=false
  * - Can safely fail without triggering deployment rollbacks
  * 
  * Critical dependencies (MUST be available):
@@ -50,6 +53,7 @@ function getRequiredDependencies(): string[] {
  * 
  * Optional dependencies (monitored but non-blocking):
  * - MCP servers (mcp-github, mcp-deploy, mcp-observability)
+ * - ENABLE_PROD flag (info only, not blocking)
  * 
  * Returns:
  * - 200 OK if service is ready to accept traffic
@@ -59,6 +63,9 @@ function getRequiredDependencies(): string[] {
  * 
  * NOTE: Do NOT use this endpoint for ECS/ALB health checks as it can return 503
  * during startup or when dependencies are temporarily unavailable. Use /api/health instead.
+ * 
+ * ALB HEALTH CHECK: Uses /api/health (always 200), not /api/ready
+ * ECS HEALTH CHECK: Uses /api/health (always 200), not /api/ready
  * 
  * @see /api/health for liveness checks (always returns 200)
  */
@@ -70,6 +77,29 @@ export async function GET(request: NextRequest) {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
       service: { status: 'ok' },
     };
+
+    // Issue 3: Check if production is disabled
+    // This is INFORMATIONAL only - does NOT block readiness
+    // Prevents unhealthy churn when prod is intentionally paused
+    const deploymentEnv = getDeploymentEnv();
+    const prodEnabled = isProdEnabled();
+    
+    if (deploymentEnv === 'production') {
+      if (!prodEnabled) {
+        // Prod is disabled: report as INFO, not ERROR
+        // Keep ready=true to prevent ECS/ALB churn
+        checks.prod_enabled = {
+          status: 'info',
+          message: 'Production write operations disabled (ENABLE_PROD=false). Read operations allowed.',
+        };
+      } else {
+        checks.prod_enabled = { 
+          status: 'ok', 
+          message: 'Production environment is enabled' 
+        };
+      }
+    }
+
 
     // Preflight: if self-propelling is enabled, verify the runtime workflow artifact exists
     const selfPropellingEnabled = process.env.AFU9_ENABLE_SELF_PROPELLING === 'true';
@@ -183,15 +213,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Determine overall readiness
-    // MCP servers are optional, so exclude them from failure detection
+    // MCP servers and prod_enabled are optional/informational
     const hasFailures = Object.entries(checks).some(([name, check]) => {
       if (mcpServerNames.includes(name)) {
         return false; // MCP servers are optional dependencies
       }
+      if (name === 'prod_enabled') {
+        return false; // prod_enabled is informational only (Issue 3)
+      }
       return check.status === 'error' || check.status === 'failed';
     });
 
-    // Collect errors
+    // Collect errors (exclude info-level checks)
     const errors: string[] = [];
     Object.entries(checks).forEach(([name, check]) => {
       if (check.status === 'error') {
@@ -200,6 +233,13 @@ export async function GET(request: NextRequest) {
     });
 
     const ready = !hasFailures;
+    
+    // Build explicit production control flags (Issue 3)
+    const prodControlFlags = deploymentEnv === 'production' ? {
+      prodEnabled: prodEnabled,
+      prodWritesBlocked: !prodEnabled,
+      reason: !prodEnabled ? getProdDisabledReason() : undefined,
+    } : undefined;
 
     const response = {
       ready,
@@ -213,6 +253,7 @@ export async function GET(request: NextRequest) {
           ? mcpServerNames
           : [],
       },
+      ...(prodControlFlags && { prodControl: prodControlFlags }),
       ...(errors.length > 0 && { errors }),
     };
 

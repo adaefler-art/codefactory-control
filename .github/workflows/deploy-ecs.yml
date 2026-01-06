@@ -236,17 +236,20 @@ jobs:
           CREATE_STAGING_SERVICE: "false"
           AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
           MANAGE_DNS: ${{ env.MANAGE_DNS }}
+          ENABLE_PROD: ${{ vars.ENABLE_PROD || 'false' }}
         run: |
           set -euo pipefail
           echo "🔒 Running Deploy Context Guardrail (E7.0.1)"
           echo "Environment: ${DEPLOY_ENV}"
           echo "Service: ${ECS_SERVICE}"
           echo "Cluster: ${ECS_CLUSTER}"
+          echo "ENABLE_PROD: ${ENABLE_PROD}"
           echo ""
 
           # Run guardrail to validate environment context
           # This enforces fail-closed: no implicit prod, explicit DEPLOY_ENV required,
-          # and cross-env artifact detection (stage/prod isolation).
+          # cross-env artifact detection (stage/prod isolation),
+          # and Issue 3: blocks prod deploys when ENABLE_PROD=false
           # Use npx with ts-node for deterministic execution
           npx ts-node scripts/deploy-context-guardrail.ts
 
