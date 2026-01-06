@@ -36,4 +36,4 @@ This directory contains all implementation summaries, testing guides, and eviden
 - E79_1_EVIDENCE.md
 
 ---
-See [v0.7 Audit Documentation](../../audit/V07_COMPREHENSIVE_AUDIT.md) for overview.
+See [v0.7 Audit Documentation](../../audit/v0.7/README.md) for overview.
