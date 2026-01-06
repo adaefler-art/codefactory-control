@@ -425,6 +425,6 @@ npm test
 
 ## References
 
-- [ISSUE_3_GUARD_AUDIT.md](../merge-evidence/ISSUE_3_GUARD_AUDIT.md) - Current implementation audit
+- [ISSUE_3_GUARD_AUDIT.md](../audit/v0.7/ISSUE_3_GUARD_AUDIT.md) - Current implementation audit
 - [ISSUE_3_IMPLEMENTATION_SUMMARY.md](../../ISSUE_3_IMPLEMENTATION_SUMMARY.md) - Original implementation
 - [LOW_COST_MODE.md](../runbooks/LOW_COST_MODE.md) - Pause/resume runbook

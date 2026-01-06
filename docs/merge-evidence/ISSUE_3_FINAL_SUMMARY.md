@@ -12,7 +12,7 @@
 
 ### Package 1: Inventory + Current Behavior ✅
 **Commit:** 58d3eca  
-**File:** `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md`
+**File:** `docs/audit/v0.7/ISSUE_3_GUARD_AUDIT.md`
 
 - Audited all guarded endpoints
 - Documented current problems:
@@ -78,7 +78,7 @@
 **Commit:** db07333  
 **Files:**
 - `docs/runbooks/ISSUE_3_PROD_DEACTIVATION_VERIFY.md` (NEW, 10.5 KB)
-- `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md` (UPDATED)
+- `docs/audit/v0.7/ISSUE_3_GUARD_AUDIT.md` (UPDATED)
 
 **Contents:**
 - ✅ 15 step-by-step verification tests
@@ -177,7 +177,7 @@ test('Prod + ENABLE_PROD=false → ready=true', async () => {
 1. `control-center/src/lib/guards/prod-write-guard.ts` (6.2 KB)
 2. `control-center/__tests__/lib/guards/prod-write-guard.test.ts` (8.1 KB)
 3. `control-center/__tests__/app/api/ready-prod-disabled.test.ts` (5.9 KB)
-4. `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md` (7.0 KB)
+4. `docs/audit/v0.7/ISSUE_3_GUARD_AUDIT.md` (7.0 KB)
 5. `docs/runbooks/ISSUE_3_PROD_DEACTIVATION_VERIFY.md` (10.5 KB)
 
 ### Modified (5 files)
@@ -185,7 +185,7 @@ test('Prod + ENABLE_PROD=false → ready=true', async () => {
 2. `control-center/app/api/playbooks/post-deploy-verify/run/route.ts`
 3. `control-center/app/api/integrations/github/runner/dispatch/route.ts`
 4. `control-center/app/api/ready/route.ts`
-5. `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md` (updated)
+5. `docs/audit/v0.7/ISSUE_3_GUARD_AUDIT.md` (updated)
 
 **Total:** 10 files, ~37 KB added/modified
 
@@ -217,7 +217,7 @@ test('Prod + ENABLE_PROD=false → ready=true', async () => {
 
 ## References
 
-- **Audit:** `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md`
+- **Audit:** `docs/audit/v0.7/ISSUE_3_GUARD_AUDIT.md`
 - **Runbook:** `docs/runbooks/ISSUE_3_PROD_DEACTIVATION_VERIFY.md`
 - **Tests:** `control-center/__tests__/lib/guards/prod-write-guard.test.ts`
 - **Guard:** `control-center/src/lib/guards/prod-write-guard.ts`

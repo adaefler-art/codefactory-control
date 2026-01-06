@@ -50,7 +50,7 @@ This document summarizes the implementation of **Least Privilege IAM Policies** 
    - Vulnerability reporting procedures
    - Incident response
 
-2. **docs/IAM_POLICY_AUDIT_PROCEDURE.md** - Quarterly audit checklist
+2. **docs/audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md** - Quarterly audit checklist
    - 10-step manual audit process
    - Automated validation integration
    - Remediation procedures
@@ -151,7 +151,7 @@ Info:     2
 
 ### Quarterly Audit Procedure
 
-Follow the comprehensive checklist in [docs/IAM_POLICY_AUDIT_PROCEDURE.md](docs/IAM_POLICY_AUDIT_PROCEDURE.md):
+Follow the comprehensive checklist in [docs/audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md](../audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md):
 
 1. **Policy Inventory Review** - Verify all roles are documented
 2. **Wildcard Resource Audit** - Confirm justifications
@@ -281,7 +281,7 @@ From the original issue:
 
 ### Ongoing Maintenance
 
-1. **Quarterly Audits**: Follow procedure in IAM_POLICY_AUDIT_PROCEDURE.md
+1. **Quarterly Audits**: Follow procedure in [IAM_POLICY_AUDIT_PROCEDURE.md](../audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md)
 2. **Monthly Reviews**: Check access denied errors and CloudTrail logs
 3. **Continuous Validation**: Automated on every PR
 4. **Annual Assessment**: Comprehensive security review
@@ -296,7 +296,7 @@ From the original issue:
 ## References
 
 - [SECURITY_POLICY.md](SECURITY_POLICY.md) - Top-level security policy
-- [docs/IAM_POLICY_AUDIT_PROCEDURE.md](docs/IAM_POLICY_AUDIT_PROCEDURE.md) - Audit checklist
+- [docs/audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md](../audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md) - Audit checklist
 - [docs/SECURITY_METRICS.md](docs/SECURITY_METRICS.md) - KPI dashboard
 - [docs/IAM-ROLES-JUSTIFICATION.md](docs/IAM-ROLES-JUSTIFICATION.md) - Permission rationale
 - [docs/SECURITY-IAM.md](docs/SECURITY-IAM.md) - Implementation guide

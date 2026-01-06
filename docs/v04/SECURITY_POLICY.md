@@ -94,7 +94,7 @@ See [SECURITY_METRICS.md](docs/SECURITY_METRICS.md) for detailed tracking.
 
 **Audit Schedule**: 
 - Next Quarterly Audit: 2025-03-17
-- See [IAM_POLICY_AUDIT_PROCEDURE.md](docs/IAM_POLICY_AUDIT_PROCEDURE.md)
+- See [IAM_POLICY_AUDIT_PROCEDURE.md](../audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md)
 
 ### Wildcard Policy
 
@@ -137,7 +137,7 @@ See [validate-iam-policies.ts](scripts/validate-iam-policies.ts) for complete li
 - [Secrets Management](SECURITY.md) - AWS Secrets Manager integration and usage
 
 **Audit & Compliance**:
-- [IAM Policy Audit Procedure](docs/IAM_POLICY_AUDIT_PROCEDURE.md) - Quarterly audit checklist
+- [IAM Policy Audit Procedure](../audit/v0.4/IAM_POLICY_AUDIT_PROCEDURE.md) - Quarterly audit checklist
 - [Security Metrics Dashboard](docs/SECURITY_METRICS.md) - KPI tracking and trends
 
 **Architecture**:

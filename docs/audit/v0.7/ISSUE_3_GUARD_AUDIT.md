@@ -161,7 +161,7 @@ function isAdminUser(userId: string): boolean {
 - `control-center/src/lib/guards/prod-write-guard.ts` - Unified guard helper
 - `control-center/__tests__/lib/guards/prod-write-guard.test.ts` - Guard tests
 - `control-center/__tests__/app/api/ready-prod-disabled.test.ts` - Ready endpoint tests
-- `docs/merge-evidence/ISSUE_3_GUARD_AUDIT.md` - This audit
+- `docs/audit/v0.7/ISSUE_3_GUARD_AUDIT.md` - This audit
 - `docs/runbooks/ISSUE_3_PROD_DEACTIVATION_VERIFY.md` - Verification runbook
 
 **Files Modified:**

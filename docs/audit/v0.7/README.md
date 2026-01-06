@@ -121,6 +121,35 @@ Inventory of all environment variables with fail-closed behavior validation.
 
 **Critical Variables**: GITHUB_APP_*, DATABASE_*, COGNITO_*, AFU9_ADMIN_SUBS, ENABLE_PROD, AFU9_INTENT_ENABLED
 
+### 7. CONSISTENCY_REPORT.md
+Technical consistency audit of API patterns, error handling, and request types.
+
+**Key Findings**:
+- API handler wrapping patterns (withApi vs plain export)
+- Error envelope shapes (with/without success flag)
+- Success payload shapes (bare vs wrapped)
+- Request type usage (NextRequest vs Request)
+
+**Categories**:
+1. API Handler Wrapping
+2. API Error Envelope Shape
+3. API Success Payload Shape
+4. API Request Type Usage
+
+### 8. ISSUE_3_GUARD_AUDIT.md
+Production guard implementation audit for Issue #3 standardization.
+
+**Key Findings**:
+- 3 endpoints using checkProdWriteGuard
+- Wrong guard order (prod → auth instead of auth → prod)
+- Wrong status codes (403 instead of 409 for env disabled)
+- Missing auth checks on guarded endpoints
+
+**Action Items**:
+- Standardize guard order: auth → env → admin
+- Fix status codes: 401 (auth) → 409 (env) → 403 (admin)
+- Add auth enforcement to all guarded endpoints
+
 ---
 
 ## Supporting Documents
