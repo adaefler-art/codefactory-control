@@ -29,7 +29,10 @@
 #>
 
 param(
-    [switch]$SkipConfirmation
+    [switch]$SkipConfirmation,
+
+    [Parameter(Mandatory = $false)]
+    [string]$DomainName
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +44,7 @@ Write-Host ""
 
 # Check if we're in the right directory
 if (-not (Test-Path "bin/codefactory-control.ts")) {
-    Write-Host "❌ Error: Must run from repository root directory" -ForegroundColor Red
+    Write-Host "[ERROR] Must run from repository root directory" -ForegroundColor Red
     exit 1
 }
 
@@ -49,19 +52,18 @@ if (-not (Test-Path "bin/codefactory-control.ts")) {
 try {
     $null = Get-Command cdk -ErrorAction Stop
     $cdkVersion = cdk --version 2>&1 | Out-String
-    Write-Host "✓ CDK is available: $($cdkVersion.Trim())" -ForegroundColor Green
+    Write-Host "[OK] CDK is available: $($cdkVersion.Trim())" -ForegroundColor Green
 } catch {
-    Write-Host "❌ Error: AWS CDK not found. Please install it first." -ForegroundColor Red
+    Write-Host "[ERROR] AWS CDK not found. Please install it first." -ForegroundColor Red
     Write-Host "   Install with: npm install -g aws-cdk" -ForegroundColor Gray
     exit 1
 }
 
 Write-Host ""
 Write-Host "This will:" -ForegroundColor Yellow
-Write-Host "  • Set PROD ECS desired count to 2 (start tasks)" -ForegroundColor Yellow
-Write-Host "  • Configure PROD ALB to forward traffic to tasks" -ForegroundColor Yellow
-Write-Host "  • Restore normal PROD operations" -ForegroundColor Yellow
-Write-Host "  • Increase PROD costs back to normal levels" -ForegroundColor Yellow
+Write-Host "  - Set PROD ECS desired count back to normal" -ForegroundColor Yellow
+Write-Host "  - Remove PROD 503 fixed-response rule" -ForegroundColor Yellow
+Write-Host "  - Restore normal PROD operations" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Expected resume time: 3-7 minutes" -ForegroundColor Cyan
 Write-Host ""
@@ -69,9 +71,131 @@ Write-Host ""
 if (-not $SkipConfirmation) {
     $confirmation = Read-Host "Resume PROD environment? (yes/no)"
     if ($confirmation -ne "yes") {
-        Write-Host "❌ Operation cancelled" -ForegroundColor Yellow
+        Write-Host "[CANCELLED] Operation cancelled" -ForegroundColor Yellow
         exit 0
     }
+}
+
+function Get-CfnExportValue([string]$exportName) {
+    $value = & aws cloudformation list-exports --query "Exports[?Name=='$exportName'].Value | [0]" --output text 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not $value -or $value -eq 'None') { return $null }
+    return $value.Trim()
+}
+
+function Remove-FixedResponse503Rules([string]$listenerArn, [string[]]$hosts) {
+    if (-not $listenerArn) { return }
+    $rulesJson = & aws elbv2 describe-rules --listener-arn $listenerArn --output json 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Failed to describe listener rules: $rulesJson" }
+    $rules = $rulesJson | ConvertFrom-Json
+
+    foreach ($r in $rules.Rules) {
+        if (-not $r.RuleArn) { continue }
+        if ($r.IsDefault -eq $true) { continue }
+        if (-not $r.Actions -or $r.Actions.Count -lt 1) { continue }
+        if ($r.Actions[0].Type -ne 'fixed-response') { continue }
+        if (-not $r.Actions[0].FixedResponseConfig) { continue }
+        if ($r.Actions[0].FixedResponseConfig.StatusCode -ne '503') { continue }
+        $hostCond = $r.Conditions | Where-Object { $_.Field -eq 'host-header' } | Select-Object -First 1
+        if (-not $hostCond -or -not $hostCond.HostHeaderConfig -or -not $hostCond.HostHeaderConfig.Values) { continue }
+        $existingHosts = @($hostCond.HostHeaderConfig.Values)
+        $matches = $true
+        foreach ($h in $hosts) {
+            if ($existingHosts -notcontains $h) { $matches = $false; break }
+        }
+        if (-not $matches) { continue }
+
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'aws'
+        $psi.Arguments = "elbv2 delete-rule --rule-arn $($r.RuleArn)"
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+
+        $p = New-Object System.Diagnostics.Process
+        $p.StartInfo = $psi
+        [void]$p.Start()
+        $stdout = $p.StandardOutput.ReadToEnd()
+        $stderr = $p.StandardError.ReadToEnd()
+        $p.WaitForExit()
+
+        if ($p.ExitCode -ne 0) {
+            $msg = ($stderr + "\n" + $stdout).Trim()
+            if (-not $msg) { $msg = "(no AWS CLI output captured)" }
+            throw "Failed to delete rule $($r.RuleArn): $msg"
+        }
+    }
+}
+
+# Detect deployed mode: if multi-env stacks don't exist, resume using single-env AWS CLI path.
+$multiEnvDeployed = $true
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+& aws cloudformation describe-stacks --stack-name Afu9EcsProdStack --query 'Stacks[0].StackStatus' --output text 2>$null | Out-Null
+$awsExitCode = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorActionPreference
+if ($awsExitCode -ne 0) { $multiEnvDeployed = $false }
+
+if (-not $multiEnvDeployed) {
+    Write-Host "[WARN] Multi-env stacks not deployed (Afu9EcsProdStack/Afu9RoutingStack missing)." -ForegroundColor Yellow
+    Write-Host "[WARN] Using single-env resume: remove ALB 503 rule + set ECS desiredCount back to 1." -ForegroundColor Yellow
+
+    $resolvedDomainName = if ($DomainName -and $DomainName.Trim()) { $DomainName.Trim() } else { $env:DOMAIN_NAME }
+    if (-not $resolvedDomainName -or -not $resolvedDomainName.Trim()) {
+        Write-Host "[ERROR] Missing required domain name." -ForegroundColor Red
+        Write-Host "        Provide it via -DomainName <your-domain.com> or set env var DOMAIN_NAME." -ForegroundColor Red
+        exit 1
+    }
+
+    $clusterName = (Get-CfnExportValue 'Afu9ClusterName')
+    if (-not $clusterName) { $clusterName = 'afu9-cluster' }
+    $serviceName = (Get-CfnExportValue 'Afu9ServiceName')
+    if (-not $serviceName) { $serviceName = 'afu9-control-center' }
+
+    $httpsListenerArn = $null
+    $httpListenerArn = $null
+    $networkOutputsJson = & aws cloudformation describe-stacks --stack-name Afu9NetworkStack --query 'Stacks[0].Outputs' --output json 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Failed to read Afu9NetworkStack outputs: $networkOutputsJson" }
+    $networkOutputs = $networkOutputsJson | ConvertFrom-Json
+    foreach ($o in $networkOutputs) {
+        if ($o.OutputKey -like 'ExportsOutputRefAfu9LoadBalancerHttpsListener*') { $httpsListenerArn = $o.OutputValue }
+        if ($o.OutputKey -like 'ExportsOutputRefAfu9LoadBalancerHttpListener*') { $httpListenerArn = $o.OutputValue }
+    }
+
+    $hosts = @(
+        $resolvedDomainName,
+        "www.$resolvedDomainName",
+        "prod.$resolvedDomainName"
+    )
+
+    Write-Host ""
+    Write-Host "Removing ALB 503 fixed-response rule(s)..." -ForegroundColor Yellow
+    Remove-FixedResponse503Rules $httpsListenerArn $hosts
+    Remove-FixedResponse503Rules $httpListenerArn $hosts
+
+    Write-Host ""
+    Write-Host "Resuming ECS service..." -ForegroundColor Yellow
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    & aws ecs update-service --cluster $clusterName --service $serviceName --desired-count 1 2>&1 | Out-Host
+    $awsExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($awsExitCode -ne 0) { throw "Failed to update ECS desired count (exit code $awsExitCode)." }
+
+    Write-Host ""
+    Write-Host "Waiting for ECS service to stabilize..." -ForegroundColor White
+    & aws ecs wait services-stable --cluster $clusterName --services $serviceName 2>&1 | Out-Host
+
+    Write-Host ""
+    Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "  [OK] PROD environment resume complete!" -ForegroundColor Green
+    Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Next steps:" -ForegroundColor Cyan
+    Write-Host "  - Verify PROD is responding: curl https://$resolvedDomainName/api/health" -ForegroundColor White
+    Write-Host "  - Verify STAGE still works: curl https://stage.$resolvedDomainName/api/health" -ForegroundColor White
+    Write-Host ""
+    exit 0
 }
 
 Write-Host ""

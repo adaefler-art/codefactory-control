@@ -10,7 +10,7 @@
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "db:migrate": "bash ../scripts/db-migrate.sh",
+    "db:migrate": "node ../scripts/db-migrate.js",
     "validate-mcp-catalog": "node ../scripts/validate-mcp-catalog.js",
     "validate-playbooks": "node ../scripts/validate-playbooks.js",
     "smoke:timeline:backfill": "pwsh -File ../scripts/backfill-timeline-test-data.ps1",
