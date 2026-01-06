@@ -239,8 +239,8 @@ export default function IntentPage() {
       return;
     }
 
-    // At this point, we KNOW we have a valid session ID
-    const sessionId = currentSessionId; // TypeScript now knows this is a valid string
+    // At this point, we have validated that currentSessionId is a non-empty string
+    const sessionId = currentSessionId;
     
     console.log('[INTENT] Sending message to existing session:', sessionId.substring(0, 20));
     
