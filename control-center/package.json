@@ -14,7 +14,8 @@
     "validate-mcp-catalog": "node ../scripts/validate-mcp-catalog.js",
     "validate-playbooks": "node ../scripts/validate-playbooks.js",
     "smoke:timeline:backfill": "pwsh -File ../scripts/backfill-timeline-test-data.ps1",
-    "smoke:timeline:chain": "pwsh -File ../scripts/smoke-test-timeline-chain.ps1 -BaseUrl http://localhost:3000"
+    "smoke:timeline:chain": "pwsh -File ../scripts/smoke-test-timeline-chain.ps1 -BaseUrl http://localhost:3000",
+    "diagnose:mirror-status": "node -e \"fetch('http://localhost:3000/api/admin/diagnose-mirror-status-test').then(r => r.json()).then(d => console.log(JSON.stringify(d, null, 2)))\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
