@@ -1,0 +1,192 @@
+/*
+  Database migration runner with schema_migrations ledger tracking.
+  Intended to be invoked from the control-center workspace via:
+    npm --prefix control-center run db:migrate
+
+  This avoids relying on WSL/Git Bash on Windows and keeps migration execution
+  deterministic and idempotent.
+*/
+
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
+
+function computeSha256Hex(content) {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+function listSqlMigrations(migrationsDir) {
+  const entries = fs.readdirSync(migrationsDir, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.sql'))
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+async function main() {
+  const { Client } = require('pg');
+
+  const databaseUrl = process.env.DATABASE_URL;
+
+  /** @type {import('pg').ClientConfig} */
+  let clientConfig;
+
+  if (databaseUrl) {
+    clientConfig = { connectionString: databaseUrl };
+  } else {
+    clientConfig = {
+      host: requireEnv('DATABASE_HOST'),
+      port: Number(requireEnv('DATABASE_PORT')),
+      database: requireEnv('DATABASE_NAME'),
+      user: requireEnv('DATABASE_USER'),
+      password: requireEnv('DATABASE_PASSWORD'),
+    };
+  }
+
+  // Optional SSL behavior via PGSSLMODE (default: no SSL).
+  // For local docker-compose Postgres, ssl should remain disabled.
+  const sslMode = (process.env.PGSSLMODE || '').toLowerCase();
+  if (sslMode === 'require' || sslMode === 'prefer') {
+    clientConfig.ssl = { rejectUnauthorized: false };
+  }
+
+  const repoRoot = path.resolve(__dirname, '..');
+  const migrationsDir = path.resolve(repoRoot, 'database', 'migrations');
+
+  if (!fs.existsSync(migrationsDir)) {
+    throw new Error(`Migrations directory not found: ${migrationsDir}`);
+  }
+
+  const migrationFiles = listSqlMigrations(migrationsDir);
+  if (migrationFiles.length === 0) {
+    console.log('ℹ️  No migrations found.');
+    return;
+  }
+
+  const client = new Client(clientConfig);
+  await client.connect();
+
+  try {
+    console.log('📋 Ensuring schema_migrations ledger...');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        sha256 TEXT,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sha256 TEXT;`);
+    await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;`);
+    await client.query(`UPDATE schema_migrations SET applied_at = COALESCE(applied_at, NOW());`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at DESC);`);
+
+    const ledgerCountRes = await client.query(`SELECT COUNT(*)::int AS count FROM schema_migrations;`);
+    const ledgerCount = Number(ledgerCountRes.rows[0]?.count ?? 0);
+
+    const userTableCountRes = await client.query(`
+      SELECT COUNT(*)::int AS count
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+        AND table_name <> 'schema_migrations';
+    `);
+    const userTableCount = Number(userTableCountRes.rows[0]?.count ?? 0);
+
+    // If Postgres was initialized via docker-entrypoint-initdb.d, the schema may already exist
+    // but the ledger is empty. In that case, bootstrap the ledger from repo migrations.
+    if (ledgerCount === 0 && userTableCount > 0) {
+      console.log('');
+      console.log('⚠️  Detected existing schema without migration ledger.');
+      console.log('⚠️  Bootstrapping schema_migrations from repository files (no SQL will be executed).');
+      console.log('');
+
+      await client.query('BEGIN;');
+      try {
+        for (const filename of migrationFiles) {
+          const fullPath = path.join(migrationsDir, filename);
+          const sql = fs.readFileSync(fullPath, 'utf8');
+          const sha256 = computeSha256Hex(sql);
+          await client.query(
+            `INSERT INTO schema_migrations (filename, sha256, applied_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (filename) DO NOTHING;`,
+            [filename, sha256]
+          );
+        }
+        await client.query('COMMIT;');
+      } catch (err) {
+        await client.query('ROLLBACK;');
+        throw err;
+      }
+
+      console.log(`✅ Ledger bootstrap complete. Total recorded: ${migrationFiles.length}`);
+      return;
+    }
+
+    console.log('🔍 Starting database migration...');
+    console.log('');
+
+    let appliedCount = 0;
+    let skippedCount = 0;
+
+    for (const filename of migrationFiles) {
+      const fullPath = path.join(migrationsDir, filename);
+      const sql = fs.readFileSync(fullPath, 'utf8');
+      const sha256 = computeSha256Hex(sql);
+
+      const existing = await client.query(
+        `SELECT sha256 FROM schema_migrations WHERE filename = $1 LIMIT 1;`,
+        [filename]
+      );
+
+      if (existing.rowCount > 0) {
+        const stored = (existing.rows[0].sha256 || '').trim();
+        if (stored && stored !== sha256) {
+          throw new Error(
+            `Migration hash mismatch for ${filename}. Ledger=${stored}, File=${sha256}. ` +
+              `Refusing to continue (migration files must be immutable).`
+          );
+        }
+
+        console.log(`⏭️  Skipping (already applied): ${filename}`);
+        skippedCount += 1;
+        continue;
+      }
+
+      console.log(`▶️  Applying: ${filename}`);
+
+      await client.query('BEGIN;');
+      try {
+        await client.query(sql);
+        await client.query(
+          `INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ($1, $2, NOW());`,
+          [filename, sha256]
+        );
+        await client.query('COMMIT;');
+        console.log(`✅ Applied: ${filename}`);
+        appliedCount += 1;
+      } catch (err) {
+        await client.query('ROLLBACK;');
+        throw err;
+      }
+    }
+
+    console.log('');
+    console.log(`✅ Migration complete. Applied: ${appliedCount}, Skipped: ${skippedCount}, Total: ${migrationFiles.length}`);
+  } finally {
+    await client.end();
+  }
+}
+
+main().catch((err) => {
+  console.error(`❌ ${err && err.message ? err.message : String(err)}`);
+  process.exit(1);
+});
