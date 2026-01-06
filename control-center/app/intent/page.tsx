@@ -173,6 +173,12 @@ export default function IntentPage() {
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     
+    console.log('[INTENT sendMessage] State:', {
+      currentSessionId,
+      inputValue: inputValue.substring(0, 50),
+      isValid: isValidSessionId(currentSessionId),
+    });
+    
     if (!inputValue.trim()) return;
 
     // Auto-create session if none selected
@@ -222,6 +228,15 @@ export default function IntentPage() {
     }
 
     const sessionId = currentSessionId;
+    
+    if (!sessionId || sessionId.trim().length === 0) {
+      console.error('[INTENT sendMessage] Invalid sessionId after validation:', sessionId);
+      setError('Invalid session. Please select or create a session.');
+      return;
+    }
+    
+    console.log('[INTENT sendMessage] Sending to session:', sessionId.substring(0, 20));
+    
     const messageContent = inputValue.trim();
     setInputValue("");
     setIsSending(true);
@@ -245,7 +260,11 @@ export default function IntentPage() {
       // Refresh sessions list to update the title
       await fetchSessions();
     } catch (err) {
-      console.error("Failed to send message:", err);
+      console.error('[INTENT sendMessage] Failed to send message:', {
+        error: err,
+        sessionId: sessionId?.substring(0, 20),
+        endpoint: API_ROUTES.intent.messages.create(sessionId),
+      });
       setError(formatErrorMessage(err));
       setInputValue(messageContent); // Restore input on error
     } finally {
