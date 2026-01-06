@@ -58,11 +58,21 @@ export async function POST(
         requestId,
         userId,
         rawSessionId: params?.id,
+        type: typeof params?.id,
+        trimmed: typeof params?.id === 'string' ? params.id.trim() : 'N/A',
       });
 
       return errorResponse('Session ID required', {
         status: 400,
         requestId,
+        details: `Received session ID: "${params?.id}" (type: ${typeof params?.id})`,
+      });
+    }
+    
+    if (sessionId.trim() !== sessionId) {
+      console.warn('[API] Session ID has leading/trailing whitespace', {
+        requestId,
+        sessionId: `"${sessionId}"`,
       });
     }
     
