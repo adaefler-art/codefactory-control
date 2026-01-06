@@ -228,19 +228,12 @@ export default function IntentPage() {
     }
 
     const sessionId = currentSessionId;
-    
-    if (!sessionId || sessionId.trim().length === 0) {
-      console.error('[INTENT sendMessage] Invalid sessionId after validation:', sessionId);
-      setError('Invalid session. Please select or create a session.');
-      return;
-    }
-    
-    console.log('[INTENT sendMessage] Sending to session:', sessionId.substring(0, 20));
-    
     const messageContent = inputValue.trim();
     setInputValue("");
     setIsSending(true);
     setError(null);
+    
+    console.log('[INTENT sendMessage] Sending to session:', sessionId.substring(0, 20) + '...');
 
     try {
       const response = await fetch(
@@ -262,7 +255,7 @@ export default function IntentPage() {
     } catch (err) {
       console.error('[INTENT sendMessage] Failed to send message:', {
         error: err,
-        sessionId: sessionId?.substring(0, 20),
+        sessionIdPrefix: sessionId.substring(0, 20),
         endpoint: API_ROUTES.intent.messages.create(sessionId),
       });
       setError(formatErrorMessage(err));
