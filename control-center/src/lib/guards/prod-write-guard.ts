@@ -185,7 +185,7 @@ export function withProdWriteGuard(
   handler: (request: NextRequest, userId: string) => Promise<NextResponse>,
   options: ProdWriteGuardOptions = {}
 ): (request: NextRequest) => Promise<NextResponse> {
-  return async (request: NextRequest): Promise<NextResponse> {
+  return async (request: NextRequest): Promise<NextResponse> => {
     const guard = checkProdWriteGuard(request, options);
     
     if (guard.errorResponse) {
