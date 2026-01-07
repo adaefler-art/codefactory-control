@@ -130,7 +130,12 @@ export async function POST(
     // Generate INTENT agent response with rate limiting
     let agentResponse;
     try {
-      agentResponse = await generateIntentResponse(body.content, conversationHistory, userId);
+      agentResponse = await generateIntentResponse(
+        body.content,
+        conversationHistory,
+        userId,
+        sessionId  // Pass sessionId to agent
+      );
     } catch (error) {
       console.error('[API /api/intent/sessions/[id]/messages] INTENT agent error:', error);
       
