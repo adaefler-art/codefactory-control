@@ -316,7 +316,9 @@ All tool calls automatically use the correct sessionId.`;
         console.log("[INTENT Agent] Processing tool calls", {
           requestId,
           toolCount: responseMessage.tool_calls.length,
-          tools: responseMessage.tool_calls.map(tc => tc.function.name),
+          tools: responseMessage.tool_calls.map(tc => 
+            'function' in tc ? tc.function.name : 'unknown'
+          ),
         });
 
         // Build messages with assistant's tool call message
@@ -327,6 +329,12 @@ All tool calls automatically use the correct sessionId.`;
         
         // Execute each tool call
         for (const toolCall of responseMessage.tool_calls) {
+          // Type guard: only process function tool calls
+          if (!('function' in toolCall)) {
+            console.warn("[INTENT Agent] Skipping non-function tool call", { requestId });
+            continue;
+          }
+          
           const functionName = toolCall.function.name;
           const functionArgs = JSON.parse(toolCall.function.arguments);
           
