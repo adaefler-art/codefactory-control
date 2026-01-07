@@ -16,6 +16,8 @@
 
 import OpenAI from "openai";
 import { randomUUID } from "crypto";
+import { INTENT_TOOLS } from './intent-agent-tools';
+import { executeIntentTool } from './intent-agent-tool-executor';
 
 // Environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -230,35 +232,36 @@ export async function generateIntentResponse(
   try {
     const openai = getOpenAIClient();
 
-    // System prompt: define INTENT agent behavior
+    // System prompt: define INTENT agent behavior with tool capabilities
     const systemPrompt = `You are the INTENT Agent for AFU-9 Control Center.
 
 Your role:
 - Help users understand and operate the AFU-9 system (Autonomous Fabrication Unit - Ninefold Architecture)
 - Provide guidance on issues, workflows, deployments, and observability
 - Assist with Change Request (CR) creation and planning
-- Answer questions about the system architecture and capabilities
+- Execute actions via available tools (NO HALLUCINATION)
+
+AVAILABLE TOOLS:
+- get_context_pack: Retrieve session context pack (messages + sources)
+- get_change_request: Get current CR draft for this session
+- save_change_request: Save/update CR draft (does NOT validate/publish)
+- validate_change_request: Validate CR against schema
+- publish_to_github: Publish CR to GitHub as issue (idempotent)
+
+CRITICAL RULES:
+- When asked "siehst du den Change Request?" or similar, use get_change_request tool
+- When asked to publish CR, use validate_change_request first, then publish_to_github
+- If tool call fails, return exact error from tool response - never hallucinate tool results
+- Use German for responses (user may use English or German)
 
 Guidelines:
 - Be concise but helpful
-- Use German for responses (user may use English or German)
 - Focus on operational and diagnostic assistance
-- Do NOT execute actions automatically (no PRs, deployments, or code changes)
-- If asked to perform actions, explain what the user should do instead
 - Never reveal API keys, tokens, or sensitive credentials
 - Provide structured responses when appropriate
 
-Current capabilities:
-- View session messages and context
-- Help draft Change Requests
-- Provide system diagnostics
-- Answer questions about AFU-9 architecture
-
-Limitations (current MVP):
-- Cannot create GitHub PRs automatically
-- Cannot trigger deployments
-- Cannot access live repository contents (yet)
-- Cannot execute code changes`;
+Current session: You are operating within a specific INTENT session.
+All tool calls automatically use the correct sessionId.`;
 
     // Build messages array (using bounded inputs)
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -279,7 +282,7 @@ Limitations (current MVP):
       userId: userId ? `user-${userId.substring(0, 8)}***` : 'unknown',
     });
 
-    // Call OpenAI API with strict bounds and deterministic settings
+    // Call OpenAI API with strict bounds, deterministic settings, and tool support
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), API_TIMEOUT_MS);
     
@@ -292,13 +295,102 @@ Limitations (current MVP):
         top_p: 1,
         frequency_penalty: 0,
         presence_penalty: 0,
+        tools: INTENT_TOOLS,
+        tool_choice: 'auto', // Let model decide when to use tools
       }, {
         signal: abortController.signal,
       });
       
       clearTimeout(timeoutId);
       
-      const rawContent = completion.choices[0]?.message?.content;
+      const responseMessage = completion.choices[0]?.message;
+
+      if (!responseMessage) {
+        console.error("[INTENT Agent] LLM returned no message", { requestId });
+        throw new Error("LLM returned no response message");
+      }
+
+      // Handle tool calls if present
+      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        console.log("[INTENT Agent] Processing tool calls", {
+          requestId,
+          toolCount: responseMessage.tool_calls.length,
+          tools: responseMessage.tool_calls.map(tc => 
+            'function' in tc ? tc.function.name : 'unknown'
+          ),
+        });
+
+        // Build messages with assistant's tool call message
+        const toolMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+          ...messages,
+          responseMessage,
+        ];
+        
+        // Execute each tool call
+        for (const toolCall of responseMessage.tool_calls) {
+          // Type guard: only process function tool calls
+          if (!('function' in toolCall)) {
+            console.warn("[INTENT Agent] Skipping non-function tool call", { requestId });
+            continue;
+          }
+          
+          const functionName = toolCall.function.name;
+          const functionArgs = JSON.parse(toolCall.function.arguments);
+          
+          console.log(`[INTENT Agent] Executing tool: ${functionName}`, {
+            requestId,
+            args: functionArgs,
+          });
+          
+          // Execute tool
+          const toolResult = await executeIntentTool(functionName, functionArgs, userId || 'unknown');
+          
+          // Add tool result to messages
+          toolMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: toolResult,
+          });
+        }
+        
+        // Call LLM again with tool results
+        const finalCompletion = await openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          messages: toolMessages,
+          temperature: 0,
+          max_tokens: MAX_OUTPUT_TOKENS,
+        }, {
+          signal: abortController.signal,
+        });
+        
+        const finalMessage = finalCompletion.choices[0]?.message;
+        
+        if (!finalMessage?.content) {
+          console.error("[INTENT Agent] No final response after tool calls", { requestId });
+          throw new Error("No final response from OpenAI after tool calls");
+        }
+
+        // Sanitize content to remove potential secrets
+        const sanitizedContent = sanitizeContent(finalMessage.content);
+
+        // Log success (NOT the content)
+        console.log("[INTENT Agent] Response generated successfully (with tools)", {
+          requestId,
+          timestamp,
+          outputLength: sanitizedContent.length,
+          tokensUsed: (completion.usage?.total_tokens || 0) + (finalCompletion.usage?.total_tokens || 0),
+        });
+
+        return {
+          content: sanitizedContent,
+          requestId,
+          timestamp,
+          model: OPENAI_MODEL,
+        };
+      }
+
+      // No tool calls - return direct response
+      const rawContent = responseMessage.content;
 
       if (!rawContent || rawContent.trim() === "") {
         console.error("[INTENT Agent] LLM returned empty response", { requestId });
