@@ -1,37 +1,32 @@
 /**
  * OpenAI Function Calling Tool Definitions for INTENT Agent
  * 
- * Issue: Verdrahte INTENT mit AFU-9 (Tools + CR Pipeline)
+ * CRITICAL: Tools do NOT take sessionId as parameter!
+ * Session ID comes from request context, not from LLM.
  * 
- * Provides tool definitions for OpenAI Function Calling to enable INTENT
- * to interact with Context Packs, Change Requests, and GitHub Publishing.
+ * Issue: Verdrahte INTENT mit AFU-9 (Tools + CR Pipeline)
  */
 
 import type OpenAI from 'openai';
 
 /**
- * OpenAI Function Calling Tool Definitions
+ * OpenAI Function Calling Tool Definitions for INTENT Agent
  * 
- * These tools allow INTENT to:
- * - Retrieve Context Packs for session audit/replay
- * - Get/Save/Validate Change Requests
- * - Publish Change Requests to GitHub as issues
+ * CRITICAL: Tools do NOT take sessionId as parameter!
+ * Session ID comes from request context, not from LLM.
+ * 
+ * Issue: Verdrahte INTENT mit AFU-9 (Tools + CR Pipeline)
  */
 export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
       name: 'get_context_pack',
-      description: 'Get a Context Pack for the current INTENT session. Contains messages, sources, and metadata.',
+      description: 'Get the Context Pack for the current INTENT session. Contains all messages, used sources, and metadata. Use this when user asks to see context or session data.',
       parameters: {
         type: 'object',
-        properties: {
-          sessionId: {
-            type: 'string',
-            description: 'The INTENT session ID',
-          },
-        },
-        required: ['sessionId'],
+        properties: {},
+        required: [],
       },
     },
   },
@@ -39,16 +34,11 @@ export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_change_request',
-      description: 'Get the current Change Request draft for the session. Returns CR JSON if exists, null otherwise.',
+      description: 'Get the current Change Request draft for this session. Returns CR JSON if exists, null otherwise. Use when user asks "siehst du den Change Request?" or "zeige CR".',
       parameters: {
         type: 'object',
-        properties: {
-          sessionId: {
-            type: 'string',
-            description: 'The INTENT session ID',
-          },
-        },
-        required: ['sessionId'],
+        properties: {},
+        required: [],
       },
     },
   },
@@ -56,20 +46,24 @@ export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'save_change_request',
-      description: 'Save or update the Change Request draft for the session. Does NOT validate or publish.',
+      description: 'Save or update the Change Request draft for this session. Does NOT validate or publish. Use when user wants to create/modify CR.',
       parameters: {
         type: 'object',
         properties: {
-          sessionId: {
-            type: 'string',
-            description: 'The INTENT session ID',
-          },
           crJson: {
             type: 'object',
-            description: 'The Change Request JSON (must conform to ChangeRequestV1 schema)',
+            description: 'The Change Request JSON conforming to ChangeRequestV1 schema',
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+              type: { type: 'string', enum: ['feature', 'bugfix', 'refactor', 'docs', 'test', 'chore'] },
+              priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+              repository: { type: 'string' },
+            },
+            required: ['title', 'description', 'type', 'repository'],
           },
         },
-        required: ['sessionId', 'crJson'],
+        required: ['crJson'],
       },
     },
   },
@@ -77,20 +71,16 @@ export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'validate_change_request',
-      description: 'Validate a Change Request against the schema. Returns validation result with errors/warnings.',
+      description: 'Validate a Change Request against the ChangeRequestV1 schema. Returns validation result with errors/warnings. Use before publishing.',
       parameters: {
         type: 'object',
         properties: {
-          sessionId: {
-            type: 'string',
-            description: 'The INTENT session ID',
-          },
           crJson: {
             type: 'object',
             description: 'The Change Request JSON to validate',
           },
         },
-        required: ['sessionId', 'crJson'],
+        required: ['crJson'],
       },
     },
   },
@@ -98,20 +88,17 @@ export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'publish_to_github',
-      description: 'Publish the Change Request to GitHub as an issue. Idempotent: creates new issue or updates existing based on canonicalId.',
+      description: 'Publish the Change Request to GitHub as an issue. Idempotent: creates new issue or updates existing based on canonicalId. ALWAYS validate CR first!',
       parameters: {
         type: 'object',
         properties: {
-          sessionId: {
-            type: 'string',
-            description: 'The INTENT session ID',
-          },
           preferDraft: {
             type: 'boolean',
             description: 'Use draft CR instead of latest committed version (default: false)',
+            default: false,
           },
         },
-        required: ['sessionId'],
+        required: [],
       },
     },
   },
