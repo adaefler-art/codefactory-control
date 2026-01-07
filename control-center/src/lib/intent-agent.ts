@@ -251,8 +251,7 @@ AVAILABLE TOOLS:
 CRITICAL RULES:
 - When asked "siehst du den Change Request?" or similar, use get_change_request tool
 - When asked to publish CR, use validate_change_request first, then publish_to_github
-- If tool call fails, return exact error from tool response (NO HALLUCINATION)
-- Never hallucinate tool results - only return what tools actually returned
+- If tool call fails, return exact error from tool response - never hallucinate tool results
 - Use German for responses (user may use English or German)
 
 Guidelines:

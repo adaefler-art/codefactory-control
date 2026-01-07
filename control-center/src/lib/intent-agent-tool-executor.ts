@@ -131,9 +131,12 @@ export async function executeIntentTool(
           });
         }
         
-        // Publish to GitHub using issue-creator
+        // Type assertion: cr_json should be ChangeRequest, validated by saveCrDraft/validateAndSaveCrDraft
+        const crJson = crResult.data.cr_json as any;
+        
+        // Publish to GitHub using issue-creator (which validates CR)
         try {
-          const publishResult = await createOrUpdateFromCR(crResult.data.cr_json);
+          const publishResult = await createOrUpdateFromCR(crJson);
           
           return JSON.stringify({
             success: true,
