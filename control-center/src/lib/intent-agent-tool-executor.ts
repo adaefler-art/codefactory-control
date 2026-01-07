@@ -86,6 +86,14 @@ export async function executeIntentTool(
           });
         }
         
+        if (!result.data) {
+          return JSON.stringify({
+            success: true,
+            draft: null,
+            message: 'No Change Request draft exists yet for this session',
+          });
+        }
+        
         return JSON.stringify({
           success: true,
           draft: {

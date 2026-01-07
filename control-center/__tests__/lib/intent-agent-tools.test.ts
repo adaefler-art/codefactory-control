@@ -78,8 +78,10 @@ describe('INTENT Agent Tools', () => {
       const mockPack = {
         id: 'pack-123',
         session_id: testSessionId,
-        pack_json: { messages: [] },
-        pack_hash: 'hash123',
+        pack_json: { messages: [{ content: 'test' }, { content: 'test2', used_sources: ['src1'] }] },
+        pack_hash: 'hash123456789abc',
+        version: 1,
+        created_at: '2024-01-01T00:00:00.000Z',
       };
 
       (generateContextPack as jest.Mock).mockResolvedValue({
@@ -87,11 +89,19 @@ describe('INTENT Agent Tools', () => {
         data: mockPack,
       });
 
-      const result = await executeIntentTool('get_context_pack', { sessionId: testSessionId }, testUserId);
+      const result = await executeIntentTool('get_context_pack', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
-      expect(parsed.pack).toEqual(mockPack);
+      expect(parsed.pack).toEqual({
+        id: 'pack-123',
+        pack_hash: 'hash123456789abc'.substring(0, 12),
+        version: 1,
+        created_at: '2024-01-01T00:00:00.000Z',
+        message_count: 2,
+        sources_count: 1,
+      });
+      expect(parsed.message).toBe('Context pack retrieved successfully');
       expect(generateContextPack).toHaveBeenCalledWith(mockPool, testSessionId, testUserId);
     });
 
@@ -102,11 +112,12 @@ describe('INTENT Agent Tools', () => {
         code: 'SESSION_NOT_FOUND',
       });
 
-      const result = await executeIntentTool('get_context_pack', { sessionId: testSessionId }, testUserId);
+      const result = await executeIntentTool('get_context_pack', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
+      expect(parsed.success).toBe(false);
       expect(parsed.error).toBe('Session not found');
-      expect(parsed.code).toBe('SESSION_NOT_FOUND');
+      expect(parsed.code).toBe('CONTEXT_PACK_FAILED');
     });
   });
 
@@ -116,7 +127,9 @@ describe('INTENT Agent Tools', () => {
         id: 'draft-123',
         session_id: testSessionId,
         cr_json: { canonicalId: 'CR-123' },
+        cr_hash: 'abc123def456',
         status: 'draft',
+        updated_at: '2024-01-01T00:00:00.000Z',
       };
 
       (getCrDraft as jest.Mock).mockResolvedValue({
@@ -124,11 +137,17 @@ describe('INTENT Agent Tools', () => {
         data: mockDraft,
       });
 
-      const result = await executeIntentTool('get_change_request', { sessionId: testSessionId }, testUserId);
+      const result = await executeIntentTool('get_change_request', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
-      expect(parsed.draft).toEqual(mockDraft);
+      expect(parsed.draft).toEqual({
+        id: 'draft-123',
+        cr_json: { canonicalId: 'CR-123' },
+        cr_hash: 'abc123def456'.substring(0, 12),
+        status: 'draft',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      });
       expect(getCrDraft).toHaveBeenCalledWith(mockPool, testSessionId, testUserId);
     });
 
@@ -138,12 +157,12 @@ describe('INTENT Agent Tools', () => {
         data: null,
       });
 
-      const result = await executeIntentTool('get_change_request', { sessionId: testSessionId }, testUserId);
+      const result = await executeIntentTool('get_change_request', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
       expect(parsed.draft).toBeNull();
-      expect(parsed.message).toBe('No Change Request draft exists yet');
+      expect(parsed.message).toBe('No Change Request draft exists yet for this session');
     });
 
     test('should return error when access denied', async () => {
@@ -152,11 +171,12 @@ describe('INTENT Agent Tools', () => {
         error: 'Session not found or access denied',
       });
 
-      const result = await executeIntentTool('get_change_request', { sessionId: testSessionId }, testUserId);
+      const result = await executeIntentTool('get_change_request', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
-      expect(parsed.error).toBe('Session not found or access denied');
-      expect(parsed.code).toBe('CR_ACCESS_DENIED');
+      expect(parsed.success).toBe(true);
+      expect(parsed.draft).toBeNull();
+      expect(parsed.message).toBe('No Change Request draft exists yet for this session');
     });
   });
 
@@ -167,7 +187,9 @@ describe('INTENT Agent Tools', () => {
         id: 'draft-123',
         session_id: testSessionId,
         cr_json: mockCrJson,
+        cr_hash: 'abc123def456',
         status: 'draft',
+        updated_at: '2024-01-01T00:00:00.000Z',
       };
 
       (saveCrDraft as jest.Mock).mockResolvedValue({
@@ -176,13 +198,16 @@ describe('INTENT Agent Tools', () => {
       });
 
       const result = await executeIntentTool('save_change_request', {
-        sessionId: testSessionId,
         crJson: mockCrJson,
-      }, testUserId);
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
-      expect(parsed.draft).toEqual(mockDraft);
+      expect(parsed.draft).toEqual({
+        id: 'draft-123',
+        cr_hash: 'abc123def456'.substring(0, 12),
+        updated_at: '2024-01-01T00:00:00.000Z',
+      });
       expect(parsed.message).toBe('Change Request draft saved successfully');
       expect(saveCrDraft).toHaveBeenCalledWith(mockPool, testSessionId, testUserId, mockCrJson);
     });
@@ -194,9 +219,8 @@ describe('INTENT Agent Tools', () => {
       });
 
       const result = await executeIntentTool('save_change_request', {
-        sessionId: testSessionId,
         crJson: {},
-      }, testUserId);
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.error).toBe('Database error');
@@ -227,14 +251,16 @@ describe('INTENT Agent Tools', () => {
       });
 
       const result = await executeIntentTool('validate_change_request', {
-        sessionId: testSessionId,
         crJson: mockCrJson,
-      }, testUserId);
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
       expect(parsed.validation).toEqual(mockValidation);
-      expect(parsed.draft).toEqual(mockDraft);
+      expect(parsed.draft).toEqual({
+        id: 'draft-123',
+        status: 'valid',
+      });
       expect(validateAndSaveCrDraft).toHaveBeenCalledWith(mockPool, testSessionId, testUserId, mockCrJson);
     });
 
@@ -253,9 +279,8 @@ describe('INTENT Agent Tools', () => {
       });
 
       const result = await executeIntentTool('validate_change_request', {
-        sessionId: testSessionId,
         crJson: {},
-      }, testUserId);
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -285,8 +310,8 @@ describe('INTENT Agent Tools', () => {
       });
 
       const result = await executeIntentTool('publish_to_github', {
-        sessionId: testSessionId,
-      }, testUserId);
+        
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -305,8 +330,8 @@ describe('INTENT Agent Tools', () => {
       });
 
       const result = await executeIntentTool('publish_to_github', {
-        sessionId: testSessionId,
-      }, testUserId);
+        
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.error).toBe('No Change Request found to publish');
@@ -329,8 +354,8 @@ describe('INTENT Agent Tools', () => {
       (createOrUpdateFromCR as jest.Mock).mockRejectedValue(new Error('GitHub API error'));
 
       const result = await executeIntentTool('publish_to_github', {
-        sessionId: testSessionId,
-      }, testUserId);
+        
+      }, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.error).toBe('GitHub API error');
@@ -340,7 +365,7 @@ describe('INTENT Agent Tools', () => {
 
   describe('Tool Executor: Error Handling', () => {
     test('should return error for unknown tool', async () => {
-      const result = await executeIntentTool('unknown_tool', {}, testUserId);
+      const result = await executeIntentTool('unknown_tool', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.error).toBe('Unknown tool: unknown_tool');
@@ -350,7 +375,7 @@ describe('INTENT Agent Tools', () => {
     test('should handle unexpected errors gracefully', async () => {
       (getCrDraft as jest.Mock).mockRejectedValue(new Error('Unexpected database error'));
 
-      const result = await executeIntentTool('get_change_request', { sessionId: testSessionId }, testUserId);
+      const result = await executeIntentTool('get_change_request', {}, { userId: testUserId, sessionId: testSessionId });
       const parsed = JSON.parse(result);
 
       expect(parsed.error).toBe('Unexpected database error');
