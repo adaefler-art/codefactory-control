@@ -17,7 +17,7 @@
 import OpenAI from "openai";
 import { randomUUID } from "crypto";
 import { INTENT_TOOLS } from './intent-agent-tools';
-import { executeIntentTool } from './intent-agent-tool-executor';
+import { executeIntentTool, type ToolContext } from './intent-agent-tool-executor';
 
 // Environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -186,14 +186,16 @@ function boundConversationHistory(
  * 
  * @param userMessage - User's message content
  * @param conversationHistory - Previous messages in conversation
- * @param userId - User ID for rate limiting
+ * @param userId - User ID for rate limiting and tool execution
+ * @param sessionId - Session ID for tool execution context
  * @returns Agent response with metadata
  * @throws Error if INTENT is disabled, rate limited, or LLM call fails
  */
 export async function generateIntentResponse(
   userMessage: string,
   conversationHistory: IntentMessage[] = [],
-  userId?: string
+  userId: string,
+  sessionId: string
 ): Promise<IntentAgentResponse> {
   // Feature flag check: fail-closed if disabled
   if (!INTENT_ENABLED) {
@@ -236,32 +238,31 @@ export async function generateIntentResponse(
     const systemPrompt = `You are the INTENT Agent for AFU-9 Control Center.
 
 Your role:
-- Help users understand and operate the AFU-9 system (Autonomous Fabrication Unit - Ninefold Architecture)
+- Help users understand and operate the AFU-9 system
 - Provide guidance on issues, workflows, deployments, and observability
 - Assist with Change Request (CR) creation and planning
-- Execute actions via available tools (NO HALLUCINATION)
+- Execute actions via available tools
 
-AVAILABLE TOOLS:
+AVAILABLE TOOLS (YOU MUST USE THEM):
 - get_context_pack: Retrieve session context pack (messages + sources)
 - get_change_request: Get current CR draft for this session
 - save_change_request: Save/update CR draft (does NOT validate/publish)
 - validate_change_request: Validate CR against schema
 - publish_to_github: Publish CR to GitHub as issue (idempotent)
 
-CRITICAL RULES:
-- When asked "siehst du den Change Request?" or similar, use get_change_request tool
-- When asked to publish CR, use validate_change_request first, then publish_to_github
-- If tool call fails, return exact error from tool response - never hallucinate tool results
-- Use German for responses (user may use English or German)
-
-Guidelines:
-- Be concise but helpful
-- Focus on operational and diagnostic assistance
-- Never reveal API keys, tokens, or sensitive credentials
-- Provide structured responses when appropriate
+CRITICAL RULES FOR TOOL USAGE:
+1. When user asks "siehst du den Change Request?", you MUST call get_change_request
+2. When user asks "zeige Context Pack", you MUST call get_context_pack
+3. When user asks to create/modify CR, you MUST call save_change_request
+4. When user asks to publish CR, you MUST call validate_change_request first, then publish_to_github
+5. NEVER say "I cannot access" or "I cannot see" - USE THE TOOLS!
+6. If tool call fails, return the exact error from tool response (no hallucination)
+7. Tool results are JSON strings - parse them and present to user in German
 
 Current session: You are operating within a specific INTENT session.
-All tool calls automatically use the correct sessionId.`;
+All tool calls automatically use the correct sessionId from the request context.
+
+Response language: German (user may use English or German)`;
 
     // Build messages array (using bounded inputs)
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -326,6 +327,9 @@ All tool calls automatically use the correct sessionId.`;
           responseMessage,
         ];
         
+        // Create tool execution context
+        const toolContext: ToolContext = { userId, sessionId };
+        
         // Execute each tool call
         for (const toolCall of responseMessage.tool_calls) {
           // Type guard: only process function tool calls
@@ -342,8 +346,14 @@ All tool calls automatically use the correct sessionId.`;
             args: functionArgs,
           });
           
-          // Execute tool
-          const toolResult = await executeIntentTool(functionName, functionArgs, userId || 'unknown');
+          // Execute tool with context
+          const toolResult = await executeIntentTool(functionName, functionArgs, toolContext);
+          
+          console.log(`[INTENT Agent] Tool result:`, {
+            requestId,
+            tool: functionName,
+            result: toolResult.substring(0, 200),
+          });
           
           // Add tool result to messages
           toolMessages.push({
@@ -354,6 +364,8 @@ All tool calls automatically use the correct sessionId.`;
         }
         
         // Call LLM again with tool results
+        console.log(`[INTENT Agent] Calling LLM with tool results`, { requestId });
+        
         const finalCompletion = await openai.chat.completions.create({
           model: OPENAI_MODEL,
           messages: toolMessages,
