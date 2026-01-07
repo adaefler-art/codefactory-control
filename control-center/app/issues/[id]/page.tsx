@@ -9,7 +9,7 @@ import { parseLabelsInput } from "@/lib/label-utils";
 import { mapToCanonicalStatus, isLegacyStatus } from "@/lib/utils/status-mapping";
 import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 import { RunsSection } from "../../components/runs/RunsSection";
-import { getEffectiveStatusReason } from "@/lib/issues/stateModel";
+import { getEffectiveStatusReason, detectStateDrift } from "@/lib/issues/stateModel";
 import type { IssueStateModel } from "@/lib/schemas/issueStateModel";
 
 interface Issue {
@@ -701,9 +701,46 @@ export default function IssueDetailPage({
                           githubMirrorStatus: issue.githubMirrorStatus as any,
                           executionState: issue.executionState as any,
                           handoffState: issue.handoffState as any,
+                          github_status_raw: issue.github_status_raw,
+                          github_status_updated_at: issue.github_status_updated_at,
                         })}
                       </p>
                     )}
+                    
+                    {/* State Drift Detection - v1.4 */}
+                    {issue.localStatus && issue.githubMirrorStatus && issue.executionState && issue.handoffState && (() => {
+                      const drift = detectStateDrift({
+                        localStatus: issue.localStatus as any,
+                        githubMirrorStatus: issue.githubMirrorStatus as any,
+                        executionState: issue.executionState as any,
+                        handoffState: issue.handoffState as any,
+                        github_status_raw: issue.github_status_raw,
+                      });
+                      
+                      if (!drift.hasDrift) return null;
+                      
+                      return (
+                        <div className={`mt-3 px-3 py-2 rounded-md ${
+                          drift.severity === 'warning' 
+                            ? 'bg-yellow-900/30 border border-yellow-700' 
+                            : 'bg-blue-900/30 border border-blue-700'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm mt-0.5">
+                              {drift.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                            </span>
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-200">
+                                State Drift Detected
+                              </div>
+                              <div className="text-xs text-gray-300 mt-1">
+                                {drift.message}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   
                   {/* State Dimensions - Secondary Display */}

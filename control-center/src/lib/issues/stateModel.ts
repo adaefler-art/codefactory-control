@@ -58,7 +58,48 @@ export function mapGithubMirrorStatusToEffective(
 }
 
 /**
- * Compute Effective Status using Precedence Rules v1
+ * Check if GitHub status data is available
+ * 
+ * GitHub is considered "present" if:
+ * - Mirror status is not UNKNOWN, OR
+ * - Raw snapshot exists (github_status_raw field)
+ * 
+ * This helper is used to determine if we have ANY GitHub data,
+ * regardless of whether it maps to a LocalStatus.
+ * 
+ * @param state - Issue state model (may include github_status_raw)
+ * @returns true if GitHub data is available
+ */
+export function hasGithubStatus(state: IssueStateModel & { github_status_raw?: string | null }): boolean {
+  return (
+    state.githubMirrorStatus !== 'UNKNOWN' ||
+    (state.github_status_raw != null && state.github_status_raw.trim() !== '')
+  );
+}
+
+/**
+ * State Model v1.4: Compute Effective Status using Precedence Rules
+ * 
+ * POLICY (Established - DO NOT CHANGE without issue discussion):
+ * 
+ * 1. **Execution State** (RUNNING)
+ *    → Execution takes precedence (active work state)
+ *    → Shows AFU9 is actively working on this issue
+ * 
+ * 2. **GitHub Mirror Status** (OPEN/CLOSED/ERROR/IN_PROGRESS/etc.)
+ *    → GitHub is source of truth for external state
+ *    → Present if: githubMirrorStatus != UNKNOWN OR github_status_raw exists
+ *    → Only some values map to LocalStatus (IN_PROGRESS→IMPLEMENTING, etc.)
+ *    → Others (OPEN/CLOSED/ERROR) are informational only
+ * 
+ * 3. **Local Status** (CREATED/SPEC_READY/IMPLEMENTING/etc.)
+ *    → Fallback when no execution/GitHub state available
+ *    → AFU9's internal tracking state
+ * 
+ * DRIFT DETECTION:
+ * - Occurs when: githubMirrorStatus=CLOSED AND localStatus in [CREATED, SPEC_READY, IMPLEMENTING]
+ * - Visual indicator only, NO automatic state mutation
+ * - See: detectStateDrift() helper
  * 
  * Precedence Rules (from STATE_MODEL_V1.md):
  * 1. If ExecutionState == RUNNING → use localStatus (AFU9 actively executing)
@@ -73,6 +114,7 @@ export function mapGithubMirrorStatusToEffective(
  * 
  * @param state - Complete issue state model
  * @returns Computed effective status
+ * @see docs/issues/STATE_MODEL_V1.md
  */
 export function computeEffectiveStatus(state: IssueStateModel): LocalStatus {
   const { localStatus, githubMirrorStatus, executionState } = state;
@@ -244,10 +286,10 @@ export function isEffectiveStatusOverridden(state: IssueStateModel): boolean {
  * 
  * Useful for debugging and UI tooltips.
  * 
- * @param state - Complete issue state model
+ * @param state - Complete issue state model (with optional github_status_raw)
  * @returns Explanation string
  */
-export function getEffectiveStatusReason(state: IssueStateModel): string {
+export function getEffectiveStatusReason(state: IssueStateModel & { github_status_raw?: string | null; github_status_updated_at?: string | null }): string {
   const { localStatus, githubMirrorStatus, executionState } = state;
 
   if (executionState === 'RUNNING') {
@@ -259,7 +301,69 @@ export function getEffectiveStatusReason(state: IssueStateModel): string {
     if (mappedStatus !== null) {
       return `GitHub status available: using mapped status (${githubMirrorStatus} → ${mappedStatus})`;
     }
+    // GitHub status exists but doesn't map to LocalStatus (e.g., OPEN, CLOSED, ERROR)
+    const syncDate = state.github_status_updated_at 
+      ? ` (synced: ${new Date(state.github_status_updated_at).toLocaleDateString()})`
+      : '';
+    return `GitHub mirror: ${githubMirrorStatus}${syncDate}, using AFU9 local status (${localStatus})`;
   }
 
-  return `No execution or GitHub status: using AFU9 local status (${localStatus})`;
+  // Check if we have raw GitHub data even though mirror is UNKNOWN
+  if (hasGithubStatus(state)) {
+    return `GitHub data available but not yet mapped, using AFU9 local status (${localStatus})`;
+  }
+
+  return `AFU9 local status (no GitHub sync yet): ${localStatus}`;
+}
+
+/**
+ * Detect drift between local AFU9 status and GitHub mirror state
+ * 
+ * Drift occurs when GitHub and AFU9 disagree on issue state:
+ * - **Warning**: GitHub=CLOSED but AFU9 is in active work state (CREATED/IMPLEMENTING/etc.)
+ * - **Info**: AFU9=DONE/KILLED but GitHub=OPEN
+ * 
+ * This is informational only - NO automatic state mutation occurs.
+ * User must manually reconcile the drift.
+ * 
+ * @param state - Complete issue state model (with optional github_status_raw)
+ * @returns Drift detection result with severity and message
+ */
+export function detectStateDrift(state: IssueStateModel & { github_status_raw?: string | null }): {
+  hasDrift: boolean;
+  severity: 'warning' | 'info' | null;
+  message: string | null;
+} {
+  // No drift if no GitHub status available
+  if (!hasGithubStatus(state)) {
+    return { hasDrift: false, severity: null, message: null };
+  }
+
+  const { localStatus, githubMirrorStatus } = state;
+
+  // Case 1: GitHub shows CLOSED, but AFU9 is in active work state
+  const githubClosed = githubMirrorStatus === 'CLOSED';
+  const localActive = ['CREATED', 'SPEC_READY', 'IMPLEMENTING', 'VERIFIED', 'MERGE_READY'].includes(localStatus);
+  
+  if (githubClosed && localActive) {
+    return {
+      hasDrift: true,
+      severity: 'warning',
+      message: `GitHub issue is CLOSED, but local status is still ${localStatus}. Consider updating local status to DONE or KILLED.`,
+    };
+  }
+
+  // Case 2: AFU9 shows DONE/KILLED, but GitHub is OPEN
+  const githubOpen = githubMirrorStatus === 'OPEN';
+  const localDone = ['DONE', 'KILLED'].includes(localStatus);
+  
+  if (githubOpen && localDone) {
+    return {
+      hasDrift: true,
+      severity: 'info',
+      message: `Local status is ${localStatus}, but GitHub issue is still OPEN.`,
+    };
+  }
+
+  return { hasDrift: false, severity: null, message: null };
 }

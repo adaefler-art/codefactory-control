@@ -33,6 +33,8 @@ import {
   extractGithubMirrorStatus,
   isEffectiveStatusOverridden,
   getEffectiveStatusReason,
+  hasGithubStatus,
+  detectStateDrift,
 } from '../../../src/lib/issues/stateModel';
 
 describe('Issue State Model Schema', () => {
@@ -496,7 +498,7 @@ describe('Helper Functions', () => {
       };
 
       const reason = getEffectiveStatusReason(state);
-      expect(reason).toContain('No execution or GitHub status');
+      expect(reason).toContain('AFU9 local status (no GitHub sync yet)');
       expect(reason).toContain('SPEC_READY');
     });
   });
@@ -560,5 +562,217 @@ describe('Edge Cases and Semantic Protection', () => {
       // Should always return the local status when GitHub is UNKNOWN
       expect(computeEffectiveStatus(state)).toBe(status);
     });
+  });
+});
+
+/**
+ * State Model v1.4: Enhanced GitHub Status Detection & Drift
+ */
+describe('State Model v1.4: hasGithubStatus', () => {
+  it('should return true when mirror status is not UNKNOWN', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'CLOSED' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: null,
+    };
+    
+    expect(hasGithubStatus(state)).toBe(true);
+  });
+  
+  it('should return true when raw status exists (even if mirror is UNKNOWN)', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'UNKNOWN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"closed","labels":[],"updatedAt":"2026-01-07"}',
+    };
+    
+    expect(hasGithubStatus(state)).toBe(true);
+  });
+  
+  it('should return false when both mirror=UNKNOWN and raw=null', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'UNKNOWN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: null,
+    };
+    
+    expect(hasGithubStatus(state)).toBe(false);
+  });
+
+  it('should return false when github_status_raw is empty string', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'UNKNOWN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '   ',
+    };
+    
+    expect(hasGithubStatus(state)).toBe(false);
+  });
+});
+
+describe('State Model v1.4: Enhanced getEffectiveStatusReason', () => {
+  it('should NOT show "no GitHub status" hint when mirror=CLOSED + raw exists', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'CLOSED' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"closed"}',
+      github_status_updated_at: '2026-01-07T10:00:00Z',
+    };
+    
+    const reason = getEffectiveStatusReason(state);
+    
+    expect(reason).not.toContain('No execution or GitHub status');
+    expect(reason).toContain('GitHub mirror');
+    expect(reason).toContain('CLOSED');
+  });
+
+  it('should show sync date when github_status_updated_at is available', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'OPEN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"open"}',
+      github_status_updated_at: '2026-01-07T10:00:00Z',
+    };
+    
+    const reason = getEffectiveStatusReason(state);
+    
+    expect(reason).toContain('synced:');
+  });
+
+  it('should handle raw GitHub data when mirror=UNKNOWN', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'UNKNOWN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"open","labels":[]}',
+    };
+    
+    const reason = getEffectiveStatusReason(state);
+    
+    expect(reason).toContain('GitHub data available but not yet mapped');
+  });
+
+  it('should prioritize execution state over GitHub', () => {
+    const state = {
+      localStatus: 'IMPLEMENTING' as LocalStatus,
+      githubMirrorStatus: 'OPEN' as GithubMirrorStatus,
+      executionState: 'RUNNING' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"open"}',
+    };
+    
+    const reason = getEffectiveStatusReason(state);
+    
+    expect(reason).toContain('Execution in progress');
+    expect(reason).toContain('IMPLEMENTING');
+  });
+});
+
+describe('State Model v1.4: detectStateDrift', () => {
+  it('should detect drift when local=CREATED but mirror=CLOSED', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'CLOSED' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"closed"}',
+    };
+    
+    const drift = detectStateDrift(state);
+    
+    expect(drift.hasDrift).toBe(true);
+    expect(drift.severity).toBe('warning');
+    expect(drift.message).toContain('GitHub issue is CLOSED');
+    expect(drift.message).toContain('local status is still CREATED');
+  });
+
+  it('should detect drift for all active work states', () => {
+    const activeStates: LocalStatus[] = ['CREATED', 'SPEC_READY', 'IMPLEMENTING', 'VERIFIED', 'MERGE_READY'];
+    
+    activeStates.forEach(localStatus => {
+      const state = {
+        localStatus,
+        githubMirrorStatus: 'CLOSED' as GithubMirrorStatus,
+        executionState: 'IDLE' as ExecutionState,
+        handoffState: 'SYNCED' as HandoffState,
+        github_status_raw: '{"state":"closed"}',
+      };
+      
+      const drift = detectStateDrift(state);
+      expect(drift.hasDrift).toBe(true);
+      expect(drift.severity).toBe('warning');
+    });
+  });
+
+  it('should NOT detect drift when local=DONE and mirror=CLOSED', () => {
+    const state = {
+      localStatus: 'DONE' as LocalStatus,
+      githubMirrorStatus: 'CLOSED' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"closed"}',
+    };
+    
+    const drift = detectStateDrift(state);
+    
+    expect(drift.hasDrift).toBe(false);
+  });
+
+  it('should detect info drift when local=DONE but mirror=OPEN', () => {
+    const state = {
+      localStatus: 'DONE' as LocalStatus,
+      githubMirrorStatus: 'OPEN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"open"}',
+    };
+    
+    const drift = detectStateDrift(state);
+    
+    expect(drift.hasDrift).toBe(true);
+    expect(drift.severity).toBe('info');
+    expect(drift.message).toContain('Local status is DONE');
+    expect(drift.message).toContain('GitHub issue is still OPEN');
+  });
+
+  it('should NOT detect drift when no GitHub status available', () => {
+    const state = {
+      localStatus: 'CREATED' as LocalStatus,
+      githubMirrorStatus: 'UNKNOWN' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: null,
+    };
+    
+    const drift = detectStateDrift(state);
+    
+    expect(drift.hasDrift).toBe(false);
+  });
+
+  it('should NOT detect drift when states are aligned', () => {
+    const state = {
+      localStatus: 'IMPLEMENTING' as LocalStatus,
+      githubMirrorStatus: 'IN_PROGRESS' as GithubMirrorStatus,
+      executionState: 'IDLE' as ExecutionState,
+      handoffState: 'SYNCED' as HandoffState,
+      github_status_raw: '{"state":"open","labels":["status: in progress"]}',
+    };
+    
+    const drift = detectStateDrift(state);
+    
+    expect(drift.hasDrift).toBe(false);
   });
 });
