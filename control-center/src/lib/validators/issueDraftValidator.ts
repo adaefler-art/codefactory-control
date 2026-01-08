@@ -144,7 +144,8 @@ export function validateIssueDraft(issueDraftJson: unknown): ValidationResult {
   
   if (!schemaResult.success) {
     // Convert schema errors to standard format
-    schemaResult.errors.forEach((err) => {
+    const schemaErrors = schemaResult.errors || [];
+    schemaErrors.forEach((err) => {
       errors.push({
         code: ERROR_CODES.ISSUE_SCHEMA_INVALID,
         message: err.message,
