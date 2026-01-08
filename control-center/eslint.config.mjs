@@ -1,6 +1,10 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import { createRequire } from 'module';
+
+// Create require function for CommonJS modules in ESM context
+const require = createRequire(import.meta.url);
 
 // Custom rule for admin endpoint authentication
 const adminEndpointAuthRule = require('./eslint-rules/admin-endpoint-auth.cjs');
