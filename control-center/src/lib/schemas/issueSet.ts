@@ -60,7 +60,7 @@ export const IssueSetSchema = z.object({
   sourceHash: z.string().min(1),
   items: z.array(IssueSetItemSchema).max(20, 'Issue set must not exceed 20 items'),
   briefingText: z.string().max(50000).optional(),
-  constraints: z.record(z.unknown()).optional(),
+  constraints: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 export type IssueSet = z.infer<typeof IssueSetSchema>;
@@ -159,6 +159,27 @@ export function validateIssueSet(data: unknown): {
 }
 
 /**
+ * Stable stringify with sorted keys (recursive)
+ */
+function stableStringify(obj: any): string {
+  if (obj === null || typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(item => stableStringify(item)).join(',') + ']';
+  }
+  
+  const keys = Object.keys(obj).sort();
+  const pairs = keys.map(key => {
+    const value = stableStringify(obj[key]);
+    return JSON.stringify(key) + ':' + value;
+  });
+  
+  return '{' + pairs.join(',') + '}';
+}
+
+/**
  * Generate deterministic hash of briefing input
  * 
  * Uses stableStringify + sha256 for byte-stable output
@@ -179,8 +200,8 @@ export async function generateBriefingHash(
     constraints: constraints || {},
   };
   
-  // Sort keys for stable stringify
-  const stableInput = JSON.stringify(input, Object.keys(input).sort());
+  // Sort all keys recursively for stable stringify
+  const stableInput = stableStringify(input);
   
   // Generate SHA-256 hash
   return crypto.createHash('sha256').update(stableInput, 'utf8').digest('hex');
