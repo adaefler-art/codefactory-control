@@ -304,6 +304,44 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 npm --prefix control-center run db:migrate
 ```
 
+#### Column "filename" Does Not Exist Error
+
+**Cause**: The `schema_migrations` table exists but has the old column structure with `migration_id` instead of `filename`.
+
+**Symptoms**:
+```
+Error: Failed to generate migration parity report (column "filename" does not exist)
+```
+
+**Resolution**: Apply migration 051 to fix the table structure:
+
+```powershell
+# Run migrations to apply the fix
+npm --prefix control-center run db:migrate
+
+# Verify the table structure
+psql -h localhost -U postgres -d afu9 -c "\d schema_migrations"
+```
+
+**Expected structure after fix**:
+```sql
+Table "public.schema_migrations"
+  Column    |           Type           | Nullable | Default 
+------------+--------------------------+----------+---------
+ filename   | text                     | not null | 
+ sha256     | text                     |          | 
+ applied_at | timestamp with time zone | not null | now()
+Indexes:
+    "schema_migrations_pkey" PRIMARY KEY, btree (filename)
+    "idx_schema_migrations_applied_at" btree (applied_at DESC)
+```
+
+**Details**: Migration 051 (`051_fix_schema_migrations_structure.sql`) performs an idempotent fix by:
+- Renaming `migration_id` column to `filename` (if it exists)
+- Adding missing `sha256` column
+- Ensuring proper constraints on `applied_at`
+- Setting up correct indexes and primary key
+
 ## PowerShell Verification Commands
 
 ### Local Development Check
