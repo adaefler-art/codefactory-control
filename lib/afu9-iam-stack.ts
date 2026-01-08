@@ -278,6 +278,41 @@ export class Afu9IamStack extends cdk.Stack {
     );
 
     // ========================================
+    // CloudWatch Logs Permissions
+    // ========================================
+    // Allow reading ECS task logs for migration and deployment diagnostics
+    // Justification: GitHub Actions deploy workflow needs to read migration task logs
+    // to diagnose failures when running database migrations via one-off ECS tasks
+    
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsReadForMigrationDiagnostics',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:GetLogEvents',
+        ],
+        resources: [
+          // Scope to AFU-9 ECS log groups (CloudFormation-generated names)
+          `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9*:log-stream:*`,
+        ],
+      })
+    );
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsFilterForMigrationDiagnostics',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:FilterLogEvents',
+        ],
+        resources: [
+          // Scope to /ecs/afu9/ log group pattern as required by policy validator
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/afu9/*:log-stream:*`,
+        ],
+      })
+    );
+
+    // ========================================
     // CloudFormation Permissions (CDK Deploy)
     // ========================================
     // CDK uses CloudFormation APIs to check stack status and execute change sets.
