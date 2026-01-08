@@ -99,8 +99,8 @@ BEGIN
   AND column_name IN ('filename', 'sha256', 'applied_at');
   
   IF col_count = 3 THEN
-    RAISE NOTICE '✅ schema_migrations structure verified: filename, sha256, applied_at';
+    RAISE NOTICE '[OK] schema_migrations structure verified: filename, sha256, applied_at';
   ELSE
-    RAISE WARNING '⚠️  schema_migrations structure incomplete (found % columns)', col_count;
+    RAISE WARNING '[WARNING] schema_migrations structure incomplete (found % columns)', col_count;
   END IF;
 END $$;
