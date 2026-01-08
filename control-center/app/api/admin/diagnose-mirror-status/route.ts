@@ -96,6 +96,15 @@ interface ErrorResponse {
 /**
  * Check if user sub is in admin allowlist
  * Fail-closed: empty/missing AFU9_ADMIN_SUBS → deny all
+ * 
+ * NOTE: This function is intentionally duplicated in some endpoints rather than
+ * imported from a shared module. Per the standardized admin pattern (see docs/CONTRIBUTING.md),
+ * endpoints may choose between:
+ * 1. Using checkProdWriteGuard() from @/lib/guards/prod-write-guard (recommended)
+ * 2. Implementing a local isAdminUser() function (for endpoints without prod gating needs)
+ * 
+ * Local implementation is preferred for GET endpoints that need admin-only access
+ * without the full production write guard machinery.
  */
 function isAdminUser(userId: string): boolean {
   const adminSubs = process.env.AFU9_ADMIN_SUBS || '';

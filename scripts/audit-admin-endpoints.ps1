@@ -89,7 +89,7 @@ foreach ($file in $routeFiles) {
     $content = Get-Content -Path $file.FullName -Raw
     
     # Check for compliant patterns
-    $hasCheckProdWriteGuard = $content -match 'checkProdWriteGuard'
+    $hasCheckProdWriteGuard = $content -match 'import.*checkProdWriteGuard.*from.*@/lib/guards/prod-write-guard'
     $hasIsAdminUser = $content -match 'function\s+isAdminUser\s*\('
     $hasManualAdminCheck = $content -match 'AFU9_ADMIN_SUBS'
     

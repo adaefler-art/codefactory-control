@@ -31,20 +31,22 @@ module.exports = {
 
   create(context) {
     const filename = context.getFilename();
+    const path = require('path');
+    
+    // Normalize path separators for cross-platform compatibility
+    const normalizedPath = filename.replace(/\\/g, '/');
     
     // Only check files in app/api/ops/** or app/api/admin/**
     const isAdminEndpoint = 
-      filename.includes('/app/api/ops/') || 
-      filename.includes('/app/api/admin/') ||
-      filename.includes('\\app\\api\\ops\\') ||
-      filename.includes('\\app\\api\\admin\\');
+      normalizedPath.includes('/app/api/ops/') || 
+      normalizedPath.includes('/app/api/admin/');
     
     if (!isAdminEndpoint) {
       return {};
     }
     
     // Skip non-route files
-    if (!filename.endsWith('route.ts') && !filename.endsWith('route.tsx')) {
+    if (!normalizedPath.endsWith('/route.ts') && !normalizedPath.endsWith('/route.tsx')) {
       return {};
     }
     
