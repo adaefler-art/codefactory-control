@@ -88,7 +88,6 @@ export async function GET(
     if (format === 'markdown') {
       const markdown = exportIssueSetToAFU9Markdown(items, {
         includeInvalid,
-        onlyValid: !includeInvalid,
       });
 
       return new NextResponse(markdown, {

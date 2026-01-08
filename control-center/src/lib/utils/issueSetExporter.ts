@@ -9,8 +9,11 @@ import type { IssueDraft } from '../schemas/issueDraft';
 import type { IntentIssueSetItem } from '../db/intentIssueSets';
 
 export interface ExportOptions {
+  /**
+   * If true, includes items with invalid validation status in the export.
+   * Default: false (excludes invalid items)
+   */
   includeInvalid?: boolean;
-  onlyValid?: boolean;
 }
 
 /**
@@ -84,16 +87,12 @@ export function exportIssueSetToAFU9Markdown(
   items: IntentIssueSetItem[],
   options: ExportOptions = {}
 ): string {
-  const { includeInvalid = false, onlyValid = true } = options;
+  const { includeInvalid = false } = options;
   
-  // Filter items based on options
-  let filteredItems = items;
-  
-  if (onlyValid && !includeInvalid) {
-    filteredItems = items.filter(item => item.last_validation_status === 'valid');
-  } else if (!includeInvalid) {
-    filteredItems = items.filter(item => item.last_validation_status !== 'invalid');
-  }
+  // Filter out invalid items unless explicitly requested
+  const filteredItems = includeInvalid 
+    ? items 
+    : items.filter(item => item.last_validation_status === 'valid');
   
   // Sort by canonicalId for stable output
   const sortedItems = [...filteredItems].sort((a, b) => 

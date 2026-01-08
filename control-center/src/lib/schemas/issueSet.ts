@@ -54,7 +54,7 @@ export type IssueSetItem = z.infer<typeof IssueSetItemSchema>;
  * - Source hash for determinism
  */
 export const IssueSetSchema = z.object({
-  issueSetVersion: z.enum(ACTIVE_ISSUE_SET_VERSIONS as unknown as [string, ...string[]]),
+  issueSetVersion: z.literal(ISSUE_SET_VERSION),
   issueSetId: z.string().uuid(),
   generatedAt: z.string().datetime(), // ISO 8601
   sourceHash: z.string().min(1),

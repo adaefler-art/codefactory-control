@@ -222,17 +222,10 @@ export async function generateIssueSet(
       const validation = validateIssueDraft(draft);
       const validationStatus = validation.isValid ? 'valid' : 'invalid';
 
-      // Compute hash (best effort)
-      let hash: string;
-      try {
-        const crypto = await import('crypto');
-        const canonical = JSON.stringify(draft);
-        hash = crypto.createHash('sha256').update(canonical, 'utf8').digest('hex');
-      } catch {
-        const crypto = await import('crypto');
-        const raw = JSON.stringify(draft);
-        hash = crypto.createHash('sha256').update(raw, 'utf8').digest('hex');
-      }
+      // Compute hash
+      const crypto = await import('crypto');
+      const canonical = JSON.stringify(draft);
+      const hash = crypto.createHash('sha256').update(canonical, 'utf8').digest('hex');
 
       const itemResult = await client.query(
         `INSERT INTO intent_issue_set_items (
