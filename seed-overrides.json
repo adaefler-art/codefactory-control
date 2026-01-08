@@ -1,0 +1,6 @@
+{
+  "containerOverrides": [{
+    "name": "control-center",
+    "command": ["bash", "-c", "cd database/migrations && for f in *.sql; do hash=$(sha256sum \"$f\" | awk '{print $1}'); psql \"$DATABASE_URL\" -c \"INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ('$f', '$hash', NOW()) ON CONFLICT (filename) DO NOTHING\"; echo \"Recorded: $f\"; done"]
+  }]
+}

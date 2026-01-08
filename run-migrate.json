@@ -1,0 +1,10 @@
+{
+  "containerOverrides": [{
+    "name": "control-center",
+    "environment": [{
+      "name": "PGPASSWORD",
+      "value": "dummy"
+    }],
+    "command": ["bash", "-c", "echo \"$DATABASE_URL\" && bash ./scripts/db-migrate.sh"]
+  }]
+}
