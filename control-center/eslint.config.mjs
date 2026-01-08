@@ -3,7 +3,7 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
 // Custom rule for admin endpoint authentication
-const adminEndpointAuthRule = require('./eslint-rules/admin-endpoint-auth.js');
+const adminEndpointAuthRule = require('./eslint-rules/admin-endpoint-auth.cjs');
 
 const eslintConfig = defineConfig([
   ...nextVitals,
