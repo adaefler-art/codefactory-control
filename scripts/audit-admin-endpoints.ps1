@@ -37,7 +37,7 @@ Write-Host "${Blue}=== Admin Endpoint Audit ===${Reset}"
 Write-Host ""
 
 # Define paths to scan
-$controlCenterRoot = Join-Path $PSScriptRoot ".." "control-center"
+$controlCenterRoot = Resolve-Path (Join-Path $PSScriptRoot ".." "control-center")
 $opsApiPath = Join-Path $controlCenterRoot "app" "api" "ops"
 $adminApiPath = Join-Path $controlCenterRoot "app" "api" "admin"
 
@@ -69,16 +69,21 @@ $nonCompliantEndpoints = @()
 foreach ($file in $routeFiles) {
     $totalEndpoints++
     
-    # Get relative path from control-center root
-    $relativePath = $file.FullName.Replace("$controlCenterRoot\", "").Replace("$controlCenterRoot/", "")
+    # Get relative path from control-center root using Substring
+    $fullPath = $file.FullName -replace '\\', '/'
+    $ccRoot = $controlCenterRoot -replace '\\', '/'
+    
+    if ($fullPath.StartsWith($ccRoot)) {
+        $relativePath = $fullPath.Substring($ccRoot.Length + 1)  # +1 to skip the leading slash
+    } else {
+        $relativePath = $fullPath  # Fallback if path doesn't start with control center root
+    }
     
     # Convert file path to API route path
     $apiPath = $relativePath `
-        -replace '^app\\api\\', '/api/' `
         -replace '^app/api/', '/api/' `
-        -replace '\\route\.ts$', '' `
         -replace '/route\.ts$', '' `
-        -replace '\\', '/'
+        -replace '/route\.tsx$', ''
     
     # Read file content
     $content = Get-Content -Path $file.FullName -Raw
