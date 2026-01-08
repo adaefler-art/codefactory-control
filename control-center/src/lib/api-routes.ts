@@ -272,7 +272,7 @@ export const API_ROUTES = {
     },
   },
 
-  // INTENT Console (E73.1, E73.3, E73.4, E74.3)
+  // INTENT Console (E73.1, E73.3, E73.4, E74.3, E81.2, E81.3)
   intent: {
     status: '/api/intent/status',
     sessions: {
@@ -293,6 +293,14 @@ export const API_ROUTES = {
       get: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
       save: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
       validate: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr/validate`,
+    },
+    // Issue Draft routes (E81.2, E81.3)
+    issueDraft: {
+      get: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft`,
+      save: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft`,
+      validate: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/validate`,
+      commit: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/commit`,
+      versions: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions`,
     },
   },
 } as const;
