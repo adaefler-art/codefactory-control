@@ -74,24 +74,46 @@ export async function checkLedgerExists(pool: Pool): Promise<boolean> {
 /**
  * List all applied migrations from schema_migrations table
  * Returns sorted array for deterministic output
+ * 
+ * Supports both old (migration_id) and new (filename) column structures
  */
 export async function listAppliedMigrations(
   pool: Pool,
   limit: number = 500
 ): Promise<MigrationLedgerEntry[]> {
   try {
+    // Check which column exists (migration_id vs filename)
+    const columnCheck = await pool.query<any>(
+      `SELECT column_name 
+       FROM information_schema.columns 
+       WHERE table_name = 'schema_migrations' 
+       AND column_name IN ('migration_id', 'filename')`
+    );
+    
+    const hasFilename = columnCheck.rows.some(row => row.column_name === 'filename');
+    const hasMigrationId = columnCheck.rows.some(row => row.column_name === 'migration_id');
+    
+    let filenameColumn: string;
+    if (hasFilename) {
+      filenameColumn = 'filename';
+    } else if (hasMigrationId) {
+      filenameColumn = 'migration_id';
+    } else {
+      throw new Error('schema_migrations table has neither filename nor migration_id column');
+    }
+
     const result = await pool.query<any>(
-      `SELECT filename, sha256, applied_at
+      `SELECT ${filenameColumn} as filename, sha256, applied_at
        FROM schema_migrations
-       ORDER BY filename ASC
+       ORDER BY ${filenameColumn} ASC
        LIMIT $1`,
       [limit]
     );
 
     return result.rows.map(row => ({
       filename: row.filename,
-      sha256: row.sha256,
-      applied_at: new Date(row.applied_at),
+      sha256: row.sha256 || '',
+      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(),
     }));
   } catch (error) {
     console.error('[Migration DAO] Error listing applied migrations:', error);
@@ -101,13 +123,34 @@ export async function listAppliedMigrations(
 
 /**
  * Get the last applied migration (latest by applied_at timestamp)
+ * Supports both old (migration_id) and new (filename) column structures
  */
 export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedgerEntry | null> {
   try {
+    // Check which column exists (migration_id vs filename)
+    const columnCheck = await pool.query<any>(
+      `SELECT column_name 
+       FROM information_schema.columns 
+       WHERE table_name = 'schema_migrations' 
+       AND column_name IN ('migration_id', 'filename')`
+    );
+    
+    const hasFilename = columnCheck.rows.some(row => row.column_name === 'filename');
+    const hasMigrationId = columnCheck.rows.some(row => row.column_name === 'migration_id');
+    
+    let filenameColumn: string;
+    if (hasFilename) {
+      filenameColumn = 'filename';
+    } else if (hasMigrationId) {
+      filenameColumn = 'migration_id';
+    } else {
+      throw new Error('schema_migrations table has neither filename nor migration_id column');
+    }
+
     const result = await pool.query<any>(
-      `SELECT filename, sha256, applied_at
+      `SELECT ${filenameColumn} as filename, sha256, applied_at
        FROM schema_migrations
-       ORDER BY applied_at DESC
+       ORDER BY applied_at DESC NULLS LAST, ${filenameColumn} DESC
        LIMIT 1`
     );
 
@@ -118,8 +161,8 @@ export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedg
     const row = result.rows[0];
     return {
       filename: row.filename,
-      sha256: row.sha256,
-      applied_at: new Date(row.applied_at),
+      sha256: row.sha256 || '',
+      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(),
     };
   } catch (error) {
     console.error('[Migration DAO] Error getting last applied migration:', error);

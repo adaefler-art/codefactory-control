@@ -111,6 +111,9 @@ export const API_ROUTES = {
         setDone: '/api/ops/db/issues/set-done',
       },
     },
+    issues: {
+      sync: '/api/ops/issues/sync',
+    },
   },
 
   // Playbooks
