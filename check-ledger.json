@@ -1,0 +1,6 @@
+{
+  "containerOverrides": [{
+    "name": "control-center",
+    "command": ["bash", "-c", "psql \"$DATABASE_URL\" -c 'SELECT filename, LEFT(sha256, 12) as hash FROM schema_migrations ORDER BY filename;'"]
+  }]
+}

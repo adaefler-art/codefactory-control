@@ -1,0 +1,6 @@
+{
+  "containerOverrides": [{
+    "name": "control-center",
+    "command": ["psql", "-c", "INSERT INTO schema_migrations (filename, sha256, applied_at) SELECT '001_initial_schema.sql', 'bootstrap', NOW() WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE filename = '001_initial_schema.sql'); SELECT COUNT(*) as ledger_count FROM schema_migrations;"]
+  }]
+}

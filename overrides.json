@@ -1,0 +1,6 @@
+{
+  "containerOverrides": [{
+    "name": "control-center",
+    "command": ["bash", "-lc", "bash ./scripts/seed-migration-ledger.sh"]
+  }]
+}
