@@ -9,16 +9,21 @@
  * 3. Count der nie-gesyncten Issues
  * 4. Letzter erfolgreicher Sync-Timestamp
  * 
- * Auth: Erfordert x-afu9-sub Header und afu9-admin Gruppe
+ * Auth: Erfordert x-afu9-sub Header (admin-only via AFU9_ADMIN_SUBS)
+ * 
+ * AFU-9 GUARDRAILS (strict ordering):
+ * 1. AUTH CHECK (401-first) - Verify x-afu9-sub, no DB calls
+ * 2. ADMIN CHECK (403) - Verify AFU9_ADMIN_SUBS allowlist, no DB calls
+ * 3. DB OPERATIONS - Only executed if all guards pass
  * 
  * Usage:
  *   curl http://localhost:3000/api/admin/diagnose-mirror-status \
- *     -H "x-afu9-sub: admin" \
- *     -H "x-afu9-groups: afu9-admin"
+ *     -H "x-afu9-sub: admin@example.com"
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
+import { getRequestId, errorResponse } from '@/lib/api/response-helpers';
 
 // ============================================================================
 // TypeScript Interfaces
@@ -79,6 +84,8 @@ interface DiagnoseResponse {
 interface ErrorResponse {
   ok: false;
   error: string;
+  code?: string;
+  details?: string;
   timestamp: string;
 }
 
@@ -87,27 +94,18 @@ interface ErrorResponse {
 // ============================================================================
 
 /**
- * Validates admin authentication via headers
- * Checks for x-afu9-sub (any value) and afu9-admin group membership
+ * Check if user sub is in admin allowlist
+ * Fail-closed: empty/missing AFU9_ADMIN_SUBS → deny all
  */
-function validateAdminAuth(request: NextRequest): { valid: boolean; error?: string } {
-  const sub = request.headers.get('x-afu9-sub');
-  const groups = request.headers.get('x-afu9-groups');
-
-  if (!sub) {
-    return { valid: false, error: 'Missing x-afu9-sub header' };
+function isAdminUser(userId: string): boolean {
+  const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+  if (!adminSubs.trim()) {
+    // Fail-closed: no admin allowlist configured → deny all
+    return false;
   }
-
-  if (!groups) {
-    return { valid: false, error: 'Missing x-afu9-groups header' };
-  }
-
-  const groupList = groups.split(',').map(g => g.trim());
-  if (!groupList.includes('afu9-admin')) {
-    return { valid: false, error: 'Requires afu9-admin group membership' };
-  }
-
-  return { valid: true };
+  
+  const allowedSubs = adminSubs.split(',').map(s => s.trim()).filter(s => s);
+  return allowedSubs.includes(userId);
 }
 
 // ============================================================================
@@ -185,16 +183,20 @@ function analyzeDiagnosis(results: DiagnosisResults): Diagnosis {
 
 export async function GET(request: NextRequest) {
   const timestamp = new Date().toISOString();
+  const requestId = getRequestId(request);
 
   // ========================================
-  // 1. Auth Check (401-first pattern)
+  // 1. AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+  // This must happen BEFORE any DB calls to maintain auth-first principle
   // ========================================
-  const authResult = validateAdminAuth(request);
-  if (!authResult.valid) {
+  const userId = request.headers.get('x-afu9-sub');
+  if (!userId || !userId.trim()) {
     return NextResponse.json(
       {
         ok: false,
-        error: authResult.error,
+        error: 'Unauthorized',
+        code: 'UNAUTHORIZED',
+        details: 'Authentication required - no verified user context',
         timestamp,
       } satisfies ErrorResponse,
       { status: 401 }
@@ -202,7 +204,23 @@ export async function GET(request: NextRequest) {
   }
 
   // ========================================
-  // 2. Database Connection
+  // 2. AUTHORIZATION CHECK: Admin-only (fail-closed)
+  // ========================================
+  if (!isAdminUser(userId)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Forbidden',
+        code: 'FORBIDDEN',
+        details: 'Admin privileges required to access diagnostic endpoints',
+        timestamp,
+      } satisfies ErrorResponse,
+      { status: 403 }
+    );
+  }
+
+  // ========================================
+  // 3. Database Connection
   // ========================================
   const pool = getPool();
 

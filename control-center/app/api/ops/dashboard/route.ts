@@ -12,6 +12,12 @@
  * All data is deterministically ordered.
  * 
  * Authentication: Required (x-afu9-sub header)
+ * Authorization: Admin-only (AFU9_ADMIN_SUBS)
+ * 
+ * AFU-9 GUARDRAILS (strict ordering for fail-closed security):
+ * 1. AUTH CHECK (401-first) - Verify x-afu9-sub, no DB calls
+ * 2. ADMIN CHECK (403) - Verify admin allowlist, no DB calls
+ * 3. DB OPERATIONS - Only executed if all gates pass
  * 
  * SECURITY NOTE:
  * The x-afu9-sub header is set by proxy.ts after JWT verification.
@@ -66,6 +72,21 @@ interface DashboardResponse {
 }
 
 /**
+ * Check if user sub is in admin allowlist
+ * Fail-closed: empty/missing AFU9_ADMIN_SUBS → deny all
+ */
+function isAdminUser(userId: string): boolean {
+  const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+  if (!adminSubs.trim()) {
+    // Fail-closed: no admin allowlist configured → deny all
+    return false;
+  }
+  
+  const allowedSubs = adminSubs.split(',').map(s => s.trim()).filter(s => s);
+  return allowedSubs.includes(userId);
+}
+
+/**
  * GET /api/ops/dashboard
  * 
  * Query parameters:
@@ -77,13 +98,26 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   
   try {
-    // Authentication: fail-closed, require x-afu9-sub BEFORE any DB calls
+    // 1. AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
+    // This must happen BEFORE any DB calls to maintain auth-first principle
     const userId = request.headers.get('x-afu9-sub');
-    if (!userId) {
+    if (!userId || !userId.trim()) {
       return errorResponse('Unauthorized', {
         status: 401,
         requestId,
-        details: 'User authentication required',
+        code: 'UNAUTHORIZED',
+        details: 'Authentication required - no verified user context',
+      });
+    }
+    
+    // 2. AUTHORIZATION CHECK: Admin-only (fail-closed)
+    // Ops dashboard contains sensitive operational metrics - admin only
+    if (!isAdminUser(userId)) {
+      return errorResponse('Forbidden', {
+        status: 403,
+        requestId,
+        code: 'FORBIDDEN',
+        details: 'Admin privileges required to access ops dashboard',
       });
     }
     
