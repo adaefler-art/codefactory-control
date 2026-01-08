@@ -81,16 +81,19 @@ export async function listAppliedMigrations(
 ): Promise<MigrationLedgerEntry[]> {
   try {
     const result = await pool.query<any>(
-      `SELECT filename, sha256, applied_at
+      `SELECT 
+         migration_id AS filename,
+         NULL AS sha256,
+         applied_at
        FROM schema_migrations
-       ORDER BY filename ASC
+       ORDER BY migration_id ASC
        LIMIT $1`,
       [limit]
     );
 
     return result.rows.map(row => ({
       filename: row.filename,
-      sha256: row.sha256,
+      sha256: row.sha256 || '',
       applied_at: new Date(row.applied_at),
     }));
   } catch (error) {
@@ -105,7 +108,10 @@ export async function listAppliedMigrations(
 export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedgerEntry | null> {
   try {
     const result = await pool.query<any>(
-      `SELECT filename, sha256, applied_at
+      `SELECT 
+         migration_id AS filename,
+         NULL AS sha256,
+         applied_at
        FROM schema_migrations
        ORDER BY applied_at DESC
        LIMIT 1`
@@ -118,7 +124,7 @@ export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedg
     const row = result.rows[0];
     return {
       filename: row.filename,
-      sha256: row.sha256,
+      sha256: row.sha256 || '',
       applied_at: new Date(row.applied_at),
     };
   } catch (error) {
