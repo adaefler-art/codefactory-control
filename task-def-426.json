@@ -1,0 +1,568 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:eu-central-1:313095875771:task-definition/afu9-control-center:426",
+    "containerDefinitions": [
+        {
+            "name": "mcp-github",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-github:stage-639babd1bf95800b2bb519756aa0da00fd718c75",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3001,
+                    "hostPort": 3001,
+                    "protocol": "tcp",
+                    "name": "mcp-github-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "3001"
+                },
+                {
+                    "name": "DEPLOY_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "staging"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "GITHUB_TOKEN",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:token::"
+                }
+            ],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "Afu9EcsStack-McpGithubLogGroup1B829BF9-wwjCMMOtCUlm",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-github"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3001/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "mcp-observability",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-observability:stage-639babd1bf95800b2bb519756aa0da00fd718c75",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3003,
+                    "hostPort": 3003,
+                    "protocol": "tcp",
+                    "name": "mcp-observability-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "DEPLOY_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "eu-central-1"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "PORT",
+                    "value": "3003"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "Afu9EcsStack-McpObservabilityLogGroup38B3BC9D-OYkHpksrQ9Xi",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-observability"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3003/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "mcp-runner",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-runner:stage-639babd1bf95800b2bb519756aa0da00fd718c75",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3004,
+                    "hostPort": 3004,
+                    "protocol": "tcp",
+                    "name": "mcp-runner-http"
+                }
+            ],
+            "essential": false,
+            "entryPoint": [],
+            "command": [
+                "sh",
+                "-lc",
+                "set -e; if [ ! -f /app/base/src/server.js ] && [ -f /app/dist/base/src/server.js ]; then mkdir -p /app/base/src; cp /app/dist/base/src/* /app/base/src/; fi; if [ -f /app/dist/index.js ]; then exec node /app/dist/index.js; elif [ -f /app/dist/src/index.js ]; then exec node /app/dist/src/index.js; elif [ -f /app/dist/afu9-runner/src/index.js ]; then exec node /app/dist/afu9-runner/src/index.js; else echo \"No runner entrypoint found\" >&2; find /app/dist -maxdepth 4 -type f -name index.js >&2 || true; exit 1; fi"
+            ],
+            "environment": [
+                {
+                    "name": "DATABASE_SSL",
+                    "value": "true"
+                },
+                {
+                    "name": "DEPLOY_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "USE_DATABASE",
+                    "value": "true"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "PORT",
+                    "value": "3004"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "DATABASE_HOST",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:host::"
+                },
+                {
+                    "name": "DATABASE_PORT",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:port::"
+                },
+                {
+                    "name": "DATABASE_NAME",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:database::"
+                },
+                {
+                    "name": "DATABASE_USER",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:username::"
+                },
+                {
+                    "name": "DATABASE_PASSWORD",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:password::"
+                }
+            ],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "Afu9EcsStack-McpRunnerLogGroup8E427795-0GY9bpgTOy5O",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-runner"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3004/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "control-center",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/control-center:stage-639babd1bf95800b2bb519756aa0da00fd718c75",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp",
+                    "name": "control-center-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "GIT_SHA",
+                    "value": "unknown"
+                },
+                {
+                    "name": "ENVIRONMENT",
+                    "value": "stage"
+                },
+                {
+                    "name": "PGSSLMODE",
+                    "value": "require"
+                },
+                {
+                    "name": "APP_VERSION",
+                    "value": "unknown"
+                },
+                {
+                    "name": "MCP_GITHUB_ENDPOINT",
+                    "value": "http://localhost:3001"
+                },
+                {
+                    "name": "MCP_OBSERVABILITY_URL",
+                    "value": "http://127.0.0.1:3003"
+                },
+                {
+                    "name": "DATABASE_ENABLED",
+                    "value": "true"
+                },
+                {
+                    "name": "AFU9_INTENT_ENABLED",
+                    "value": "true"
+                },
+                {
+                    "name": "MCP_GITHUB_URL",
+                    "value": "http://127.0.0.1:3001"
+                },
+                {
+                    "name": "AFU9_COOKIE_DOMAIN",
+                    "value": ".afu-9.com"
+                },
+                {
+                    "name": "COGNITO_CLIENT_ID",
+                    "value": "3rmgq2qf1p84mo64tnhvk9cr6s"
+                },
+                {
+                    "name": "DEPLOY_EVENTS_TOKEN",
+                    "value": "+QiviKdFRwUMgbnl7L4q27o5nXbWCacZK90dt9z7DivDUONw3vDL7qJoXxqwNirj"
+                },
+                {
+                    "name": "PORT",
+                    "value": "3000"
+                },
+                {
+                    "name": "MCP_RUNNER_ENDPOINT",
+                    "value": "http://localhost:3004"
+                },
+                {
+                    "name": "COGNITO_USER_POOL_ID",
+                    "value": "eu-central-1_XYQjr7oX6"
+                },
+                {
+                    "name": "MCP_OBSERVABILITY_ENDPOINT",
+                    "value": "http://localhost:3003"
+                },
+                {
+                    "name": "COGNITO_ISSUER_URL",
+                    "value": "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_XYQjr7oX6"
+                },
+                {
+                    "name": "DATABASE_SSL",
+                    "value": "true"
+                },
+                {
+                    "name": "MCP_DEPLOY_URL",
+                    "value": "http://127.0.0.1:3002"
+                },
+                {
+                    "name": "MCP_RUNNER_URL",
+                    "value": "http://localhost:3004"
+                },
+                {
+                    "name": "MCP_DEPLOY_ENDPOINT",
+                    "value": "http://localhost:3002"
+                },
+                {
+                    "name": "COGNITO_REGION",
+                    "value": "eu-central-1"
+                },
+                {
+                    "name": "DEPLOY_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "BUILD_TIME",
+                    "value": "unknown"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "DATABASE_HOST",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:host::"
+                },
+                {
+                    "name": "DATABASE_PORT",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:port::"
+                },
+                {
+                    "name": "DATABASE_NAME",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:database::"
+                },
+                {
+                    "name": "DATABASE_USER",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:username::"
+                },
+                {
+                    "name": "DATABASE_PASSWORD",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/database:password::"
+                },
+                {
+                    "name": "GITHUB_TOKEN",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:token::"
+                },
+                {
+                    "name": "GITHUB_OWNER",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:owner::"
+                },
+                {
+                    "name": "GITHUB_REPO",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github:repo::"
+                },
+                {
+                    "name": "GITHUB_APP_ID",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github/app:appId::"
+                },
+                {
+                    "name": "GITHUB_APP_PRIVATE_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github/app:pkcs8::"
+                },
+                {
+                    "name": "GITHUB_APP_PRIVATE_KEY_PEM",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/github/app:pkcs8::"
+                },
+                {
+                    "name": "OPENAI_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/llm:openai_api_key::"
+                },
+                {
+                    "name": "ANTHROPIC_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/llm:anthropic_api_key::"
+                },
+                {
+                    "name": "DEEPSEEK_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/llm:deepseek_api_key::"
+                },
+                {
+                    "name": "AFU9_SMOKE_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:eu-central-1:313095875771:secret:afu9/stage/smoke-key-t9KX8G"
+                }
+            ],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "Afu9EcsStack-ControlCenterLogGroupA723FDE1-dgUfZW6W84Hs",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "control-center"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"const os=require('os');const http=require('http');const nets=os.networkInterfaces();let ip;for(const name of Object.keys(nets)){for(const net of (nets[name]||[])){if(!net||net.family!=='IPv4'||net.internal) continue; if(net.address&&net.address.startsWith('10.')){ip=net.address;break;}} if(ip) break;} if(!ip){for(const name of Object.keys(nets)){for(const net of (nets[name]||[])){if(!net||net.family!=='IPv4'||net.internal) continue; ip=net.address;break;} if(ip) break;}} if(!ip){console.error('no-ip');process.exit(2);} http.get('http://'+ip+':3000/api/health', r=>{process.exit(r.statusCode===200?0:1);}).on('error', e=>{console.error(e&&e.message?e.message:String(e));process.exit(3);});\""
+                ],
+                "interval": 30,
+                "timeout": 10,
+                "retries": 5,
+                "startPeriod": 120
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "mcp-deploy",
+            "image": "313095875771.dkr.ecr.eu-central-1.amazonaws.com/afu9/mcp-deploy:stage-639babd1bf95800b2bb519756aa0da00fd718c75",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 3002,
+                    "hostPort": 3002,
+                    "protocol": "tcp",
+                    "name": "mcp-deploy-http"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "DEPLOY_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "eu-central-1"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "staging"
+                },
+                {
+                    "name": "PORT",
+                    "value": "3002"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "Afu9EcsStack-McpDeployLogGroupE64886B7-TeqAIbdjk0hm",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "mcp-deploy"
+                },
+                "secretOptions": []
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:3002/health', r => { if (r.statusCode === 200) process.exit(0); process.exit(1); }).on('error', () => process.exit(1));\""
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        }
+    ],
+    "family": "afu9-control-center",
+    "taskRoleArn": "arn:aws:iam::313095875771:role/afu9-ecs-task-role",
+    "executionRoleArn": "arn:aws:iam::313095875771:role/afu9-ecs-task-execution-role",
+    "networkMode": "awsvpc",
+    "revision": 426,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "ecs.capability.secrets.asm.environment-variables"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.17"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.task-iam-role"
+        },
+        {
+            "name": "ecs.capability.container-health-check"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "MANAGED_INSTANCES",
+        "FARGATE"
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "2048",
+    "memory": "4096",
+    "registeredAt": "2026-01-06T21:39:16.589000+01:00",
+    "registeredBy": "arn:aws:sts::313095875771:assumed-role/afu9-github-actions-deploy-role/GitHubActions"
+}

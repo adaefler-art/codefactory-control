@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getPool } from '@/lib/db';
-import { getDeploymentEnvironment, isWriteAllowedInProd } from '@/lib/utils/deployment-env';
+import { getDeploymentEnv, isProduction } from '@/lib/utils/deployment-env';
 
 // Zod schema for query params (strict validation)
 const PreviewQuerySchema = z.object({
@@ -39,10 +39,9 @@ export async function GET(request: NextRequest) {
     }
 
     // GUARD 2: ENV (409 for production/unknown) - BEFORE any DB call
-    const env = getDeploymentEnvironment();
-    const isProdEnabled = isWriteAllowedInProd();
+    const env = getDeploymentEnv();
 
-    if (env === 'production' && !isProdEnabled) {
+    if (env === 'production') {
       return NextResponse.json(
         {
           error: 'Production Disabled',
