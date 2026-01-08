@@ -290,11 +290,24 @@ export class Afu9IamStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: [
           'logs:GetLogEvents',
+        ],
+        resources: [
+          // Scope to AFU-9 ECS log groups (CloudFormation-generated names)
+          `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9*:log-stream:*`,
+        ],
+      })
+    );
+
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsFilterForMigrationDiagnostics',
+        effect: iam.Effect.ALLOW,
+        actions: [
           'logs:FilterLogEvents',
         ],
         resources: [
-          // Scope to AFU-9 log groups only
-          `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9*:log-stream:*`,
+          // Scope to /ecs/afu9/ log group pattern as required by policy validator
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/afu9/*:log-stream:*`,
         ],
       })
     );
