@@ -15,18 +15,18 @@ jest.mock('../../src/lib/db', () => ({
 }));
 
 jest.mock('../../src/lib/utils/deployment-env', () => ({
-  getDeploymentEnvironment: jest.fn(() => 'staging'),
-  isWriteAllowedInProd: jest.fn(() => false),
+  getDeploymentEnv: jest.fn(() => 'staging'),
+  isProduction: jest.fn(() => false),
 }));
 
 import { GET as previewGet } from '../../app/api/ops/db/issues/preview-set-done/route';
 import { POST as executePost } from '../../app/api/ops/db/issues/set-done/route';
 import { getPool } from '../../src/lib/db';
-import { getDeploymentEnvironment, isWriteAllowedInProd } from '../../src/lib/utils/deployment-env';
+import { getDeploymentEnv, isProduction } from '../../src/lib/utils/deployment-env';
 
 const mockPool = getPool as jest.MockedFunction<typeof getPool>;
-const mockGetDeploymentEnvironment = getDeploymentEnvironment as jest.MockedFunction<typeof getDeploymentEnvironment>;
-const mockIsWriteAllowedInProd = isWriteAllowedInProd as jest.MockedFunction<typeof isWriteAllowedInProd>;
+const mockGetDeploymentEnv = getDeploymentEnv as jest.MockedFunction<typeof getDeploymentEnv>;
+const mockIsProduction = isProduction as jest.MockedFunction<typeof isProduction>;
 
 describe('Ops DB Issues - Guard Ordering', () => {
   let mockQuery: jest.Mock;
@@ -35,8 +35,8 @@ describe('Ops DB Issues - Guard Ordering', () => {
     jest.clearAllMocks();
     mockQuery = jest.fn();
     mockPool.mockReturnValue({ query: mockQuery } as any);
-    mockGetDeploymentEnvironment.mockReturnValue('staging');
-    mockIsWriteAllowedInProd.mockReturnValue(false);
+    mockGetDeploymentEnv.mockReturnValue('staging');
+    mockIsProduction.mockReturnValue(false);
     process.env.AFU9_ADMIN_SUBS = 'admin-sub-123';
   });
 
@@ -75,8 +75,7 @@ describe('Ops DB Issues - Guard Ordering', () => {
 
   describe('GUARD 2: ENV (409 for production/unknown)', () => {
     it('[PREVIEW] returns 409 PROD_DISABLED in production - NO DB calls', async () => {
-      mockGetDeploymentEnvironment.mockReturnValue('production');
-      mockIsWriteAllowedInProd.mockReturnValue(false);
+      mockGetDeploymentEnv.mockReturnValue('production');
 
       const request = new NextRequest('http://localhost/api/ops/db/issues/preview-set-done', {
         method: 'GET',
@@ -93,7 +92,7 @@ describe('Ops DB Issues - Guard Ordering', () => {
     });
 
     it('[PREVIEW] returns 409 ENV_DISABLED for unknown environment - NO DB calls', async () => {
-      mockGetDeploymentEnvironment.mockReturnValue('unknown');
+      mockGetDeploymentEnv.mockReturnValue('unknown');
 
       const request = new NextRequest('http://localhost/api/ops/db/issues/preview-set-done', {
         method: 'GET',
@@ -110,8 +109,7 @@ describe('Ops DB Issues - Guard Ordering', () => {
     });
 
     it('[EXECUTE] returns 409 PROD_DISABLED in production - NO DB calls', async () => {
-      mockGetDeploymentEnvironment.mockReturnValue('production');
-      mockIsWriteAllowedInProd.mockReturnValue(false);
+      mockGetDeploymentEnv.mockReturnValue('production');
 
       const request = new NextRequest('http://localhost/api/ops/db/issues/set-done', {
         method: 'POST',
