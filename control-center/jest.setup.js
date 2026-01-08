@@ -26,6 +26,13 @@ if (typeof globalThis.crypto === 'undefined') {
 	globalThis.crypto = nodeCrypto.webcrypto;
 }
 
+// Ensure crypto.randomUUID is available (needed by API routes)
+if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'undefined') {
+	// eslint-disable-next-line @typescript-eslint/no-var-requires
+	const nodeCrypto = require('crypto');
+	globalThis.crypto.randomUUID = nodeCrypto.randomUUID;
+}
+
 // Next.js (next/server) expects Fetch API globals (Request/Response/Headers).
 // Jest's Node environment may not provide these depending on runtime/version.
 // Keep this minimal: enough for middleware imports + basic response assertions.
@@ -86,11 +93,24 @@ if (typeof globalThis.Headers === 'undefined') {
 if (typeof globalThis.Request === 'undefined') {
 	class MinimalRequest {
 		constructor(input, init = undefined) {
-			this.url = typeof input === 'string' ? input : String(input?.url ?? input);
+			const urlValue = typeof input === 'string' ? input : String(input?.url ?? input);
+			Object.defineProperty(this, 'url', {
+				value: urlValue,
+				writable: true,
+				enumerable: true,
+				configurable: true,
+			});
 			this.method = String(init?.method ?? 'GET');
 			// @ts-expect-error - Headers polyfill exists above
 			this.headers = new globalThis.Headers(init?.headers ?? undefined);
 			this.body = init?.body;
+		}
+
+		async json() {
+			if (typeof this.body === 'string') {
+				return JSON.parse(this.body);
+			}
+			return this.body;
 		}
 
 		clone() {
@@ -113,6 +133,13 @@ if (typeof globalThis.Response === 'undefined') {
 			this.status = Number(init?.status ?? 200);
 			// @ts-expect-error - Headers polyfill exists above
 			this.headers = new globalThis.Headers(init?.headers ?? undefined);
+		}
+
+		async json() {
+			if (typeof this.body === 'string') {
+				return JSON.parse(this.body);
+			}
+			return this.body;
 		}
 
 		static json(data, init = undefined) {

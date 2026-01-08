@@ -105,6 +105,12 @@ export const API_ROUTES = {
     dashboard: '/api/ops/dashboard',
     migrations: '/api/ops/db/migrations',
     whoami: '/api/whoami',
+    db: {
+      issues: {
+        previewSetDone: '/api/ops/db/issues/preview-set-done',
+        setDone: '/api/ops/db/issues/set-done',
+      },
+    },
   },
 
   // Playbooks
