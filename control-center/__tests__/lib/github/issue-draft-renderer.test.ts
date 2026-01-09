@@ -159,5 +159,69 @@ describe('IssueDraft Renderer', () => {
       const v08Count = merged.filter(label => label === 'v0.8').length;
       expect(v08Count).toBe(1);
     });
+
+    it('should cap merged labels at 50 (P2 Test)', () => {
+      // Create draft with 50 labels (schema max)
+      const draftLabels = Array.from({ length: 50 }, (_, i) => `draft-label-${i}`);
+      const draft: IssueDraft = {
+        ...EXAMPLE_MINIMAL_ISSUE_DRAFT,
+        labels: draftLabels,
+      };
+
+      // Create existing labels with 25 non-managed labels
+      const existingLabels = Array.from({ length: 25 }, (_, i) => `existing-label-${i}`);
+
+      const merged = mergeLabelsForIssueDraftUpdate(existingLabels, draft);
+
+      // Should not exceed 50 labels total
+      expect(merged.length).toBeLessThanOrEqual(50);
+      
+      // Should be sorted
+      const sorted = [...merged].sort((a, b) => a.localeCompare(b));
+      expect(merged).toEqual(sorted);
+    });
+
+    it('should preserve deterministic order in label merge (P2 Test)', () => {
+      const existingLabels = ['z-label', 'a-label', 'custom'];
+      const draft: IssueDraft = {
+        ...EXAMPLE_MINIMAL_ISSUE_DRAFT,
+        labels: ['m-label', 'b-label'],
+      };
+
+      const merged1 = mergeLabelsForIssueDraftUpdate(existingLabels, draft);
+      const merged2 = mergeLabelsForIssueDraftUpdate(existingLabels, draft);
+
+      // Multiple calls with same input should produce identical output
+      expect(merged1).toEqual(merged2);
+      
+      // Should be alphabetically sorted
+      expect(merged1).toEqual([...merged1].sort((a, b) => a.localeCompare(b)));
+    });
+  });
+
+  describe('Marker duplication prevention (P2 Test)', () => {
+    it('should not duplicate canonical marker when rendering same draft twice', () => {
+      const result1 = renderIssueDraftAsIssue(EXAMPLE_MINIMAL_ISSUE_DRAFT);
+      const result2 = renderIssueDraftAsIssue(EXAMPLE_MINIMAL_ISSUE_DRAFT);
+
+      // Both should have exactly one canonical marker
+      const marker = `Canonical-ID: ${EXAMPLE_MINIMAL_ISSUE_DRAFT.canonicalId}`;
+      const count1 = (result1.body.match(new RegExp(marker, 'g')) || []).length;
+      const count2 = (result2.body.match(new RegExp(marker, 'g')) || []).length;
+
+      expect(count1).toBe(1);
+      expect(count2).toBe(1);
+      
+      // Both renders should be identical
+      expect(result1.body).toBe(result2.body);
+      expect(result1.renderedHash).toBe(result2.renderedHash);
+    });
+
+    it('should include canonical marker at the start of body', () => {
+      const result = renderIssueDraftAsIssue(EXAMPLE_MINIMAL_ISSUE_DRAFT);
+      
+      const expectedMarker = `Canonical-ID: ${EXAMPLE_MINIMAL_ISSUE_DRAFT.canonicalId}`;
+      expect(result.body.startsWith(expectedMarker)).toBe(true);
+    });
   });
 });

@@ -58,8 +58,14 @@ export function renderIssueDraftAsIssue(draft: IssueDraft): RenderedIssueDraft {
   
   const bodyContent = bodySections.join('\n\n---\n\n');
   
-  // 3. Add canonical ID marker at the start of body
-  const body = generateBodyWithMarker(draft.canonicalId, bodyContent);
+  // 3. Check if body already has canonical marker (IssueDraft.body should already include it)
+  // Only add marker if not already present to prevent duplication
+  const markerPrefix = 'Canonical-ID:';
+  const hasMarker = bodyContent.trim().startsWith(markerPrefix);
+  
+  const body = hasMarker 
+    ? bodyContent 
+    : generateBodyWithMarker(draft.canonicalId, bodyContent);
   
   // 4. Compute hash of rendered body (for change detection)
   const renderedHash = computeHash(body);
@@ -213,10 +219,11 @@ export function generateLabelsForIssueDraft(draft: IssueDraft): string[] {
  * - Keep all labels from IssueDraft
  * - Keep existing labels that are NOT in the managed set
  * - Stable sort (lexicographic)
+ * - Cap at 50 labels total (schema maximum)
  * 
  * @param existingLabels - Current labels on the GitHub issue
  * @param draft - IssueDraft with new labels
- * @returns Merged and sorted label array
+ * @returns Merged and sorted label array (max 50 labels)
  */
 export function mergeLabelsForIssueDraftUpdate(
   existingLabels: string[],
@@ -240,6 +247,9 @@ export function mergeLabelsForIssueDraftUpdate(
   // Merge draft labels with preserved labels
   const allLabels = new Set([...draft.labels, ...preservedLabels]);
   
-  // Return as sorted array
-  return Array.from(allLabels).sort((a, b) => a.localeCompare(b));
+  // Return as sorted array, capped at 50 (schema maximum)
+  const sorted = Array.from(allLabels).sort((a, b) => a.localeCompare(b));
+  
+  // Cap at 50 labels (schema maximum from IssueDraftSchema)
+  return sorted.slice(0, 50);
 }
