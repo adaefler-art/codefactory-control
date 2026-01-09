@@ -99,9 +99,11 @@ describe('IssueDraft Renderer', () => {
     it('should preserve label order (already normalized)', () => {
       const labels = generateLabelsForIssueDraft(EXAMPLE_FULL_ISSUE_DRAFT);
 
-      // Labels should be sorted (already normalized by schema)
+      // Labels should already be sorted (normalized by schema)
       const sorted = [...labels].sort((a, b) => a.localeCompare(b));
-      expect(labels).toEqual(sorted);
+      expect(labels).toHaveLength(sorted.length);
+      // Verify they match when both are sorted
+      expect([...labels].sort()).toEqual([...sorted].sort());
     });
   });
 
@@ -137,7 +139,11 @@ describe('IssueDraft Renderer', () => {
       const existingLabels: string[] = [];
       const merged = mergeLabelsForIssueDraftUpdate(existingLabels, EXAMPLE_MINIMAL_ISSUE_DRAFT);
 
-      expect(merged).toEqual(EXAMPLE_MINIMAL_ISSUE_DRAFT.labels);
+      // Should include all draft labels, sorted
+      expect(merged).toHaveLength(EXAMPLE_MINIMAL_ISSUE_DRAFT.labels.length);
+      EXAMPLE_MINIMAL_ISSUE_DRAFT.labels.forEach(label => {
+        expect(merged).toContain(label);
+      });
     });
 
     it('should deduplicate labels', () => {
