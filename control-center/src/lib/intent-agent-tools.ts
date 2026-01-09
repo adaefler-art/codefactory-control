@@ -102,4 +102,30 @@ export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'publish_issues_to_github_batch',
+      description: 'Publish multiple Issue Drafts from the current Issue Set to GitHub as issues. Idempotent: creates new or updates existing based on canonicalId. Continues on individual failures and reports all results. Use this when user wants to publish all issues from the briefing/issue set.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner: {
+            type: 'string',
+            description: 'GitHub repository owner (e.g., "adaefler-art")',
+          },
+          repo: {
+            type: 'string',
+            description: 'GitHub repository name (e.g., "codefactory-control")',
+          },
+          includeInvalid: {
+            type: 'boolean',
+            description: 'Whether to include invalid issues in the batch (default: false)',
+            default: false,
+          },
+        },
+        required: ['owner', 'repo'],
+      },
+    },
+  },
 ];
