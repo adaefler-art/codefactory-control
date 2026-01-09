@@ -39,8 +39,9 @@ function stripExtension(filename: string): string {
 function normalizeNumericId(value: string): string {
   const digits = value.match(/^\d+/)?.[0];
   if (!digits) return value;
-  const asNumber = Number.parseInt(digits, 10);
-  return Number.isFinite(asNumber) ? String(asNumber) : digits;
+  // Keep as string to avoid JS number precision issues for large version-like ids.
+  const trimmed = digits.replace(/^0+(?=\d)/, '');
+  return trimmed || '0';
 }
 
 export function canonicalizeRepoMigrationId(filename: string): string {
