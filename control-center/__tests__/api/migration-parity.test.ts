@@ -8,6 +8,7 @@
 
 import { NextRequest } from 'next/server';
 import { GET } from '../../app/api/ops/db/migrations/route';
+import { GET as GET_ALIAS } from '../../app/api/ops/db/migration-parity/route';
 
 // Mock deployment-env module
 jest.mock('@/lib/utils/deployment-env', () => ({
@@ -407,6 +408,114 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.parity.missingInDb).toEqual([]);
     expect(body.parity.extraInDb).toEqual([]);
     expect(body.parity.hashMismatches).toEqual([]);
+  });
+
+  test('200: deterministic ordering snapshot (route enforces sorting)', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListRepoMigrations.mockReturnValue([
+      { filename: '010_apple.sql', sha256: 'a' },
+      { filename: '002_banana.sql', sha256: 'b' },
+    ]);
+    mockGetLatestMigration.mockReturnValue('010_apple.sql');
+
+    mockListAppliedMigrations.mockResolvedValue([
+      { filename: '2', sha256: 'b', applied_at: new Date('2026-01-01') },
+      { filename: '999', sha256: 'x', applied_at: new Date('2026-01-02') },
+    ]);
+    mockGetLastAppliedMigration.mockResolvedValue({
+      filename: '999',
+      sha256: 'x',
+      applied_at: new Date('2026-01-02'),
+    });
+    mockGetAppliedMigrationCount.mockResolvedValue(2);
+
+    // Intentionally UNSORTED to verify route-level determinism
+    mockComputeParity.mockReturnValue({
+      status: 'FAIL',
+      missingInDb: ['010_apple.sql', '002_banana.sql'],
+      extraInDb: ['zzz_extra', 'aaa_extra'],
+      hashMismatches: [
+        { filename: 'z.sql', repoHash: '1', dbHash: '2' },
+        { filename: 'a.sql', repoHash: '3', dbHash: '4' },
+      ],
+    });
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations?limit=200', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-snapshot',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.parity).toMatchInlineSnapshot(`
+{
+  "extraInDb": [
+    "aaa_extra",
+    "zzz_extra",
+  ],
+  "hashMismatches": [
+    {
+      "dbHash": "4",
+      "filename": "a.sql",
+      "repoHash": "3",
+    },
+    {
+      "dbHash": "2",
+      "filename": "z.sql",
+      "repoHash": "1",
+    },
+  ],
+  "missingInDb": [
+    "002_banana.sql",
+    "010_apple.sql",
+  ],
+  "status": "FAIL",
+}
+`);
+  });
+
+  test('alias route: /api/ops/db/migration-parity responds (non-500)', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListRepoMigrations.mockReturnValue([]);
+    mockGetLatestMigration.mockReturnValue(null);
+    mockListAppliedMigrations.mockResolvedValue([]);
+    mockGetLastAppliedMigration.mockResolvedValue(null);
+    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockComputeParity.mockReturnValue({ status: 'PASS', missingInDb: [], extraInDb: [], hashMismatches: [] });
+
+    const request = new NextRequest('http://localhost/api/ops/db/migration-parity', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-alias',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET_ALIAS(request);
+    expect(response.status).not.toBe(500);
   });
 
   test('200: FAIL scenario - missing in DB', async () => {
