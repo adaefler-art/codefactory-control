@@ -169,7 +169,8 @@ export async function listAppliedMigrations(
     return result.rows.map(row => ({
       filename: row.filename,
       sha256: row.sha256 || '',
-      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(),
+      // Deterministic: if applied_at is not available in the ledger, use a stable epoch timestamp.
+      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
     }));
   } catch (error) {
     console.error('[Migration DAO] Error listing applied migrations:', error);
@@ -208,7 +209,8 @@ export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedg
     return {
       filename: row.filename,
       sha256: row.sha256 || '',
-      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(),
+      // Deterministic: if applied_at is not available in the ledger, use a stable epoch timestamp.
+      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
     };
   } catch (error) {
     console.error('[Migration DAO] Error getting last applied migration:', error);

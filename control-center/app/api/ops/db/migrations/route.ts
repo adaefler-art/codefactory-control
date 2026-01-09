@@ -170,6 +170,12 @@ export async function GET(request: NextRequest) {
 
     // Compute parity
     const parity = computeParity(repoMigrations, dbMigrations);
+    const deterministicParity = {
+      status: parity.status,
+      missingInDb: [...parity.missingInDb].sort((a, b) => a.localeCompare(b)),
+      extraInDb: [...parity.extraInDb].sort((a, b) => a.localeCompare(b)),
+      hashMismatches: [...parity.hashMismatches].sort((a, b) => a.filename.localeCompare(b.filename)),
+    };
 
     // Get lawbook version
     const lawbookVersion = await getLawbookVersion();
@@ -196,10 +202,10 @@ export async function GET(request: NextRequest) {
         lastAppliedAt: lastApplied?.applied_at.toISOString() || null,
       },
       parity: {
-        status: parity.status,
-        missingInDb: parity.missingInDb.slice(0, limit), // Bounded
-        extraInDb: parity.extraInDb.slice(0, limit), // Bounded
-        hashMismatches: parity.hashMismatches.slice(0, limit), // Bounded
+        status: deterministicParity.status,
+        missingInDb: deterministicParity.missingInDb.slice(0, limit), // Bounded
+        extraInDb: deterministicParity.extraInDb.slice(0, limit), // Bounded
+        hashMismatches: deterministicParity.hashMismatches.slice(0, limit), // Bounded
       },
     };
 

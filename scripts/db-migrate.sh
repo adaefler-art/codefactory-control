@@ -77,6 +77,45 @@ get_stored_hash() {
   echo "$result" | tr -d ' '
 }
 
+table_exists() {
+  local table_name="$1"
+  local escaped
+  escaped=$(sql_escape "$table_name")
+  local result
+  result=$(psql_exec -t -c "SELECT to_regclass('public.$escaped') IS NOT NULL" 2>/dev/null || echo "")
+  echo "$result" | tr -d ' '
+}
+
+is_initial_schema_present() {
+  # Detect legacy deployments where the initial schema exists but schema_migrations
+  # doesn't contain 001_initial_schema.sql.
+  local required_tables=(
+    workflows
+    workflow_executions
+    workflow_steps
+    mcp_servers
+    repositories
+    agent_runs
+    mcp_tool_calls
+  )
+
+  local missing=()
+  local t
+  for t in "${required_tables[@]}"; do
+    if [[ "$(table_exists "$t")" != "t" ]]; then
+      missing+=("$t")
+    fi
+  done
+
+  if (( ${#missing[@]} == 0 )); then
+    echo "1"
+    return 0
+  fi
+
+  echo "0"
+  echo "${missing[*]}"
+}
+
 # Function to record migration in ledger
 record_migration() {
   local filename="$1"
@@ -162,6 +201,24 @@ for f in $(ls database/migrations/*.sql | sort); do
   else
     # Apply new migration
     echo "▶️  Applying: $filename"
+
+    # Legacy reconciliation: if initial schema is already present, backfill ledger
+    # instead of failing on re-creation (e.g., 'relation already exists').
+    if [[ "$filename" == "001_initial_schema.sql" ]]; then
+      schema_check=$(is_initial_schema_present)
+      schema_present=$(echo "$schema_check" | head -n 1)
+      if [[ "$schema_present" == "1" ]]; then
+        record_migration "$filename" "$current_hash"
+        echo "⚠️  Skipped: $filename (initial schema detected; ledger backfilled)"
+        skipped_count=$((skipped_count + 1))
+        continue
+      else
+        missing_tables=$(echo "$schema_check" | tail -n 1)
+        if [[ -n "${missing_tables:-}" && "$missing_tables" != "0" ]]; then
+          echo "ℹ️  Initial schema appears partially present; missing: $missing_tables" >&2
+        fi
+      fi
+    fi
 
     tmp_log=$(mktemp)
     if psql_exec -f "$f" >"$tmp_log" 2>&1; then
