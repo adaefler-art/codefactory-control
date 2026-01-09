@@ -31,6 +31,35 @@ export interface ParityResult {
   }>;
 }
 
+function stripExtension(filename: string): string {
+  const base = path.basename(filename);
+  return base.replace(/\.[^/.]+$/, '');
+}
+
+function normalizeNumericId(value: string): string {
+  const digits = value.match(/^\d+/)?.[0];
+  if (!digits) return value;
+  // Keep as string to avoid JS number precision issues for large version-like ids.
+  const trimmed = digits.replace(/^0+(?=\d)/, '');
+  return trimmed || '0';
+}
+
+export function canonicalizeRepoMigrationId(filename: string): string {
+  const base = stripExtension(filename);
+  const digits = base.match(/^\d+/)?.[0];
+  if (digits) return normalizeNumericId(digits);
+  return base;
+}
+
+export function canonicalizeDbMigrationId(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value).trim();
+  if (!str) return '';
+  const digits = str.match(/^\d+/)?.[0];
+  if (digits) return normalizeNumericId(digits);
+  return str;
+}
+
 /**
  * Compute SHA-256 hash of file contents
  */
@@ -66,30 +95,58 @@ export function computeParity(
   repoMigrations: MigrationFile[],
   dbMigrations: MigrationLedgerEntry[]
 ): ParityResult {
-  const repoMap = new Map(repoMigrations.map(m => [m.filename, m.sha256]));
-  const dbMap = new Map(dbMigrations.map(m => [m.filename, m.sha256]));
+  const repoById = new Map(
+    repoMigrations.map(m => [canonicalizeRepoMigrationId(m.filename), m])
+  );
+  const dbById = new Map(
+    dbMigrations.map(m => [canonicalizeDbMigrationId(m.filename), m])
+  );
+
+  // Create stable, deterministic lists for display.
+  const repoDisplayById = new Map(
+    repoMigrations
+      .map(m => ({ id: canonicalizeRepoMigrationId(m.filename), filename: m.filename }))
+      .sort((a, b) => a.filename.localeCompare(b.filename))
+      .map(x => [x.id, x.filename])
+  );
+
+  const dbDisplayById = new Map(
+    dbMigrations
+      .map(m => ({ id: canonicalizeDbMigrationId(m.filename), raw: String(m.filename) }))
+      .sort((a, b) => a.raw.localeCompare(b.raw))
+      .map(x => [x.id, x.raw])
+  );
 
   // Find migrations missing in DB (in repo but not in ledger)
-  const missingInDb = Array.from(repoMap.keys())
-    .filter(filename => !dbMap.has(filename))
+  const missingInDb = Array.from(repoById.keys())
+    .filter(id => !dbById.has(id))
+    .map(id => repoDisplayById.get(id) || id)
     .sort();
 
   // Find extra migrations in DB (in ledger but not in repo)
-  const extraInDb = Array.from(dbMap.keys())
-    .filter(filename => !repoMap.has(filename))
+  const extraInDb = Array.from(dbById.keys())
+    .filter(id => !repoById.has(id))
+    .map(id => dbDisplayById.get(id) || id)
     .sort();
 
   // Find hash mismatches (same filename but different hash)
-  const hashMismatches = Array.from(repoMap.keys())
-    .filter(filename => {
-      const dbHash = dbMap.get(filename);
-      return dbHash && dbHash !== repoMap.get(filename);
+  const hashMismatches = Array.from(repoById.keys())
+    .filter(id => {
+      const repo = repoById.get(id);
+      const db = dbById.get(id);
+      if (!repo || !db) return false;
+      if (!repo.sha256 || !db.sha256) return false;
+      return db.sha256 !== repo.sha256;
     })
-    .map(filename => ({
-      filename,
-      repoHash: repoMap.get(filename)!,
-      dbHash: dbMap.get(filename)!,
-    }))
+    .map(id => {
+      const repo = repoById.get(id)!;
+      const db = dbById.get(id)!;
+      return {
+        filename: repo.filename,
+        repoHash: repo.sha256,
+        dbHash: db.sha256,
+      };
+    })
     .sort((a, b) => a.filename.localeCompare(b.filename));
 
   const status = (missingInDb.length === 0 && extraInDb.length === 0 && hashMismatches.length === 0)

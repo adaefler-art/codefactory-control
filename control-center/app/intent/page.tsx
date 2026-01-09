@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 import { API_ROUTES } from "@/lib/api-routes";
+import { scrollContainerToBottom } from "@/lib/ui/scroll";
 import { SourcesPanel, SourcesBadge } from "./components/SourcesPanel";
 import CrEditor from "./components/CrEditor";
 import IssueDraftPanel from "./components/IssueDraftPanel";
@@ -57,7 +58,7 @@ export default function IntentPage() {
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [showCrDrawer, setShowCrDrawer] = useState(false);
   const [showIssueDraftDrawer, setShowIssueDraftDrawer] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isValidSessionId = (value: unknown): value is string => {
     return typeof value === "string" && value.trim().length > 0 && value !== "undefined" && value !== "null";
@@ -65,8 +66,26 @@ export default function IntentPage() {
 
   // Fetch sessions on mount
   useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevScrollRestoration = (history as any).scrollRestoration;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    if (typeof (history as any).scrollRestoration === "string") {
+      (history as any).scrollRestoration = "manual";
+    }
+
     fetchIntentStatus();
     fetchSessions();
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (typeof (history as any).scrollRestoration === "string") {
+        (history as any).scrollRestoration = prevScrollRestoration;
+      }
+    };
   }, []);
 
   const fetchIntentStatus = async () => {
@@ -116,10 +135,13 @@ export default function IntentPage() {
     }
   }, [currentSessionId]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change (container-only; never scroll window)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const handle = requestAnimationFrame(() => {
+      scrollContainerToBottom(messagesScrollContainerRef.current);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [messages.length, isSending]);
 
   const fetchSessions = async () => {
     try {
@@ -601,8 +623,41 @@ export default function IntentPage() {
           )}
         </div>
 
+        {/* Input Area - Fixed directly under header */}
+        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0">
+          <form onSubmit={sendMessage} className="flex gap-2">
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={currentSessionId ? "Type a message... (Enter to send, Shift+Enter for new line)" : "Type a message to start a new session... (auto-creates session)"}
+              disabled={isSending}
+              rows={2}
+              className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none disabled:bg-gray-700 disabled:text-gray-500"
+            />
+            <button
+              type="submit"
+              disabled={!inputValue.trim() || isSending}
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium"
+            >
+              {isSending ? "Sending..." : "Send"}
+            </button>
+          </form>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="px-6 py-2 bg-red-900/20 border-b border-red-700 shrink-0">
+            <p className="text-sm text-red-300">{error}</p>
+          </div>
+        )}
+
         {/* Messages - Scrollable area */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+        <div
+          ref={messagesScrollContainerRef}
+          data-testid="intent-chat-scroll"
+          className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4"
+        >
           {!currentSessionId && (
             <div className="text-center text-gray-400 mt-20">
               <p className="text-lg mb-2 text-purple-400">Welcome to INTENT Console</p>
@@ -672,36 +727,6 @@ export default function IntentPage() {
             </div>
           )}
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="px-6 py-2 bg-red-900/20 border-t border-red-700 shrink-0">
-            <p className="text-sm text-red-300">{error}</p>
-          </div>
-        )}
-
-        {/* Input Area - Sticky bottom */}
-        <div className="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0">
-          <form onSubmit={sendMessage} className="flex gap-2">
-            <textarea
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={currentSessionId ? "Type a message... (Enter to send, Shift+Enter for new line)" : "Type a message to start a new session... (auto-creates session)"}
-              disabled={isSending}
-              rows={2}
-              className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none disabled:bg-gray-700 disabled:text-gray-500"
-            />
-            <button
-              type="submit"
-              disabled={!inputValue.trim() || isSending}
-              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium"
-            >
-              {isSending ? "Sending..." : "Send"}
-            </button>
-          </form>
         </div>
       </div>
 

@@ -78,6 +78,18 @@ export async function getIssueDraft(
     };
   } catch (error) {
     console.error('[DB] Error getting issue draft:', error);
+
+    const err = error as any;
+    const pgCode = typeof err?.code === 'string' ? err.code : null;
+    const msg = typeof err?.message === 'string' ? err.message : '';
+    const isRelationMissing = pgCode === '42P01' || /relation\s+"[^"]+"\s+does not exist/i.test(msg);
+    if (isRelationMissing) {
+      return {
+        success: false,
+        error: 'MIGRATION_REQUIRED',
+      };
+    }
+
     return {
       success: false,
       error: 'Database error',

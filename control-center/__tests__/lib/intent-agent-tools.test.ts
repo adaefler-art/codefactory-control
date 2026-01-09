@@ -47,8 +47,8 @@ describe('INTENT Agent Tools', () => {
   });
 
   describe('Tool Definitions', () => {
-    test('should export 5 tools', () => {
-      expect(INTENT_TOOLS).toHaveLength(5);
+    test('should export the full tool set', () => {
+      expect(INTENT_TOOLS).toHaveLength(13);
     });
 
     test('should have correct tool names', () => {
@@ -59,6 +59,14 @@ describe('INTENT Agent Tools', () => {
         'save_change_request',
         'validate_change_request',
         'publish_to_github',
+        'get_issue_draft',
+        'save_issue_draft',
+        'validate_issue_draft',
+        'commit_issue_draft',
+        'get_issue_set',
+        'generate_issue_set',
+        'commit_issue_set',
+        'export_issue_set_markdown',
       ]);
     });
 

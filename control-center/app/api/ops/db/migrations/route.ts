@@ -44,6 +44,8 @@ import {
   listAppliedMigrations,
   getLastAppliedMigration,
   getAppliedMigrationCount,
+  SchemaMigrationsUnsupportedSchemaError,
+  SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
 } from '@/lib/db/migrations';
 import {
   listRepoMigrations,
@@ -57,6 +59,18 @@ import * as path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function isUnsupportedSchemaMigrationsError(error: unknown): error is {
+  name?: string;
+  detectedColumns?: unknown;
+} {
+  if (!error || typeof error !== 'object') return false;
+  const maybe = error as any;
+  return (
+    maybe.name === 'SchemaMigrationsUnsupportedSchemaError' &&
+    Array.isArray(maybe.detectedColumns)
+  );
+}
 
 /**
  * Check if user sub is in admin allowlist
@@ -168,6 +182,12 @@ export async function GET(request: NextRequest) {
 
     // Compute parity
     const parity = computeParity(repoMigrations, dbMigrations);
+    const deterministicParity = {
+      status: parity.status,
+      missingInDb: [...parity.missingInDb].sort((a, b) => a.localeCompare(b)),
+      extraInDb: [...parity.extraInDb].sort((a, b) => a.localeCompare(b)),
+      hashMismatches: [...parity.hashMismatches].sort((a, b) => a.filename.localeCompare(b.filename)),
+    };
 
     // Get lawbook version
     const lawbookVersion = await getLawbookVersion();
@@ -194,16 +214,32 @@ export async function GET(request: NextRequest) {
         lastAppliedAt: lastApplied?.applied_at.toISOString() || null,
       },
       parity: {
-        status: parity.status,
-        missingInDb: parity.missingInDb.slice(0, limit), // Bounded
-        extraInDb: parity.extraInDb.slice(0, limit), // Bounded
-        hashMismatches: parity.hashMismatches.slice(0, limit), // Bounded
+        status: deterministicParity.status,
+        missingInDb: deterministicParity.missingInDb.slice(0, limit), // Bounded
+        extraInDb: deterministicParity.extraInDb.slice(0, limit), // Bounded
+        hashMismatches: deterministicParity.hashMismatches.slice(0, limit), // Bounded
       },
     };
 
     return jsonResponse(response, { requestId });
   } catch (error) {
     console.error('[API /api/ops/db/migrations] Error:', error);
+
+    if (error instanceof SchemaMigrationsUnsupportedSchemaError || isUnsupportedSchemaMigrationsError(error)) {
+      const detectedColumns =
+        error instanceof SchemaMigrationsUnsupportedSchemaError
+          ? error.detectedColumns
+          : (error.detectedColumns as unknown[]).map(String).sort((a, b) => a.localeCompare(b));
+      return errorResponse('Unsupported migration ledger schema', {
+        status: 400,
+        requestId,
+        code: 'MIGRATION_LEDGER_UNSUPPORTED_SCHEMA',
+        details: `schema_migrations exists but has no supported identifier column. Detected columns: ${detectedColumns.join(', ') || '(none)'}; supported: ${SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS.join(', ')}`,
+        detectedColumns,
+        supportedColumns: SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
+      });
+    }
+
     return errorResponse('Failed to generate migration parity report', {
       status: 500,
       requestId,

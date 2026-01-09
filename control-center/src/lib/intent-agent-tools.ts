@@ -8,6 +8,7 @@
  */
 
 import type OpenAI from 'openai';
+import { buildOpenAITools } from './intent-tool-registry';
 
 /**
  * OpenAI Function Calling Tool Definitions for INTENT Agent
@@ -129,3 +130,4 @@ export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     },
   },
 ];
+export const INTENT_TOOLS: OpenAI.Chat.ChatCompletionTool[] = buildOpenAITools();

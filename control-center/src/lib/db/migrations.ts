@@ -7,6 +7,75 @@
 
 import { Pool } from 'pg';
 
+export const SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS = [
+  'filename',
+  'migration_id',
+  'name',
+  'migration_name',
+  'version',
+  'id',
+] as const;
+
+export type SupportedSchemaMigrationsIdentifierColumn =
+  (typeof SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS)[number];
+
+export class SchemaMigrationsUnsupportedSchemaError extends Error {
+  public readonly detectedColumns: string[];
+  public readonly supportedColumns: readonly string[];
+
+  constructor(detectedColumns: string[]) {
+    const sortedDetected = [...detectedColumns].sort((a, b) => a.localeCompare(b));
+    const supported = SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS;
+    super(
+      `schema_migrations table has no supported identifier column. Detected columns: ${sortedDetected.join(', ') || '(none)'}; supported: ${supported.join(', ')}`
+    );
+    this.name = 'SchemaMigrationsUnsupportedSchemaError';
+    this.detectedColumns = sortedDetected;
+    this.supportedColumns = supported;
+  }
+}
+
+export function pickSchemaMigrationsIdentifierColumn(
+  detectedColumns: string[]
+): SupportedSchemaMigrationsIdentifierColumn | null {
+  const lower = new Set(detectedColumns.map(c => c.toLowerCase()));
+  for (const candidate of SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS) {
+    if (lower.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+async function getSchemaMigrationsAdapter(pool: Pool): Promise<{
+  detectedColumns: string[];
+  identifierColumn: SupportedSchemaMigrationsIdentifierColumn;
+  hasSha256: boolean;
+  hasAppliedAt: boolean;
+}> {
+  const result = await pool.query<{ column_name: string }>(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'schema_migrations'`
+  );
+
+  const detectedColumns = (result.rows || [])
+    .map(r => r.column_name)
+    .filter(Boolean);
+
+  const identifierColumn = pickSchemaMigrationsIdentifierColumn(detectedColumns);
+  if (!identifierColumn) {
+    throw new SchemaMigrationsUnsupportedSchemaError(detectedColumns);
+  }
+
+  const lower = new Set(detectedColumns.map(c => c.toLowerCase()));
+  return {
+    detectedColumns: [...detectedColumns].sort((a, b) => a.localeCompare(b)),
+    identifierColumn,
+    hasSha256: lower.has('sha256'),
+    hasAppliedAt: lower.has('applied_at'),
+  };
+}
+
 export interface MigrationLedgerEntry {
   filename: string;
   sha256: string;
@@ -82,30 +151,17 @@ export async function listAppliedMigrations(
   limit: number = 500
 ): Promise<MigrationLedgerEntry[]> {
   try {
-    // Check which column exists (migration_id vs filename)
-    const columnCheck = await pool.query<any>(
-      `SELECT column_name 
-       FROM information_schema.columns 
-       WHERE table_name = 'schema_migrations' 
-       AND column_name IN ('migration_id', 'filename')`
-    );
-    
-    const hasFilename = columnCheck.rows.some(row => row.column_name === 'filename');
-    const hasMigrationId = columnCheck.rows.some(row => row.column_name === 'migration_id');
-    
-    let filenameColumn: string;
-    if (hasFilename) {
-      filenameColumn = 'filename';
-    } else if (hasMigrationId) {
-      filenameColumn = 'migration_id';
-    } else {
-      throw new Error('schema_migrations table has neither filename nor migration_id column');
-    }
+    const adapter = await getSchemaMigrationsAdapter(pool);
+
+    const sha256Select = adapter.hasSha256 ? 'COALESCE(sha256::text, \'\')' : "''";
+    const appliedAtSelect = adapter.hasAppliedAt ? 'applied_at' : 'NULL';
 
     const result = await pool.query<any>(
-      `SELECT ${filenameColumn} as filename, sha256, applied_at
+      `SELECT ${adapter.identifierColumn}::text as filename,
+              ${sha256Select} as sha256,
+              ${appliedAtSelect} as applied_at
        FROM schema_migrations
-       ORDER BY ${filenameColumn} ASC
+       ORDER BY ${adapter.identifierColumn} ASC
        LIMIT $1`,
       [limit]
     );
@@ -113,7 +169,8 @@ export async function listAppliedMigrations(
     return result.rows.map(row => ({
       filename: row.filename,
       sha256: row.sha256 || '',
-      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(),
+      // Deterministic: if applied_at is not available in the ledger, use a stable epoch timestamp.
+      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
     }));
   } catch (error) {
     console.error('[Migration DAO] Error listing applied migrations:', error);
@@ -127,30 +184,20 @@ export async function listAppliedMigrations(
  */
 export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedgerEntry | null> {
   try {
-    // Check which column exists (migration_id vs filename)
-    const columnCheck = await pool.query<any>(
-      `SELECT column_name 
-       FROM information_schema.columns 
-       WHERE table_name = 'schema_migrations' 
-       AND column_name IN ('migration_id', 'filename')`
-    );
-    
-    const hasFilename = columnCheck.rows.some(row => row.column_name === 'filename');
-    const hasMigrationId = columnCheck.rows.some(row => row.column_name === 'migration_id');
-    
-    let filenameColumn: string;
-    if (hasFilename) {
-      filenameColumn = 'filename';
-    } else if (hasMigrationId) {
-      filenameColumn = 'migration_id';
-    } else {
-      throw new Error('schema_migrations table has neither filename nor migration_id column');
-    }
+    const adapter = await getSchemaMigrationsAdapter(pool);
+
+    const sha256Select = adapter.hasSha256 ? 'COALESCE(sha256::text, \'\')' : "''";
+    const appliedAtSelect = adapter.hasAppliedAt ? 'applied_at' : 'NULL';
+    const orderBy = adapter.hasAppliedAt
+      ? `ORDER BY applied_at DESC NULLS LAST, ${adapter.identifierColumn} DESC`
+      : `ORDER BY ${adapter.identifierColumn} DESC`;
 
     const result = await pool.query<any>(
-      `SELECT ${filenameColumn} as filename, sha256, applied_at
+      `SELECT ${adapter.identifierColumn}::text as filename,
+              ${sha256Select} as sha256,
+              ${appliedAtSelect} as applied_at
        FROM schema_migrations
-       ORDER BY applied_at DESC NULLS LAST, ${filenameColumn} DESC
+       ${orderBy}
        LIMIT 1`
     );
 
@@ -162,7 +209,8 @@ export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedg
     return {
       filename: row.filename,
       sha256: row.sha256 || '',
-      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(),
+      // Deterministic: if applied_at is not available in the ledger, use a stable epoch timestamp.
+      applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
     };
   } catch (error) {
     console.error('[Migration DAO] Error getting last applied migration:', error);
