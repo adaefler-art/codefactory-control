@@ -24,6 +24,32 @@ jest.mock('@/lib/db', () => ({
 
 // Mock migration DAO
 jest.mock('@/lib/db/migrations', () => ({
+  SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS: [
+    'filename',
+    'migration_id',
+    'name',
+    'migration_name',
+    'version',
+    'id',
+  ],
+  SchemaMigrationsUnsupportedSchemaError: class SchemaMigrationsUnsupportedSchemaError extends Error {
+    detectedColumns: string[];
+    supportedColumns: readonly string[];
+
+    constructor(detectedColumns: string[]) {
+      super('schema_migrations table has no supported identifier column');
+      this.name = 'SchemaMigrationsUnsupportedSchemaError';
+      this.detectedColumns = [...detectedColumns];
+      this.supportedColumns = [
+        'filename',
+        'migration_id',
+        'name',
+        'migration_name',
+        'version',
+        'id',
+      ];
+    }
+  },
   checkDbReachability: jest.fn(),
   checkLedgerExists: jest.fn(),
   listAppliedMigrations: jest.fn(),
@@ -50,6 +76,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
   const mockGetLastAppliedMigration = require('@/lib/db/migrations').getLastAppliedMigration;
   const mockGetAppliedMigrationCount = require('@/lib/db/migrations').getAppliedMigrationCount;
+  const SchemaMigrationsUnsupportedSchemaError = require('@/lib/db/migrations').SchemaMigrationsUnsupportedSchemaError;
   const mockListRepoMigrations = require('@/lib/utils/migration-parity').listRepoMigrations;
   const mockComputeParity = require('@/lib/utils/migration-parity').computeParity;
   const mockGetLatestMigration = require('@/lib/utils/migration-parity').getLatestMigration;
@@ -283,6 +310,40 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.error).toBe('Migration ledger not found');
     expect(body.code).toBe('MIGRATION_LEDGER_MISSING');
     expect(body.details).toContain('schema_migrations');
+  });
+
+  test('400: Unsupported schema_migrations schema returns diagnostics (not 500)', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListAppliedMigrations.mockRejectedValue(
+      new SchemaMigrationsUnsupportedSchemaError(['created_at', 'checksum'])
+    );
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-unsupported-schema',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe('Unsupported migration ledger schema');
+    expect(body.code).toBe('MIGRATION_LEDGER_UNSUPPORTED_SCHEMA');
+    expect(body.details).toContain('Detected columns');
+    expect(body.details).toContain('supported');
   });
 
   test('200: PASS scenario - migrations in sync', async () => {
