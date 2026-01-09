@@ -19,7 +19,6 @@ import { commitIssueDraftVersion } from '@/lib/db/intentIssueDraftVersions';
 import { getIssueSet, generateIssueSet, commitIssueSet } from '@/lib/db/intentIssueSets';
 import { exportIssueSetToAFU9Markdown, generateIssueSetSummary } from '@/lib/utils/issueSetExporter';
 import { createOrUpdateFromCR } from '@/lib/github/issue-creator';
-import { getIssueSet } from '@/lib/db/intentIssueSets';
 import { publishIssueDraftBatch } from '@/lib/github/issue-draft-publisher';
 import type { IssueDraft } from '@/lib/schemas/issueDraft';
 import { getToolGateStatus } from './intent-tool-registry';

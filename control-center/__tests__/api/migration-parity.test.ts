@@ -67,7 +67,7 @@ jest.mock('@/lib/utils/migration-parity', () => ({
 
 // Mock lawbook version helper
 jest.mock('@/lib/lawbook-version-helper', () => ({
-  getLawbookVersion: jest.fn().mockResolvedValue('v0.7.0'),
+  getActiveLawbookVersion: jest.fn().mockResolvedValue('v0.7.0'),
 }));
 
 describe('GET /api/ops/db/migrations - Security Tests', () => {
