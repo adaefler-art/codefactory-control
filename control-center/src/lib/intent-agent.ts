@@ -16,8 +16,8 @@
 
 import OpenAI from "openai";
 import { randomUUID } from "crypto";
-import { INTENT_TOOLS } from './intent-agent-tools';
 import { executeIntentTool, type ToolContext } from './intent-agent-tool-executor';
+import { buildOpenAITools, renderIntentToolCapabilities } from './intent-tool-registry';
 
 // Environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -234,6 +234,9 @@ export async function generateIntentResponse(
   try {
     const openai = getOpenAIClient();
 
+    const toolContext: ToolContext = { userId, sessionId };
+    const toolCapabilities = renderIntentToolCapabilities(toolContext);
+
     // System prompt: define INTENT agent behavior with tool capabilities
     const systemPrompt = `You are the INTENT Agent for AFU-9 Control Center.
 
@@ -244,11 +247,7 @@ Your role:
 - Execute actions via available tools
 
 AVAILABLE TOOLS (YOU MUST USE THEM):
-- get_context_pack: Retrieve session context pack (messages + sources)
-- get_change_request: Get current CR draft for this session
-- save_change_request: Save/update CR draft (does NOT validate/publish)
-- validate_change_request: Validate CR against schema
-- publish_to_github: Publish CR to GitHub as issue (idempotent)
+${toolCapabilities}
 
 CRITICAL RULES FOR TOOL USAGE:
 1. When user asks "siehst du den Change Request?", you MUST call get_change_request
@@ -296,7 +295,7 @@ Response language: German (user may use English or German)`;
         top_p: 1,
         frequency_penalty: 0,
         presence_penalty: 0,
-        tools: INTENT_TOOLS,
+        tools: buildOpenAITools(),
         tool_choice: 'auto', // Let model decide when to use tools
       }, {
         signal: abortController.signal,

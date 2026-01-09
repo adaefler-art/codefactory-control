@@ -14,7 +14,12 @@
 import { getPool } from '@/lib/db';
 import { generateContextPack } from '@/lib/db/contextPacks';
 import { getCrDraft, saveCrDraft, validateAndSaveCrDraft, getLatestCrDraft } from '@/lib/db/intentCrDrafts';
+import { getIssueDraft, saveIssueDraft, validateAndSaveIssueDraft } from '@/lib/db/intentIssueDrafts';
+import { commitIssueDraftVersion } from '@/lib/db/intentIssueDraftVersions';
+import { getIssueSet, generateIssueSet, commitIssueSet } from '@/lib/db/intentIssueSets';
+import { exportIssueSetToAFU9Markdown, generateIssueSetSummary } from '@/lib/utils/issueSetExporter';
 import { createOrUpdateFromCR } from '@/lib/github/issue-creator';
+import { getToolGateStatus } from './intent-tool-registry';
 
 /**
  * Tool execution context
@@ -47,6 +52,17 @@ export async function executeIntentTool(
   });
   
   try {
+    const gate = getToolGateStatus(toolName, { userId, sessionId });
+    if (!gate.enabled) {
+      return JSON.stringify({
+        success: false,
+        error: 'Tool is disabled by gate',
+        code: 'TOOL_DISABLED',
+        tool: toolName,
+        gate,
+      });
+    }
+
     switch (toolName) {
       case 'get_context_pack': {
         // Generate or get latest context pack for THIS session
@@ -214,6 +230,281 @@ export async function executeIntentTool(
             code: 'GITHUB_PUBLISH_FAILED',
           });
         }
+      }
+
+      // E81.x - Issue Draft tools
+      case 'get_issue_draft': {
+        const result = await getIssueDraft(pool, sessionId, userId);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_DRAFT_GET_FAILED',
+          });
+        }
+
+        if (!result.data) {
+          return JSON.stringify({
+            success: true,
+            draft: null,
+            message: 'No Issue Draft exists yet for this session',
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          draft: result.data,
+          message: 'Issue Draft found',
+        });
+      }
+
+      case 'save_issue_draft': {
+        const { issueJson } = args;
+
+        if (!issueJson) {
+          return JSON.stringify({
+            success: false,
+            error: 'issueJson is required',
+            code: 'MISSING_ISSUE_JSON',
+          });
+        }
+
+        const result = await saveIssueDraft(pool, sessionId, userId, issueJson);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_DRAFT_SAVE_FAILED',
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          draft: {
+            id: result.data.id,
+            issue_hash: result.data.issue_hash?.substring(0, 12),
+            last_validation_status: result.data.last_validation_status,
+            updated_at: result.data.updated_at,
+          },
+          message: 'Issue Draft saved successfully',
+        });
+      }
+
+      case 'validate_issue_draft': {
+        const { issueJson } = args;
+
+        if (!issueJson) {
+          return JSON.stringify({
+            success: false,
+            error: 'issueJson is required',
+            code: 'MISSING_ISSUE_JSON',
+          });
+        }
+
+        const result = await validateAndSaveIssueDraft(pool, sessionId, userId, issueJson);
+
+        if (!result.success && !('validation' in result) ) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_DRAFT_VALIDATION_FAILED',
+          });
+        }
+
+        return JSON.stringify({
+          success: result.success,
+          validation: 'validation' in result ? result.validation : undefined,
+          draft: result.success
+            ? {
+                id: result.data.id,
+                last_validation_status: result.data.last_validation_status,
+                last_validation_at: result.data.last_validation_at,
+              }
+            : null,
+          message:
+            'validation' in result && result.validation?.isValid
+              ? 'Issue Draft is valid'
+              : 'Issue Draft has validation errors',
+        });
+      }
+
+      case 'commit_issue_draft': {
+        // Commit current draft (API parity with /issue-draft/commit)
+        const draftResult = await getIssueDraft(pool, sessionId, userId);
+
+        if (!draftResult.success) {
+          return JSON.stringify({
+            success: false,
+            error: draftResult.error,
+            code: 'ISSUE_DRAFT_GET_FAILED',
+          });
+        }
+
+        if (!draftResult.data) {
+          return JSON.stringify({
+            success: false,
+            error: 'No Issue Draft exists for this session',
+            code: 'ISSUE_DRAFT_NOT_FOUND',
+          });
+        }
+
+        const commitResult = await commitIssueDraftVersion(
+          pool,
+          sessionId,
+          userId,
+          draftResult.data.issue_json
+        );
+
+        if (!commitResult.success) {
+          return JSON.stringify({
+            success: false,
+            error: commitResult.error,
+            code: 'ISSUE_DRAFT_COMMIT_FAILED',
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          version: {
+            id: commitResult.data.id,
+            version_number: commitResult.data.version_number,
+            issue_hash: commitResult.data.issue_hash?.substring(0, 12),
+            created_at: commitResult.data.created_at,
+          },
+          isNew: commitResult.isNew,
+          message: commitResult.isNew ? 'Issue Draft committed (new version)' : 'Issue Draft commit is idempotent (existing version)',
+        });
+      }
+
+      // E81.x - Issue Set tools
+      case 'get_issue_set': {
+        const result = await getIssueSet(pool, sessionId, userId);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_SET_GET_FAILED',
+          });
+        }
+
+        if (!result.data) {
+          return JSON.stringify({
+            success: true,
+            issueSet: null,
+            items: [],
+            summary: { total: 0, valid: 0, invalid: 0 },
+            message: 'No Issue Set exists yet for this session',
+          });
+        }
+
+        const items = result.items || [];
+        const summary = generateIssueSetSummary(items);
+
+        return JSON.stringify({
+          success: true,
+          issueSet: result.data,
+          items,
+          summary,
+          message: 'Issue Set found',
+        });
+      }
+
+      case 'generate_issue_set': {
+        const { briefingText, issueDrafts, constraints } = args as any;
+
+        if (typeof briefingText !== 'string' || !briefingText.trim()) {
+          return JSON.stringify({
+            success: false,
+            error: 'briefingText is required',
+            code: 'MISSING_BRIEFING_TEXT',
+          });
+        }
+
+        if (!Array.isArray(issueDrafts)) {
+          return JSON.stringify({
+            success: false,
+            error: 'issueDrafts array is required',
+            code: 'MISSING_ISSUE_DRAFTS',
+          });
+        }
+
+        const result = await generateIssueSet(
+          pool,
+          sessionId,
+          userId,
+          briefingText,
+          issueDrafts,
+          constraints
+        );
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_SET_GENERATE_FAILED',
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          issueSet: result.data,
+          items: result.items,
+          summary: generateIssueSetSummary(result.items),
+          message: 'Issue Set generated successfully',
+        });
+      }
+
+      case 'commit_issue_set': {
+        const result = await commitIssueSet(pool, sessionId, userId);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_SET_COMMIT_FAILED',
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          issueSet: result.data,
+          message: 'Issue Set committed successfully',
+        });
+      }
+
+      case 'export_issue_set_markdown': {
+        const includeInvalid = (args as any)?.includeInvalid === true;
+        const result = await getIssueSet(pool, sessionId, userId);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_SET_GET_FAILED',
+          });
+        }
+
+        if (!result.data) {
+          return JSON.stringify({
+            success: false,
+            error: 'No Issue Set exists for this session',
+            code: 'ISSUE_SET_NOT_FOUND',
+          });
+        }
+
+        const items = result.items || [];
+        const markdown = exportIssueSetToAFU9Markdown(items, { includeInvalid });
+        const summary = generateIssueSetSummary(items);
+
+        return JSON.stringify({
+          success: true,
+          markdown,
+          summary,
+          message: 'Issue Set exported to markdown',
+        });
       }
       
       default:
