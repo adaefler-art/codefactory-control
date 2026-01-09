@@ -3,12 +3,15 @@
  * 
  * Validate an issue draft and update stored validation status
  * Issue E81.2: INTENT Tools create/update Issue Draft (session-bound)
+ * Issue E81.5: Evidence Pack for Issue Authoring (audit trail)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { validateAndSaveIssueDraft } from '@/lib/db/intentIssueDrafts';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { createEvidenceRecord, createEvidenceErrorInfo } from '@/lib/intent-issue-evidence';
+import { insertEvent } from '@/lib/db/intentIssueAuthoringEvents';
 
 /**
  * POST /api/intent/sessions/[id]/issue-draft/validate
@@ -85,10 +88,69 @@ export async function POST(
       });
     }
     
-    // Return validation result with draft metadata
+    // E81.5: Create evidence record (required for audit - fail if insert fails)
+    let evidenceRecorded = false;
+    let evidenceError: any = null;
+    
+    try {
+      const evidence = await createEvidenceRecord(
+        {
+          requestId,
+          sessionId,
+          sub: userId,
+          action: 'draft_validate',
+          params: { issue_json: body.issue_json },
+          result: {
+            valid: result.validation?.valid ?? false,
+            errors: result.validation?.errors ?? [],
+            draft_id: result.data?.id,
+          },
+        },
+        pool
+      );
+      
+      const insertResult = await insertEvent(pool, evidence);
+      if (!insertResult.success) {
+        evidenceError = new Error(`Evidence insert failed: ${insertResult.error}`);
+        (evidenceError as any).code = 'EVIDENCE_INSERT_FAILED';
+        throw evidenceError;
+      }
+      
+      evidenceRecorded = true;
+    } catch (error) {
+      // Create secret-free error info
+      const errorInfo = createEvidenceErrorInfo(
+        error instanceof Error ? error : new Error(String(error)),
+        { requestId, sessionId, action: 'draft_validate' }
+      );
+      
+      // Structured logging without secrets
+      console.error('[API] Evidence recording failed:', {
+        code: errorInfo.code,
+        message: errorInfo.message,
+        requestId: errorInfo.requestId,
+        sessionId: errorInfo.sessionId,
+        action: errorInfo.action,
+        timestamp: errorInfo.timestamp,
+      });
+      
+      // Return 500 with deterministic error code (no secrets)
+      return errorResponse('Evidence recording failed', {
+        status: 500,
+        requestId,
+        details: {
+          code: errorInfo.code,
+          message: errorInfo.message,
+          action: errorInfo.action,
+        },
+      });
+    }
+    
+    // Return validation result with draft metadata and evidence status
     return jsonResponse({
       draft: result.data,
       validation: result.validation,
+      evidenceRecorded,
     }, { 
       requestId,
       headers: {

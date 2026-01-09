@@ -3,6 +3,7 @@
  * 
  * Generate issue set from briefing text
  * Issue E81.4: Briefing → Issue Set Generator (batch from a briefing doc)
+ * Issue E81.5: Evidence Pack for Issue Authoring (audit trail)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +11,8 @@ import { getPool } from '@/lib/db';
 import { generateIssueSet } from '@/lib/db/intentIssueSets';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import type { IssueDraft } from '@/lib/schemas/issueDraft';
+import { createEvidenceRecord, createEvidenceErrorInfo } from '@/lib/intent-issue-evidence';
+import { insertEvent } from '@/lib/db/intentIssueAuthoringEvents';
 
 /**
  * POST /api/intent/sessions/[id]/issue-set/generate
@@ -130,6 +133,71 @@ export async function POST(
       });
     }
     
+    // E81.5: Create evidence record (required for audit - fail if insert fails)
+    let evidenceRecorded = false;
+    let evidenceError: any = null;
+    
+    try {
+      const evidence = await createEvidenceRecord(
+        {
+          requestId,
+          sessionId,
+          sub: userId,
+          action: 'issue_set_generate',
+          params: {
+            briefing_length: body.briefingText.length,
+            issue_count: body.issueDrafts.length,
+            has_constraints: !!body.constraints,
+          },
+          result: {
+            success: true,
+            issue_set_id: result.data?.id,
+            source_hash: result.data?.source_hash,
+            total_items: result.items.length,
+            valid_count: result.items.filter(i => i.last_validation_status === 'valid').length,
+            invalid_count: result.items.filter(i => i.last_validation_status === 'invalid').length,
+          },
+        },
+        pool
+      );
+      
+      const insertResult = await insertEvent(pool, evidence);
+      if (!insertResult.success) {
+        evidenceError = new Error(`Evidence insert failed: ${insertResult.error}`);
+        (evidenceError as any).code = 'EVIDENCE_INSERT_FAILED';
+        throw evidenceError;
+      }
+      
+      evidenceRecorded = true;
+    } catch (error) {
+      // Create secret-free error info
+      const errorInfo = createEvidenceErrorInfo(
+        error instanceof Error ? error : new Error(String(error)),
+        { requestId, sessionId, action: 'issue_set_generate' }
+      );
+      
+      // Structured logging without secrets
+      console.error('[API] Evidence recording failed:', {
+        code: errorInfo.code,
+        message: errorInfo.message,
+        requestId: errorInfo.requestId,
+        sessionId: errorInfo.sessionId,
+        action: errorInfo.action,
+        timestamp: errorInfo.timestamp,
+      });
+      
+      // Return 500 with deterministic error code (no secrets)
+      return errorResponse('Evidence recording failed', {
+        status: 500,
+        requestId,
+        details: {
+          code: errorInfo.code,
+          message: errorInfo.message,
+          action: errorInfo.action,
+        },
+      });
+    }
+    
     return jsonResponse({
       issueSet: result.data,
       items: result.items,
@@ -138,6 +206,7 @@ export async function POST(
         valid: result.items.filter(i => i.last_validation_status === 'valid').length,
         invalid: result.items.filter(i => i.last_validation_status === 'invalid').length,
       },
+      evidenceRecorded,
     }, { 
       requestId,
       headers: {

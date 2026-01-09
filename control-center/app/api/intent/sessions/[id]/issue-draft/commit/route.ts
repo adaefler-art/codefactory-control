@@ -3,6 +3,7 @@
  * 
  * Commit an issue draft as an immutable version
  * Issue E81.2: INTENT Tools create/update Issue Draft (session-bound)
+ * Issue E81.5: Evidence Pack for Issue Authoring (audit trail)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +11,8 @@ import { getPool } from '@/lib/db';
 import { getIssueDraft } from '@/lib/db/intentIssueDrafts';
 import { commitIssueDraftVersion } from '@/lib/db/intentIssueDraftVersions';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { createEvidenceRecord, createEvidenceErrorInfo } from '@/lib/intent-issue-evidence';
+import { insertEvent } from '@/lib/db/intentIssueAuthoringEvents';
 
 /**
  * POST /api/intent/sessions/[id]/issue-draft/commit
@@ -115,9 +118,72 @@ export async function POST(
       });
     }
     
+    // E81.5: Create evidence record (required for audit - fail if insert fails)
+    let evidenceRecorded = false;
+    let evidenceError: any = null;
+    
+    try {
+      const evidence = await createEvidenceRecord(
+        {
+          requestId,
+          sessionId,
+          sub: userId,
+          action: 'draft_commit',
+          params: { 
+            draft_id: draftResult.data.id,
+            issue_hash: draftResult.data.issue_hash,
+          },
+          result: {
+            success: true,
+            version_id: commitResult.data?.id,
+            is_new: commitResult.isNew,
+            issue_hash: commitResult.data?.issue_hash,
+          },
+        },
+        pool
+      );
+      
+      const insertResult = await insertEvent(pool, evidence);
+      if (!insertResult.success) {
+        evidenceError = new Error(`Evidence insert failed: ${insertResult.error}`);
+        (evidenceError as any).code = 'EVIDENCE_INSERT_FAILED';
+        throw evidenceError;
+      }
+      
+      evidenceRecorded = true;
+    } catch (error) {
+      // Create secret-free error info
+      const errorInfo = createEvidenceErrorInfo(
+        error instanceof Error ? error : new Error(String(error)),
+        { requestId, sessionId, action: 'draft_commit' }
+      );
+      
+      // Structured logging without secrets
+      console.error('[API] Evidence recording failed:', {
+        code: errorInfo.code,
+        message: errorInfo.message,
+        requestId: errorInfo.requestId,
+        sessionId: errorInfo.sessionId,
+        action: errorInfo.action,
+        timestamp: errorInfo.timestamp,
+      });
+      
+      // Return 500 with deterministic error code (no secrets)
+      return errorResponse('Evidence recording failed', {
+        status: 500,
+        requestId,
+        details: {
+          code: errorInfo.code,
+          message: errorInfo.message,
+          action: errorInfo.action,
+        },
+      });
+    }
+    
     return jsonResponse({
       version: commitResult.data,
       isNew: commitResult.isNew,
+      evidenceRecorded,
     }, { 
       requestId,
       status: commitResult.isNew ? 201 : 200,
