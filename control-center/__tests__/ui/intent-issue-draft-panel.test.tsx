@@ -484,7 +484,8 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockRejectedValueOnce({
         status: 503,
         message: "HTTP 503: Database migration required",
-        details: "MIGRATION_REQUIRED",
+        code: "MIGRATION_REQUIRED",
+        details: "intent_issue_drafts table is missing (run migrations)",
         requestId: "req-migration-123",
       });
 

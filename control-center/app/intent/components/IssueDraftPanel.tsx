@@ -107,15 +107,20 @@ export default function IssueDraftPanel({ sessionId }: IssueDraftPanelProps) {
         }
       }
       
-      // Fallback: treat response as direct draft data (backward compatibility)
-      setDraft(data as IssueDraftData);
+      // Unexpected response format
+      console.error("Unexpected API response format:", data);
+      setError("Unexpected response format from server");
     } catch (err) {
       console.error("Failed to load issue draft:", err);
       
-      // Check for MIGRATION_REQUIRED error
+      // Check for MIGRATION_REQUIRED error using error code
       if (typeof err === "object" && err !== null) {
         const apiError = err as any;
-        if (apiError.details && typeof apiError.details === "string" && apiError.details.includes("MIGRATION_REQUIRED")) {
+        
+        // Check for code field in details object or top-level
+        const errorCode = apiError.code || (typeof apiError.details === "object" && apiError.details?.code);
+        
+        if (errorCode === "MIGRATION_REQUIRED") {
           setError("Database migration required. Please run migrations to enable issue draft functionality.");
           setRequestId(apiError.requestId || null);
           return;
