@@ -25,9 +25,6 @@ ARG BUILD_VERSION
 ARG BUILD_COMMIT_HASH=local
 ARG BUILD_ENV
 ARG BUILD_TIMESTAMP
-ARG NEXT_PREVIEW_MODE_ID
-ARG NEXT_PREVIEW_MODE_SIGNING_KEY
-ARG NEXT_PREVIEW_MODE_ENCRYPTION_KEY
 WORKDIR /app/${APP_DIR}
 
 # Determinism knobs
@@ -51,16 +48,15 @@ COPY --from=deps /app/${APP_DIR}/node_modules ./node_modules
 COPY --from=deps /app/packages /app/packages
 COPY control-center/ ./
 
-# Ensure the Next.js preview-mode keys are stable during deterministic builds
-# (Workflow passes these as build-args; we expose them via env for the build step.)
-ENV __NEXT_PREVIEW_MODE_ID=${NEXT_PREVIEW_MODE_ID}
-ENV __NEXT_PREVIEW_MODE_SIGNING_KEY=${NEXT_PREVIEW_MODE_SIGNING_KEY}
-ENV __NEXT_PREVIEW_MODE_ENCRYPTION_KEY=${NEXT_PREVIEW_MODE_ENCRYPTION_KEY}
-
 # Generate public/build-metadata.json deterministically from BUILD_* args
 RUN node prebuild.js
 
-RUN npm run build
+RUN set -eu; \
+    __NEXT_PREVIEW_MODE_ID="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";process.stdout.write(crypto.createHash("sha256").update("preview-id:"+seed).digest("base64"));')"; \
+    __NEXT_PREVIEW_MODE_SIGNING_KEY="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";process.stdout.write(crypto.createHash("sha256").update("preview-sign:"+seed).digest("base64"));')"; \
+    __NEXT_PREVIEW_MODE_ENCRYPTION_KEY="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";process.stdout.write(crypto.createHash("sha256").update("preview-enc:"+seed).digest("base64"));')"; \
+    export __NEXT_PREVIEW_MODE_ID __NEXT_PREVIEW_MODE_SIGNING_KEY __NEXT_PREVIEW_MODE_ENCRYPTION_KEY; \
+    npm run build
 
 # Stage 3: Production
 FROM node:20.10.0-bookworm-slim AS runner
