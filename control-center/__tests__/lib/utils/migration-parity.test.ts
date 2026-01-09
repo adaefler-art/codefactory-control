@@ -30,6 +30,11 @@ describe('Migration Parity Utility', () => {
       expect(canonicalizeDbMigrationId('054_some_name')).toBe('54');
       expect(canonicalizeDbMigrationId('create_users')).toBe('create_users');
     });
+
+    test('db: large version-like strings stay precise (no numeric coercion)', () => {
+      expect(canonicalizeDbMigrationId('000202601090001234567890123')).toBe('202601090001234567890123');
+      expect(canonicalizeDbMigrationId('202601090001234567890123_suffix')).toBe('202601090001234567890123');
+    });
   });
 
   describe('computeParity', () => {

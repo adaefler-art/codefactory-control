@@ -60,6 +60,18 @@ import * as path from 'path';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function isUnsupportedSchemaMigrationsError(error: unknown): error is {
+  name?: string;
+  detectedColumns?: unknown;
+} {
+  if (!error || typeof error !== 'object') return false;
+  const maybe = error as any;
+  return (
+    maybe.name === 'SchemaMigrationsUnsupportedSchemaError' &&
+    Array.isArray(maybe.detectedColumns)
+  );
+}
+
 /**
  * Check if user sub is in admin allowlist
  * Fail-closed: empty/missing AFU9_ADMIN_SUBS → deny all
@@ -213,13 +225,17 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /api/ops/db/migrations] Error:', error);
 
-    if (error instanceof SchemaMigrationsUnsupportedSchemaError) {
+    if (error instanceof SchemaMigrationsUnsupportedSchemaError || isUnsupportedSchemaMigrationsError(error)) {
+      const detectedColumns =
+        error instanceof SchemaMigrationsUnsupportedSchemaError
+          ? error.detectedColumns
+          : (error.detectedColumns as unknown[]).map(String).sort((a, b) => a.localeCompare(b));
       return errorResponse('Unsupported migration ledger schema', {
         status: 400,
         requestId,
         code: 'MIGRATION_LEDGER_UNSUPPORTED_SCHEMA',
-        details: `schema_migrations exists but has no supported identifier column. Detected columns: ${error.detectedColumns.join(', ') || '(none)'}; supported: ${SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS.join(', ')}`,
-        detectedColumns: error.detectedColumns,
+        details: `schema_migrations exists but has no supported identifier column. Detected columns: ${detectedColumns.join(', ') || '(none)'}; supported: ${SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS.join(', ')}`,
+        detectedColumns,
         supportedColumns: SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
       });
     }
