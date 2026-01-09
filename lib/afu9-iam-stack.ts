@@ -324,7 +324,9 @@ export class Afu9IamStack extends cdk.Stack {
           'logs:FilterLogEvents',
         ],
         resources: [
-          `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9EcsStack-*:log-stream:*`,
+          // IAM validator requires DescribeLogStreams/FilterLogEvents to be scoped to /ecs/afu9/
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/afu9/*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/afu9/*:log-stream:*`,
         ],
       })
     );
