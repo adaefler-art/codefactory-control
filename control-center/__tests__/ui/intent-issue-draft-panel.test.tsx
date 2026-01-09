@@ -21,10 +21,15 @@ describe("IssueDraftPanel", () => {
 
   describe("Rendering", () => {
     it("should show 'No draft yet' when no draft exists", async () => {
-      // Mock 404 response
+      // Mock 200 response with success:true, draft:null (new contract)
       (global.fetch as jest.Mock).mockResolvedValueOnce({
-        status: 404,
-        ok: false,
+        status: 200,
+        ok: true,
+        json: async () => ({
+          success: true,
+          draft: null,
+          reason: 'NO_DRAFT',
+        }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -73,7 +78,10 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({
+          success: true,
+          draft: mockDraft,
+        }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -105,7 +113,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -147,7 +155,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -173,7 +181,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -201,7 +209,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -238,7 +246,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -296,7 +304,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -343,7 +351,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -374,7 +382,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -405,7 +413,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       const { container } = render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -439,7 +447,7 @@ describe("IssueDraftPanel", () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         status: 200,
         ok: true,
-        json: async () => mockDraft,
+        json: async () => ({ success: true, draft: mockDraft }),
       });
 
       const { container } = render(<IssueDraftPanel sessionId={mockSessionId} />);
@@ -470,6 +478,26 @@ describe("IssueDraftPanel", () => {
       // Should show generic error, not internal stack traces
       expect(screen.queryByText(/stack trace/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/database/i)).not.toBeInTheDocument();
+    });
+
+    it("should show clear MIGRATION_REQUIRED message with requestId", async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce({
+        status: 503,
+        message: "HTTP 503: Database migration required",
+        details: "MIGRATION_REQUIRED",
+        requestId: "req-migration-123",
+      });
+
+      render(<IssueDraftPanel sessionId={mockSessionId} />);
+
+      await waitFor(() => {
+        // Should show clear migration message
+        expect(screen.getByText(/Database migration required/i)).toBeInTheDocument();
+        expect(screen.getByText(/req-migration-123/)).toBeInTheDocument();
+      });
+
+      // Should not show draft
+      expect(screen.queryByText("Preview")).not.toBeInTheDocument();
     });
   });
 });
