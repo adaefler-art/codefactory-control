@@ -53,7 +53,7 @@ import {
   getLatestMigration,
 } from '@/lib/utils/migration-parity';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
-import { getLawbookVersion } from '@/lib/lawbook-version-helper';
+import { getActiveLawbookVersion } from '@/lib/lawbook-version-helper';
 import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 import * as path from 'path';
 
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Get lawbook version
-    const lawbookVersion = await getLawbookVersion();
+    const lawbookVersion = await getActiveLawbookVersion(pool);
 
     // Build response
     const response = {

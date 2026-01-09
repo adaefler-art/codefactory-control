@@ -19,6 +19,8 @@ import { commitIssueDraftVersion } from '@/lib/db/intentIssueDraftVersions';
 import { getIssueSet, generateIssueSet, commitIssueSet } from '@/lib/db/intentIssueSets';
 import { exportIssueSetToAFU9Markdown, generateIssueSetSummary } from '@/lib/utils/issueSetExporter';
 import { createOrUpdateFromCR } from '@/lib/github/issue-creator';
+import { publishIssueDraftBatch } from '@/lib/github/issue-draft-publisher';
+import type { IssueDraft } from '@/lib/schemas/issueDraft';
 import { getToolGateStatus } from './intent-tool-registry';
 
 /**
@@ -505,6 +507,92 @@ export async function executeIntentTool(
           summary,
           message: 'Issue Set exported to markdown',
         });
+      }
+      
+      case 'publish_issues_to_github_batch': {
+        const { owner, repo, includeInvalid = false } = args;
+        
+        // Validate required parameters
+        if (!owner || typeof owner !== 'string') {
+          return JSON.stringify({
+            success: false,
+            error: 'owner parameter is required and must be a string',
+            code: 'MISSING_OWNER',
+          });
+        }
+        
+        if (!repo || typeof repo !== 'string') {
+          return JSON.stringify({
+            success: false,
+            error: 'repo parameter is required and must be a string',
+            code: 'MISSING_REPO',
+          });
+        }
+        
+        // Get the issue set for this session
+        const issueSetResult = await getIssueSet(pool, sessionId, userId);
+        
+        if (!issueSetResult.success) {
+          return JSON.stringify({
+            success: false,
+            error: issueSetResult.error,
+            code: 'ISSUE_SET_ERROR',
+          });
+        }
+        
+        if (!issueSetResult.data || !issueSetResult.items || issueSetResult.items.length === 0) {
+          return JSON.stringify({
+            success: false,
+            error: 'No issue set found for this session',
+            code: 'NO_ISSUE_SET',
+            suggestion: 'Generate an issue set first using the briefing tool',
+          });
+        }
+        
+        // Filter items based on validation status
+        const itemsToPublish = includeInvalid 
+          ? issueSetResult.items
+          : issueSetResult.items.filter(item => item.last_validation_status === 'valid');
+        
+        if (itemsToPublish.length === 0) {
+          return JSON.stringify({
+            success: false,
+            error: 'No valid issues to publish',
+            code: 'NO_VALID_ISSUES',
+            suggestion: 'Validate the issue set first or set includeInvalid=true',
+          });
+        }
+        
+        // Extract IssueDrafts from items
+        const drafts: IssueDraft[] = itemsToPublish.map(item => item.issue_json as IssueDraft);
+        
+        // Publish batch to GitHub
+        try {
+          const batchResult = await publishIssueDraftBatch(drafts, owner, repo);
+          
+          return JSON.stringify({
+            success: true,
+            total: batchResult.total,
+            successful: batchResult.successful,
+            failed: batchResult.failed,
+            results: batchResult.results.map(r => ({
+              canonicalId: r.canonicalId,
+              success: r.success,
+              mode: r.mode,
+              issueNumber: r.issueNumber,
+              url: r.url,
+              error: r.error,
+              errorCode: r.errorCode,
+            })),
+            message: `Batch publish completed: ${batchResult.successful} succeeded, ${batchResult.failed} failed`,
+          });
+        } catch (publishError) {
+          return JSON.stringify({
+            success: false,
+            error: publishError instanceof Error ? publishError.message : 'Unknown error',
+            code: 'BATCH_PUBLISH_FAILED',
+          });
+        }
       }
       
       default:
