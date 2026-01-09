@@ -44,6 +44,8 @@ import {
   listAppliedMigrations,
   getLastAppliedMigration,
   getAppliedMigrationCount,
+  SchemaMigrationsUnsupportedSchemaError,
+  SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
 } from '@/lib/db/migrations';
 import {
   listRepoMigrations,
@@ -204,6 +206,18 @@ export async function GET(request: NextRequest) {
     return jsonResponse(response, { requestId });
   } catch (error) {
     console.error('[API /api/ops/db/migrations] Error:', error);
+
+    if (error instanceof SchemaMigrationsUnsupportedSchemaError) {
+      return errorResponse('Unsupported migration ledger schema', {
+        status: 400,
+        requestId,
+        code: 'MIGRATION_LEDGER_UNSUPPORTED_SCHEMA',
+        details: `schema_migrations exists but has no supported identifier column. Detected columns: ${error.detectedColumns.join(', ') || '(none)'}; supported: ${SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS.join(', ')}`,
+        detectedColumns: error.detectedColumns,
+        supportedColumns: SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
+      });
+    }
+
     return errorResponse('Failed to generate migration parity report', {
       status: 500,
       requestId,
