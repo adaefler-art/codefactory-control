@@ -979,13 +979,52 @@ jobs:
             if [ -n "${LOG_GROUP:-}" ] && [ -n "${STREAM_PREFIX:-}" ] && [ -n "${TASK_ID:-}" ]; then
               LOG_STREAM="${STREAM_PREFIX}/control-center/${TASK_ID}"
               echo "CloudWatch Logs: group=${LOG_GROUP} stream=${LOG_STREAM}"
-              aws logs get-log-events \
+
+              GET_LOG_EVENTS_STDERR="$(mktemp)"
+              FILTER_LOG_EVENTS_STDERR="$(mktemp)"
+
+              # Primary path: get-log-events (requires logs:GetLogEvents)
+              GET_LOG_EVENTS_JSON="$(aws logs get-log-events \
                 --log-group-name "${LOG_GROUP}" \
                 --log-stream-name "${LOG_STREAM}" \
                 --region "${{ env.AWS_REGION }}" \
                 --limit 200 \
                 --output json \
-              | jq -r '.events[]?.message' || true
+                2>"${GET_LOG_EVENTS_STDERR}" || true)"
+
+              if [ -n "${GET_LOG_EVENTS_JSON:-}" ]; then
+                echo "--- CloudWatch log events (get-log-events) ---"
+                echo "${GET_LOG_EVENTS_JSON}" | jq -r '.events[]?.message' || true
+              else
+                echo "⚠️  Could not read migration logs via get-log-events (best-effort)." >&2
+                if [ -s "${GET_LOG_EVENTS_STDERR}" ]; then
+                  echo "get-log-events error:" >&2
+                  sed 's/^/  /' "${GET_LOG_EVENTS_STDERR}" >&2 || true
+                fi
+
+                # Fallback path: filter-log-events (often permitted even when GetLogEvents is not).
+                FILTER_LOG_EVENTS_JSON="$(aws logs filter-log-events \
+                  --log-group-name "${LOG_GROUP}" \
+                  --log-stream-names "${LOG_STREAM}" \
+                  --region "${{ env.AWS_REGION }}" \
+                  --limit 200 \
+                  --output json \
+                  2>"${FILTER_LOG_EVENTS_STDERR}" || true)"
+
+                if [ -n "${FILTER_LOG_EVENTS_JSON:-}" ]; then
+                  echo "--- CloudWatch log events (filter-log-events) ---"
+                  echo "${FILTER_LOG_EVENTS_JSON}" | jq -r '.events[]?.message' || true
+                else
+                  echo "⚠️  Could not read migration logs via filter-log-events either." >&2
+                  if [ -s "${FILTER_LOG_EVENTS_STDERR}" ]; then
+                    echo "filter-log-events error:" >&2
+                    sed 's/^/  /' "${FILTER_LOG_EVENTS_STDERR}" >&2 || true
+                  fi
+
+                  echo "Hint: grant the deploy role CloudWatch Logs read permissions on this group/stream:" >&2
+                  echo "- logs:GetLogEvents and/or logs:FilterLogEvents (plus logs:DescribeLogStreams)" >&2
+                fi
+              fi
             else
               echo "⚠️  Could not resolve awslogs group/stream for migration task." >&2
             fi
