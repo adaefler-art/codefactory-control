@@ -59,6 +59,20 @@ export async function GET(
           requestId,
         });
       }
+
+      if (result.error === 'MIGRATION_REQUIRED') {
+        console.error('[API /api/intent/sessions/[id]/issue-draft] MIGRATION_REQUIRED', {
+          requestId,
+          sessionId,
+          code: 'MIGRATION_REQUIRED',
+        });
+        return errorResponse('Database migration required', {
+          status: 503,
+          requestId,
+          code: 'MIGRATION_REQUIRED',
+          details: 'intent_issue_drafts table is missing (run migrations)',
+        });
+      }
       
       return errorResponse('Failed to get issue draft', {
         status: 500,
@@ -71,6 +85,8 @@ export async function GET(
       return errorResponse('No draft exists for this session', {
         status: 404,
         requestId,
+        code: 'NO_DRAFT',
+        details: 'Empty state (no draft yet)',
       });
     }
     
