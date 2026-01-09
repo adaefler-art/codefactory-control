@@ -312,6 +312,25 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // Some stacks use CloudFormation-generated LogGroup names (e.g. Afu9EcsStack-ControlCenterLogGroup...).
+    // Allow best-effort read access so deploy workflows can fetch ECS task logs for diagnostics.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsReadForAfu9EcsStackDiagnostics',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:DescribeLogStreams',
+          'logs:GetLogEvents',
+          'logs:FilterLogEvents',
+        ],
+        resources: [
+          // IAM validator requires DescribeLogStreams/FilterLogEvents to be scoped to /ecs/afu9/
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/afu9/*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/afu9/*:log-stream:*`,
+        ],
+      })
+    );
+
     // ========================================
     // CloudFormation Permissions (CDK Deploy)
     // ========================================
