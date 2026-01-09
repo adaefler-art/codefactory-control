@@ -51,9 +51,11 @@ COPY control-center/ ./
 # Generate public/build-metadata.json deterministically from BUILD_* args
 RUN node prebuild.js
 
-RUN __NEXT_PREVIEW_MODE_ID="$(node -e \"const crypto=require('crypto');const seed=process.env.BUILD_COMMIT_HASH||'local';process.stdout.write(crypto.createHash('sha256').update('preview-id:'+seed).digest('base64'));\")" \
-    __NEXT_PREVIEW_MODE_SIGNING_KEY="$(node -e \"const crypto=require('crypto');const seed=process.env.BUILD_COMMIT_HASH||'local';process.stdout.write(crypto.createHash('sha256').update('preview-sign:'+seed).digest('base64'));\")" \
-    __NEXT_PREVIEW_MODE_ENCRYPTION_KEY="$(node -e \"const crypto=require('crypto');const seed=process.env.BUILD_COMMIT_HASH||'local';process.stdout.write(crypto.createHash('sha256').update('preview-enc:'+seed).digest('base64'));\")" \
+RUN set -eu; \
+    __NEXT_PREVIEW_MODE_ID="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";process.stdout.write(crypto.createHash("sha256").update("preview-id:"+seed).digest("base64"));')"; \
+    __NEXT_PREVIEW_MODE_SIGNING_KEY="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";process.stdout.write(crypto.createHash("sha256").update("preview-sign:"+seed).digest("base64"));')"; \
+    __NEXT_PREVIEW_MODE_ENCRYPTION_KEY="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";process.stdout.write(crypto.createHash("sha256").update("preview-enc:"+seed).digest("base64"));')"; \
+    export __NEXT_PREVIEW_MODE_ID __NEXT_PREVIEW_MODE_SIGNING_KEY __NEXT_PREVIEW_MODE_ENCRYPTION_KEY; \
     npm run build
 
 # Stage 3: Production
