@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 import { API_ROUTES } from "@/lib/api-routes";
+import { scrollContainerToBottom } from "@/lib/ui/scroll";
 import { SourcesPanel, SourcesBadge } from "./components/SourcesPanel";
 import CrEditor from "./components/CrEditor";
 import IssueDraftPanel from "./components/IssueDraftPanel";
@@ -57,7 +58,7 @@ export default function IntentPage() {
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [showCrDrawer, setShowCrDrawer] = useState(false);
   const [showIssueDraftDrawer, setShowIssueDraftDrawer] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isValidSessionId = (value: unknown): value is string => {
     return typeof value === "string" && value.trim().length > 0 && value !== "undefined" && value !== "null";
@@ -65,8 +66,26 @@ export default function IntentPage() {
 
   // Fetch sessions on mount
   useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevScrollRestoration = (history as any).scrollRestoration;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    if (typeof (history as any).scrollRestoration === "string") {
+      (history as any).scrollRestoration = "manual";
+    }
+
     fetchIntentStatus();
     fetchSessions();
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (typeof (history as any).scrollRestoration === "string") {
+        (history as any).scrollRestoration = prevScrollRestoration;
+      }
+    };
   }, []);
 
   const fetchIntentStatus = async () => {
@@ -116,10 +135,13 @@ export default function IntentPage() {
     }
   }, [currentSessionId]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change (container-only; never scroll window)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const handle = requestAnimationFrame(() => {
+      scrollContainerToBottom(messagesScrollContainerRef.current);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [messages.length, isSending]);
 
   const fetchSessions = async () => {
     try {
@@ -631,7 +653,11 @@ export default function IntentPage() {
         )}
 
         {/* Messages - Scrollable area */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+        <div
+          ref={messagesScrollContainerRef}
+          data-testid="intent-chat-scroll"
+          className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4"
+        >
           {!currentSessionId && (
             <div className="text-center text-gray-400 mt-20">
               <p className="text-lg mb-2 text-purple-400">Welcome to INTENT Console</p>
@@ -701,7 +727,6 @@ export default function IntentPage() {
             </div>
           )}
 
-          <div ref={messagesEndRef} />
         </div>
       </div>
 
