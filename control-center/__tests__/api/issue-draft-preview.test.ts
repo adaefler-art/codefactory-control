@@ -6,15 +6,12 @@
  * - Input validation
  * - No side effects
  * - Response format
+ * 
+ * @jest-environment node
  */
 
-import { POST } from '../../../app/api/intent/issue-draft/preview/route';
-import { EXAMPLE_MINIMAL_ISSUE_DRAFT, EXAMPLE_FULL_ISSUE_DRAFT } from '../../../src/lib/schemas/issueDraft';
-
-// Mock withApi to pass through the handler
-jest.mock('../../../src/lib/http/withApi', () => ({
-  withApi: (handler: any) => handler,
-}));
+import { POST } from '../../app/api/intent/issue-draft/preview/route';
+import { EXAMPLE_MINIMAL_ISSUE_DRAFT, EXAMPLE_FULL_ISSUE_DRAFT } from '../../src/lib/schemas/issueDraft';
 
 describe('POST /api/intent/issue-draft/preview', () => {
   describe('authentication', () => {
