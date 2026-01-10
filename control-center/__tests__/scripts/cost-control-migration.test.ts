@@ -7,9 +7,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-describe('scripts/cost-control-schema.sql', () => {
+describe('database/migrations/055_cost_control.sql', () => {
   it('defines no-update/no-delete triggers for cost_control_events', () => {
-    const sqlPath = path.resolve(process.cwd(), '..', 'scripts', 'cost-control-schema.sql');
+    const sqlPath = path.resolve(process.cwd(), '..', 'database', 'migrations', '055_cost_control.sql');
     const sql = fs.readFileSync(sqlPath, 'utf8');
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS cost_control_events');
