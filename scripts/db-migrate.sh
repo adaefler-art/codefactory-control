@@ -135,6 +135,29 @@ ensure_schema_migrations_ledger() {
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )" >/dev/null
 
+  # Legacy compatibility: schema_migrations may already exist without filename.
+  # This must be done before any SELECT/INSERT references filename.
+  psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS filename TEXT" >/dev/null
+
+  # Ensure ON CONFLICT(filename) is valid on legacy tables (requires a unique index/constraint).
+  # If the table was created above, the PRIMARY KEY already covers filename and this check is a no-op.
+  local has_unique_filename
+  has_unique_filename=$(psql_exec -t -c "
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+    WHERE n.nspname = 'public'
+      AND c.relname = 'schema_migrations'
+      AND i.indisunique
+      AND a.attname = 'filename'
+    LIMIT 1;
+  " 2>/dev/null || true)
+  if ! echo "$has_unique_filename" | tr -d ' ' | grep -q '^1$'; then
+    psql_exec -c "CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migrations_filename_unique ON schema_migrations(filename)" >/dev/null
+  fi
+
   # Backward-compat: older deployments may have a schema_migrations table without sha256.
   psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sha256 TEXT" >/dev/null
 
