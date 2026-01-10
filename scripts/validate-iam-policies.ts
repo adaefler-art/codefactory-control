@@ -102,10 +102,10 @@ const REQUIRED_RESOURCE_PREFIXES: Record<string, string[]> = {
   'ecs:DescribeServices': ['afu9-cluster'],
   'ecs:DescribeTasks': ['afu9-cluster'],
   'ecs:ListTasks': ['afu9-cluster'],
-  'logs:FilterLogEvents': ['/ecs/afu9/'],
-  'logs:CreateLogStream': ['/ecs/afu9/'],
-  'logs:PutLogEvents': ['/ecs/afu9/'],
-  'logs:DescribeLogStreams': ['/ecs/afu9/'],
+  'logs:FilterLogEvents': ['/ecs/afu9/', 'log-group:Afu9'],
+  'logs:CreateLogStream': ['/ecs/afu9/', 'log-group:Afu9'],
+  'logs:PutLogEvents': ['/ecs/afu9/', 'log-group:Afu9'],
+  'logs:DescribeLogStreams': ['/ecs/afu9/', 'log-group:Afu9'],
 };
 
 // Variable names that are known to contain properly scoped ARNs
