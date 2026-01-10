@@ -82,6 +82,10 @@ COPY --from=builder /app/${APP_DIR}/public ./public
 COPY --from=builder /app/${APP_DIR}/package.json ./package.json
 
 # Include SQL migrations + runner script in the runtime image
+# Copy migrations to both locations:
+# - /app/database/migrations for API parity checks
+# - ./database/migrations for db-migrate.sh script
+COPY --chown=nextjs:nodejs database/migrations /app/database/migrations
 COPY --chown=nextjs:nodejs database/migrations ./database/migrations
 COPY --chown=nextjs:nodejs scripts/db-migrate.sh ./scripts/db-migrate.sh
 
