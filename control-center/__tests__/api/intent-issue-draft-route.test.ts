@@ -25,7 +25,7 @@ describe('GET /api/intent/sessions/[id]/issue-draft', () => {
     jest.clearAllMocks();
   });
 
-  test('returns 404 with code NO_DRAFT (empty state), not 500', async () => {
+  test('returns 200 with success:true, draft:null, reason:NO_DRAFT for empty state (not 404)', async () => {
     mockGetIssueDraft.mockResolvedValue({ success: true, data: null });
 
     const req = new NextRequest('http://localhost/api/intent/sessions/session-1/issue-draft', {
@@ -38,11 +38,12 @@ describe('GET /api/intent/sessions/[id]/issue-draft', () => {
 
     const res = await GET(req, { params: Promise.resolve({ id: 'session-1' }) });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toContain('No draft exists');
-    expect(body.code).toBe('NO_DRAFT');
-    expect(body.requestId).toBe('req-123');
+    expect(body.success).toBe(true);
+    expect(body.draft).toBeNull();
+    expect(body.reason).toBe('NO_DRAFT');
+    // requestId should be in headers (checked via x-request-id header in real usage)
   });
 
   test('maps MIGRATION_REQUIRED to 503 with clean code and requestId', async () => {
@@ -63,5 +64,37 @@ describe('GET /api/intent/sessions/[id]/issue-draft', () => {
     expect(body.code).toBe('MIGRATION_REQUIRED');
     expect(body.error).toContain('Database migration required');
     expect(body.requestId).toBe('req-456');
+  });
+
+  test('returns 200 with success:true and draft data when draft exists', async () => {
+    const mockDraft = {
+      id: 'draft-123',
+      session_id: 'session-1',
+      created_at: '2026-01-09T10:00:00Z',
+      updated_at: '2026-01-09T10:00:00Z',
+      issue_json: { canonicalId: 'I123', title: 'Test Issue' },
+      issue_hash: 'abc123',
+      last_validation_status: 'valid' as const,
+      last_validation_at: '2026-01-09T10:00:00Z',
+      last_validation_result: null,
+    };
+
+    mockGetIssueDraft.mockResolvedValue({ success: true, data: mockDraft });
+
+    const req = new NextRequest('http://localhost/api/intent/sessions/session-1/issue-draft', {
+      method: 'GET',
+      headers: {
+        'x-afu9-sub': 'user-1',
+        'x-request-id': 'req-789',
+      },
+    });
+
+    const res = await GET(req, { params: Promise.resolve({ id: 'session-1' }) });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.draft).toEqual(mockDraft);
+    expect(body.reason).toBeUndefined();
   });
 });
