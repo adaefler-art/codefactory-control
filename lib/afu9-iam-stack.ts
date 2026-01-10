@@ -289,10 +289,13 @@ export class Afu9IamStack extends cdk.Stack {
         sid: 'CloudWatchLogsReadForMigrationDiagnostics',
         effect: iam.Effect.ALLOW,
         actions: [
+          'logs:DescribeLogStreams',
           'logs:GetLogEvents',
+          'logs:FilterLogEvents',
         ],
         resources: [
           // Scope to AFU-9 ECS log groups (CloudFormation-generated names)
+          `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9*`,
           `arn:aws:logs:${this.region}:${this.account}:log-group:Afu9*:log-stream:*`,
         ],
       })
