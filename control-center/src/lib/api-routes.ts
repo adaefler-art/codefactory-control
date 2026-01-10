@@ -116,6 +116,15 @@ export const API_ROUTES = {
     },
   },
 
+  // Admin (staging-only where noted)
+  admin: {
+    costControl: {
+      settings: (env: string) => `/api/admin/cost-control/settings?env=${env}`,
+      status: (env: string) => `/api/admin/cost-control/status?env=${env}`,
+      settingsPatch: '/api/admin/cost-control/settings',
+    },
+  },
+
   // Playbooks
   playbooks: {
     list: '/api/playbooks',

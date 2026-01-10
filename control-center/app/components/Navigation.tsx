@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import DeployStatusBadge from "./DeployStatusBadge";
 import { API_ROUTES } from "@/lib/api-routes";
+
+type WhoamiData = {
+  sub: string;
+  isAdmin: boolean;
+  deploymentEnv?: 'production' | 'staging' | 'development' | 'unknown';
+};
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
+  const [whoami, setWhoami] = useState<WhoamiData | null>(null);
 
   const navItems = [
     { href: "/intent", label: "INTENT" },
@@ -19,6 +27,34 @@ export default function Navigation() {
     { href: "/admin/lawbook", label: "Admin" },
     { href: "/settings", label: "Settings" },
   ];
+
+  useEffect(() => {
+    let mounted = true;
+    const loadWhoami = async () => {
+      try {
+        const res = await fetch(API_ROUTES.ops.whoami, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!mounted) return;
+        if (!res.ok) {
+          setWhoami(null);
+          return;
+        }
+        const data = (await res.json()) as WhoamiData;
+        setWhoami(data);
+      } catch {
+        if (!mounted) return;
+        setWhoami(null);
+      }
+    };
+    loadWhoami();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const showCostControl = whoami?.isAdmin && whoami?.deploymentEnv === 'staging';
 
   const isActive = (href: string) => {
     return pathname === href;
@@ -74,6 +110,19 @@ export default function Navigation() {
                 {item.label}
               </Link>
             ))}
+
+            {showCostControl && (
+              <Link
+                href="/admin/cost-control"
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive('/admin/cost-control')
+                    ? 'bg-purple-900/30 text-purple-200'
+                    : 'text-gray-200 hover:bg-gray-800 hover:text-white'
+                }`}
+              >
+                Cost Control
+              </Link>
+            )}
             <button
               onClick={handleLogout}
               className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-red-900/30 hover:text-red-200 transition-colors"

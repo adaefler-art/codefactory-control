@@ -20,6 +20,7 @@
 
 import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,11 +61,13 @@ export async function GET(request: NextRequest) {
 
   // Check admin status (fail-closed, no 403 on this read-only endpoint)
   const isAdmin = isAdminUser(userId);
+  const deploymentEnv = getDeploymentEnv();
 
   return jsonResponse(
     {
       sub: userId,
       isAdmin,
+      deploymentEnv,
     },
     { 
       requestId,
