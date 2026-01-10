@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
           events: [],
           diagnostics: {
             tablesMissing: true,
-            message: 'cost_control_* tables not found (apply scripts/050_cost_control.sql)',
+            message: 'cost_control_* tables not found (apply database/migrations/055_cost_control.sql)',
           },
         },
         { requestId, headers: { 'Cache-Control': 'no-store' } }
@@ -308,7 +308,7 @@ export async function PATCH(request: NextRequest) {
         status: 500,
         requestId,
         code: 'TABLES_MISSING',
-        details: 'Apply scripts/050_cost_control.sql before using this endpoint',
+        details: 'Apply database/migrations/055_cost_control.sql before using this endpoint',
       });
     }
 
