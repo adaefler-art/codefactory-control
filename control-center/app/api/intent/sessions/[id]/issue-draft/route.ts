@@ -81,21 +81,35 @@ export async function GET(
       });
     }
     
+    // Return 200 with success:true, draft:null for empty state (not an error)
     if (!result.data) {
-      return errorResponse('No draft exists for this session', {
-        status: 404,
-        requestId,
-        code: 'NO_DRAFT',
-        details: 'Empty state (no draft yet)',
-      });
+      return jsonResponse(
+        {
+          success: true,
+          draft: null,
+          reason: 'NO_DRAFT',
+        },
+        { 
+          requestId,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
     }
     
-    return jsonResponse(result.data, { 
-      requestId,
-      headers: {
-        'Cache-Control': 'no-store',
+    return jsonResponse(
+      {
+        success: true,
+        draft: result.data,
       },
-    });
+      { 
+        requestId,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
   } catch (error) {
     console.error('[API /api/intent/sessions/[id]/issue-draft] Error getting draft:', error);
     return errorResponse('Failed to get issue draft', {
