@@ -65,6 +65,8 @@ export interface CreatePublishBatchInput {
   lawbook_version: string;
   total_items: number;
   source_hash: string;
+  owner: string;
+  repo: string;
 }
 
 /**
@@ -90,10 +92,10 @@ export interface CreatePublishItemInput {
 }
 
 /**
- * Generate batch hash for idempotency
+ * Generate batch hash for idempotency (repo-specific)
  */
-export function generateBatchHash(issueSetId: string, sourceHash: string): string {
-  const content = `${issueSetId}:${sourceHash}`;
+export function generateBatchHash(issueSetId: string, sourceHash: string, owner: string, repo: string): string {
+  const content = `${issueSetId}:${sourceHash}:${owner}:${repo}`;
   return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
@@ -105,7 +107,7 @@ export async function createPublishBatch(
   input: CreatePublishBatchInput
 ): Promise<{ success: true; data: PublishBatch } | { success: false; error: string }> {
   try {
-    const batchHash = generateBatchHash(input.issue_set_id, input.source_hash);
+    const batchHash = generateBatchHash(input.issue_set_id, input.source_hash, input.owner, input.repo);
     
     const result = await pool.query(
       `INSERT INTO intent_issue_set_publish_batches (

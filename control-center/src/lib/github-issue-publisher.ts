@@ -298,6 +298,8 @@ export async function publishIssueSet(
       lawbook_version,
       total_items: items.length,
       source_hash: issueSet.source_hash,
+      owner,
+      repo,
     });
     
     if (!batchResult.success) {

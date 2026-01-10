@@ -32,16 +32,23 @@ describe('INTENT Issue Set Publish Ledger Database Layer', () => {
 
   describe('generateBatchHash', () => {
     it('should generate consistent hash for same inputs', () => {
-      const hash1 = generateBatchHash(issueSetId, sourceHash);
-      const hash2 = generateBatchHash(issueSetId, sourceHash);
+      const hash1 = generateBatchHash(issueSetId, sourceHash, 'owner1', 'repo1');
+      const hash2 = generateBatchHash(issueSetId, sourceHash, 'owner1', 'repo1');
       
       expect(hash1).toBe(hash2);
       expect(hash1).toHaveLength(64); // SHA-256 hex length
     });
 
     it('should generate different hashes for different inputs', () => {
-      const hash1 = generateBatchHash(issueSetId, sourceHash);
-      const hash2 = generateBatchHash(issueSetId, 'different-hash');
+      const hash1 = generateBatchHash(issueSetId, sourceHash, 'owner1', 'repo1');
+      const hash2 = generateBatchHash(issueSetId, 'different-hash', 'owner1', 'repo1');
+      
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('should generate different hashes for different repos', () => {
+      const hash1 = generateBatchHash(issueSetId, sourceHash, 'owner1', 'repo1');
+      const hash2 = generateBatchHash(issueSetId, sourceHash, 'owner1', 'repo2');
       
       expect(hash1).not.toBe(hash2);
     });
@@ -66,7 +73,7 @@ describe('INTENT Issue Set Publish Ledger Database Layer', () => {
         failed_count: 0,
         error_message: null,
         error_details: null,
-        batch_hash: generateBatchHash(issueSetId, sourceHash),
+        batch_hash: generateBatchHash(issueSetId, sourceHash, 'adaefler-art', 'codefactory-control'),
       };
 
       mockQuery.mockResolvedValueOnce({
@@ -80,6 +87,8 @@ describe('INTENT Issue Set Publish Ledger Database Layer', () => {
         lawbook_version: lawbookVersion,
         total_items: 5,
         source_hash: sourceHash,
+        owner: 'adaefler-art',
+        repo: 'codefactory-control',
       });
 
       expect(result.success).toBe(true);
@@ -100,6 +109,8 @@ describe('INTENT Issue Set Publish Ledger Database Layer', () => {
         lawbook_version: lawbookVersion,
         total_items: 5,
         source_hash: sourceHash,
+        owner: 'adaefler-art',
+        repo: 'codefactory-control',
       });
 
       expect(result.success).toBe(false);

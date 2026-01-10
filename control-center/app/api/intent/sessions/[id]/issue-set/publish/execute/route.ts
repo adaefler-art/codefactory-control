@@ -11,18 +11,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { publishIssueSet } from '@/lib/github-issue-publisher';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 
-// Environment-based publishing block
-function isProductionBlocked(): boolean {
-  const env = process.env.NEXT_PUBLIC_ENV || process.env.NODE_ENV || 'development';
+// Check if publishing is enabled
+function isPublishingEnabled(): boolean {
   const publishingEnabled = process.env.ISSUE_SET_PUBLISHING_ENABLED === 'true';
-  
-  // Block in production unless explicitly enabled
-  if (env === 'production' && !publishingEnabled) {
-    return true;
+  return publishingEnabled;
+}
+
+// Check if user is admin (from AFU9_ADMIN_SUBS)
+function isAdminUser(userId: string): boolean {
+  const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+  if (!adminSubs.trim()) {
+    // Fail-closed: no admin allowlist configured → deny all
+    return false;
   }
   
-  return false;
+  const allowedSubs = adminSubs.split(',').map(s => s.trim()).filter(s => s);
+  return allowedSubs.includes(userId);
 }
 
 /**
@@ -31,8 +37,8 @@ function isProductionBlocked(): boolean {
  * 
  * Guard order:
  * 1. 401: Authentication required
- * 2. 409: Production block (if enabled)
- * 3. 403: Session ownership check
+ * 2. 409: Production block (publishing not enabled)
+ * 3. 403: Admin check (AFU9_ADMIN_SUBS)
  * 4. GH/DB: GitHub and database operations
  * 
  * Returns:
@@ -53,20 +59,49 @@ export async function POST(
   try {
     // GUARD 1: Authentication (401-first)
     const userId = request.headers.get('x-afu9-sub');
-    if (!userId) {
+    if (!userId || !userId.trim()) {
       return errorResponse('Unauthorized', {
         status: 401,
         requestId,
-        details: 'User authentication required',
+        code: 'UNAUTHORIZED',
+        details: 'Authentication required - no verified user context',
       });
     }
     
-    // GUARD 2: Production block check (409)
-    if (isProductionBlocked()) {
-      return errorResponse('Publishing not enabled', {
-        status: 409,
+    // GUARD 2: Publishing enabled check (409)
+    // Block if ISSUE_SET_PUBLISHING_ENABLED is not set to 'true'
+    const deploymentEnv = getDeploymentEnv();
+    if (deploymentEnv === 'production' && !isPublishingEnabled()) {
+      console.log(`[PUBLISH-GUARD] Blocked publish operation in production: ${request.method} ${request.url}`);
+      
+      return jsonResponse(
+        {
+          error: 'Publishing not enabled',
+          message: 'Issue set publishing is not enabled in production environment',
+          code: 'PUBLISHING_DISABLED',
+          details: {
+            environment: 'production',
+            publishingEnabled: false,
+            action: 'To enable publishing, set ISSUE_SET_PUBLISHING_ENABLED=true',
+          },
+        },
+        { status: 409, requestId }
+      );
+    }
+    
+    // GUARD 3: Admin check (403)
+    // Publishing requires admin privileges
+    if (!isAdminUser(userId)) {
+      const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+      const reason = !adminSubs.trim()
+        ? 'Admin allowlist not configured (AFU9_ADMIN_SUBS missing/empty)'
+        : 'User not in admin allowlist';
+      
+      return errorResponse('Forbidden', {
+        status: 403,
         requestId,
-        details: 'Issue set publishing is not enabled in production environment. Set ISSUE_SET_PUBLISHING_ENABLED=true to enable.',
+        code: 'FORBIDDEN',
+        details: reason,
       });
     }
     
@@ -122,10 +157,8 @@ export async function POST(
     
     const pool = getPool();
     
-    // GUARD 3: Ownership check is implicit in publishIssueSet (403)
-    // The service will verify session ownership
-    
     // GUARD 4: Publish the issue set (GH/DB operations)
+    // Session ownership is verified within publishIssueSet
     const result = await publishIssueSet(pool, sessionId, {
       owner,
       repo,
