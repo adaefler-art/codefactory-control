@@ -29,6 +29,47 @@ function listSqlMigrations(migrationsDir) {
     .sort((a, b) => a.localeCompare(b));
 }
 
+async function ensureSchemaMigrationsLedger(client) {
+  console.log('📋 Ensuring schema_migrations ledger...');
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename TEXT PRIMARY KEY,
+      sha256 TEXT,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Legacy compatibility: schema_migrations may already exist without filename.
+  // This must happen before any SELECT/INSERT references filename.
+  await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS filename TEXT;`);
+
+  // Ensure ON CONFLICT(filename) is valid on legacy tables (requires a unique index/constraint).
+  // If the table was created above, the PRIMARY KEY already covers filename and this is a no-op.
+  const hasUniqueFilenameRes = await client.query(`
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+    WHERE n.nspname = 'public'
+      AND c.relname = 'schema_migrations'
+      AND i.indisunique
+      AND a.attname = 'filename'
+    LIMIT 1;
+  `);
+  if (!hasUniqueFilenameRes || !Array.isArray(hasUniqueFilenameRes.rows) || hasUniqueFilenameRes.rows.length === 0) {
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migrations_filename_unique ON schema_migrations(filename);`
+    );
+  }
+
+  await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sha256 TEXT;`);
+  await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;`);
+  await client.query(`UPDATE schema_migrations SET applied_at = COALESCE(applied_at, NOW());`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at DESC);`);
+}
+
 async function main() {
   const { Client } = require('pg');
 
@@ -73,20 +114,7 @@ async function main() {
   await client.connect();
 
   try {
-    console.log('📋 Ensuring schema_migrations ledger...');
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        filename TEXT PRIMARY KEY,
-        sha256 TEXT,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-
-    await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sha256 TEXT;`);
-    await client.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;`);
-    await client.query(`UPDATE schema_migrations SET applied_at = COALESCE(applied_at, NOW());`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at DESC);`);
+    await ensureSchemaMigrationsLedger(client);
 
     const ledgerCountRes = await client.query(`SELECT COUNT(*)::int AS count FROM schema_migrations;`);
     const ledgerCount = Number(ledgerCountRes.rows[0]?.count ?? 0);
@@ -186,7 +214,13 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`❌ ${err && err.message ? err.message : String(err)}`);
-  process.exit(1);
-});
+module.exports = {
+  ensureSchemaMigrationsLedger,
+};
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`❌ ${err && err.message ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}
