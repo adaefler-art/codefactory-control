@@ -89,16 +89,44 @@ export default function IssueDraftPanel({ sessionId }: IssueDraftPanelProps) {
         cache: "no-store",
       });
 
-      // Handle 404 as "no draft yet" (not an error)
-      if (response.status === 404) {
-        setDraft(null);
-        return;
-      }
-
       const data = await safeFetch(response);
-      setDraft(data);
+      
+      // Handle new 200 response with success:true, draft:null for empty state
+      if (data && typeof data === "object" && "success" in data && "draft" in data) {
+        const apiResponse = data as { success: boolean; draft: IssueDraftData | null; reason?: string };
+        
+        if (apiResponse.success && apiResponse.draft === null) {
+          // Empty state - no draft yet (not an error)
+          setDraft(null);
+          return;
+        }
+        
+        if (apiResponse.success && apiResponse.draft) {
+          setDraft(apiResponse.draft);
+          return;
+        }
+      }
+      
+      // Unexpected response format
+      console.error("Unexpected API response format:", data);
+      setError("Unexpected response format from server");
     } catch (err) {
       console.error("Failed to load issue draft:", err);
+      
+      // Check for MIGRATION_REQUIRED error using error code
+      if (typeof err === "object" && err !== null) {
+        const apiError = err as any;
+        
+        // Check for code field in details object or top-level
+        const errorCode = apiError.code || (typeof apiError.details === "object" && apiError.details?.code);
+        
+        if (errorCode === "MIGRATION_REQUIRED") {
+          setError("Database migration required. Please run migrations to enable issue draft functionality.");
+          setRequestId(apiError.requestId || null);
+          return;
+        }
+      }
+      
       const errMsg = formatErrorMessage(err);
       setError(errMsg);
       
