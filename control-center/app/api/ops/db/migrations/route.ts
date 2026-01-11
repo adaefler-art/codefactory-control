@@ -46,6 +46,10 @@ import {
   listAppliedAfu9Migrations,
   getLastAppliedAfu9Migration,
   getAppliedAfu9MigrationCount,
+  checkLedgerExists,
+  listAppliedMigrations,
+  getLastAppliedMigration,
+  getAppliedMigrationCount,
   getMissingTables,
 } from '@/lib/db/migrations';
 import {
@@ -63,11 +67,26 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type MigrationParityWarningSource = 'dbAppliedMigrations' | 'repoMigrationFiles';
-type MigrationParityWarning = {
-  code: 'NON_STRING_MIGRATION_ENTRY';
-  count: number;
-  source: MigrationParityWarningSource;
-};
+type MigrationParityLedgerSource = 'afu9_migrations_ledger' | 'schema_migrations' | 'none';
+type MigrationParityWarning =
+  | {
+      code: 'NON_STRING_MIGRATION_ENTRY';
+      count: number;
+      source: MigrationParityWarningSource;
+    }
+  | {
+      code: 'LEDGER_COUNT_MISMATCH';
+      source: 'ledgers';
+      afu9AppliedCount: number;
+      schemaMigrationsCount: number;
+    }
+  | {
+      code: 'LEDGER_CONTENT_MISMATCH';
+      source: 'ledgers';
+      afu9AppliedCount: number;
+      schemaMigrationsCount: number;
+      diffCount: number;
+    };
 
 function sanitizeStringArray(
   values: unknown[],
@@ -103,7 +122,11 @@ function sanitizeStringArray(
 function sortWarningsDeterministically(warnings: MigrationParityWarning[]): MigrationParityWarning[] {
   return warnings
     .slice()
-    .sort((a, b) => a.source.localeCompare(b.source) || a.code.localeCompare(b.code));
+    .sort((a, b) =>
+      a.source.localeCompare(b.source) ||
+      a.code.localeCompare(b.code) ||
+      JSON.stringify(a).localeCompare(JSON.stringify(b))
+    );
 }
 
 // NOTE: We intentionally do not depend on legacy schema_migrations shape.
@@ -249,14 +272,100 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a.localeCompare(b));
 
     // Get DB migrations from canonical AFU-9 ledger
-    const dbMigrations = await listAppliedAfu9Migrations(pool, limit);
-    const lastApplied = await getLastAppliedAfu9Migration(pool);
-    const appliedCount = await getAppliedAfu9MigrationCount(pool);
+    const afu9DbMigrations = await listAppliedAfu9Migrations(pool, limit);
+    const afu9LastApplied = await getLastAppliedAfu9Migration(pool);
+    const afu9AppliedCount = await getAppliedAfu9MigrationCount(pool);
 
-    const dbAppliedMigrationsRaw = dbMigrations.map((m: any) => m?.filename);
-    const dbAppliedMigrations = sanitizeStringArray(dbAppliedMigrationsRaw, 'dbAppliedMigrations', warnings)
+    const schemaMigrationsExists = await checkLedgerExists(pool);
+    const schemaDbMigrations = schemaMigrationsExists ? await listAppliedMigrations(pool, limit) : [];
+    const schemaLastApplied = schemaMigrationsExists ? await getLastAppliedMigration(pool) : null;
+    const schemaMigrationsCount = schemaMigrationsExists ? await getAppliedMigrationCount(pool) : 0;
+
+    const afu9AppliedFilenames = sanitizeStringArray(
+      afu9DbMigrations.map((m: any) => m?.filename),
+      'dbAppliedMigrations',
+      warnings
+    )
       .slice()
       .sort((a, b) => a.localeCompare(b));
+
+    const schemaAppliedFilenames = sanitizeStringArray(
+      schemaDbMigrations.map((m: any) => m?.filename),
+      'dbAppliedMigrations',
+      warnings
+    )
+      .slice()
+      .sort((a, b) => a.localeCompare(b));
+
+    // Deterministic source selection (counts are authoritative)
+    let ledgerSource: MigrationParityLedgerSource = 'none';
+    if (afu9AppliedCount > 0) ledgerSource = 'afu9_migrations_ledger';
+    else if (schemaMigrationsCount > 0) ledgerSource = 'schema_migrations';
+
+    // Emit warnings when both tables exist but diverge (counts and/or content)
+    if (schemaMigrationsExists) {
+      if (afu9AppliedCount !== schemaMigrationsCount) {
+        warnings.push({
+          code: 'LEDGER_COUNT_MISMATCH',
+          source: 'ledgers',
+          afu9AppliedCount,
+          schemaMigrationsCount,
+        });
+      } else {
+        // Only compare content when we have full sets within the requested limit to avoid false positives.
+        const canCompareContent = afu9AppliedCount <= limit && schemaMigrationsCount <= limit;
+        if (canCompareContent) {
+          let diffCount = 0;
+          const a = afu9AppliedFilenames;
+          const b = schemaAppliedFilenames;
+          if (a.length !== b.length) {
+            diffCount = Math.abs(a.length - b.length);
+          } else {
+            for (let i = 0; i < a.length; i++) {
+              if (a[i] !== b[i]) diffCount++;
+            }
+          }
+
+          if (diffCount > 0) {
+            warnings.push({
+              code: 'LEDGER_CONTENT_MISMATCH',
+              source: 'ledgers',
+              afu9AppliedCount,
+              schemaMigrationsCount,
+              diffCount,
+            });
+          }
+        }
+      }
+    }
+
+    const selectedDbMigrations =
+      ledgerSource === 'afu9_migrations_ledger'
+        ? afu9DbMigrations
+        : ledgerSource === 'schema_migrations'
+          ? schemaDbMigrations
+          : [];
+
+    const selectedAppliedFilenames =
+      ledgerSource === 'afu9_migrations_ledger'
+        ? afu9AppliedFilenames
+        : ledgerSource === 'schema_migrations'
+          ? schemaAppliedFilenames
+          : [];
+
+    const selectedAppliedCount =
+      ledgerSource === 'afu9_migrations_ledger'
+        ? afu9AppliedCount
+        : ledgerSource === 'schema_migrations'
+          ? schemaMigrationsCount
+          : 0;
+
+    const selectedLastApplied =
+      ledgerSource === 'afu9_migrations_ledger'
+        ? afu9LastApplied
+        : ledgerSource === 'schema_migrations'
+          ? schemaLastApplied
+          : null;
 
     // Required tables check (stage migration sanity)
     const requiredTables = [
@@ -267,7 +376,7 @@ export async function GET(request: NextRequest) {
 
     // Compute parity (defensive: filter malformed entries before passing to parity computation)
     const safeRepoMigrations = repoMigrations.filter((m: any) => !!m && typeof m.filename === 'string');
-    const safeDbMigrations = dbMigrations.filter((m: any) => !!m && typeof m.filename === 'string');
+    const safeDbMigrations = selectedDbMigrations.filter((m: any) => !!m && typeof m.filename === 'string');
     const parity = computeParity(safeRepoMigrations, safeDbMigrations);
     const deterministicParity = {
       status: parity.status,
@@ -293,6 +402,7 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       requestId,
       warnings: sortedWarnings,
+      ledgerSource,
       deploymentEnv,
       lawbookVersion,
       lawbookHash,
@@ -307,10 +417,13 @@ export async function GET(request: NextRequest) {
         latest: latestRepoMigration,
       },
       ledger: {
-        table: AFU9_MIGRATIONS_LEDGER_TABLE,
-        appliedCount,
-        lastApplied: lastApplied?.filename || null,
-        lastAppliedAt: lastApplied?.applied_at.toISOString() || null,
+        table: ledgerSource === 'none' ? AFU9_MIGRATIONS_LEDGER_TABLE : ledgerSource,
+        appliedCount: selectedAppliedCount,
+        lastApplied: selectedLastApplied?.filename || null,
+        lastAppliedAt:
+          selectedLastApplied && selectedLastApplied.applied_at && selectedLastApplied.applied_at.getTime() !== 0
+            ? selectedLastApplied.applied_at.toISOString()
+            : null,
       },
       parity: {
         status: deterministicParity.status,
@@ -323,7 +436,7 @@ export async function GET(request: NextRequest) {
         missingTables,
       },
       repoMigrationFiles,
-      dbAppliedMigrations,
+      dbAppliedMigrations: selectedAppliedFilenames,
       missingInDb: deterministicParity.missingInDb.slice(0, limit),
       extraInDb: deterministicParity.extraInDb.slice(0, limit),
     };
