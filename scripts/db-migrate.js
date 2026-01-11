@@ -29,6 +29,49 @@ function listSqlMigrations(migrationsDir) {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function deriveMigrationVersion(filename) {
+  const match = /^\d+/.exec(String(filename || ''));
+  if (match && match[0]) return match[0];
+  return filename;
+}
+
+async function getSchemaMigrationsVersionColumn(client) {
+  const res = await client.query(
+    `
+      SELECT column_name, udt_name, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'schema_migrations'
+        AND column_name = 'version'
+      LIMIT 1;
+    `
+  );
+
+  const row = res && Array.isArray(res.rows) ? res.rows[0] : null;
+  if (!row) return null;
+
+  return {
+    udtName: String(row.udt_name || ''),
+    isNullable: String(row.is_nullable || ''),
+    columnDefault: row.column_default == null ? null : String(row.column_default),
+  };
+}
+
+function coerceVersionValue(rawVersion, versionColumn) {
+  const version = rawVersion == null ? '' : String(rawVersion);
+  const udt = (versionColumn?.udtName || '').toLowerCase();
+
+  // Handle common numeric types.
+  const isNumeric = udt === 'int2' || udt === 'int4' || udt === 'int8' || udt === 'numeric';
+  if (isNumeric) {
+    const n = Number.parseInt(version, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // Default: treat as string/text.
+  return version;
+}
+
 async function ensureSchemaMigrationsLedger(client) {
   console.log('📋 Ensuring schema_migrations ledger...');
 
@@ -116,6 +159,11 @@ async function main() {
   try {
     await ensureSchemaMigrationsLedger(client);
 
+      // Legacy compatibility: some environments may have schema_migrations.version defined
+      // as NOT NULL (no default). In that case, we must always populate it.
+      const versionColumn = await getSchemaMigrationsVersionColumn(client);
+      const hasVersionColumn = !!versionColumn;
+
     const ledgerCountRes = await client.query(`SELECT COUNT(*)::int AS count FROM schema_migrations;`);
     const ledgerCount = Number(ledgerCountRes.rows[0]?.count ?? 0);
 
@@ -142,12 +190,26 @@ async function main() {
           const fullPath = path.join(migrationsDir, filename);
           const sql = fs.readFileSync(fullPath, 'utf8');
           const sha256 = computeSha256Hex(sql);
-          await client.query(
-            `INSERT INTO schema_migrations (filename, sha256, applied_at)
-             VALUES ($1, $2, NOW())
-             ON CONFLICT (filename) DO NOTHING;`,
-            [filename, sha256]
-          );
+
+            if (hasVersionColumn) {
+              const derivedVersion = coerceVersionValue(
+                deriveMigrationVersion(filename),
+                versionColumn
+              );
+              await client.query(
+                `INSERT INTO schema_migrations (filename, sha256, applied_at, version)
+                 VALUES ($1, $2, NOW(), $3)
+                 ON CONFLICT (filename) DO NOTHING;`,
+                [filename, sha256, derivedVersion]
+              );
+            } else {
+              await client.query(
+                `INSERT INTO schema_migrations (filename, sha256, applied_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (filename) DO NOTHING;`,
+                [filename, sha256]
+              );
+            }
         }
         await client.query('COMMIT;');
       } catch (err) {
@@ -194,10 +256,22 @@ async function main() {
       await client.query('BEGIN;');
       try {
         await client.query(sql);
-        await client.query(
-          `INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ($1, $2, NOW());`,
-          [filename, sha256]
-        );
+
+          if (hasVersionColumn) {
+            const derivedVersion = coerceVersionValue(
+              deriveMigrationVersion(filename),
+              versionColumn
+            );
+            await client.query(
+              `INSERT INTO schema_migrations (filename, sha256, applied_at, version) VALUES ($1, $2, NOW(), $3);`,
+              [filename, sha256, derivedVersion]
+            );
+          } else {
+            await client.query(
+              `INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ($1, $2, NOW());`,
+              [filename, sha256]
+            );
+          }
         await client.query('COMMIT;');
         console.log(`✅ Applied: ${filename}`);
         appliedCount += 1;
@@ -216,6 +290,9 @@ async function main() {
 
 module.exports = {
   ensureSchemaMigrationsLedger,
+  deriveMigrationVersion,
+  getSchemaMigrationsVersionColumn,
+  coerceVersionValue,
 };
 
 if (require.main === module) {
