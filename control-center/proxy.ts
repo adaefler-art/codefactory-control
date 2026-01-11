@@ -142,6 +142,8 @@ export async function middleware(request: NextRequest) {
       (request.method === 'POST' && pathname === '/api/issues/sync') ||
       (request.method === 'POST' && pathname === '/api/issues/refresh') ||
       (request.method === 'POST' && pathname === '/api/ops/issues/sync') ||
+      (request.method === 'GET' && pathname === '/api/ops/db/migrations') ||
+      (request.method === 'GET' && pathname === '/api/ops/db/migration-parity') ||
       (request.method === 'POST' && pathname === '/api/integrations/github/ingest/issue') ||
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
       (request.method === 'GET' && /^\/api\/intent\/sessions\/[^/]+$/.test(pathname)) ||
@@ -159,6 +161,7 @@ export async function middleware(request: NextRequest) {
       requestHeaders.delete('x-afu9-auth-via');
       requestHeaders.set('x-request-id', requestId);
       requestHeaders.set('x-afu9-sub', smokeSub);
+      requestHeaders.set('x-afu9-auth-via', 'smoke');
 
       const response = NextResponse.next({ request: { headers: requestHeaders } });
       response.headers.set('x-request-id', requestId);

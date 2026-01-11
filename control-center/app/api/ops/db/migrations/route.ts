@@ -115,6 +115,8 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const authVia = (request.headers.get('x-afu9-auth-via') || '').trim();
+
   // 2. ENV GATING: Stage-only endpoint (fail-closed for prod/unknown)
   // Blocks prod and unknown environments before any DB operations
   // Development environment is allowed for local dev
@@ -130,7 +132,8 @@ export async function GET(request: NextRequest) {
   }
 
   // 3. AUTHORIZATION CHECK: Admin-only (fail-closed)
-  if (!isAdminUser(userId)) {
+  // Note: middleware can assert smoke-auth (staging-only) and set x-afu9-auth-via=smoke.
+  if (authVia !== 'smoke' && !isAdminUser(userId)) {
     return errorResponse('Forbidden', {
       status: 403,
       requestId,
