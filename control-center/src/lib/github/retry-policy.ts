@@ -434,20 +434,3 @@ export async function withRetry<T>(
   throw lastError || new Error('Unknown error in withRetry');
 }
 
-// ========================================
-// Exports
-// ========================================
-
-export {
-  type RetryPolicyConfig,
-  DEFAULT_RETRY_CONFIG,
-  ErrorType,
-  type RetryDecision,
-  type RateLimitInfo,
-  classifyError,
-  extractRateLimitInfo,
-  calculateBackoff,
-  calculateRateLimitDelay,
-  shouldRetry,
-  withRetry,
-};

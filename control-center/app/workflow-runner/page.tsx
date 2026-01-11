@@ -98,7 +98,8 @@ export default function WorkflowRunnerPage() {
 
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/github/status/sync', {
+      const { API_ROUTES } = await import('@/lib/api-routes');
+      const response = await fetch(API_ROUTES.github.status.sync, {
         method: 'POST',
         credentials: 'include',
         headers: {

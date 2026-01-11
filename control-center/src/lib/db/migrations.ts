@@ -91,6 +91,39 @@ export interface DbInfo {
 }
 
 /**
+ * Check existence of required tables in public schema.
+ * Returns a stable, sorted list of missing table names.
+ */
+export async function getMissingTables(
+  pool: Pool,
+  requiredTables: string[]
+): Promise<string[]> {
+  const normalizedRequired = (requiredTables || [])
+    .map(t => String(t || '').trim())
+    .filter(Boolean)
+    .map(t => t.toLowerCase());
+
+  const uniqueRequired = Array.from(new Set(normalizedRequired)).sort((a, b) => a.localeCompare(b));
+  if (uniqueRequired.length === 0) return [];
+
+  const result = await pool.query<{ table_name: string }>(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = ANY($1::text[])`,
+    [uniqueRequired]
+  );
+
+  const present = new Set(
+    (result.rows || [])
+      .map(r => (r.table_name || '').toLowerCase())
+      .filter(Boolean)
+  );
+
+  return uniqueRequired.filter(t => !present.has(t));
+}
+
+/**
  * Check if database is reachable
  */
 export async function checkDbReachability(pool: Pool): Promise<DbInfo> {
