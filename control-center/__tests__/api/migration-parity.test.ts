@@ -32,6 +32,10 @@ jest.mock('@/lib/db/migrations', () => ({
   listAppliedAfu9Migrations: jest.fn(),
   getLastAppliedAfu9Migration: jest.fn(),
   getAppliedAfu9MigrationCount: jest.fn(),
+  checkLedgerExists: jest.fn(),
+  listAppliedMigrations: jest.fn(),
+  getLastAppliedMigration: jest.fn(),
+  getAppliedMigrationCount: jest.fn(),
   getMissingTables: jest.fn(),
 }));
 
@@ -66,6 +70,10 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   const mockListAppliedAfu9Migrations = require('@/lib/db/migrations').listAppliedAfu9Migrations;
   const mockGetLastAppliedAfu9Migration = require('@/lib/db/migrations').getLastAppliedAfu9Migration;
   const mockGetAppliedAfu9MigrationCount = require('@/lib/db/migrations').getAppliedAfu9MigrationCount;
+  const mockCheckLedgerExists = require('@/lib/db/migrations').checkLedgerExists;
+  const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
+  const mockGetLastAppliedMigration = require('@/lib/db/migrations').getLastAppliedMigration;
+  const mockGetAppliedMigrationCount = require('@/lib/db/migrations').getAppliedMigrationCount;
   const mockGetMissingTables = require('@/lib/db/migrations').getMissingTables;
   const mockListRepoMigrations = require('@/lib/utils/migration-parity').listRepoMigrations;
   const mockComputeParity = require('@/lib/utils/migration-parity').computeParity;
@@ -93,6 +101,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       detectedColumns: ['applied_at', 'applied_by', 'filename', 'runner_version', 'sha256'],
       missingColumns: [],
     });
+
+    // Default: legacy schema_migrations ledger does not exist (prevents extra warnings in existing tests)
+    mockCheckLedgerExists.mockResolvedValue(false);
+    mockListAppliedMigrations.mockResolvedValue([]);
+    mockGetLastAppliedMigration.mockResolvedValue(null);
+    mockGetAppliedMigrationCount.mockResolvedValue(0);
 
     // Default: required tables present
     mockGetMissingTables.mockResolvedValue([]);
@@ -435,6 +449,147 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.requiredTablesCheck.missingTables).toEqual([]);
     expect(Array.isArray(body.repoMigrationFiles)).toBe(true);
     expect(Array.isArray(body.dbAppliedMigrations)).toBe(true);
+    expect(body.ledgerSource).toBe('afu9_migrations_ledger');
+  });
+
+  test('200: selects schema_migrations when AFU-9 ledger is empty (both tables exist)', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
+    mockValidateAfu9LedgerShape.mockResolvedValue({
+      ok: true,
+      detectedColumns: ['applied_at', 'applied_by', 'filename', 'runner_version', 'sha256'],
+      missingColumns: [],
+    });
+
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListRepoMigrations.mockReturnValue([
+      { filename: '001_initial.sql', sha256: 'abc123' },
+      { filename: '002_users.sql', sha256: 'def456' },
+    ]);
+    mockGetLatestMigration.mockReturnValue('002_users.sql');
+
+    // AFU-9 ledger exists but has no rows
+    mockListAppliedAfu9Migrations.mockResolvedValue([]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue(null);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(0);
+
+    // Legacy schema_migrations has rows
+    mockListAppliedMigrations.mockResolvedValue([
+      { filename: '001_initial.sql', sha256: '', applied_at: new Date(0) },
+      { filename: '002_users.sql', sha256: '', applied_at: new Date(0) },
+    ]);
+    mockGetLastAppliedMigration.mockResolvedValue({
+      filename: '002_users.sql',
+      sha256: '',
+      applied_at: new Date(0),
+    });
+    mockGetAppliedMigrationCount.mockResolvedValue(2);
+
+    mockGetMissingTables.mockResolvedValue([]);
+    mockComputeParity.mockReturnValue({
+      status: 'PASS',
+      missingInDb: [],
+      extraInDb: [],
+      hashMismatches: [],
+    });
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations?limit=200', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-schema-fallback',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ledgerSource).toBe('schema_migrations');
+    expect(body.ledger.appliedCount).toBe(2);
+    expect(body.dbAppliedMigrations).toEqual(['001_initial.sql', '002_users.sql']);
+    expect(body.warnings).toEqual([
+      { code: 'LEDGER_COUNT_MISMATCH', source: 'ledgers', afu9AppliedCount: 0, schemaMigrationsCount: 2 },
+    ]);
+  });
+
+  test('200: selects AFU-9 ledger when schema_migrations is empty (both tables exist)', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
+    mockValidateAfu9LedgerShape.mockResolvedValue({
+      ok: true,
+      detectedColumns: ['applied_at', 'applied_by', 'filename', 'runner_version', 'sha256'],
+      missingColumns: [],
+    });
+
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListRepoMigrations.mockReturnValue([
+      { filename: '001_initial.sql', sha256: 'abc123' },
+      { filename: '002_users.sql', sha256: 'def456' },
+    ]);
+    mockGetLatestMigration.mockReturnValue('002_users.sql');
+
+    // AFU-9 ledger has rows
+    mockListAppliedAfu9Migrations.mockResolvedValue([
+      { filename: '001_initial.sql', sha256: 'abc123', applied_at: new Date('2026-01-01') },
+      { filename: '002_users.sql', sha256: 'def456', applied_at: new Date('2026-01-02') },
+    ]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue({
+      filename: '002_users.sql',
+      sha256: 'def456',
+      applied_at: new Date('2026-01-02'),
+    });
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(2);
+
+    // Legacy schema_migrations exists but empty
+    mockListAppliedMigrations.mockResolvedValue([]);
+    mockGetLastAppliedMigration.mockResolvedValue(null);
+    mockGetAppliedMigrationCount.mockResolvedValue(0);
+
+    mockGetMissingTables.mockResolvedValue([]);
+    mockComputeParity.mockReturnValue({
+      status: 'PASS',
+      missingInDb: [],
+      extraInDb: [],
+      hashMismatches: [],
+    });
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations?limit=200', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-afu9-preferred',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ledgerSource).toBe('afu9_migrations_ledger');
+    expect(body.ledger.appliedCount).toBe(2);
+    expect(body.dbAppliedMigrations).toEqual(['001_initial.sql', '002_users.sql']);
+    expect(body.warnings).toEqual([
+      { code: 'LEDGER_COUNT_MISMATCH', source: 'ledgers', afu9AppliedCount: 2, schemaMigrationsCount: 0 },
+    ]);
   });
 
   test('200: deterministic ordering snapshot (route enforces sorting)', async () => {
