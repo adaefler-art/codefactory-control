@@ -52,6 +52,13 @@ export const API_ROUTES = {
     },
   },
 
+  // GitHub (server routes)
+  github: {
+    status: {
+      sync: '/api/github/status/sync',
+    },
+  },
+
   // Workflows (Persistent - stored in DB)
   workflows: {
     list: '/api/workflows',
