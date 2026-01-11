@@ -33,4 +33,20 @@ describe('schema_migrations ledger ensure (legacy compatibility)', () => {
     const joined = queries.join('\n');
     expect(joined).toContain('ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS filename');
   });
+
+  test('db-migrate.js can derive and coerce version for legacy schema', () => {
+    const repoRoot = path.resolve(__dirname, '..', '..', '..');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { deriveMigrationVersion, coerceVersionValue } = require(path.join(repoRoot, 'scripts', 'db-migrate.js'));
+
+    const v1 = deriveMigrationVersion('001_initial_schema.sql');
+    expect(v1).toBe('001');
+
+    const v2 = deriveMigrationVersion('no_prefix.sql');
+    expect(v2).toBe('no_prefix.sql');
+
+    expect(coerceVersionValue('001', { udtName: 'text' })).toBe('001');
+    expect(coerceVersionValue('001', { udtName: 'int4' })).toBe(1);
+    expect(coerceVersionValue('not-a-number', { udtName: 'int4' })).toBe(0);
+  });
 });
