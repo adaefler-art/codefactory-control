@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-<
+<#
 .SYNOPSIS
   Runs the repo migration runner (scripts/db-migrate.sh) inside an ECS one-off task.
 
@@ -44,7 +44,8 @@
   - aws CLI authenticated
   - ECS task definition uses awsvpc network mode
   - CloudWatch Logs enabled for the target container (for log tail)
->
+#>
+
 
 [CmdletBinding()]
 param(
@@ -55,6 +56,8 @@ param(
   [string]$Profile = "codefactory",
   [string]$MigrationFile
 )
+
+$ContainerName = $Container
 
 $ErrorActionPreference = "Stop"
 
@@ -70,7 +73,7 @@ Require-Command aws
 Write-Host "Starting DB migration task..." -ForegroundColor Cyan
 Write-Host "- Cluster:     $Cluster" -ForegroundColor Gray
 Write-Host "- Service:     $ServiceName" -ForegroundColor Gray
-Write-Host "- Container:   $Container" -ForegroundColor Gray
+Write-Host "- Container:   $ContainerName" -ForegroundColor Gray
 Write-Host "- Region:      $Region" -ForegroundColor Gray
 Write-Host "- Profile:     $Profile" -ForegroundColor Gray
 if ($MigrationFile) {
@@ -111,7 +114,7 @@ if ($subnets.Count -lt 1 -or $securityGroups.Count -lt 1) {
   throw "Service awsvpc config missing subnets/securityGroups"
 }
 
-$netCfg = "awsvpcConfiguration={subnets=[{0}],securityGroups=[{1}],assignPublicIp={2}}" -f (
+$netCfg = "awsvpcConfiguration={{subnets=[{0}],securityGroups=[{1}],assignPublicIp={2}}}" -f (
   ($subnets -join ','),
   ($securityGroups -join ','),
   ($assignPublicIp ?? 'DISABLED')
@@ -120,22 +123,37 @@ $netCfg = "awsvpcConfiguration={subnets=[{0}],securityGroups=[{1}],assignPublicI
 # Build container command
 $cmd = "./scripts/db-migrate.sh"
 if ($MigrationFile) {
-  # db-migrate.sh accepts a single file only when called from control-center npm, but the shell runner
-  # always runs all migrations. To keep behavior deterministic and simple, we filter at the shell level.
-  $cmd = "set -euo pipefail; cd /app/control-center; ls -1 database/migrations/{0} >/dev/null; ./scripts/db-migrate.sh" -f $MigrationFile
+  # Deterministic, safe: run only the requested migration file.
+  # Note: The deployed container image may not yet include a db-migrate.sh that supports single-file mode.
+  # So we execute the SQL directly via psql (using task definition secrets for DB credentials).
+  $cmd = @"
+cd /app/control-center
+
+echo "Applying single migration: $MigrationFile"
+ls -1 database/migrations/$MigrationFile >/dev/null
+
+psql -v ON_ERROR_STOP=1 -f database/migrations/$MigrationFile
+
+echo "Migration applied successfully: $MigrationFile"
+"@
 }
 
 $overridesObj = @{
   containerOverrides = @(
     @{
-      name    = $Container
+      name    = $ContainerName
       command = @("sh", "-lc", $cmd)
     }
   )
 }
 
 $tmpOverrides = Join-Path $env:TEMP ("ecs-migrate-overrides-{0}.json" -f ([Guid]::NewGuid().ToString('N')))
-($overridesObj | ConvertTo-Json -Depth 10) | Out-File -Encoding UTF8 $tmpOverrides
+$overridesJson = ($overridesObj | ConvertTo-Json -Depth 10)
+[System.IO.File]::WriteAllText(
+  $tmpOverrides,
+  $overridesJson,
+  [System.Text.UTF8Encoding]::new($false)
+)
 
 try {
   Write-Host "Running one-off task from task definition:" -ForegroundColor Cyan
@@ -175,8 +193,25 @@ try {
     --output json
 
   $task = ($taskDescJson | ConvertFrom-Json).tasks | Select-Object -First 1
-  $container = $task.containers | Where-Object { $_.name -eq $Container } | Select-Object -First 1
-  $exitCode = $container.exitCode
+  $taskContainer = $task.containers | Where-Object { ($_.name ?? '').Trim().ToLowerInvariant() -eq $ContainerName.Trim().ToLowerInvariant() } | Select-Object -First 1
+  $exitCode = if ($null -ne $taskContainer) { $taskContainer.exitCode } else { $null }
+
+  # Eventual consistency: sometimes exitCode is not populated immediately after tasks-stopped.
+  if ($null -eq $exitCode) {
+    for ($i = 0; $i -lt 15 -and $null -eq $exitCode; $i++) {
+      Start-Sleep -Seconds 2
+      $taskDescJson = aws ecs describe-tasks `
+        --cluster $Cluster `
+        --tasks $taskArn `
+        --region $Region `
+        --profile $Profile `
+        --output json
+
+      $task = ($taskDescJson | ConvertFrom-Json).tasks | Select-Object -First 1
+      $taskContainer = $task.containers | Where-Object { ($_.name ?? '').Trim().ToLowerInvariant() -eq $ContainerName.Trim().ToLowerInvariant() } | Select-Object -First 1
+      $exitCode = if ($null -ne $taskContainer) { $taskContainer.exitCode } else { $null }
+    }
+  }
 
   Write-Host "" 
   Write-Host "Task finished." -ForegroundColor Cyan
@@ -191,14 +226,18 @@ try {
       --output json
 
     $td = ($tdJson | ConvertFrom-Json).taskDefinition
-    $cd = $td.containerDefinitions | Where-Object { $_.name -eq $Container } | Select-Object -First 1
-    $opts = $cd.logConfiguration.options
+    $cd = $td.containerDefinitions | Where-Object { ($_.name ?? '').Trim().ToLowerInvariant() -eq $ContainerName.Trim().ToLowerInvariant() } | Select-Object -First 1
+    $logCfg = $cd.logConfiguration
 
-    $logGroup = $opts.'awslogs-group'
-    $streamPrefix = $opts.'awslogs-stream-prefix'
+    $logGroup = $null
+    $streamPrefix = $null
+    if ($null -ne $logCfg -and $logCfg.logDriver -eq 'awslogs' -and $null -ne $logCfg.options) {
+      $logGroup = $logCfg.options.'awslogs-group'
+      $streamPrefix = $logCfg.options.'awslogs-stream-prefix'
+    }
 
-    if ($logGroup -and $streamPrefix) {
-      $streamName = "$streamPrefix/$Container/$taskId"
+    if ($logGroup -and $streamPrefix -and $taskId) {
+      $streamName = "$streamPrefix/$ContainerName/$taskId"
       Write-Host "" 
       Write-Host "CloudWatch Logs (tail):" -ForegroundColor Cyan
       Write-Host "- Group:  $logGroup" -ForegroundColor Gray
@@ -212,14 +251,20 @@ try {
         --format short `
         --since 15m
     } else {
-      Write-Host "(Log config not found on task definition; skipping log tail)" -ForegroundColor Yellow
+      Write-Host "(CloudWatch log config missing; skipping log tail)" -ForegroundColor Yellow
     }
   } catch {
     Write-Host "(Could not tail logs: $($_.Exception.Message))" -ForegroundColor Yellow
   }
 
+  if ($null -eq $exitCode) {
+    $containerNames = @($task.containers | ForEach-Object { $_.name }) -join ', '
+    throw "Migration task finished but exit code was not available for container '$ContainerName'. Containers: $containerNames"
+  }
+
   if ($exitCode -ne 0) {
-    throw "Migration task failed (exit code $exitCode). See logs above."
+    $reason = if ($null -ne $taskContainer -and $taskContainer.reason) { $taskContainer.reason } else { $task.stoppedReason }
+    throw "Migration task failed (exit code $exitCode). Reason: $reason"
   }
 
   Write-Host "✅ DB migrations completed successfully." -ForegroundColor Green

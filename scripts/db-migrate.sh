@@ -10,6 +10,10 @@ set -o pipefail 2>/dev/null || true
 
 AFU9_LEDGER_TABLE="afu9_migrations_ledger"
 
+# Optional: run only a single migration file (e.g., 052_intent_issue_drafts.sql)
+# Deterministic: prefer env var, fall back to first arg.
+MIGRATION_FILE="${AFU9_MIGRATION_FILE:-${1:-}}"
+
 if [[ -z "${DATABASE_URL:-}" ]]; then
   if [[ -z "${DATABASE_HOST:-}" || -z "${DATABASE_PORT:-}" || -z "${DATABASE_NAME:-}" || -z "${DATABASE_USER:-}" || -z "${DATABASE_PASSWORD:-}" ]]; then
     echo "❌ DATABASE_URL or DATABASE_(HOST,PORT,NAME,USER,PASSWORD) are required" >&2
@@ -183,6 +187,15 @@ ensure_afu9_migrations_ledger() {
 echo "🔍 Starting database migration..."
 echo ""
 
+if [[ -n "${MIGRATION_FILE:-}" ]]; then
+  if [[ ! -f "database/migrations/${MIGRATION_FILE}" ]]; then
+    echo "❌ Migration file not found: database/migrations/${MIGRATION_FILE}" >&2
+    exit 1
+  fi
+  echo "🎯 Targeted migration mode: ${MIGRATION_FILE}"
+  echo ""
+fi
+
 ensure_afu9_migrations_ledger
 
 # Legacy bootstrap: if the ledger is empty but the schema already exists, record all repo migrations
@@ -196,7 +209,7 @@ user_table_count=$(psql_exec -t -c "
     AND table_name NOT IN ('schema_migrations', '${AFU9_LEDGER_TABLE}');
 " 2>/dev/null | tr -d ' ' || echo "0")
 
-if [[ "${ledger_count:-0}" == "0" && "${user_table_count:-0}" != "0" ]]; then
+if [[ -z "${MIGRATION_FILE:-}" && "${ledger_count:-0}" == "0" && "${user_table_count:-0}" != "0" ]]; then
   echo ""
   echo "⚠️  Detected existing schema without ${AFU9_LEDGER_TABLE}."
   echo "⚠️  Bootstrapping ${AFU9_LEDGER_TABLE} from repository files (no SQL will be executed)."
@@ -217,8 +230,14 @@ applied_count=0
 skipped_count=0
 total_count=0
 
-# Process migrations in lexicographic order (deterministic)
-for f in $(ls database/migrations/*.sql | sort); do
+if [[ -n "${MIGRATION_FILE:-}" ]]; then
+  files=("database/migrations/${MIGRATION_FILE}")
+else
+  # Process migrations in lexicographic order (deterministic)
+  mapfile -t files < <(ls database/migrations/*.sql | sort)
+fi
+
+for f in "${files[@]}"; do
   filename=$(basename "$f")
   total_count=$((total_count + 1))
   
