@@ -40,13 +40,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import {
   checkDbReachability,
-  checkLedgerExists,
-  listAppliedMigrations,
-  getLastAppliedMigration,
-  getAppliedMigrationCount,
+  AFU9_MIGRATIONS_LEDGER_TABLE,
+  checkAfu9LedgerExists,
+  validateAfu9LedgerShape,
+  listAppliedAfu9Migrations,
+  getLastAppliedAfu9Migration,
+  getAppliedAfu9MigrationCount,
   getMissingTables,
-  SchemaMigrationsUnsupportedSchemaError,
-  SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
 } from '@/lib/db/migrations';
 import {
   listRepoMigrations,
@@ -106,17 +106,7 @@ function sortWarningsDeterministically(warnings: MigrationParityWarning[]): Migr
     .sort((a, b) => a.source.localeCompare(b.source) || a.code.localeCompare(b.code));
 }
 
-function isUnsupportedSchemaMigrationsError(error: unknown): error is {
-  name?: string;
-  detectedColumns?: unknown;
-} {
-  if (!error || typeof error !== 'object') return false;
-  const maybe = error as any;
-  return (
-    maybe.name === 'SchemaMigrationsUnsupportedSchemaError' &&
-    Array.isArray(maybe.detectedColumns)
-  );
-}
+// NOTE: We intentionally do not depend on legacy schema_migrations shape.
 
 /**
  * Check if user sub is in admin allowlist
@@ -210,15 +200,41 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if migration ledger exists
-    const ledgerExists = await checkLedgerExists(pool);
+    // Check if canonical AFU-9 ledger exists
+    const ledgerExists = await checkAfu9LedgerExists(pool);
     if (!ledgerExists) {
-      return errorResponse('Migration ledger not found', {
-        status: 500,
-        requestId,
-        code: 'MIGRATION_LEDGER_MISSING',
-        details: 'schema_migrations table does not exist. Run migrations to create ledger.',
-      });
+      return jsonResponse(
+        {
+          error: 'Migrations required',
+          code: 'MIGRATION_REQUIRED',
+          details: `${AFU9_MIGRATIONS_LEDGER_TABLE} table does not exist. Run migrations to create the canonical AFU-9 ledger.`,
+          requestId,
+          timestamp: new Date().toISOString(),
+          diagnostics: {
+            expectedTable: AFU9_MIGRATIONS_LEDGER_TABLE,
+          },
+        },
+        { status: 503, requestId }
+      );
+    }
+
+    const shape = await validateAfu9LedgerShape(pool);
+    if (!shape.ok) {
+      return jsonResponse(
+        {
+          error: 'Migrations required',
+          code: 'MIGRATION_REQUIRED',
+          details: `${AFU9_MIGRATIONS_LEDGER_TABLE} exists but has an unexpected schema. Run migrations to repair the ledger.`,
+          requestId,
+          timestamp: new Date().toISOString(),
+          diagnostics: {
+            expectedTable: AFU9_MIGRATIONS_LEDGER_TABLE,
+            detectedColumns: shape.detectedColumns,
+            missingColumns: shape.missingColumns,
+          },
+        },
+        { status: 503, requestId }
+      );
     }
 
     // Get repo migrations (from database/migrations/ directory)
@@ -232,10 +248,10 @@ export async function GET(request: NextRequest) {
       .slice()
       .sort((a, b) => a.localeCompare(b));
 
-    // Get DB migrations from ledger
-    const dbMigrations = await listAppliedMigrations(pool, limit);
-    const lastApplied = await getLastAppliedMigration(pool);
-    const appliedCount = await getAppliedMigrationCount(pool);
+    // Get DB migrations from canonical AFU-9 ledger
+    const dbMigrations = await listAppliedAfu9Migrations(pool, limit);
+    const lastApplied = await getLastAppliedAfu9Migration(pool);
+    const appliedCount = await getAppliedAfu9MigrationCount(pool);
 
     const dbAppliedMigrationsRaw = dbMigrations.map((m: any) => m?.filename);
     const dbAppliedMigrations = sanitizeStringArray(dbAppliedMigrationsRaw, 'dbAppliedMigrations', warnings)
@@ -291,7 +307,7 @@ export async function GET(request: NextRequest) {
         latest: latestRepoMigration,
       },
       ledger: {
-        table: 'schema_migrations',
+        table: AFU9_MIGRATIONS_LEDGER_TABLE,
         appliedCount,
         lastApplied: lastApplied?.filename || null,
         lastAppliedAt: lastApplied?.applied_at.toISOString() || null,
@@ -315,22 +331,6 @@ export async function GET(request: NextRequest) {
     return jsonResponse(response, { requestId });
   } catch (error) {
     console.error('[API /api/ops/db/migrations] Error:', error);
-
-    if (error instanceof SchemaMigrationsUnsupportedSchemaError || isUnsupportedSchemaMigrationsError(error)) {
-      const detectedColumns =
-        error instanceof SchemaMigrationsUnsupportedSchemaError
-          ? error.detectedColumns
-          : (error.detectedColumns as unknown[]).map(String).sort((a, b) => a.localeCompare(b));
-      return errorResponse('Unsupported migration ledger schema', {
-        status: 400,
-        requestId,
-        code: 'MIGRATION_LEDGER_UNSUPPORTED_SCHEMA',
-        details: `schema_migrations exists but has no supported identifier column. Detected columns: ${detectedColumns.join(', ') || '(none)'}; supported: ${SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS.join(', ')}`,
-        detectedColumns,
-        supportedColumns: SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
-      });
-    }
-
     return errorResponse('Failed to generate migration parity report', {
       status: 500,
       requestId,

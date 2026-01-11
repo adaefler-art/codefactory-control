@@ -209,18 +209,18 @@ Write-Header "Step 3: Schema Migrations Ledger Check"
 
 try {
     $env:PGPASSWORD = $dbPassword
-    $ledgerQuery = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'schema_migrations';"
+    $ledgerQuery = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'afu9_migrations_ledger';"
     $ledgerExists = psql -h $dbHost -p $dbPort -U $dbUser -d $dbName -t -c $ledgerQuery 2>&1
     
     if ($LASTEXITCODE -eq 0 -and $ledgerExists.Trim() -eq "1") {
-        Write-Success "schema_migrations table exists"
+        Write-Success "afu9_migrations_ledger table exists"
         
         # Count applied migrations
-        $countQuery = "SELECT COUNT(*) FROM schema_migrations;"
+        $countQuery = "SELECT COUNT(*) FROM afu9_migrations_ledger;"
         $appliedCount = psql -h $dbHost -p $dbPort -U $dbUser -d $dbName -t -c $countQuery 2>&1
         Write-Info "Applied migrations in DB: $($appliedCount.Trim())"
     } else {
-        Write-Warning-Message "schema_migrations table not found"
+        Write-Warning-Message "afu9_migrations_ledger table not found"
         Write-Info "Table will be created when migrations run"
     }
 } catch {
@@ -430,7 +430,7 @@ try {
     Write-Error-Message "API call failed: $_"
 
     # Local fallback: if the API isn't reachable (e.g., Control Center not running),
-    # perform parity directly by comparing repo migrations vs schema_migrations ledger.
+    # perform parity directly by comparing repo migrations vs afu9_migrations_ledger.
     if ($Environment -eq 'local' -and -not $_.Exception.Response) {
         Write-Warning-Message "Falling back to direct DB parity check (API unavailable)"
 
@@ -438,9 +438,9 @@ try {
             $env:PGPASSWORD = $dbPassword
 
             # Load ledger rows (filename|sha256)
-            $ledgerRows = psql -h $dbHost -p $dbPort -U $dbUser -d $dbName -A -t -F "|" -c "SELECT filename, COALESCE(sha256,'') FROM schema_migrations ORDER BY filename;" 2>&1
+            $ledgerRows = psql -h $dbHost -p $dbPort -U $dbUser -d $dbName -A -t -F "|" -c "SELECT filename, sha256 FROM afu9_migrations_ledger ORDER BY filename;" 2>&1
             if ($LASTEXITCODE -ne 0) {
-                Write-Error-Message "Failed to read schema_migrations ledger via psql"
+                Write-Error-Message "Failed to read afu9_migrations_ledger via psql"
                 Write-Host $ledgerRows -ForegroundColor Red
                 exit 1
             }

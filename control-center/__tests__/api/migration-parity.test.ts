@@ -25,37 +25,13 @@ jest.mock('@/lib/db', () => ({
 
 // Mock migration DAO
 jest.mock('@/lib/db/migrations', () => ({
-  SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS: [
-    'filename',
-    'migration_id',
-    'name',
-    'migration_name',
-    'version',
-    'id',
-  ],
-  SchemaMigrationsUnsupportedSchemaError: class SchemaMigrationsUnsupportedSchemaError extends Error {
-    detectedColumns: string[];
-    supportedColumns: readonly string[];
-
-    constructor(detectedColumns: string[]) {
-      super('schema_migrations table has no supported identifier column');
-      this.name = 'SchemaMigrationsUnsupportedSchemaError';
-      this.detectedColumns = [...detectedColumns];
-      this.supportedColumns = [
-        'filename',
-        'migration_id',
-        'name',
-        'migration_name',
-        'version',
-        'id',
-      ];
-    }
-  },
+  AFU9_MIGRATIONS_LEDGER_TABLE: 'afu9_migrations_ledger',
   checkDbReachability: jest.fn(),
-  checkLedgerExists: jest.fn(),
-  listAppliedMigrations: jest.fn(),
-  getLastAppliedMigration: jest.fn(),
-  getAppliedMigrationCount: jest.fn(),
+  checkAfu9LedgerExists: jest.fn(),
+  validateAfu9LedgerShape: jest.fn(),
+  listAppliedAfu9Migrations: jest.fn(),
+  getLastAppliedAfu9Migration: jest.fn(),
+  getAppliedAfu9MigrationCount: jest.fn(),
   getMissingTables: jest.fn(),
 }));
 
@@ -85,12 +61,12 @@ jest.mock('@/lib/db/lawbook', () => ({
 describe('GET /api/ops/db/migrations - Security Tests', () => {
   const mockGetDeploymentEnv = require('@/lib/utils/deployment-env').getDeploymentEnv;
   const mockCheckDbReachability = require('@/lib/db/migrations').checkDbReachability;
-  const mockCheckLedgerExists = require('@/lib/db/migrations').checkLedgerExists;
-  const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
-  const mockGetLastAppliedMigration = require('@/lib/db/migrations').getLastAppliedMigration;
-  const mockGetAppliedMigrationCount = require('@/lib/db/migrations').getAppliedMigrationCount;
+  const mockCheckAfu9LedgerExists = require('@/lib/db/migrations').checkAfu9LedgerExists;
+  const mockValidateAfu9LedgerShape = require('@/lib/db/migrations').validateAfu9LedgerShape;
+  const mockListAppliedAfu9Migrations = require('@/lib/db/migrations').listAppliedAfu9Migrations;
+  const mockGetLastAppliedAfu9Migration = require('@/lib/db/migrations').getLastAppliedAfu9Migration;
+  const mockGetAppliedAfu9MigrationCount = require('@/lib/db/migrations').getAppliedAfu9MigrationCount;
   const mockGetMissingTables = require('@/lib/db/migrations').getMissingTables;
-  const SchemaMigrationsUnsupportedSchemaError = require('@/lib/db/migrations').SchemaMigrationsUnsupportedSchemaError;
   const mockListRepoMigrations = require('@/lib/utils/migration-parity').listRepoMigrations;
   const mockComputeParity = require('@/lib/utils/migration-parity').computeParity;
   const mockGetLatestMigration = require('@/lib/utils/migration-parity').getLatestMigration;
@@ -110,6 +86,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       missingInDb: [],
       extraInDb: [],
       hashMismatches: [],
+    });
+
+    mockValidateAfu9LedgerShape.mockResolvedValue({
+      ok: true,
+      detectedColumns: ['applied_at', 'applied_by', 'filename', 'runner_version', 'sha256'],
+      missingColumns: [],
     });
 
     // Default: required tables present
@@ -320,7 +302,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.details).toContain('Connection timeout');
   });
 
-  test('500: Migration ledger missing error', async () => {
+  test('503: MIGRATION_REQUIRED when AFU-9 ledger missing', async () => {
     process.env.AFU9_ADMIN_SUBS = 'admin-123';
     
     mockCheckDbReachability.mockResolvedValue({
@@ -330,7 +312,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
     
-    mockCheckLedgerExists.mockResolvedValue(false);
+    mockCheckAfu9LedgerExists.mockResolvedValue(false);
 
     const request = new NextRequest('http://localhost/api/ops/db/migrations', {
       method: 'GET',
@@ -343,13 +325,13 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     const response = await GET(request);
     const body = await response.json();
 
-    expect(response.status).toBe(500);
-    expect(body.error).toBe('Migration ledger not found');
-    expect(body.code).toBe('MIGRATION_LEDGER_MISSING');
-    expect(body.details).toContain('schema_migrations');
+    expect(response.status).toBe(503);
+    expect(body.error).toBe('Migrations required');
+    expect(body.code).toBe('MIGRATION_REQUIRED');
+    expect(body.details).toContain('afu9_migrations_ledger');
   });
 
-  test('400: Unsupported schema_migrations schema returns diagnostics (not 500)', async () => {
+  test('503: MIGRATION_REQUIRED when AFU-9 ledger schema is unexpected', async () => {
     process.env.AFU9_ADMIN_SUBS = 'admin-123';
 
     mockCheckDbReachability.mockResolvedValue({
@@ -359,11 +341,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
 
-    mockCheckLedgerExists.mockResolvedValue(true);
-
-    mockListAppliedMigrations.mockRejectedValue(
-      new SchemaMigrationsUnsupportedSchemaError(['created_at', 'checksum'])
-    );
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
+    mockValidateAfu9LedgerShape.mockResolvedValue({
+      ok: false,
+      detectedColumns: ['filename'],
+      missingColumns: ['sha256', 'applied_at', 'applied_by', 'runner_version'],
+    });
 
     const request = new NextRequest('http://localhost/api/ops/db/migrations', {
       method: 'GET',
@@ -376,11 +359,11 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     const response = await GET(request);
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toBe('Unsupported migration ledger schema');
-    expect(body.code).toBe('MIGRATION_LEDGER_UNSUPPORTED_SCHEMA');
-    expect(body.details).toContain('Detected columns');
-    expect(body.details).toContain('supported');
+    expect(response.status).toBe(503);
+    expect(body.error).toBe('Migrations required');
+    expect(body.code).toBe('MIGRATION_REQUIRED');
+    expect(body.details).toContain('unexpected schema');
+    expect(body.diagnostics.missingColumns.length).toBeGreaterThan(0);
   });
 
   test('200: PASS scenario - migrations in sync', async () => {
@@ -393,7 +376,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
     
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
     
     mockListRepoMigrations.mockReturnValue([
       { filename: '001_initial.sql', sha256: 'abc123' },
@@ -402,18 +385,18 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     
     mockGetLatestMigration.mockReturnValue('002_users.sql');
     
-    mockListAppliedMigrations.mockResolvedValue([
+    mockListAppliedAfu9Migrations.mockResolvedValue([
       { filename: '001_initial.sql', sha256: 'abc123', applied_at: new Date('2026-01-01') },
       { filename: '002_users.sql', sha256: 'def456', applied_at: new Date('2026-01-02') },
     ]);
     
-    mockGetLastAppliedMigration.mockResolvedValue({
+    mockGetLastAppliedAfu9Migration.mockResolvedValue({
       filename: '002_users.sql',
       sha256: 'def456',
       applied_at: new Date('2026-01-02'),
     });
     
-    mockGetAppliedMigrationCount.mockResolvedValue(2);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(2);
 
     mockGetMissingTables.mockResolvedValue([]);
     
@@ -463,7 +446,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       port: 5432,
       database: 'afu9',
     });
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
 
     mockListRepoMigrations.mockReturnValue([
       { filename: '010_apple.sql', sha256: 'a' },
@@ -471,16 +454,16 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     ]);
     mockGetLatestMigration.mockReturnValue('010_apple.sql');
 
-    mockListAppliedMigrations.mockResolvedValue([
+    mockListAppliedAfu9Migrations.mockResolvedValue([
       { filename: '999', sha256: 'x', applied_at: new Date('2026-01-02') },
       { filename: '2', sha256: 'b', applied_at: new Date('2026-01-01') },
     ]);
-    mockGetLastAppliedMigration.mockResolvedValue({
+    mockGetLastAppliedAfu9Migration.mockResolvedValue({
       filename: '999',
       sha256: 'x',
       applied_at: new Date('2026-01-02'),
     });
-    mockGetAppliedMigrationCount.mockResolvedValue(2);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(2);
 
     // Intentionally UNSORTED to verify route-level determinism
     mockComputeParity.mockReturnValue({
@@ -549,7 +532,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       port: 5432,
       database: 'afu9',
     });
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
 
     mockListRepoMigrations.mockReturnValue([
       { filename: '001_initial.sql', sha256: 'abc123' },
@@ -557,18 +540,18 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     mockGetLatestMigration.mockReturnValue('001_initial.sql');
 
     // Inject a malformed DB migration entry (filename null)
-    mockListAppliedMigrations.mockResolvedValue([
+    mockListAppliedAfu9Migrations.mockResolvedValue([
       { filename: null, sha256: 'x', applied_at: new Date('2026-01-01') } as any,
       { filename: '001_initial.sql', sha256: 'abc123', applied_at: new Date('2026-01-02') },
     ]);
 
-    mockGetLastAppliedMigration.mockResolvedValue({
+    mockGetLastAppliedAfu9Migration.mockResolvedValue({
       filename: '001_initial.sql',
       sha256: 'abc123',
       applied_at: new Date('2026-01-02'),
     });
 
-    mockGetAppliedMigrationCount.mockResolvedValue(2);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(2);
     mockGetMissingTables.mockResolvedValue([]);
 
     // Parity util is mocked; return PASS to avoid coupling this test to parity internals.
@@ -616,13 +599,13 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       port: 5432,
       database: 'afu9',
     });
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
 
     mockListRepoMigrations.mockReturnValue([]);
     mockGetLatestMigration.mockReturnValue(null);
-    mockListAppliedMigrations.mockResolvedValue([]);
-    mockGetLastAppliedMigration.mockResolvedValue(null);
-    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockListAppliedAfu9Migrations.mockResolvedValue([]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue(null);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(0);
     mockComputeParity.mockReturnValue({ status: 'PASS', missingInDb: [], extraInDb: [], hashMismatches: [] });
 
     const request = new NextRequest('http://localhost/api/ops/db/migration-parity', {
@@ -647,7 +630,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
     
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
     
     mockListRepoMigrations.mockReturnValue([
       { filename: '001_initial.sql', sha256: 'abc123' },
@@ -657,18 +640,18 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     
     mockGetLatestMigration.mockReturnValue('003_posts.sql');
     
-    mockListAppliedMigrations.mockResolvedValue([
+    mockListAppliedAfu9Migrations.mockResolvedValue([
       { filename: '001_initial.sql', sha256: 'abc123', applied_at: new Date('2026-01-01') },
       { filename: '002_users.sql', sha256: 'def456', applied_at: new Date('2026-01-02') },
     ]);
     
-    mockGetLastAppliedMigration.mockResolvedValue({
+    mockGetLastAppliedAfu9Migration.mockResolvedValue({
       filename: '002_users.sql',
       sha256: 'def456',
       applied_at: new Date('2026-01-02'),
     });
     
-    mockGetAppliedMigrationCount.mockResolvedValue(2);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(2);
     
     mockComputeParity.mockReturnValue({
       status: 'FAIL',
@@ -705,13 +688,13 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       port: 5432,
       database: 'afu9',
     });
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
 
     mockListRepoMigrations.mockReturnValue([]);
     mockGetLatestMigration.mockReturnValue(null);
-    mockListAppliedMigrations.mockResolvedValue([]);
-    mockGetLastAppliedMigration.mockResolvedValue(null);
-    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockListAppliedAfu9Migrations.mockResolvedValue([]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue(null);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(0);
     mockComputeParity.mockReturnValue({
       status: 'PASS',
       missingInDb: [],
@@ -750,12 +733,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
     
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
     mockListRepoMigrations.mockReturnValue([]);
     mockGetLatestMigration.mockReturnValue(null);
-    mockListAppliedMigrations.mockResolvedValue([]);
-    mockGetLastAppliedMigration.mockResolvedValue(null);
-    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockListAppliedAfu9Migrations.mockResolvedValue([]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue(null);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(0);
     mockComputeParity.mockReturnValue({
       status: 'PASS',
       missingInDb: [],
@@ -774,7 +757,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     await GET(request);
 
     // Verify limit was passed to DB query
-    expect(mockListAppliedMigrations).toHaveBeenCalledWith(expect.anything(), 50);
+    expect(mockListAppliedAfu9Migrations).toHaveBeenCalledWith(expect.anything(), 50);
   });
 
   test('Bounded output: limit capped at 500', async () => {
@@ -787,12 +770,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
     
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
     mockListRepoMigrations.mockReturnValue([]);
     mockGetLatestMigration.mockReturnValue(null);
-    mockListAppliedMigrations.mockResolvedValue([]);
-    mockGetLastAppliedMigration.mockResolvedValue(null);
-    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockListAppliedAfu9Migrations.mockResolvedValue([]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue(null);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(0);
     mockComputeParity.mockReturnValue({
       status: 'PASS',
       missingInDb: [],
@@ -811,7 +794,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     await GET(request);
 
     // Verify limit was capped at 500
-    expect(mockListAppliedMigrations).toHaveBeenCalledWith(expect.anything(), 500);
+    expect(mockListAppliedAfu9Migrations).toHaveBeenCalledWith(expect.anything(), 500);
   });
 
   test('Admin allowlist: exact match required', async () => {
@@ -824,12 +807,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
       database: 'afu9',
     });
     
-    mockCheckLedgerExists.mockResolvedValue(true);
+    mockCheckAfu9LedgerExists.mockResolvedValue(true);
     mockListRepoMigrations.mockReturnValue([]);
     mockGetLatestMigration.mockReturnValue(null);
-    mockListAppliedMigrations.mockResolvedValue([]);
-    mockGetLastAppliedMigration.mockResolvedValue(null);
-    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockListAppliedAfu9Migrations.mockResolvedValue([]);
+    mockGetLastAppliedAfu9Migration.mockResolvedValue(null);
+    mockGetAppliedAfu9MigrationCount.mockResolvedValue(0);
     mockComputeParity.mockReturnValue({
       status: 'PASS',
       missingInDb: [],

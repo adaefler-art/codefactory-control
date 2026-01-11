@@ -5,8 +5,10 @@ set -u
 # Best-effort: enable pipefail when supported.
 set -o pipefail 2>/dev/null || true
 
-# Enhanced migration runner with schema_migrations ledger tracking
+# Enhanced migration runner with afu9_migrations_ledger tracking
 # E80.1: Deterministic migration tracking with SHA-256 hash verification
+
+AFU9_LEDGER_TABLE="afu9_migrations_ledger"
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
   if [[ -z "${DATABASE_HOST:-}" || -z "${DATABASE_PORT:-}" || -z "${DATABASE_NAME:-}" || -z "${DATABASE_USER:-}" || -z "${DATABASE_PASSWORD:-}" ]]; then
@@ -54,27 +56,34 @@ compute_hash() {
 }
 
 # Function to check if migration is already applied
-is_migration_applied() {
-  local filename="$1"
-  local escaped
-  escaped=$(sql_escape "$filename")
-  local result
-  result=$(psql_exec -t -c "SELECT 1 FROM schema_migrations WHERE filename = '$escaped' LIMIT 1" 2>/dev/null || true)
-  if echo "$result" | tr -d ' ' | grep -q '^1$'; then
-    echo "1"
-  else
-    echo "0"
-  fi
-}
-
-# Function to get stored hash for a migration
 get_stored_hash() {
   local filename="$1"
   local escaped
   escaped=$(sql_escape "$filename")
   local result
-  result=$(psql_exec -t -c "SELECT sha256 FROM schema_migrations WHERE filename = '$escaped' LIMIT 1" 2>/dev/null || echo "")
+  result=$(psql_exec -t -c "SELECT sha256 FROM ${AFU9_LEDGER_TABLE} WHERE filename = '$escaped' LIMIT 1" 2>/dev/null || echo "")
   echo "$result" | tr -d ' '
+}
+
+# Function to get stored hash for a migration
+record_migration() {
+  local filename="$1"
+  local hash="$2"
+  local applied_by="${AFU9_MIGRATION_APPLIED_BY:-${GITHUB_ACTOR:-}}"
+  local runner_version="${AFU9_MIGRATION_RUNNER_VERSION:-${GITHUB_SHA:-}}"
+
+  local escaped
+  escaped=$(sql_escape "$filename")
+  local escaped_by
+  escaped_by=$(sql_escape "$applied_by")
+  local escaped_runner
+  escaped_runner=$(sql_escape "$runner_version")
+
+  psql_exec -c "
+    INSERT INTO ${AFU9_LEDGER_TABLE} (filename, sha256, applied_at, applied_by, runner_version)
+    VALUES ('$escaped', '$hash', NOW(), NULLIF('$escaped_by',''), NULLIF('$escaped_runner',''))
+    ON CONFLICT (filename) DO NOTHING
+  " >/dev/null
 }
 
 table_exists() {
@@ -117,62 +126,92 @@ is_initial_schema_present() {
 }
 
 # Function to record migration in ledger
-record_migration() {
-  local filename="$1"
-  local hash="$2"
-  local escaped
-  escaped=$(sql_escape "$filename")
-  psql_exec -c "INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ('$escaped', '$hash', NOW()) ON CONFLICT (filename) DO NOTHING" >/dev/null
-}
+ensure_afu9_migrations_ledger() {
+  echo "📋 Ensuring ${AFU9_LEDGER_TABLE} ledger..."
 
-ensure_schema_migrations_ledger() {
-  echo "📋 Ensuring schema_migrations ledger..."
+  psql_exec -c "
+    CREATE TABLE IF NOT EXISTS ${AFU9_LEDGER_TABLE} (
+      filename TEXT PRIMARY KEY,
+      sha256 TEXT NOT NULL,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      applied_by TEXT NULL,
+      runner_version TEXT NULL
+    );
+  " >/dev/null
 
-  # Create table if missing (sha256 nullable for legacy compatibility; hashes are enforced by this script).
-  psql_exec -c "CREATE TABLE IF NOT EXISTS schema_migrations (
-    filename TEXT PRIMARY KEY,
-    sha256 TEXT,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )" >/dev/null
+  # Append-only enforcement: deny UPDATE/DELETE.
+  psql_exec -c "
+    CREATE OR REPLACE FUNCTION afu9_migrations_ledger_deny_mutations()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      RAISE EXCEPTION 'afu9_migrations_ledger is append-only';
+    END;
+    $$;
+  " >/dev/null
 
-  # Legacy compatibility: schema_migrations may already exist without filename.
-  # This must be done before any SELECT/INSERT references filename.
-  psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS filename TEXT" >/dev/null
+  psql_exec -c "
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'trg_afu9_migrations_ledger_no_update'
+      ) THEN
+        CREATE TRIGGER trg_afu9_migrations_ledger_no_update
+        BEFORE UPDATE ON ${AFU9_LEDGER_TABLE}
+        FOR EACH ROW
+        EXECUTE FUNCTION afu9_migrations_ledger_deny_mutations();
+      END IF;
 
-  # Ensure ON CONFLICT(filename) is valid on legacy tables (requires a unique index/constraint).
-  # If the table was created above, the PRIMARY KEY already covers filename and this check is a no-op.
-  local has_unique_filename
-  has_unique_filename=$(psql_exec -t -c "
-    SELECT 1
-    FROM pg_index i
-    JOIN pg_class c ON c.oid = i.indrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
-    WHERE n.nspname = 'public'
-      AND c.relname = 'schema_migrations'
-      AND i.indisunique
-      AND a.attname = 'filename'
-    LIMIT 1;
-  " 2>/dev/null || true)
-  if ! echo "$has_unique_filename" | tr -d ' ' | grep -q '^1$'; then
-    psql_exec -c "CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migrations_filename_unique ON schema_migrations(filename)" >/dev/null
-  fi
-
-  # Backward-compat: older deployments may have a schema_migrations table without sha256.
-  psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sha256 TEXT" >/dev/null
-
-  # Ensure applied_at exists (legacy safety)
-  psql_exec -c "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ" >/dev/null
-  psql_exec -c "UPDATE schema_migrations SET applied_at = COALESCE(applied_at, NOW())" >/dev/null
-
-  # Optional index for debugging/history
-  psql_exec -c "CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at DESC)" >/dev/null
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'trg_afu9_migrations_ledger_no_delete'
+      ) THEN
+        CREATE TRIGGER trg_afu9_migrations_ledger_no_delete
+        BEFORE DELETE ON ${AFU9_LEDGER_TABLE}
+        FOR EACH ROW
+        EXECUTE FUNCTION afu9_migrations_ledger_deny_mutations();
+      END IF;
+    END;
+    $$;
+  " >/dev/null
 }
 
 echo "🔍 Starting database migration..."
 echo ""
 
-ensure_schema_migrations_ledger
+ensure_afu9_migrations_ledger
+
+# Legacy bootstrap: if the ledger is empty but the schema already exists, record all repo migrations
+# (no SQL will be executed). This avoids breakage caused by legacy schema_migrations formats.
+ledger_count=$(psql_exec -t -c "SELECT COUNT(*)::int AS count FROM ${AFU9_LEDGER_TABLE};" 2>/dev/null | tr -d ' ' || echo "0")
+user_table_count=$(psql_exec -t -c "
+  SELECT COUNT(*)::int AS count
+  FROM information_schema.tables
+  WHERE table_schema = 'public'
+    AND table_type = 'BASE TABLE'
+    AND table_name NOT IN ('schema_migrations', '${AFU9_LEDGER_TABLE}');
+" 2>/dev/null | tr -d ' ' || echo "0")
+
+if [[ "${ledger_count:-0}" == "0" && "${user_table_count:-0}" != "0" ]]; then
+  echo ""
+  echo "⚠️  Detected existing schema without ${AFU9_LEDGER_TABLE}."
+  echo "⚠️  Bootstrapping ${AFU9_LEDGER_TABLE} from repository files (no SQL will be executed)."
+  echo ""
+
+  for f in $(ls database/migrations/*.sql | sort); do
+    filename=$(basename "$f")
+    current_hash=$(compute_hash "$f")
+    record_migration "$filename" "$current_hash"
+  done
+
+  total_count=$(ls database/migrations/*.sql | wc -l | tr -d ' ')
+  echo "✅ Ledger bootstrap complete. Total recorded: $total_count"
+  exit 0
+fi
 
 applied_count=0
 skipped_count=0
@@ -186,42 +225,26 @@ for f in $(ls database/migrations/*.sql | sort); do
   # Compute current file hash
   current_hash=$(compute_hash "$f")
   
-  # Check if migration already applied
-  is_applied=$(is_migration_applied "$filename")
-  
-  if [[ "$is_applied" == "1" ]]; then
-    # Migration already applied - verify hash
-    stored_hash=$(get_stored_hash "$filename")
+  stored_hash=$(get_stored_hash "$filename")
 
-    # Backward-compat: legacy schema_migrations rows may have empty sha256.
-    # In that case, backfill with the current hash and continue.
-    if [[ -z "${stored_hash:-}" ]]; then
-      escaped=$(sql_escape "$filename")
-      psql_exec -c "UPDATE schema_migrations SET sha256 = '$current_hash' WHERE filename = '$escaped' AND (sha256 IS NULL OR sha256 = '')" >/dev/null
-      echo "⚠️  Skipped: $filename (already applied; legacy ledger hash backfilled)"
-      skipped_count=$((skipped_count + 1))
-      continue
-    fi
-    
+  if [[ -n "${stored_hash:-}" ]]; then
     if [[ "$stored_hash" != "$current_hash" ]]; then
-      echo "❌ ERROR: MIGRATION_HASH_MISMATCH"
+      echo "❌ ERROR: HASH_MISMATCH"
       echo "   File: $filename"
-      echo "   Stored hash:  $stored_hash"
+      echo "   Ledger hash:  $stored_hash"
       echo "   Current hash: $current_hash"
       echo ""
-      echo "Migration file has been modified after being applied!"
-      echo "This is a critical error. Migrations must be immutable once applied."
-      echo ""
-      echo "Actions:"
-      echo "  1. Revert changes to $filename"
-      echo "  2. Create a new migration file for schema changes"
-      echo "  3. Never modify applied migrations"
+      echo "Fail-closed: migration file content changed after being recorded."
+      echo "Migrations must be immutable once applied."
       exit 1
     fi
-    
+
     echo "⏭️  Skipped: $filename (already applied, hash verified ✓)"
     skipped_count=$((skipped_count + 1))
-  else
+    continue
+  fi
+
+  # Not in ledger: apply new migration
     # Apply new migration
     echo "▶️  Applying: $filename"
 
@@ -257,7 +280,7 @@ for f in $(ls database/migrations/*.sql | sort); do
       rm -f "$tmp_log" || true
       exit 1
     fi
-  fi
+  
 done
 
 echo ""

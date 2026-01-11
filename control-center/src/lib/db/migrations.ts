@@ -7,6 +7,8 @@
 
 import { Pool } from 'pg';
 
+export const AFU9_MIGRATIONS_LEDGER_TABLE = 'afu9_migrations_ledger' as const;
+
 export const SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS = [
   'filename',
   'migration_id',
@@ -88,6 +90,106 @@ export interface DbInfo {
   port: number;
   database: string;
   error?: string;
+}
+
+/**
+ * Check if afu9_migrations_ledger exists.
+ * Never throws; callers decide how to surface diagnostics.
+ */
+export async function checkAfu9LedgerExists(pool: Pool): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = $1
+      ) AS exists`,
+      [AFU9_MIGRATIONS_LEDGER_TABLE]
+    );
+    return result.rows[0]?.exists === true;
+  } catch (error) {
+    console.error('[Migration DAO] Error checking AFU9 ledger existence:', error);
+    return false;
+  }
+}
+
+export async function validateAfu9LedgerShape(pool: Pool): Promise<{
+  ok: boolean;
+  detectedColumns: string[];
+  missingColumns: string[];
+}> {
+  const required = ['filename', 'sha256', 'applied_at', 'applied_by', 'runner_version'];
+  try {
+    const result = await pool.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = $1`,
+      [AFU9_MIGRATIONS_LEDGER_TABLE]
+    );
+
+    const detectedColumns = (result.rows || [])
+      .map(r => (r.column_name || '').toLowerCase())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    const detectedSet = new Set(detectedColumns);
+    const missingColumns = required.filter(c => !detectedSet.has(c));
+
+    return {
+      ok: missingColumns.length === 0,
+      detectedColumns,
+      missingColumns,
+    };
+  } catch (error) {
+    console.error('[Migration DAO] Error validating AFU9 ledger shape:', error);
+    return {
+      ok: false,
+      detectedColumns: [],
+      missingColumns: required,
+    };
+  }
+}
+
+export async function listAppliedAfu9Migrations(
+  pool: Pool,
+  limit: number = 500
+): Promise<MigrationLedgerEntry[]> {
+  const result = await pool.query<any>(
+    `SELECT filename, sha256, applied_at
+     FROM ${AFU9_MIGRATIONS_LEDGER_TABLE}
+     ORDER BY filename ASC
+     LIMIT $1`,
+    [limit]
+  );
+
+  return (result.rows || []).map((row: any) => ({
+    filename: String(row.filename || ''),
+    sha256: String(row.sha256 || ''),
+    applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
+  }));
+}
+
+export async function getLastAppliedAfu9Migration(pool: Pool): Promise<MigrationLedgerEntry | null> {
+  const result = await pool.query<any>(
+    `SELECT filename, sha256, applied_at
+     FROM ${AFU9_MIGRATIONS_LEDGER_TABLE}
+     ORDER BY applied_at DESC, filename DESC
+     LIMIT 1`
+  );
+
+  if (!result.rows || result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    filename: String(row.filename || ''),
+    sha256: String(row.sha256 || ''),
+    applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
+  };
+}
+
+export async function getAppliedAfu9MigrationCount(pool: Pool): Promise<number> {
+  const result = await pool.query(`SELECT COUNT(*)::int AS count FROM ${AFU9_MIGRATIONS_LEDGER_TABLE}`);
+  return Number(result.rows[0]?.count ?? 0);
 }
 
 /**

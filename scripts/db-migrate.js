@@ -29,47 +29,81 @@ function listSqlMigrations(migrationsDir) {
     .sort((a, b) => a.localeCompare(b));
 }
 
-function deriveMigrationVersion(filename) {
-  const match = /^\d+/.exec(String(filename || ''));
-  if (match && match[0]) return match[0];
-  return filename;
+const AFU9_LEDGER_TABLE = 'afu9_migrations_ledger';
+
+async function ensureAfu9MigrationsLedger(client) {
+  console.log(`📋 Ensuring ${AFU9_LEDGER_TABLE} ledger...`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ${AFU9_LEDGER_TABLE} (
+      filename TEXT PRIMARY KEY,
+      sha256 TEXT NOT NULL,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      applied_by TEXT NULL,
+      runner_version TEXT NULL
+    );
+  `);
+
+  await client.query(`
+    CREATE OR REPLACE FUNCTION afu9_migrations_ledger_deny_mutations()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      RAISE EXCEPTION 'afu9_migrations_ledger is append-only';
+    END;
+    $$;
+  `);
+
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_afu9_migrations_ledger_no_update') THEN
+        CREATE TRIGGER trg_afu9_migrations_ledger_no_update
+        BEFORE UPDATE ON ${AFU9_LEDGER_TABLE}
+        FOR EACH ROW
+        EXECUTE FUNCTION afu9_migrations_ledger_deny_mutations();
+      END IF;
+
+      IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_afu9_migrations_ledger_no_delete') THEN
+        CREATE TRIGGER trg_afu9_migrations_ledger_no_delete
+        BEFORE DELETE ON ${AFU9_LEDGER_TABLE}
+        FOR EACH ROW
+        EXECUTE FUNCTION afu9_migrations_ledger_deny_mutations();
+      END IF;
+    END;
+    $$;
+  `);
 }
 
-async function getSchemaMigrationsVersionColumn(client) {
-  const res = await client.query(
+async function getAfu9LedgerCount(client) {
+  const res = await client.query(`SELECT COUNT(*)::int AS count FROM ${AFU9_LEDGER_TABLE};`);
+  return Number(res.rows[0]?.count ?? 0);
+}
+
+async function getUserTableCount(client) {
+  const res = await client.query(`
+    SELECT COUNT(*)::int AS count
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+      AND table_name NOT IN ('schema_migrations', '${AFU9_LEDGER_TABLE}');
+  `);
+  return Number(res.rows[0]?.count ?? 0);
+}
+
+async function insertLedgerRow(client, filename, sha256) {
+  const appliedBy = process.env.AFU9_MIGRATION_APPLIED_BY || process.env.GITHUB_ACTOR || null;
+  const runnerVersion = process.env.AFU9_MIGRATION_RUNNER_VERSION || process.env.GITHUB_SHA || null;
+
+  await client.query(
     `
-      SELECT column_name, udt_name, is_nullable, column_default
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'schema_migrations'
-        AND column_name = 'version'
-      LIMIT 1;
-    `
+      INSERT INTO ${AFU9_LEDGER_TABLE} (filename, sha256, applied_at, applied_by, runner_version)
+      VALUES ($1, $2, NOW(), NULLIF($3,''), NULLIF($4,''))
+      ON CONFLICT (filename) DO NOTHING;
+    `,
+    [filename, sha256, appliedBy || '', runnerVersion || '']
   );
-
-  const row = res && Array.isArray(res.rows) ? res.rows[0] : null;
-  if (!row) return null;
-
-  return {
-    udtName: String(row.udt_name || ''),
-    isNullable: String(row.is_nullable || ''),
-    columnDefault: row.column_default == null ? null : String(row.column_default),
-  };
-}
-
-function coerceVersionValue(rawVersion, versionColumn) {
-  const version = rawVersion == null ? '' : String(rawVersion);
-  const udt = (versionColumn?.udtName || '').toLowerCase();
-
-  // Handle common numeric types.
-  const isNumeric = udt === 'int2' || udt === 'int4' || udt === 'int8' || udt === 'numeric';
-  if (isNumeric) {
-    const n = Number.parseInt(version, 10);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-  // Default: treat as string/text.
-  return version;
 }
 
 async function ensureSchemaMigrationsLedger(client) {
@@ -157,31 +191,17 @@ async function main() {
   await client.connect();
 
   try {
-    await ensureSchemaMigrationsLedger(client);
+    await ensureAfu9MigrationsLedger(client);
 
-      // Legacy compatibility: some environments may have schema_migrations.version defined
-      // as NOT NULL (no default). In that case, we must always populate it.
-      const versionColumn = await getSchemaMigrationsVersionColumn(client);
-      const hasVersionColumn = !!versionColumn;
+    const ledgerCount = await getAfu9LedgerCount(client);
+    const userTableCount = await getUserTableCount(client);
 
-    const ledgerCountRes = await client.query(`SELECT COUNT(*)::int AS count FROM schema_migrations;`);
-    const ledgerCount = Number(ledgerCountRes.rows[0]?.count ?? 0);
-
-    const userTableCountRes = await client.query(`
-      SELECT COUNT(*)::int AS count
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_type = 'BASE TABLE'
-        AND table_name <> 'schema_migrations';
-    `);
-    const userTableCount = Number(userTableCountRes.rows[0]?.count ?? 0);
-
-    // If Postgres was initialized via docker-entrypoint-initdb.d, the schema may already exist
-    // but the ledger is empty. In that case, bootstrap the ledger from repo migrations.
+    // Legacy bootstrap: schema exists but canonical ledger is empty/missing.
+    // Record all repo migrations without executing SQL.
     if (ledgerCount === 0 && userTableCount > 0) {
       console.log('');
-      console.log('⚠️  Detected existing schema without migration ledger.');
-      console.log('⚠️  Bootstrapping schema_migrations from repository files (no SQL will be executed).');
+      console.log(`⚠️  Detected existing schema without ${AFU9_LEDGER_TABLE}.`);
+      console.log(`⚠️  Bootstrapping ${AFU9_LEDGER_TABLE} from repository files (no SQL will be executed).`);
       console.log('');
 
       await client.query('BEGIN;');
@@ -191,25 +211,7 @@ async function main() {
           const sql = fs.readFileSync(fullPath, 'utf8');
           const sha256 = computeSha256Hex(sql);
 
-            if (hasVersionColumn) {
-              const derivedVersion = coerceVersionValue(
-                deriveMigrationVersion(filename),
-                versionColumn
-              );
-              await client.query(
-                `INSERT INTO schema_migrations (filename, sha256, applied_at, version)
-                 VALUES ($1, $2, NOW(), $3)
-                 ON CONFLICT (filename) DO NOTHING;`,
-                [filename, sha256, derivedVersion]
-              );
-            } else {
-              await client.query(
-                `INSERT INTO schema_migrations (filename, sha256, applied_at)
-                 VALUES ($1, $2, NOW())
-                 ON CONFLICT (filename) DO NOTHING;`,
-                [filename, sha256]
-              );
-            }
+          await insertLedgerRow(client, filename, sha256);
         }
         await client.query('COMMIT;');
       } catch (err) {
@@ -232,21 +234,19 @@ async function main() {
       const sql = fs.readFileSync(fullPath, 'utf8');
       const sha256 = computeSha256Hex(sql);
 
-      const existing = await client.query(
-        `SELECT sha256 FROM schema_migrations WHERE filename = $1 LIMIT 1;`,
-        [filename]
-      );
-
+      const existing = await client.query(`SELECT sha256 FROM ${AFU9_LEDGER_TABLE} WHERE filename = $1 LIMIT 1;`, [
+        filename,
+      ]);
       if (existing.rowCount > 0) {
         const stored = (existing.rows[0].sha256 || '').trim();
-        if (stored && stored !== sha256) {
+        if (stored !== sha256) {
           throw new Error(
-            `Migration hash mismatch for ${filename}. Ledger=${stored}, File=${sha256}. ` +
-              `Refusing to continue (migration files must be immutable).`
+            `HASH_MISMATCH: ${filename}. Ledger=${stored}, File=${sha256}. ` +
+              `Fail-closed: migration files must be immutable once recorded.`
           );
         }
 
-        console.log(`⏭️  Skipping (already applied): ${filename}`);
+        console.log(`⏭️  Skipping (already applied, hash verified ✓): ${filename}`);
         skippedCount += 1;
         continue;
       }
@@ -257,21 +257,7 @@ async function main() {
       try {
         await client.query(sql);
 
-          if (hasVersionColumn) {
-            const derivedVersion = coerceVersionValue(
-              deriveMigrationVersion(filename),
-              versionColumn
-            );
-            await client.query(
-              `INSERT INTO schema_migrations (filename, sha256, applied_at, version) VALUES ($1, $2, NOW(), $3);`,
-              [filename, sha256, derivedVersion]
-            );
-          } else {
-            await client.query(
-              `INSERT INTO schema_migrations (filename, sha256, applied_at) VALUES ($1, $2, NOW());`,
-              [filename, sha256]
-            );
-          }
+        await insertLedgerRow(client, filename, sha256);
         await client.query('COMMIT;');
         console.log(`✅ Applied: ${filename}`);
         appliedCount += 1;
@@ -289,10 +275,7 @@ async function main() {
 }
 
 module.exports = {
-  ensureSchemaMigrationsLedger,
-  deriveMigrationVersion,
-  getSchemaMigrationsVersionColumn,
-  coerceVersionValue,
+  ensureAfu9MigrationsLedger,
 };
 
 if (require.main === module) {
