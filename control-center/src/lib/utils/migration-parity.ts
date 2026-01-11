@@ -95,23 +95,32 @@ export function computeParity(
   repoMigrations: MigrationFile[],
   dbMigrations: MigrationLedgerEntry[]
 ): ParityResult {
+  // Defensive hardening: callers may pass malformed data (e.g. filename null).
+  // Filter before any sorting/comparison to avoid runtime crashes.
+  const safeRepoMigrations = (repoMigrations || []).filter(
+    (m: any): m is MigrationFile => !!m && typeof m.filename === 'string'
+  );
+  const safeDbMigrations = (dbMigrations || []).filter(
+    (m: any): m is MigrationLedgerEntry => !!m && typeof m.filename === 'string'
+  );
+
   const repoById = new Map(
-    repoMigrations.map(m => [canonicalizeRepoMigrationId(m.filename), m])
+    safeRepoMigrations.map(m => [canonicalizeRepoMigrationId(m.filename), m])
   );
   const dbById = new Map(
-    dbMigrations.map(m => [canonicalizeDbMigrationId(m.filename), m])
+    safeDbMigrations.map(m => [canonicalizeDbMigrationId(m.filename), m])
   );
 
   // Create stable, deterministic lists for display.
   const repoDisplayById = new Map(
-    repoMigrations
+    safeRepoMigrations
       .map(m => ({ id: canonicalizeRepoMigrationId(m.filename), filename: m.filename }))
       .sort((a, b) => a.filename.localeCompare(b.filename))
       .map(x => [x.id, x.filename])
   );
 
   const dbDisplayById = new Map(
-    dbMigrations
+    safeDbMigrations
       .map(m => ({ id: canonicalizeDbMigrationId(m.filename), raw: String(m.filename) }))
       .sort((a, b) => a.raw.localeCompare(b.raw))
       .map(x => [x.id, x.raw])

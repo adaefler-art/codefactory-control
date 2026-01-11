@@ -11,7 +11,7 @@ import { withApi } from '@/lib/http/withApi';
 import { z } from 'zod';
 import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
 import { withRetry, DEFAULT_RETRY_CONFIG } from '@/lib/github/retry-policy';
-import { getDatabase } from '@/lib/db';
+import { getPool } from '@/lib/db';
 
 // ========================================
 // Request Schema
@@ -254,7 +254,7 @@ async function fetchPullRequestData(
  * Upsert status data into database
  */
 async function upsertStatusData(data: GitHubStatusData): Promise<void> {
-  const db = await getDatabase();
+  const db = getPool();
   
   await db.query(
     `
@@ -386,7 +386,7 @@ export const POST = withApi(async (request: NextRequest) => {
   // Guard 3: Permission check via auth-wrapper (fail-closed)
   // This is enforced by createAuthenticatedClient which checks repo access policy
   
-  const db = await getDatabase();
+  const db = getPool();
   let auditId: number | null = null;
   
   try {
@@ -524,7 +524,7 @@ export const GET = withApi(async (request: NextRequest) => {
     );
   }
   
-  const db = await getDatabase();
+  const db = getPool();
   const result = await db.query(
     `
     SELECT * FROM github_status_cache
