@@ -11,6 +11,13 @@ interface DbInfo {
   database: string;
 }
 
+interface DbIdentity {
+  current_database: string;
+  current_schema: string;
+  inet_server_addr: string | null;
+  inet_server_port: number | null;
+}
+
 interface RepoInfo {
   migrationCount: number;
   latest: string | null;
@@ -36,14 +43,21 @@ interface ParityInfo {
   hashMismatches: HashMismatch[];
 }
 
+interface RequiredTablesCheck {
+  requiredTables: string[];
+  missingTables: string[];
+}
+
 interface MigrationParityData {
   version: string;
   generatedAt: string;
   lawbookVersion: string;
   db: DbInfo;
+  dbIdentity?: DbIdentity;
   repo: RepoInfo;
   ledger: LedgerInfo;
   parity: ParityInfo;
+  requiredTablesCheck?: RequiredTablesCheck;
 }
 
 interface WhoamiData {
@@ -339,6 +353,27 @@ export default function MigrationsOpsPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Missing tables are a hard FAIL */}
+              {(data.requiredTablesCheck?.missingTables?.length || 0) > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold text-red-900">
+                      Missing Required Tables ({data.requiredTablesCheck!.missingTables.length})
+                    </h3>
+                    <p className="mt-1 text-xs text-red-800">
+                      Migration parity is considered FAIL until these tables exist.
+                    </p>
+                    <ul className="mt-2 list-disc list-inside space-y-1">
+                      {data.requiredTablesCheck!.missingTables.map((table) => (
+                        <li key={table} className="text-sm text-gray-800 font-mono">
+                          {table}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <p className="text-xs text-gray-500">

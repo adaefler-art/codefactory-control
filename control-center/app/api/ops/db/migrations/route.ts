@@ -61,6 +61,7 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 import { getActiveLawbookVersion } from '@/lib/lawbook-version-helper';
 import { getActiveLawbook } from '@/lib/db/lawbook';
 import { getDeploymentEnv } from '@/lib/utils/deployment-env';
+import { getDbIdentity } from '@/lib/db/db-identity';
 import * as path from 'path';
 
 export const runtime = 'nodejs';
@@ -222,6 +223,8 @@ export async function GET(request: NextRequest) {
         details: dbInfo.error || 'Cannot connect to database',
       });
     }
+
+    const dbIdentity = await getDbIdentity(pool);
 
     // Check if canonical AFU-9 ledger exists
     const ledgerExists = await checkAfu9LedgerExists(pool);
@@ -385,6 +388,14 @@ export async function GET(request: NextRequest) {
       hashMismatches: [...parity.hashMismatches].sort((a, b) => a.filename.localeCompare(b.filename)),
     };
 
+    const parityStatus =
+      deterministicParity.missingInDb.length === 0 &&
+      deterministicParity.extraInDb.length === 0 &&
+      deterministicParity.hashMismatches.length === 0 &&
+      missingTables.length === 0
+        ? 'PASS'
+        : 'FAIL';
+
     const sortedWarnings = sortWarningsDeterministically(warnings);
 
     // Get lawbook version + hash (if available)
@@ -412,6 +423,7 @@ export async function GET(request: NextRequest) {
         port: dbInfo.port,
         database: dbInfo.database,
       },
+      dbIdentity,
       repo: {
         migrationCount: repoMigrations.length,
         latest: latestRepoMigration,
@@ -426,7 +438,7 @@ export async function GET(request: NextRequest) {
             : null,
       },
       parity: {
-        status: deterministicParity.status,
+        status: parityStatus,
         missingInDb: deterministicParity.missingInDb.slice(0, limit), // Bounded
         extraInDb: deterministicParity.extraInDb.slice(0, limit), // Bounded
         hashMismatches: deterministicParity.hashMismatches.slice(0, limit), // Bounded

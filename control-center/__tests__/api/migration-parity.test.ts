@@ -46,6 +46,11 @@ jest.mock('@/lib/utils/migration-parity', () => ({
   getLatestMigration: jest.fn(),
 }));
 
+// Mock DB identity helper
+jest.mock('@/lib/db/db-identity', () => ({
+  getDbIdentity: jest.fn(),
+}));
+
 // Mock lawbook version helper
 jest.mock('@/lib/lawbook-version-helper', () => ({
   getActiveLawbookVersion: jest.fn().mockResolvedValue('v0.7.0'),
@@ -79,6 +84,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   const mockComputeParity = require('@/lib/utils/migration-parity').computeParity;
   const mockGetLatestMigration = require('@/lib/utils/migration-parity').getLatestMigration;
   const mockGetActiveLawbook = require('@/lib/db/lawbook').getActiveLawbook;
+  const mockGetDbIdentity = require('@/lib/db/db-identity').getDbIdentity;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -118,6 +124,14 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
         lawbook_version: 'v0.7.0',
         lawbook_hash: 'hash-123',
       },
+    });
+
+    // Default: dbIdentity available
+    mockGetDbIdentity.mockResolvedValue({
+      current_database: 'afu9',
+      current_schema: 'public',
+      inet_server_addr: '127.0.0.1',
+      inet_server_port: 5432,
     });
   });
 
@@ -871,6 +885,7 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body.parity.status).toBe('FAIL');
     expect(body.requiredTablesCheck.missingTables).toEqual(['intent_issue_drafts']);
     expect(body.requiredTablesCheck.requiredTables).toEqual([
       'intent_issue_drafts',

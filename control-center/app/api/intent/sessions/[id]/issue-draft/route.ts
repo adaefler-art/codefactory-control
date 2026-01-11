@@ -12,6 +12,18 @@ import { getIssueDraft, saveIssueDraft } from '@/lib/db/intentIssueDrafts';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { createEvidenceRecord, createEvidenceErrorInfo } from '@/lib/intent-issue-evidence';
 import { insertEvent } from '@/lib/db/intentIssueAuthoringEvents';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
+import { getDbIdentity } from '@/lib/db/db-identity';
+
+/**
+ * Admin allowlist helper (fail-closed).
+ */
+function isAdminUser(userId: string): boolean {
+  const adminSubs = process.env.AFU9_ADMIN_SUBS || '';
+  if (!adminSubs.trim()) return false;
+  const allowedSubs = adminSubs.split(',').map(s => s.trim()).filter(Boolean);
+  return allowedSubs.includes(userId);
+}
 
 /**
  * GET /api/intent/sessions/[id]/issue-draft
@@ -61,6 +73,15 @@ export async function GET(
       }
 
       if (result.error === 'MIGRATION_REQUIRED') {
+        const deploymentEnv = getDeploymentEnv();
+        const authVia = (request.headers.get('x-afu9-auth-via') || '').trim();
+        const includeDbIdentity =
+          deploymentEnv !== 'production' &&
+          deploymentEnv !== 'unknown' &&
+          (authVia === 'smoke' || isAdminUser(userId));
+
+        const dbIdentity = includeDbIdentity ? await getDbIdentity(pool) : undefined;
+
         console.error('[API /api/intent/sessions/[id]/issue-draft] MIGRATION_REQUIRED', {
           requestId,
           sessionId,
@@ -71,6 +92,7 @@ export async function GET(
           requestId,
           code: 'MIGRATION_REQUIRED',
           details: 'intent_issue_drafts table is missing (run migrations)',
+          dbIdentity,
         });
       }
       
