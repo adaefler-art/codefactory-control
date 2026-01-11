@@ -1,0 +1,236 @@
+{
+  "$schema": "https://github.com/adaefler-art/codefactory-control/blob/main/docs/schemas/repo-actions-registry.schema.json",
+  "version": "1.0.0",
+  "registryId": "codefactory-control-v1",
+  "repository": "adaefler-art/codefactory-control",
+  "allowedActions": [
+    {
+      "actionType": "assign_issue",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Assign GitHub Copilot or user to an issue"
+    },
+    {
+      "actionType": "add_label",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Add label to issue or PR"
+    },
+    {
+      "actionType": "remove_label",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Remove label from issue or PR"
+    },
+    {
+      "actionType": "add_comment",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Add comment to issue or PR"
+    },
+    {
+      "actionType": "create_pr",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Create a new pull request"
+    },
+    {
+      "actionType": "request_review",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Request review on a PR"
+    },
+    {
+      "actionType": "wait_for_checks",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Wait for CI/CD checks to complete"
+    },
+    {
+      "actionType": "rerun_checks",
+      "enabled": true,
+      "preconditions": [],
+      "maxRetries": 3,
+      "cooldownMinutes": 5,
+      "requireEvidence": true,
+      "description": "Rerun failed CI/CD checks"
+    },
+    {
+      "actionType": "rerun_failed_jobs",
+      "enabled": true,
+      "preconditions": [],
+      "maxRetries": 3,
+      "cooldownMinutes": 5,
+      "requireEvidence": true,
+      "description": "Rerun only failed workflow jobs"
+    },
+    {
+      "actionType": "merge_pr",
+      "enabled": true,
+      "preconditions": [
+        {
+          "type": "checks_passed",
+          "description": "All required checks must pass"
+        },
+        {
+          "type": "review_approved",
+          "description": "PR must be approved"
+        },
+        {
+          "type": "pr_mergeable",
+          "value": true,
+          "description": "PR must be mergeable (no conflicts)"
+        },
+        {
+          "type": "pr_not_draft",
+          "value": true,
+          "description": "PR must not be in draft state"
+        }
+      ],
+      "approvalRule": {
+        "required": true,
+        "minApprovers": 1,
+        "requireCodeOwners": false,
+        "dismissStaleReviews": false
+      },
+      "requireEvidence": true,
+      "description": "Merge PR with approval and checks passed"
+    },
+    {
+      "actionType": "cleanup_branch",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Delete merged branch"
+    },
+    {
+      "actionType": "close_pr",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Close a pull request without merging"
+    },
+    {
+      "actionType": "close_issue",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Close an issue"
+    },
+    {
+      "actionType": "dispatch_workflow",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Trigger a GitHub Actions workflow"
+    },
+    {
+      "actionType": "collect_artifacts",
+      "enabled": true,
+      "preconditions": [],
+      "requireEvidence": true,
+      "description": "Collect artifacts from workflow runs"
+    }
+  ],
+  "requiredChecks": [
+    {
+      "name": "CI",
+      "required": true,
+      "allowedStatuses": ["success"],
+      "description": "Main CI pipeline"
+    },
+    {
+      "name": "Build",
+      "required": true,
+      "allowedStatuses": ["success"],
+      "description": "Build verification"
+    },
+    {
+      "name": "Tests",
+      "required": true,
+      "allowedStatuses": ["success"],
+      "description": "Test suite"
+    },
+    {
+      "name": "Security Scan",
+      "required": true,
+      "allowedStatuses": ["success", "neutral"],
+      "description": "Security vulnerability scan"
+    }
+  ],
+  "approvalRules": {
+    "required": true,
+    "minApprovers": 1,
+    "requireCodeOwners": false,
+    "dismissStaleReviews": false
+  },
+  "mergePolicy": {
+    "allowedMethods": ["squash", "merge"],
+    "defaultMethod": "squash",
+    "requireLinearHistory": false,
+    "requireUpToDateBranch": true,
+    "autoMergeEnabled": false,
+    "deleteBranchOnMerge": true
+  },
+  "labelMappings": [
+    {
+      "name": "v0.8",
+      "semantic": "version:0.8",
+      "description": "Version 0.8 release"
+    },
+    {
+      "name": "epic:E83",
+      "semantic": "epic:83",
+      "description": "Epic E83: GH Workflow Orchestrator"
+    },
+    {
+      "name": "layer:A",
+      "semantic": "layer:architecture",
+      "description": "Architecture layer"
+    },
+    {
+      "name": "layer:B",
+      "semantic": "layer:business",
+      "description": "Business logic layer"
+    },
+    {
+      "name": "layer:C",
+      "semantic": "layer:control",
+      "description": "Control flow layer"
+    },
+    {
+      "name": "github",
+      "semantic": "category:github",
+      "description": "GitHub integration"
+    },
+    {
+      "name": "policy",
+      "semantic": "category:policy",
+      "description": "Policy and guardrails"
+    },
+    {
+      "name": "automation",
+      "semantic": "category:automation",
+      "description": "Automation features"
+    }
+  ],
+  "reviewerMappings": [
+    {
+      "type": "team",
+      "identifier": "maintainers",
+      "role": "code-owner"
+    }
+  ],
+  "environments": [],
+  "createdAt": "2026-01-11T16:47:29.931Z",
+  "createdBy": "system",
+  "notes": "Default repository actions registry for codefactory-control v0.8",
+  "failClosed": true
+}
