@@ -144,15 +144,15 @@ ensure_afu9_migrations_ledger() {
     CREATE OR REPLACE FUNCTION afu9_migrations_ledger_deny_mutations()
     RETURNS trigger
     LANGUAGE plpgsql
-    AS $$
+    AS \$\$
     BEGIN
       RAISE EXCEPTION 'afu9_migrations_ledger is append-only';
     END;
-    $$;
+    \$\$;
   " >/dev/null
 
   psql_exec -c "
-    DO $$
+    DO \$\$
     BEGIN
       IF NOT EXISTS (
         SELECT 1
@@ -176,7 +176,7 @@ ensure_afu9_migrations_ledger() {
         EXECUTE FUNCTION afu9_migrations_ledger_deny_mutations();
       END IF;
     END;
-    $$;
+    \$\$;
   " >/dev/null
 }
 
