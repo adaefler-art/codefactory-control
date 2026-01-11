@@ -188,9 +188,10 @@ export async function listAppliedMigrations(
 
     const sha256Select = adapter.hasSha256 ? 'COALESCE(sha256::text, \'\')' : "''";
     const appliedAtSelect = adapter.hasAppliedAt ? 'applied_at' : 'NULL';
+    const identifierSelect = `COALESCE(${adapter.identifierColumn}::text, '')`;
 
     const result = await pool.query<any>(
-      `SELECT ${adapter.identifierColumn}::text as filename,
+      `SELECT ${identifierSelect} as filename,
               ${sha256Select} as sha256,
               ${appliedAtSelect} as applied_at
        FROM schema_migrations
@@ -200,7 +201,7 @@ export async function listAppliedMigrations(
     );
 
     return result.rows.map(row => ({
-      filename: row.filename,
+      filename: String(row.filename || ''),
       sha256: row.sha256 || '',
       // Deterministic: if applied_at is not available in the ledger, use a stable epoch timestamp.
       applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),
@@ -221,12 +222,13 @@ export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedg
 
     const sha256Select = adapter.hasSha256 ? 'COALESCE(sha256::text, \'\')' : "''";
     const appliedAtSelect = adapter.hasAppliedAt ? 'applied_at' : 'NULL';
+    const identifierSelect = `COALESCE(${adapter.identifierColumn}::text, '')`;
     const orderBy = adapter.hasAppliedAt
       ? `ORDER BY applied_at DESC NULLS LAST, ${adapter.identifierColumn} DESC`
       : `ORDER BY ${adapter.identifierColumn} DESC`;
 
     const result = await pool.query<any>(
-      `SELECT ${adapter.identifierColumn}::text as filename,
+      `SELECT ${identifierSelect} as filename,
               ${sha256Select} as sha256,
               ${appliedAtSelect} as applied_at
        FROM schema_migrations
@@ -240,7 +242,7 @@ export async function getLastAppliedMigration(pool: Pool): Promise<MigrationLedg
 
     const row = result.rows[0];
     return {
-      filename: row.filename,
+      filename: String(row.filename || ''),
       sha256: row.sha256 || '',
       // Deterministic: if applied_at is not available in the ledger, use a stable epoch timestamp.
       applied_at: row.applied_at ? new Date(row.applied_at) : new Date(0),

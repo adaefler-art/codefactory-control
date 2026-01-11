@@ -62,6 +62,50 @@ import * as path from 'path';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+type MigrationParityWarningSource = 'dbAppliedMigrations' | 'repoMigrationFiles';
+type MigrationParityWarning = {
+  code: 'NON_STRING_MIGRATION_ENTRY';
+  count: number;
+  source: MigrationParityWarningSource;
+};
+
+function sanitizeStringArray(
+  values: unknown[],
+  source: MigrationParityWarningSource,
+  warnings: MigrationParityWarning[]
+): string[] {
+  const out: string[] = [];
+  let filtered = 0;
+
+  for (const value of values) {
+    if (typeof value === 'string') {
+      out.push(value);
+      continue;
+    }
+    if (value === null || value === undefined) {
+      filtered++;
+      continue;
+    }
+    filtered++;
+  }
+
+  if (filtered > 0) {
+    warnings.push({
+      code: 'NON_STRING_MIGRATION_ENTRY',
+      count: filtered,
+      source,
+    });
+  }
+
+  return out;
+}
+
+function sortWarningsDeterministically(warnings: MigrationParityWarning[]): MigrationParityWarning[] {
+  return warnings
+    .slice()
+    .sort((a, b) => a.source.localeCompare(b.source) || a.code.localeCompare(b.code));
+}
+
 function isUnsupportedSchemaMigrationsError(error: unknown): error is {
   name?: string;
   detectedColumns?: unknown;
@@ -149,6 +193,8 @@ export async function GET(request: NextRequest) {
     const pool = getPool();
     const searchParams = request.nextUrl.searchParams;
 
+    const warnings: MigrationParityWarning[] = [];
+
     // Parse query parameters with bounds
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '200', 10), 1), 500);
     const env = searchParams.get('env') || undefined;
@@ -180,8 +226,9 @@ export async function GET(request: NextRequest) {
     const repoMigrations = listRepoMigrations(migrationsDir);
     const latestRepoMigration = getLatestMigration(repoMigrations);
 
-    const repoMigrationFiles = repoMigrations
-      .map(m => m.filename)
+    // Filter before sorting to avoid runtime crashes when migration entries are malformed.
+    const repoMigrationFilesRaw = repoMigrations.map((m: any) => m?.filename);
+    const repoMigrationFiles = sanitizeStringArray(repoMigrationFilesRaw, 'repoMigrationFiles', warnings)
       .slice()
       .sort((a, b) => a.localeCompare(b));
 
@@ -190,8 +237,8 @@ export async function GET(request: NextRequest) {
     const lastApplied = await getLastAppliedMigration(pool);
     const appliedCount = await getAppliedMigrationCount(pool);
 
-    const dbAppliedMigrations = dbMigrations
-      .map(m => m.filename)
+    const dbAppliedMigrationsRaw = dbMigrations.map((m: any) => m?.filename);
+    const dbAppliedMigrations = sanitizeStringArray(dbAppliedMigrationsRaw, 'dbAppliedMigrations', warnings)
       .slice()
       .sort((a, b) => a.localeCompare(b));
 
@@ -202,14 +249,18 @@ export async function GET(request: NextRequest) {
     ];
     const missingTables = await getMissingTables(pool, requiredTables);
 
-    // Compute parity
-    const parity = computeParity(repoMigrations, dbMigrations);
+    // Compute parity (defensive: filter malformed entries before passing to parity computation)
+    const safeRepoMigrations = repoMigrations.filter((m: any) => !!m && typeof m.filename === 'string');
+    const safeDbMigrations = dbMigrations.filter((m: any) => !!m && typeof m.filename === 'string');
+    const parity = computeParity(safeRepoMigrations, safeDbMigrations);
     const deterministicParity = {
       status: parity.status,
       missingInDb: [...parity.missingInDb].sort((a, b) => a.localeCompare(b)),
       extraInDb: [...parity.extraInDb].sort((a, b) => a.localeCompare(b)),
       hashMismatches: [...parity.hashMismatches].sort((a, b) => a.filename.localeCompare(b.filename)),
     };
+
+    const sortedWarnings = sortWarningsDeterministically(warnings);
 
     // Get lawbook version + hash (if available)
     const activeLawbook = await getActiveLawbook('AFU9-LAWBOOK', pool);
@@ -225,6 +276,7 @@ export async function GET(request: NextRequest) {
       version: '0.7.0',
       generatedAt: new Date().toISOString(),
       requestId,
+      warnings: sortedWarnings,
       deploymentEnv,
       lawbookVersion,
       lawbookHash,

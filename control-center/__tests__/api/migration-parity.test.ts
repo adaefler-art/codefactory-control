@@ -540,6 +540,73 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.extraInDb).toEqual(body.parity.extraInDb);
   });
 
+  test('200: null-safe when dbAppliedMigrations contains null entries (warnings + no throw)', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListRepoMigrations.mockReturnValue([
+      { filename: '001_initial.sql', sha256: 'abc123' },
+    ]);
+    mockGetLatestMigration.mockReturnValue('001_initial.sql');
+
+    // Inject a malformed DB migration entry (filename null)
+    mockListAppliedMigrations.mockResolvedValue([
+      { filename: null, sha256: 'x', applied_at: new Date('2026-01-01') } as any,
+      { filename: '001_initial.sql', sha256: 'abc123', applied_at: new Date('2026-01-02') },
+    ]);
+
+    mockGetLastAppliedMigration.mockResolvedValue({
+      filename: '001_initial.sql',
+      sha256: 'abc123',
+      applied_at: new Date('2026-01-02'),
+    });
+
+    mockGetAppliedMigrationCount.mockResolvedValue(2);
+    mockGetMissingTables.mockResolvedValue([]);
+
+    // Parity util is mocked; return PASS to avoid coupling this test to parity internals.
+    mockComputeParity.mockReturnValue({
+      status: 'PASS',
+      missingInDb: [],
+      extraInDb: [],
+      hashMismatches: [],
+    });
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-null-db-entry',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.requestId).toBe('test-null-db-entry');
+
+    // Warning emitted for filtered non-string DB migration entries
+    expect(Array.isArray(body.warnings)).toBe(true);
+    expect(body.warnings).toEqual([
+      { code: 'NON_STRING_MIGRATION_ENTRY', count: 1, source: 'dbAppliedMigrations' },
+    ]);
+
+    // Arrays returned to clients contain only strings
+    expect(Array.isArray(body.dbAppliedMigrations)).toBe(true);
+    expect(body.dbAppliedMigrations.every((v: any) => typeof v === 'string')).toBe(true);
+
+    expect(Array.isArray(body.repoMigrationFiles)).toBe(true);
+    expect(body.repoMigrationFiles.every((v: any) => typeof v === 'string')).toBe(true);
+  });
+
   test('alias route: /api/ops/db/migration-parity responds (non-500)', async () => {
     process.env.AFU9_ADMIN_SUBS = 'admin-123';
 
