@@ -22,6 +22,13 @@ export const RetryPolicyConfigSchema = z.object({
   maxDelayMs: z.number().int().min(1000).max(300000).default(32000),
   backoffMultiplier: z.number().min(1).max(5).default(2),
   jitterFactor: z.number().min(0).max(1).default(0.25),
+  // HTTP method for idempotency checks
+  httpMethod: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+  // Opt-in for non-idempotent operations
+  allowNonIdempotentRetry: z.boolean().default(false),
+  // Context for deterministic jitter
+  requestId: z.string().optional(),
+  endpoint: z.string().optional(),
 }).strict();
 
 export type RetryPolicyConfig = z.infer<typeof RetryPolicyConfigSchema>;
@@ -35,6 +42,8 @@ export const DEFAULT_RETRY_CONFIG: RetryPolicyConfig = {
   maxDelayMs: 32000,
   backoffMultiplier: 2,
   jitterFactor: 0.25,
+  httpMethod: 'GET',
+  allowNonIdempotentRetry: false,
 };
 
 // ========================================
@@ -182,16 +191,47 @@ export function extractRateLimitInfo(error: unknown, headers?: Headers): RateLim
 // ========================================
 
 /**
- * Calculate exponential backoff delay with jitter
+ * Deterministic pseudo-random number generator using seed
+ * Uses simple LCG (Linear Congruential Generator) algorithm
+ */
+function seededRandom(seed: number): number {
+  // LCG parameters (from Numerical Recipes)
+  const a = 1664525;
+  const c = 1013904223;
+  const m = Math.pow(2, 32);
+  
+  const next = (a * seed + c) % m;
+  return next / m;
+}
+
+/**
+ * Create a deterministic seed from context
+ */
+function createSeed(requestId: string | undefined, attempt: number, endpoint: string | undefined): number {
+  const str = `${requestId || 'default'}-${attempt}-${endpoint || 'unknown'}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Calculate exponential backoff delay with deterministic jitter
  * 
  * Formula: min(maxDelay, initialDelay * (backoffMultiplier ^ attempt)) ± jitter
+ * 
+ * Jitter is deterministic based on requestId, attempt, and endpoint to ensure
+ * reproducible behavior for the same request context.
  * 
  * @param attempt - Retry attempt number (0-indexed)
  * @param config - Retry policy configuration
  * @returns Delay in milliseconds
  */
 export function calculateBackoff(attempt: number, config: RetryPolicyConfig): number {
-  const { initialDelayMs, maxDelayMs, backoffMultiplier, jitterFactor } = config;
+  const { initialDelayMs, maxDelayMs, backoffMultiplier, jitterFactor, requestId, endpoint } = config;
   
   // Calculate base delay with exponential backoff
   const baseDelay = initialDelayMs * Math.pow(backoffMultiplier, attempt);
@@ -199,9 +239,11 @@ export function calculateBackoff(attempt: number, config: RetryPolicyConfig): nu
   // Cap at max delay
   const cappedDelay = Math.min(baseDelay, maxDelayMs);
   
-  // Add jitter (±jitterFactor%)
+  // Add deterministic jitter (±jitterFactor%)
   const jitterRange = cappedDelay * jitterFactor;
-  const jitter = (Math.random() * 2 - 1) * jitterRange;
+  const seed = createSeed(requestId, attempt, endpoint);
+  const randomValue = seededRandom(seed);
+  const jitter = (randomValue * 2 - 1) * jitterRange;
   
   // Ensure positive delay
   return Math.max(0, Math.floor(cappedDelay + jitter));
@@ -210,8 +252,13 @@ export function calculateBackoff(attempt: number, config: RetryPolicyConfig): nu
 /**
  * Calculate delay for rate limit with reset time
  * 
+ * Priority order:
+ * 1. Retry-After header (highest priority, required by HTTP spec)
+ * 2. X-RateLimit-Reset header
+ * 3. Fallback to calculated delay
+ * 
  * @param resetTimestamp - Unix timestamp when rate limit resets
- * @param retryAfter - Optional retry-after header value (seconds)
+ * @param retryAfter - Optional retry-after header value (seconds) - HIGHEST PRIORITY
  * @param maxDelayMs - Maximum delay to enforce
  * @returns Delay in milliseconds
  */
@@ -220,15 +267,14 @@ export function calculateRateLimitDelay(
   retryAfter: number | undefined,
   maxDelayMs: number
 ): number {
-  const now = Math.floor(Date.now() / 1000);
-  
-  // If retry-after is provided, use it
-  if (retryAfter !== undefined) {
+  // Priority 1: Retry-After header (RFC 7231 compliant)
+  if (retryAfter !== undefined && retryAfter > 0) {
     const delayMs = retryAfter * 1000;
     return Math.min(delayMs, maxDelayMs);
   }
   
-  // Otherwise, calculate from reset timestamp
+  // Priority 2: Calculate from reset timestamp
+  const now = Math.floor(Date.now() / 1000);
   const delaySeconds = Math.max(0, resetTimestamp - now);
   const delayMs = delaySeconds * 1000;
   
@@ -242,6 +288,9 @@ export function calculateRateLimitDelay(
 
 /**
  * Decide whether to retry based on error type and attempt count
+ * 
+ * Implements idempotency safeguard: only retries GET/HEAD by default.
+ * Mutating methods (POST/PUT/PATCH/DELETE) require explicit opt-in.
  * 
  * @param error - The error that occurred
  * @param attempt - Current retry attempt (0-indexed)
@@ -263,6 +312,18 @@ export function shouldRetry(
       shouldRetry: false,
       errorType,
       reason: `Max retries (${config.maxRetries}) exceeded`,
+    };
+  }
+  
+  // Idempotency check: only retry safe methods by default
+  const httpMethod = config.httpMethod || 'GET';
+  const isIdempotentMethod = httpMethod === 'GET' || httpMethod === 'HEAD';
+  
+  if (!isIdempotentMethod && !config.allowNonIdempotentRetry) {
+    return {
+      shouldRetry: false,
+      errorType,
+      reason: `Non-idempotent method ${httpMethod} requires explicit opt-in (allowNonIdempotentRetry=true)`,
     };
   }
   

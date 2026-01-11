@@ -330,39 +330,47 @@ export default function WorkflowRunnerPage() {
                     {selectedItem.type === 'pull_request' && (
                       <>
                         <button
-                          disabled={!isMergeable(prStatus)}
-                          className={`w-full px-4 py-2 rounded text-left ${
-                            isMergeable(prStatus)
-                              ? 'bg-green-600 hover:bg-green-700'
-                              : 'bg-gray-700 cursor-not-allowed'
-                          }`}
+                          disabled={true}
+                          title="Action endpoint not implemented - no writes performed"
+                          className="w-full px-4 py-2 rounded text-left bg-gray-700 cursor-not-allowed opacity-50"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-medium">Merge PR</span>
-                            {!isMergeable(prStatus) && (
-                              <span className="text-xs">Checks must pass</span>
-                            )}
+                            <span className="font-medium">Merge PR (Not Implemented)</span>
+                            <span className="text-xs">Endpoint required</span>
                           </div>
                         </button>
 
-                        <button className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-left">
-                          Rerun Failed Checks
+                        <button 
+                          disabled={true}
+                          title="Action endpoint not implemented - no writes performed"
+                          className="w-full px-4 py-2 bg-gray-700 cursor-not-allowed opacity-50 rounded text-left"
+                        >
+                          Rerun Failed Checks (Not Implemented)
                         </button>
 
-                        <button className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-left">
-                          Request Review
+                        <button 
+                          disabled={true}
+                          title="Action endpoint not implemented - no writes performed"
+                          className="w-full px-4 py-2 bg-gray-700 cursor-not-allowed opacity-50 rounded text-left"
+                        >
+                          Request Review (Not Implemented)
                         </button>
                       </>
                     )}
 
-                    <button className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-left">
-                      View Details on GitHub
-                    </button>
+                    <a
+                      href={selectedItem.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-left"
+                    >
+                      View Details on GitHub ↗
+                    </a>
                   </div>
 
                   <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-800 rounded text-xs text-yellow-400">
-                    ⚠️ <strong>Guardrails Active:</strong> Actions require green checks and proper permissions. 
-                    All actions are audited.
+                    ⚠️ <strong>Guardrails Active:</strong> Write actions disabled until corresponding endpoints are implemented with full gating + audit. 
+                    Read-only operations (status sync, view) are available.
                   </div>
                 </div>
               </div>

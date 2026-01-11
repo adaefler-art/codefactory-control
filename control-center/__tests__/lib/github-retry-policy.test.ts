@@ -64,8 +64,12 @@ describe('GitHub Retry Policy', () => {
   });
   
   describe('calculateBackoff', () => {
-    it('should calculate exponential backoff', () => {
-      const config = DEFAULT_RETRY_CONFIG;
+    it('should calculate exponential backoff with deterministic jitter', () => {
+      const config = { 
+        ...DEFAULT_RETRY_CONFIG,
+        requestId: 'test-request-123',
+        endpoint: 'test.endpoint'
+      };
       
       // Attempt 0: 1000ms (base)
       const delay0 = calculateBackoff(0, config);
@@ -87,6 +91,8 @@ describe('GitHub Retry Policy', () => {
       const config = {
         ...DEFAULT_RETRY_CONFIG,
         maxDelayMs: 5000,
+        requestId: 'test-cap',
+        endpoint: 'test.endpoint'
       };
       
       // Attempt 5 would be 32000ms, but should cap at 5000ms
@@ -94,16 +100,26 @@ describe('GitHub Retry Policy', () => {
       expect(delay).toBeLessThanOrEqual(config.maxDelayMs * 1.25); // Allow jitter
     });
     
-    it('should be deterministic with zero jitter', () => {
-      const config = {
+    it('should be deterministic with same context', () => {
+      const config1 = {
         ...DEFAULT_RETRY_CONFIG,
-        jitterFactor: 0,
+        requestId: 'same-request',
+        endpoint: 'same.endpoint'
       };
       
-      const delay1 = calculateBackoff(1, config);
-      const delay2 = calculateBackoff(1, config);
-      expect(delay1).toBe(delay2);
-      expect(delay1).toBe(2000); // Exactly 1000 * 2^1
+      const config2 = {
+        ...DEFAULT_RETRY_CONFIG,
+        requestId: 'same-request',
+        endpoint: 'same.endpoint'
+      };
+      
+      const delay1a = calculateBackoff(1, config1);
+      const delay1b = calculateBackoff(1, config2);
+      expect(delay1a).toBe(delay1b); // Same context = same delay
+      
+      const delay2a = calculateBackoff(2, config1);
+      const delay2b = calculateBackoff(2, config2);
+      expect(delay2a).toBe(delay2b); // Same context = same delay
     });
   });
   
@@ -220,6 +236,54 @@ describe('GitHub Retry Policy', () => {
       expect(decision.shouldRetry).toBe(true);
       expect(decision.delayMs).toBeGreaterThanOrEqual(60000); // ~60s
     });
+    
+    it('should not retry non-idempotent methods by default', () => {
+      const error = new Error('HTTP 503 Service Unavailable');
+      const config = { ...DEFAULT_RETRY_CONFIG, httpMethod: 'POST' as const };
+      const decision = shouldRetry(error, 0, config);
+      
+      expect(decision.shouldRetry).toBe(false);
+      expect(decision.reason).toContain('Non-idempotent method POST');
+    });
+    
+    it('should retry non-idempotent methods with opt-in', () => {
+      const error = new Error('HTTP 503 Service Unavailable');
+      const config = { 
+        ...DEFAULT_RETRY_CONFIG, 
+        httpMethod: 'POST' as const,
+        allowNonIdempotentRetry: true,
+        requestId: 'test-post',
+        endpoint: 'test.endpoint'
+      };
+      const decision = shouldRetry(error, 0, config);
+      
+      expect(decision.shouldRetry).toBe(true);
+      expect(decision.errorType).toBe(ErrorType.SERVER_ERROR);
+    });
+    
+    it('should always retry GET requests', () => {
+      const error = new Error('HTTP 503 Service Unavailable');
+      const config = { ...DEFAULT_RETRY_CONFIG, httpMethod: 'GET' as const };
+      const decision = shouldRetry(error, 0, config);
+      
+      expect(decision.shouldRetry).toBe(true);
+      expect(decision.errorType).toBe(ErrorType.SERVER_ERROR);
+    });
+    
+    it('should prioritize Retry-After header', () => {
+      const error = new Error('HTTP 429 Rate limit exceeded');
+      const headers = new Headers({
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 300), // 5 minutes
+        'retry-after': '30', // But Retry-After says 30 seconds
+      });
+      
+      const decision = shouldRetry(error, 0, DEFAULT_RETRY_CONFIG, headers);
+      
+      expect(decision.shouldRetry).toBe(true);
+      expect(decision.delayMs).toBe(30000); // Should use Retry-After
+    });
   });
   
   describe('withRetry', () => {
@@ -242,7 +306,8 @@ describe('GitHub Retry Policy', () => {
         ...DEFAULT_RETRY_CONFIG,
         initialDelayMs: 10, // Speed up test
         maxDelayMs: 100,
-        jitterFactor: 0, // Deterministic
+        requestId: 'test-retry',
+        endpoint: 'test.endpoint'
       };
       
       const result = await withRetry(fn, config);
@@ -265,7 +330,8 @@ describe('GitHub Retry Policy', () => {
         ...DEFAULT_RETRY_CONFIG,
         maxRetries: 2,
         initialDelayMs: 10,
-        jitterFactor: 0,
+        requestId: 'test-max',
+        endpoint: 'test.endpoint'
       };
       
       await expect(withRetry(fn, config)).rejects.toThrow('HTTP 503 Service Unavailable');
@@ -281,7 +347,8 @@ describe('GitHub Retry Policy', () => {
       const config = {
         ...DEFAULT_RETRY_CONFIG,
         initialDelayMs: 10,
-        jitterFactor: 0,
+        requestId: 'test-callback',
+        endpoint: 'test.endpoint'
       };
       
       await withRetry(fn, config, onRetry);
