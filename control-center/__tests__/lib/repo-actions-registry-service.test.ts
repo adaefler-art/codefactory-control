@@ -2,8 +2,8 @@
  * Tests for Repository Actions Registry Service (E83.1)
  */
 
-import { RepoActionsRegistryService } from '../../../src/lib/repo-actions-registry-service';
-import { RepoActionsRegistry, ActionType } from '../../../src/lib/types/repo-actions-registry';
+import { RepoActionsRegistryService } from '../../src/lib/repo-actions-registry-service';
+import { RepoActionsRegistry, ActionType } from '../../src/lib/types/repo-actions-registry';
 import { Pool } from 'pg';
 
 // Mock pool for testing
