@@ -56,6 +56,7 @@ jest.mock('@/lib/db/migrations', () => ({
   listAppliedMigrations: jest.fn(),
   getLastAppliedMigration: jest.fn(),
   getAppliedMigrationCount: jest.fn(),
+  getMissingTables: jest.fn(),
 }));
 
 // Mock migration parity utility
@@ -70,6 +71,17 @@ jest.mock('@/lib/lawbook-version-helper', () => ({
   getActiveLawbookVersion: jest.fn().mockResolvedValue('v0.7.0'),
 }));
 
+// Mock lawbook DB helper (for hash + version)
+jest.mock('@/lib/db/lawbook', () => ({
+  getActiveLawbook: jest.fn().mockResolvedValue({
+    success: true,
+    data: {
+      lawbook_version: 'v0.7.0',
+      lawbook_hash: 'hash-123',
+    },
+  }),
+}));
+
 describe('GET /api/ops/db/migrations - Security Tests', () => {
   const mockGetDeploymentEnv = require('@/lib/utils/deployment-env').getDeploymentEnv;
   const mockCheckDbReachability = require('@/lib/db/migrations').checkDbReachability;
@@ -77,16 +89,40 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   const mockListAppliedMigrations = require('@/lib/db/migrations').listAppliedMigrations;
   const mockGetLastAppliedMigration = require('@/lib/db/migrations').getLastAppliedMigration;
   const mockGetAppliedMigrationCount = require('@/lib/db/migrations').getAppliedMigrationCount;
+  const mockGetMissingTables = require('@/lib/db/migrations').getMissingTables;
   const SchemaMigrationsUnsupportedSchemaError = require('@/lib/db/migrations').SchemaMigrationsUnsupportedSchemaError;
   const mockListRepoMigrations = require('@/lib/utils/migration-parity').listRepoMigrations;
   const mockComputeParity = require('@/lib/utils/migration-parity').computeParity;
   const mockGetLatestMigration = require('@/lib/utils/migration-parity').getLatestMigration;
+  const mockGetActiveLawbook = require('@/lib/db/lawbook').getActiveLawbook;
 
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.AFU9_ADMIN_SUBS;
     // Default to staging
     mockGetDeploymentEnv.mockReturnValue('staging');
+
+    // Safe defaults so error-path tests don't fail early
+    mockListRepoMigrations.mockReturnValue([]);
+    mockGetLatestMigration.mockReturnValue(null);
+    mockComputeParity.mockReturnValue({
+      status: 'PASS',
+      missingInDb: [],
+      extraInDb: [],
+      hashMismatches: [],
+    });
+
+    // Default: required tables present
+    mockGetMissingTables.mockResolvedValue([]);
+
+    // Default: lawbook available
+    mockGetActiveLawbook.mockResolvedValue({
+      success: true,
+      data: {
+        lawbook_version: 'v0.7.0',
+        lawbook_hash: 'hash-123',
+      },
+    });
   });
 
   test('401: Unauthorized without x-afu9-sub header (auth-first)', async () => {
@@ -378,6 +414,8 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     });
     
     mockGetAppliedMigrationCount.mockResolvedValue(2);
+
+    mockGetMissingTables.mockResolvedValue([]);
     
     mockComputeParity.mockReturnValue({
       status: 'PASS',
@@ -408,6 +446,12 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(body.parity.missingInDb).toEqual([]);
     expect(body.parity.extraInDb).toEqual([]);
     expect(body.parity.hashMismatches).toEqual([]);
+
+    // New fields
+    expect(body.requestId).toBe('test-pass');
+    expect(body.requiredTablesCheck.missingTables).toEqual([]);
+    expect(Array.isArray(body.repoMigrationFiles)).toBe(true);
+    expect(Array.isArray(body.dbAppliedMigrations)).toBe(true);
   });
 
   test('200: deterministic ordering snapshot (route enforces sorting)', async () => {
@@ -428,8 +472,8 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     mockGetLatestMigration.mockReturnValue('010_apple.sql');
 
     mockListAppliedMigrations.mockResolvedValue([
-      { filename: '2', sha256: 'b', applied_at: new Date('2026-01-01') },
       { filename: '999', sha256: 'x', applied_at: new Date('2026-01-02') },
+      { filename: '2', sha256: 'b', applied_at: new Date('2026-01-01') },
     ]);
     mockGetLastAppliedMigration.mockResolvedValue({
       filename: '999',
@@ -486,6 +530,14 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
   "status": "FAIL",
 }
 `);
+
+    // Deterministic ordering: route-level stable sorts
+    expect(body.repoMigrationFiles).toEqual(['002_banana.sql', '010_apple.sql']);
+    expect(body.dbAppliedMigrations).toEqual(['2', '999']);
+
+    // Mirrors stay in sync and stay sorted
+    expect(body.missingInDb).toEqual(body.parity.missingInDb);
+    expect(body.extraInDb).toEqual(body.parity.extraInDb);
   });
 
   test('alias route: /api/ops/db/migration-parity responds (non-500)', async () => {
@@ -572,6 +624,53 @@ describe('GET /api/ops/db/migrations - Security Tests', () => {
     expect(response.status).toBe(200);
     expect(body.parity.status).toBe('FAIL');
     expect(body.parity.missingInDb).toEqual(['003_posts.sql']);
+
+    // Also exposed at top-level for quick checks
+    expect(body.missingInDb).toEqual(['003_posts.sql']);
+  });
+
+  test('200: required tables check - reports missing tables', async () => {
+    process.env.AFU9_ADMIN_SUBS = 'admin-123';
+
+    mockCheckDbReachability.mockResolvedValue({
+      reachable: true,
+      host: 'localhost',
+      port: 5432,
+      database: 'afu9',
+    });
+    mockCheckLedgerExists.mockResolvedValue(true);
+
+    mockListRepoMigrations.mockReturnValue([]);
+    mockGetLatestMigration.mockReturnValue(null);
+    mockListAppliedMigrations.mockResolvedValue([]);
+    mockGetLastAppliedMigration.mockResolvedValue(null);
+    mockGetAppliedMigrationCount.mockResolvedValue(0);
+    mockComputeParity.mockReturnValue({
+      status: 'PASS',
+      missingInDb: [],
+      extraInDb: [],
+      hashMismatches: [],
+    });
+
+    mockGetMissingTables.mockResolvedValue(['intent_issue_drafts']);
+
+    const request = new NextRequest('http://localhost/api/ops/db/migrations', {
+      method: 'GET',
+      headers: {
+        'x-request-id': 'test-missing-tables',
+        'x-afu9-sub': 'admin-123',
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.requiredTablesCheck.missingTables).toEqual(['intent_issue_drafts']);
+    expect(body.requiredTablesCheck.requiredTables).toEqual([
+      'intent_issue_drafts',
+      'intent_issue_sets',
+    ]);
   });
 
   test('Bounded output: limit parameter respected', async () => {

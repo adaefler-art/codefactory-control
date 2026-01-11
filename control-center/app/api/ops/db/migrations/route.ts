@@ -44,6 +44,7 @@ import {
   listAppliedMigrations,
   getLastAppliedMigration,
   getAppliedMigrationCount,
+  getMissingTables,
   SchemaMigrationsUnsupportedSchemaError,
   SUPPORTED_SCHEMA_MIGRATIONS_IDENTIFIER_COLUMNS,
 } from '@/lib/db/migrations';
@@ -54,6 +55,7 @@ import {
 } from '@/lib/utils/migration-parity';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { getActiveLawbookVersion } from '@/lib/lawbook-version-helper';
+import { getActiveLawbook } from '@/lib/db/lawbook';
 import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 import * as path from 'path';
 
@@ -175,10 +177,27 @@ export async function GET(request: NextRequest) {
     const repoMigrations = listRepoMigrations(migrationsDir);
     const latestRepoMigration = getLatestMigration(repoMigrations);
 
+    const repoMigrationFiles = repoMigrations
+      .map(m => m.filename)
+      .slice()
+      .sort((a, b) => a.localeCompare(b));
+
     // Get DB migrations from ledger
     const dbMigrations = await listAppliedMigrations(pool, limit);
     const lastApplied = await getLastAppliedMigration(pool);
     const appliedCount = await getAppliedMigrationCount(pool);
+
+    const dbAppliedMigrations = dbMigrations
+      .map(m => m.filename)
+      .slice()
+      .sort((a, b) => a.localeCompare(b));
+
+    // Required tables check (stage migration sanity)
+    const requiredTables = [
+      'intent_issue_drafts',
+      'intent_issue_sets',
+    ];
+    const missingTables = await getMissingTables(pool, requiredTables);
 
     // Compute parity
     const parity = computeParity(repoMigrations, dbMigrations);
@@ -189,14 +208,23 @@ export async function GET(request: NextRequest) {
       hashMismatches: [...parity.hashMismatches].sort((a, b) => a.filename.localeCompare(b.filename)),
     };
 
-    // Get lawbook version
-    const lawbookVersion = await getActiveLawbookVersion(pool);
+    // Get lawbook version + hash (if available)
+    const activeLawbook = await getActiveLawbook('AFU9-LAWBOOK', pool);
+    const lawbookVersion = activeLawbook.success && activeLawbook.data
+      ? activeLawbook.data.lawbook_version
+      : await getActiveLawbookVersion(pool);
+    const lawbookHash = activeLawbook.success && activeLawbook.data
+      ? activeLawbook.data.lawbook_hash
+      : null;
 
-    // Build response
+    // Build response (stable key order)
     const response = {
       version: '0.7.0',
       generatedAt: new Date().toISOString(),
+      requestId,
+      deploymentEnv,
       lawbookVersion,
+      lawbookHash,
       db: {
         reachable: dbInfo.reachable,
         host: dbInfo.host,
@@ -219,6 +247,14 @@ export async function GET(request: NextRequest) {
         extraInDb: deterministicParity.extraInDb.slice(0, limit), // Bounded
         hashMismatches: deterministicParity.hashMismatches.slice(0, limit), // Bounded
       },
+      requiredTablesCheck: {
+        requiredTables: requiredTables.slice().sort((a, b) => a.localeCompare(b)),
+        missingTables,
+      },
+      repoMigrationFiles,
+      dbAppliedMigrations,
+      missingInDb: deterministicParity.missingInDb.slice(0, limit),
+      extraInDb: deterministicParity.extraInDb.slice(0, limit),
     };
 
     return jsonResponse(response, { requestId });
