@@ -15,6 +15,10 @@ on:
         description: 'Result limit (max 500)'
         required: false
         default: '200'
+      smokeKey:
+        description: 'Optional: provide x-afu9-smoke-key directly (skips AWS/OIDC)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -29,19 +33,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate AWS auth configuration
+      - name: Resolve auth mode (AWS vs input)
+        id: auth-mode
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.AWS_ROLE_TO_ASSUME }}" ] && [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "Missing AWS configuration for OIDC auth."
-            echo "Set ONE of:"
-            echo "  - Repository secret AWS_ROLE_TO_ASSUME (recommended; full role ARN)"
-            echo "  - Repository secret AWS_ACCOUNT_ID (used to build arn:aws:iam::<id>:role/GitHubActionsRole)"
-            exit 1
+          if [ -n "${{ github.event.inputs.smokeKey }}" ]; then
+            echo "use_aws=false" >> $GITHUB_OUTPUT
+            echo "smoke_key_source=input" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
+          if [ -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" ] || [ -n "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "use_aws=true" >> $GITHUB_OUTPUT
+            echo "smoke_key_source=aws" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Missing auth configuration for migration parity check."
+          echo "Provide ONE of:"
+          echo "  - workflow input: smokeKey (recommended for manual runs)"
+          echo "  - repo secret: AWS_ROLE_TO_ASSUME (OIDC; full role ARN)"
+          echo "  - repo secret: AWS_ACCOUNT_ID (builds arn:aws:iam::<id>:role/GitHubActionsRole)"
+          exit 1
+
       - name: Configure AWS credentials
+        if: steps.auth-mode.outputs.use_aws == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME || format('arn:aws:iam::{0}:role/GitHubActionsRole', secrets.AWS_ACCOUNT_ID) }}
@@ -50,6 +67,7 @@ jobs:
 
       - name: Retrieve smoke key from AWS Secrets Manager
         id: get-smoke-key
+        if: steps.auth-mode.outputs.use_aws == 'true'
         run: |
           SMOKE_KEY=$(aws secretsmanager get-secret-value \
             --region eu-central-1 \
@@ -60,11 +78,25 @@ jobs:
           echo "::add-mask::$SMOKE_KEY"
           echo "smoke_key=$SMOKE_KEY" >> $GITHUB_OUTPUT
 
+      - name: Use smoke key from workflow input
+        id: smoke-key-input
+        if: steps.auth-mode.outputs.use_aws != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SMOKE_KEY="${{ github.event.inputs.smokeKey }}"
+          if [ -z "$SMOKE_KEY" ]; then
+            echo "smokeKey input is empty, but AWS auth mode is disabled."
+            exit 1
+          fi
+          echo "::add-mask::$SMOKE_KEY"
+          echo "smoke_key=$SMOKE_KEY" >> $GITHUB_OUTPUT
+
       - name: Call Migration Parity Endpoint
         id: parity-check
         env:
           BASE_URL: ${{ github.event.inputs.baseUrl }}
-          SMOKE_KEY: ${{ steps.get-smoke-key.outputs.smoke_key }}
+          SMOKE_KEY: ${{ steps.get-smoke-key.outputs.smoke_key || steps.smoke-key-input.outputs.smoke_key }}
           ENV_PARAM: ${{ github.event.inputs.env }}
           LIMIT: ${{ github.event.inputs.limit }}
         run: |
