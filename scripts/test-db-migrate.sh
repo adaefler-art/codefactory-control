@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test suite for db-migrate.sh with schema_migrations ledger tracking
+# Test suite for db-migrate.sh with afu9_migrations_ledger tracking
 # E80.1: Verify deterministic migration application and hash verification
 
 set -euo pipefail
@@ -112,16 +112,16 @@ test_fresh_migration() {
   bash scripts/db-migrate.sh >/dev/null 2>&1
   
   # Check ledger exists
-  local ledger_exists=$(run_psql "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'schema_migrations'" | tr -d ' ')
+  local ledger_exists=$(run_psql "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'afu9_migrations_ledger'" | tr -d ' ')
   if [[ "$ledger_exists" == "1" ]]; then
-    print_result "PASS" "schema_migrations table created"
+    print_result "PASS" "afu9_migrations_ledger table created"
   else
-    print_result "FAIL" "schema_migrations table not found"
+    print_result "FAIL" "afu9_migrations_ledger table not found"
     return 1
   fi
   
   # Check all migrations recorded
-  local ledger_count=$(run_psql "SELECT COUNT(*) FROM schema_migrations" | tr -d ' ')
+  local ledger_count=$(run_psql "SELECT COUNT(*) FROM afu9_migrations_ledger" | tr -d ' ')
   local migration_count=$(ls database/migrations/*.sql | wc -l | tr -d ' ')
   
   if [[ "$ledger_count" == "$migration_count" ]]; then
@@ -132,7 +132,7 @@ test_fresh_migration() {
   fi
   
   # Check hashes are recorded
-  local hash_count=$(run_psql "SELECT COUNT(*) FROM schema_migrations WHERE sha256 != ''" | tr -d ' ')
+  local hash_count=$(run_psql "SELECT COUNT(*) FROM afu9_migrations_ledger WHERE sha256 != ''" | tr -d ' ')
   if [[ "$hash_count" == "$migration_count" ]]; then
     print_result "PASS" "All migrations have SHA-256 hashes"
   else
@@ -141,7 +141,7 @@ test_fresh_migration() {
   fi
   
   # Check ordering is deterministic (filenames in order)
-  local first_migration=$(run_psql "SELECT filename FROM schema_migrations ORDER BY applied_at ASC LIMIT 1" | tr -d ' ')
+  local first_migration=$(run_psql "SELECT filename FROM afu9_migrations_ledger ORDER BY applied_at ASC LIMIT 1" | tr -d ' ')
   if [[ "$first_migration" == "001_initial_schema.sql" ]]; then
     print_result "PASS" "Migrations applied in lexicographic order"
   else
@@ -158,16 +158,16 @@ test_idempotent_rerun() {
   echo "═══════════════════════════════════════════════════════"
   
   # Get initial ledger state
-  local initial_count=$(run_psql "SELECT COUNT(*) FROM schema_migrations" | tr -d ' ')
-  local initial_hashes=$(run_psql "SELECT filename, sha256 FROM schema_migrations ORDER BY filename" | tr -d '\n')
+  local initial_count=$(run_psql "SELECT COUNT(*) FROM afu9_migrations_ledger" | tr -d ' ')
+  local initial_hashes=$(run_psql "SELECT filename, sha256 FROM afu9_migrations_ledger ORDER BY filename" | tr -d '\n')
   
   # Run migrations again
   cd "$REPO_ROOT"
   bash scripts/db-migrate.sh >/dev/null 2>&1
   
   # Check ledger unchanged
-  local final_count=$(run_psql "SELECT COUNT(*) FROM schema_migrations" | tr -d ' ')
-  local final_hashes=$(run_psql "SELECT filename, sha256 FROM schema_migrations ORDER BY filename" | tr -d '\n')
+  local final_count=$(run_psql "SELECT COUNT(*) FROM afu9_migrations_ledger" | tr -d ' ')
+  local final_hashes=$(run_psql "SELECT filename, sha256 FROM afu9_migrations_ledger ORDER BY filename" | tr -d '\n')
   
   if [[ "$initial_count" == "$final_count" ]]; then
     print_result "PASS" "Ledger count unchanged ($initial_count entries)"
@@ -207,14 +207,14 @@ test_hash_mismatch() {
     export DATABASE_USER='$DATABASE_USER'
     export PGSSLMODE=disable
     
-    # Manually create ledger and apply migrations
-    psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -c 'CREATE TABLE IF NOT EXISTS schema_migrations (filename TEXT PRIMARY KEY, sha256 TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())' >/dev/null
+    # Manually create canonical ledger and apply migrations
+    psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -c 'CREATE TABLE IF NOT EXISTS afu9_migrations_ledger (filename TEXT PRIMARY KEY, sha256 TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())' >/dev/null
     
     for f in \$(ls $test_dir/*.sql | sort); do
       filename=\$(basename \"\$f\")
       hash=\$(sha256sum \"\$f\" | awk '{print \$1}')
       psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -f \"\$f\" >/dev/null
-      psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -c \"INSERT INTO schema_migrations (filename, sha256) VALUES ('\$filename', '\$hash')\" >/dev/null
+      psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -c \"INSERT INTO afu9_migrations_ledger (filename, sha256) VALUES ('\$filename', '\$hash')\" >/dev/null
     done
   " >/dev/null 2>&1
   
@@ -233,10 +233,10 @@ test_hash_mismatch() {
     for f in \$(ls $test_dir/*.sql | sort); do
       filename=\$(basename \"\$f\")
       current_hash=\$(sha256sum \"\$f\" | awk '{print \$1}')
-      stored_hash=\$(psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -t -c \"SELECT sha256 FROM schema_migrations WHERE filename = '\$filename'\" | tr -d ' ')
+      stored_hash=\$(psql -h \"\$DATABASE_HOST\" -p \"\$DATABASE_PORT\" -U \"\$DATABASE_USER\" -d \"\$DATABASE_NAME\" -t -c \"SELECT sha256 FROM afu9_migrations_ledger WHERE filename = '\$filename'\" | tr -d ' ')
       
       if [[ \"\$stored_hash\" != \"\" && \"\$stored_hash\" != \"\$current_hash\" ]]; then
-        echo \"MIGRATION_HASH_MISMATCH\"
+        echo \"HASH_MISMATCH\"
         exit 1
       fi
     done
@@ -244,7 +244,7 @@ test_hash_mismatch() {
   
   local exit_code=$?
   
-  if [[ $exit_code -ne 0 && "$output" == *"MIGRATION_HASH_MISMATCH"* ]]; then
+  if [[ $exit_code -ne 0 && "$output" == *"HASH_MISMATCH"* ]]; then
     print_result "PASS" "Hash mismatch detected and migration failed"
   else
     print_result "FAIL" "Hash mismatch not detected (exit=$exit_code)"
@@ -279,7 +279,7 @@ test_hash_computation() {
     fi
     
     # Get stored hash
-    local stored_hash=$(run_psql "SELECT sha256 FROM schema_migrations WHERE filename = '$filename'" | tr -d ' ')
+    local stored_hash=$(run_psql "SELECT sha256 FROM afu9_migrations_ledger WHERE filename = '$filename'" | tr -d ' ')
     
     if [[ "$actual_hash" == "$stored_hash" ]]; then
       checked=$((checked + 1))
