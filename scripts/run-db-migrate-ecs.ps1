@@ -126,16 +126,44 @@ if ($MigrationFile) {
   # Deterministic, safe: run only the requested migration file.
   # Note: The deployed container image may not yet include a db-migrate.sh that supports single-file mode.
   # So we execute the SQL directly via psql (using task definition secrets for DB credentials).
-  $cmd = @"
+  $cmdTemplate = @'
 cd /app/control-center
 
-echo "Applying single migration: $MigrationFile"
-ls -1 database/migrations/$MigrationFile >/dev/null
+MIGRATION_FILE="__MIGRATION_FILE__"
 
-psql -v ON_ERROR_STOP=1 -f database/migrations/$MigrationFile
+echo "Applying single migration: $MIGRATION_FILE"
+ls -1 "database/migrations/$MIGRATION_FILE" >/dev/null
 
-echo "Migration applied successfully: $MigrationFile"
-"@
+# Map task definition secrets (DATABASE_*) to libpq variables (PG*) so psql connects to the same DB as the app.
+export PGHOST="${DATABASE_HOST:-}"
+export PGPORT="${DATABASE_PORT:-}"
+export PGDATABASE="${DATABASE_NAME:-}"
+export PGUSER="${DATABASE_USER:-}"
+export PGPASSWORD="${DATABASE_PASSWORD:-}"
+export PGSSLMODE="${PGSSLMODE:-require}"
+
+if [ -z "$PGHOST" ] || [ -z "$PGDATABASE" ] || [ -z "$PGUSER" ]; then
+  echo "ERROR: Missing required DATABASE_* secrets (DATABASE_HOST/DATABASE_NAME/DATABASE_USER)."
+  exit 2
+fi
+
+echo "DB target: host=$PGHOST port=${PGPORT:-?} db=$PGDATABASE user=$PGUSER sslmode=${PGSSLMODE:-?}"
+
+# Idempotency: if the table already exists, skip applying the migration.
+existing=$(psql -v ON_ERROR_STOP=1 -Atc "select to_regclass('public.intent_issue_drafts');" 2>/dev/null || echo '')
+if [ -n "$existing" ]; then
+  echo "Table already exists: $existing (skipping $MIGRATION_FILE)"
+  exit 0
+fi
+
+psql -v ON_ERROR_STOP=1 -f "database/migrations/$MIGRATION_FILE"
+
+echo "Migration applied successfully: $MIGRATION_FILE"
+'@
+
+  $cmd = $cmdTemplate.Replace('__MIGRATION_FILE__', $MigrationFile)
+  # The container runs Linux /bin/sh; ensure we don't send CRLF line endings.
+  $cmd = $cmd.Replace("`r`n", "`n").Replace("`r", "")
 }
 
 $overridesObj = @{
