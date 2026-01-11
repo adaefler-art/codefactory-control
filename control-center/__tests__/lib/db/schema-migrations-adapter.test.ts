@@ -64,7 +64,7 @@ describe('schema_migrations adapter', () => {
       // schema_migrations read
       (sql, params) => {
         expect(params).toEqual([100]);
-        expect(sql).toContain('SELECT filename::text as filename');
+         expect(sql).toContain('SELECT COALESCE(filename::text, \'\') as filename');
         expect(sql).toContain('ORDER BY filename ASC');
         return {
           rows: [{ filename: '001_init.sql', sha256: 'h1', applied_at: '2026-01-01T00:00:00.000Z' }],
@@ -82,7 +82,7 @@ describe('schema_migrations adapter', () => {
     const pool = createMockPool([
       () => ({ rows: [{ column_name: 'migration_id' }, { column_name: 'applied_at' }] }),
       (sql) => {
-        expect(sql).toContain('SELECT migration_id::text as filename');
+         expect(sql).toContain('SELECT COALESCE(migration_id::text, \'\') as filename');
         expect(sql).toContain('ORDER BY migration_id ASC');
         return {
           rows: [{ filename: '54', sha256: '', applied_at: '2026-01-02T00:00:00.000Z' }],
@@ -98,7 +98,7 @@ describe('schema_migrations adapter', () => {
     const pool = createMockPool([
       () => ({ rows: [{ column_name: 'version' }] }),
       (sql) => {
-        expect(sql).toContain('SELECT version::text as filename');
+          expect(sql).toContain('SELECT COALESCE(version::text, \'\') as filename');
         expect(sql).toContain('ORDER BY version ASC');
         return { rows: [{ filename: '202601090001', sha256: '', applied_at: null }] };
       },
@@ -113,7 +113,7 @@ describe('schema_migrations adapter', () => {
     const pool = createMockPool([
       () => ({ rows: [{ column_name: 'migration_name' }, { column_name: 'sha256' }] }),
       (sql) => {
-        expect(sql).toContain('SELECT migration_name::text as filename');
+          expect(sql).toContain('SELECT COALESCE(migration_name::text, \'\') as filename');
         expect(sql).toContain('ORDER BY migration_name ASC');
         return { rows: [{ filename: '054_create_table', sha256: 'h', applied_at: null }] };
       },
