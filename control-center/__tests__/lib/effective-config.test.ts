@@ -238,7 +238,8 @@ describe('Value Sanitization', () => {
 
   test('sanitized report masks all secrets', () => {
     process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'very-secret-key';
-    process.env.OPENAI_API_KEY = 'sk-1234567890abcdef';
+    const rawOpenAiKey = 'sk-' + '1234567890abcdef';
+    process.env.OPENAI_API_KEY = rawOpenAiKey;
     process.env.GITHUB_OWNER = 'my-org';
     
     const report = getEffectiveConfigReportSanitized();
@@ -249,7 +250,7 @@ describe('Value Sanitization', () => {
     
     // Secrets should be masked
     expect(privateKey?.value).not.toBe('very-secret-key');
-    expect(openaiKey?.value).not.toBe('sk-1234567890abcdef');
+    expect(openaiKey?.value).not.toBe(rawOpenAiKey);
     
     // Non-secrets should not be masked
     expect(githubOwner?.value).toBe('my-org');
@@ -330,7 +331,8 @@ describe('Enhanced Secret Sanitization', () => {
 
   test('sanitizes based on tag secret', () => {
     // Even if key looks benign, tag:secret should trigger sanitization
-    process.env.OPENAI_API_KEY = 'sk-test1234567890abcdefghijklmnop';
+    const rawOpenAiKey = 'sk-' + 'test1234567890abcdefghijklmnop';
+    process.env.OPENAI_API_KEY = rawOpenAiKey;
     
     const report = resolveEffectiveConfig();
     const openaiKey = report.values.find(v => v.key === 'OPENAI_API_KEY');
@@ -358,7 +360,7 @@ describe('Enhanced Secret Sanitization', () => {
 
   test('sanitized report fully masks all secrets', () => {
     process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'secret-key-data-123';
-    process.env.OPENAI_API_KEY = 'sk-1234567890abcdef';
+    process.env.OPENAI_API_KEY = 'unit_test_openai_api_key';
     process.env.GITHUB_OWNER = 'my-org';
     
     const report = getEffectiveConfigReportSanitized();

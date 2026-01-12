@@ -1,62 +1,61 @@
 #!/usr/bin/env pwsh
-<
+<#
 .SYNOPSIS
   Runs the repo migration runner (scripts/db-migrate.sh) inside an ECS one-off task.
 
 .DESCRIPTION
   This script is intended for staging/prod operations where the database is only reachable
-  from inside the VPC. It:
-
-  - Reads the ECS service's current task definition + VPC network config
-  - Starts a one-off Fargate task using the same task definition
-  - Overrides the container command to run ./scripts/db-migrate.sh
-  - Waits for completion and prints the exit code
-  - Best-effort tails the CloudWatch Logs stream for that task
+  from inside the VPC (no VPN). It:
+  - Resolves ECS cluster/service/taskDefinition + awsvpc networking
+  - Starts a one-off Fargate task
+  - Overrides the container command to run: bash ./scripts/db-migrate.sh
+  - Tails CloudWatch Logs until STOPPED
+  - Prints minimal verification output (taskArn/logGroup/logStream/exitCode)
 
   It does NOT print any secrets. DB credentials come from the task definition's Secrets Manager mappings.
 
-.PARAMETER Cluster
-  ECS cluster name (default: afu9-cluster)
+.PARAMETER Env
+  Target environment: staging|prod.
 
-.PARAMETER ServiceName
-  ECS service name to clone network config from (default: afu9-control-center-staging)
-
-.PARAMETER Container
-  Container name inside the task definition that contains scripts/db-migrate.sh (default: control-center)
-
-.PARAMETER Region
-  AWS region (default: eu-central-1)
-
-.PARAMETER Profile
-  AWS CLI profile (default: codefactory)
+.PARAMETER Force
+  Required to run in prod.
 
 .PARAMETER MigrationFile
-  Optional: run only a single migration file (e.g., 055_cost_control.sql). If omitted, runs all.
+  Optional: run only a single migration file (e.g., 054_intent_issue_authoring_events.sql).
+  If omitted, runs all migrations.
 
 .EXAMPLE
-  .\scripts\run-db-migrate-ecs.ps1
+  .\scripts\run-db-migrate-ecs.ps1 -Env staging
 
 .EXAMPLE
-  .\scripts\run-db-migrate-ecs.ps1 -ServiceName afu9-control-center-staging -MigrationFile 055_cost_control.sql
+  .\scripts\run-db-migrate-ecs.ps1 -Env staging -MigrationFile 054_intent_issue_authoring_events.sql
 
 .NOTES
   Requires:
   - aws CLI authenticated
   - ECS task definition uses awsvpc network mode
   - CloudWatch Logs enabled for the target container (for log tail)
->
+#>
 
 [CmdletBinding()]
 param(
-  [string]$Cluster = "afu9-cluster",
-  [string]$ServiceName = "afu9-control-center-staging",
-  [string]$Container = "control-center",
-  [string]$Region = "eu-central-1",
-  [string]$Profile = "codefactory",
+  [ValidateSet('staging', 'prod')]
+  [string]$Env = 'staging',
+
+  [switch]$Force,
+
   [string]$MigrationFile
 )
 
 $ErrorActionPreference = "Stop"
+
+# Ensure Unicode output (CloudWatch logs may contain emoji from shell scripts).
+try {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {
+  # best-effort
+}
 
 function Require-Command {
   param([string]$Name)
@@ -67,163 +66,224 @@ function Require-Command {
 
 Require-Command aws
 
+if ($Env -eq 'prod' -and -not $Force) {
+  throw "Refusing to run prod migrations without -Force."
+}
+
+$Region = if ([string]::IsNullOrWhiteSpace($env:AWS_REGION)) { 'eu-central-1' } else { $env:AWS_REGION }
+$Cluster = 'afu9-cluster'
+$Container = 'control-center'
+
+$ServiceName = switch ($Env) {
+  'staging' { 'afu9-control-center-staging' }
+  'prod' { 'afu9-control-center' }
+}
+
+# Staging: prefer pinned task definition ARN to match the known-good runner.
+$TaskDefinitionOverride = switch ($Env) {
+  'staging' { 'arn:aws:ecs:eu-central-1:313095875771:task-definition/afu9-control-center:493' }
+  default { $null }
+}
+
+# Staging fallback network config (used only if service config is missing).
+$StagingFallbackSubnets = @('subnet-05db7bb0c4747cb95', 'subnet-0a462328a3577ebcb')
+$StagingFallbackSecurityGroups = @('sg-07fab1a096304ccc0')
+$StagingFallbackAssignPublicIp = 'DISABLED'
+
 Write-Host "Starting DB migration task..." -ForegroundColor Cyan
+Write-Host "- Env:         $Env" -ForegroundColor Gray
 Write-Host "- Cluster:     $Cluster" -ForegroundColor Gray
 Write-Host "- Service:     $ServiceName" -ForegroundColor Gray
-Write-Host "- Container:   $Container" -ForegroundColor Gray
 Write-Host "- Region:      $Region" -ForegroundColor Gray
-Write-Host "- Profile:     $Profile" -ForegroundColor Gray
-if ($MigrationFile) {
-  Write-Host "- Migration:   $MigrationFile" -ForegroundColor Gray
-} else {
-  Write-Host "- Migration:   (all)" -ForegroundColor Gray
-}
+Write-Host "- Container:   $Container" -ForegroundColor Gray
+$migrationLabel = if ($MigrationFile) { $MigrationFile } else { '(all)' }
+Write-Host "- Migration:   $migrationLabel" -ForegroundColor Gray
 Write-Host ""
 
-# Get service details (task definition + network config)
+# Resolve service details (task definition + network config)
 $serviceJson = aws ecs describe-services `
   --cluster $Cluster `
   --services $ServiceName `
   --region $Region `
-  --profile $Profile `
   --output json
 
 $service = ($serviceJson | ConvertFrom-Json).services | Select-Object -First 1
-if (-not $service -or $service.status -ne "ACTIVE") {
+if (-not $service -or $service.status -ne 'ACTIVE') {
   throw "ECS service not found or not ACTIVE: $ServiceName"
 }
 
-$taskDefArn = $service.taskDefinition
+$taskDefArn = if ($TaskDefinitionOverride) { $TaskDefinitionOverride } else { $service.taskDefinition }
 if (-not $taskDefArn) {
-  throw "Could not resolve service taskDefinition"
+  throw 'Could not resolve task definition ARN'
 }
 
 $awsvpc = $service.networkConfiguration.awsvpcConfiguration
+if (-not $awsvpc -and $Env -eq 'staging') {
+  $awsvpc = [pscustomobject]@{
+    subnets        = $StagingFallbackSubnets
+    securityGroups = $StagingFallbackSecurityGroups
+    assignPublicIp = $StagingFallbackAssignPublicIp
+  }
+}
 if (-not $awsvpc) {
-  throw "Service networkConfiguration.awsvpcConfiguration missing; cannot run one-off task safely"
+  throw 'Service networkConfiguration.awsvpcConfiguration missing; cannot run one-off task safely'
 }
 
 $subnets = @($awsvpc.subnets)
 $securityGroups = @($awsvpc.securityGroups)
-$assignPublicIp = $awsvpc.assignPublicIp
+$assignPublicIp = if ([string]::IsNullOrWhiteSpace($awsvpc.assignPublicIp)) { 'DISABLED' } else { $awsvpc.assignPublicIp }
 
 if ($subnets.Count -lt 1 -or $securityGroups.Count -lt 1) {
-  throw "Service awsvpc config missing subnets/securityGroups"
+  throw 'Service awsvpc config missing subnets/securityGroups'
 }
 
-$netCfg = "awsvpcConfiguration={subnets=[{0}],securityGroups=[{1}],assignPublicIp={2}}" -f (
-  ($subnets -join ','),
-  ($securityGroups -join ','),
-  ($assignPublicIp ?? 'DISABLED')
-)
+$netCfg = "awsvpcConfiguration={subnets=[$($subnets -join ',')],securityGroups=[$($securityGroups -join ',')],assignPublicIp=$assignPublicIp}"
 
-# Build container command
-$cmd = "./scripts/db-migrate.sh"
-if ($MigrationFile) {
-  # db-migrate.sh accepts a single file only when called from control-center npm, but the shell runner
-  # always runs all migrations. To keep behavior deterministic and simple, we filter at the shell level.
-  $cmd = "set -euo pipefail; cd /app/control-center; ls -1 database/migrations/{0} >/dev/null; ./scripts/db-migrate.sh" -f $MigrationFile
+# Resolve CloudWatch Logs config from task definition
+$tdJson = aws ecs describe-task-definition `
+  --task-definition $taskDefArn `
+  --region $Region `
+  --output json
+
+$td = ($tdJson | ConvertFrom-Json).taskDefinition
+$cd = $td.containerDefinitions | Where-Object { $_.name -eq $Container } | Select-Object -First 1
+if (-not $cd) {
+  throw "Container '$Container' not found in task definition."
 }
 
-$overridesObj = @{
-  containerOverrides = @(
-    @{
-      name    = $Container
-      command = @("sh", "-lc", $cmd)
-    }
-  )
-}
-
-$tmpOverrides = Join-Path $env:TEMP ("ecs-migrate-overrides-{0}.json" -f ([Guid]::NewGuid().ToString('N')))
-($overridesObj | ConvertTo-Json -Depth 10) | Out-File -Encoding UTF8 $tmpOverrides
-
+$logGroup = $null
+$streamPrefix = $null
 try {
-  Write-Host "Running one-off task from task definition:" -ForegroundColor Cyan
-  Write-Host "- $taskDefArn" -ForegroundColor Gray
-  Write-Host ""
+  $opts = $cd.logConfiguration.options
+  $logGroup = $opts.'awslogs-group'
+  $streamPrefix = $opts.'awslogs-stream-prefix'
+} catch {
+  # ignore
+}
 
-  $taskArn = aws ecs run-task `
-    --cluster $Cluster `
-    --task-definition $taskDefArn `
-    --launch-type FARGATE `
-    --network-configuration $netCfg `
-    --overrides "file://$tmpOverrides" `
-    --region $Region `
-    --profile $Profile `
-    --query 'tasks[0].taskArn' `
-    --output text
+# Build overrides: keep the same migration command as deploy workflow.
+$containerOverrides = [ordered]@{
+  name = $Container
+  command = @('bash', '-lc', 'bash ./scripts/db-migrate.sh')
+  environment = @()
+}
+if ($MigrationFile) {
+  $containerOverrides.environment += [ordered]@{ name = 'AFU9_MIGRATION_FILE'; value = $MigrationFile }
+}
 
-  if (-not $taskArn -or $taskArn -eq "None") {
-    throw "Failed to start migration task"
-  }
+$overridesObj = [ordered]@{ containerOverrides = @($containerOverrides) }
+$overridesJson = ($overridesObj | ConvertTo-Json -Depth 10 -Compress)
 
-  $taskId = $taskArn.Split('/')[-1]
-  Write-Host "Task started: $taskArn" -ForegroundColor Green
-  Write-Host "Waiting for task to stop..." -ForegroundColor Yellow
+Write-Host 'Running one-off task from task definition:' -ForegroundColor Cyan
+Write-Host "- $taskDefArn" -ForegroundColor Gray
+Write-Host ""
 
-  aws ecs wait tasks-stopped `
-    --cluster $Cluster `
-    --tasks $taskArn `
-    --region $Region `
-    --profile $Profile
+$taskArn = aws ecs run-task `
+  --cluster $Cluster `
+  --task-definition $taskDefArn `
+  --launch-type FARGATE `
+  --network-configuration $netCfg `
+  --overrides $overridesJson `
+  --region $Region `
+  --query 'tasks[0].taskArn' `
+  --output text
+
+if (-not $taskArn -or $taskArn -eq 'None') {
+  throw 'Failed to start migration task'
+}
+
+$taskId = $taskArn.Split('/')[-1]
+$logStream = if ($logGroup -and $streamPrefix) { "$streamPrefix/$Container/$taskId" } else { $null }
+
+Write-Host 'Task started:' -ForegroundColor Green
+Write-Host "- taskArn:    $taskArn" -ForegroundColor Gray
+Write-Host "- logGroup:   $($logGroup ?? '(unknown)')" -ForegroundColor Gray
+Write-Host "- logStream:  $($logStream ?? '(unknown)')" -ForegroundColor Gray
+Write-Host ""
+
+function Get-TaskState {
+  param([string]$TaskArn)
 
   $taskDescJson = aws ecs describe-tasks `
     --cluster $Cluster `
-    --tasks $taskArn `
+    --tasks $TaskArn `
     --region $Region `
-    --profile $Profile `
     --output json
 
-  $task = ($taskDescJson | ConvertFrom-Json).tasks | Select-Object -First 1
-  $container = $task.containers | Where-Object { $_.name -eq $Container } | Select-Object -First 1
-  $exitCode = $container.exitCode
-
-  Write-Host "" 
-  Write-Host "Task finished." -ForegroundColor Cyan
-  Write-Host "- ExitCode: $exitCode" -ForegroundColor Gray
-
-  # Best-effort: tail logs
-  try {
-    $tdJson = aws ecs describe-task-definition `
-      --task-definition $taskDefArn `
-      --region $Region `
-      --profile $Profile `
-      --output json
-
-    $td = ($tdJson | ConvertFrom-Json).taskDefinition
-    $cd = $td.containerDefinitions | Where-Object { $_.name -eq $Container } | Select-Object -First 1
-    $opts = $cd.logConfiguration.options
-
-    $logGroup = $opts.'awslogs-group'
-    $streamPrefix = $opts.'awslogs-stream-prefix'
-
-    if ($logGroup -and $streamPrefix) {
-      $streamName = "$streamPrefix/$Container/$taskId"
-      Write-Host "" 
-      Write-Host "CloudWatch Logs (tail):" -ForegroundColor Cyan
-      Write-Host "- Group:  $logGroup" -ForegroundColor Gray
-      Write-Host "- Stream: $streamName" -ForegroundColor Gray
-      Write-Host "" 
-
-      aws logs tail $logGroup `
-        --log-stream-names $streamName `
-        --region $Region `
-        --profile $Profile `
-        --format short `
-        --since 15m
-    } else {
-      Write-Host "(Log config not found on task definition; skipping log tail)" -ForegroundColor Yellow
-    }
-  } catch {
-    Write-Host "(Could not tail logs: $($_.Exception.Message))" -ForegroundColor Yellow
-  }
-
-  if ($exitCode -ne 0) {
-    throw "Migration task failed (exit code $exitCode). See logs above."
-  }
-
-  Write-Host "✅ DB migrations completed successfully." -ForegroundColor Green
-
-} finally {
-  Remove-Item $tmpOverrides -ErrorAction SilentlyContinue
+  return (($taskDescJson | ConvertFrom-Json).tasks | Select-Object -First 1)
 }
+
+Write-Host 'Tailing logs until task STOPPED...' -ForegroundColor Yellow
+
+$nextToken = $null
+$printedAnyLogs = $false
+$finalExitCode = $null
+$finalStoppedReason = $null
+
+while ($true) {
+  if ($logGroup -and $logStream) {
+    try {
+      $args = @(
+        'logs', 'get-log-events',
+        '--log-group-name', $logGroup,
+        '--log-stream-name', $logStream,
+        '--start-from-head',
+        '--region', $Region,
+        '--output', 'json'
+      )
+
+      if ($nextToken) {
+        $args += @('--next-token', $nextToken)
+      }
+
+      $logsJson = & aws @args 2>$null
+      if ($LASTEXITCODE -ne 0) {
+        continue
+      }
+      $logs = $logsJson | ConvertFrom-Json
+
+      foreach ($e in @($logs.events)) {
+        $printedAnyLogs = $true
+        Write-Host $e.message
+      }
+
+      if ($logs.nextForwardToken -and $logs.nextForwardToken -ne $nextToken) {
+        $nextToken = $logs.nextForwardToken
+      }
+    } catch {
+      # Stream might not exist yet; keep polling.
+    }
+  }
+
+  $task = Get-TaskState -TaskArn $taskArn
+  if (-not $task) {
+    throw "Could not describe task: $taskArn"
+  }
+
+  if ($task.lastStatus -eq 'STOPPED') {
+    $finalStoppedReason = $task.stoppedReason
+    $containerState = $task.containers | Where-Object { $_.name -eq $Container } | Select-Object -First 1
+    $finalExitCode = $containerState.exitCode
+    break
+  }
+
+  Start-Sleep -Seconds 3
+}
+
+if (-not $printedAnyLogs -and $logGroup -and $logStream) {
+  Write-Host '(No log events captured during tail; you can re-run tail manually if needed.)' -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host 'Task finished.' -ForegroundColor Cyan
+Write-Host "- taskArn:       $taskArn" -ForegroundColor Gray
+Write-Host "- logGroup:      $($logGroup ?? '(unknown)')" -ForegroundColor Gray
+Write-Host "- logStream:     $($logStream ?? '(unknown)')" -ForegroundColor Gray
+Write-Host "- stoppedReason: $($finalStoppedReason ?? '(none)')" -ForegroundColor Gray
+Write-Host "- exitCode:      $($finalExitCode ?? 'null')" -ForegroundColor Gray
+
+if ($finalExitCode -ne 0) {
+  throw "Migration task failed (exit code $finalExitCode)."
+}
+
+Write-Host '✅ DB migrations completed successfully.' -ForegroundColor Green

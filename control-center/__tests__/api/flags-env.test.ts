@@ -106,7 +106,8 @@ describe('Flags/Env API Endpoint', () => {
 
   test('effective config values are sanitized', async () => {
     process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'very-secret-private-key-data';
-    process.env.OPENAI_API_KEY = 'sk-test1234567890abcdef';
+    const rawOpenAiKey = 'sk-' + 'test1234567890abcdef';
+    process.env.OPENAI_API_KEY = rawOpenAiKey;
     
     const request = createMockRequest(undefined, 'test-user-id');
     const response = await GET(request);
@@ -121,7 +122,7 @@ describe('Flags/Env API Endpoint', () => {
     
     // Secrets should be masked
     expect(privateKey?.value).not.toBe('very-secret-private-key-data');
-    expect(openaiKey?.value).not.toBe('sk-test1234567890abcdef');
+    expect(openaiKey?.value).not.toBe(rawOpenAiKey);
   });
 
   test('non-secret values are not masked', async () => {

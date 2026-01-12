@@ -16,7 +16,7 @@ import type { UsedSources } from '../../src/lib/schemas/usedSources';
 
 // Enable INTENT agent for tests
 process.env.AFU9_INTENT_ENABLED = 'true';
-process.env.OPENAI_API_KEY = 'sk-test-key';
+process.env.OPENAI_API_KEY = 'unit_test_openai_api_key';
 
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({

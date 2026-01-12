@@ -372,7 +372,7 @@ const response = await fetch(API_ROUTES.system.flagsEnv);
 Input:
 ```typescript
 process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'very-secret-key-value-1234567890';
-process.env.OPENAI_API_KEY = 'sk-1234567890abcdef';
+process.env.OPENAI_API_KEY = '<REDACTED_OPENAI_API_KEY>';
 process.env.GITHUB_OWNER = 'my-org';
 ```
 
@@ -386,7 +386,7 @@ Output:
     },
     {
       "key": "OPENAI_API_KEY",
-      "value": "sk-1...cdef"  // ← Masked
+      "value": "********"  // ← Masked
     },
     {
       "key": "GITHUB_OWNER",

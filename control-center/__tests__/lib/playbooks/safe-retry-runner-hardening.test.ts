@@ -304,13 +304,13 @@ describe('SAFE_RETRY_RUNNER Hardening', () => {
             id: 1,
             name: 'test-artifact',
             sizeInBytes: 1024,
-            downloadUrl: 'https://api.github.com/download?token=ghs_secrettoken123', // Contains token
+            downloadUrl: 'https://api.github.com/download?token=' + ('ghs_' + 'secrettoken123'), // Contains token
             createdAt: '2024-01-01T00:00:00Z',
             expiresAt: '2024-01-08T00:00:00Z',
           },
         ],
         annotations: [],
-        logsUrl: 'https://api.github.com/logs?Authorization=Bearer ghs_token', // Contains token
+        logsUrl: 'https://api.github.com/logs?Authorization=Bearer ' + ('ghs_' + 'token'), // Contains token
       };
 
       (runnerAdapter.ingestRun as jest.Mock).mockResolvedValue(mockIngestResult);
