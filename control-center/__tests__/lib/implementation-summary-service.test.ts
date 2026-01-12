@@ -330,6 +330,7 @@ describe('ImplementationSummaryService', () => {
         head: { sha: 'abc123' },
       };
 
+      // First collection
       mockOctokit.rest.pulls.get.mockResolvedValue({ data: prData1 } as any);
       mockOctokit.rest.issues.listComments.mockResolvedValue({ data: [] } as any);
       mockOctokit.rest.checks.listForRef.mockResolvedValue({
@@ -337,22 +338,29 @@ describe('ImplementationSummaryService', () => {
       } as any);
 
       mockPool.query.mockResolvedValueOnce({ rows: [] } as any);
-      mockPool.query.mockResolvedValueOnce({
-        rows: [
-          {
-            id: 1,
-            summary_id: 'uuid-1',
-            owner: 'owner',
-            repo: 'repo',
-            pr_number: 123,
-            content_hash: 'hash1',
-            content: {},
-            sources: [],
-            version: 1,
-            collected_at: new Date(),
-          },
-        ],
-      } as any);
+      
+      // Store first version - capture what will be stored
+      let storedHash1: string;
+      mockPool.query.mockImplementationOnce(async (query: string, params: any[]) => {
+        // This is the INSERT query
+        storedHash1 = params[4]; // content_hash is 5th param (index 4)
+        return {
+          rows: [
+            {
+              id: 1,
+              summary_id: 'uuid-1',
+              owner: params[1],
+              repo: params[2],
+              pr_number: params[3],
+              content_hash: params[4],
+              content: JSON.parse(params[5]),
+              sources: JSON.parse(params[6]),
+              version: params[7],
+              collected_at: new Date(),
+            },
+          ],
+        } as any;
+      });
 
       const result1 = await service.collectSummary({
         owner: 'owner',
@@ -360,15 +368,16 @@ describe('ImplementationSummaryService', () => {
         prNumber: 123,
       });
 
-      // Change PR body
+      // Change PR body and collect again
       jest.clearAllMocks();
-      const prData2 = { ...prData1, body: 'Updated PR body', updated_at: '2025-01-02T00:00:00Z' };
+      const prData2 = { ...prData1, body: 'Updated PR body - completely different', updated_at: '2025-01-02T00:00:00Z' };
       mockOctokit.rest.pulls.get.mockResolvedValue({ data: prData2 } as any);
       mockOctokit.rest.issues.listComments.mockResolvedValue({ data: [] } as any);
       mockOctokit.rest.checks.listForRef.mockResolvedValue({
         data: { check_runs: [] },
       } as any);
 
+      // Return the previously stored version on getLatestSummary
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
@@ -377,7 +386,7 @@ describe('ImplementationSummaryService', () => {
             owner: 'owner',
             repo: 'repo',
             pr_number: 123,
-            content_hash: result1.contentHash,
+            content_hash: storedHash1!,
             content: result1.content,
             sources: result1.sources,
             version: 1,
@@ -385,22 +394,26 @@ describe('ImplementationSummaryService', () => {
           },
         ],
       } as any);
-      mockPool.query.mockResolvedValueOnce({
-        rows: [
-          {
-            id: 2,
-            summary_id: 'uuid-2',
-            owner: 'owner',
-            repo: 'repo',
-            pr_number: 123,
-            content_hash: 'hash2',
-            content: {},
-            sources: [],
-            version: 2,
-            collected_at: new Date(),
-          },
-        ],
-      } as any);
+      
+      // Store new version
+      mockPool.query.mockImplementationOnce(async (query: string, params: any[]) => {
+        return {
+          rows: [
+            {
+              id: 2,
+              summary_id: 'uuid-2',
+              owner: params[1],
+              repo: params[2],
+              pr_number: params[3],
+              content_hash: params[4],
+              content: JSON.parse(params[5]),
+              sources: JSON.parse(params[6]),
+              version: params[7],
+              collected_at: new Date(),
+            },
+          ],
+        } as any;
+      });
 
       const result2 = await service.collectSummary({
         owner: 'owner',

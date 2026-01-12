@@ -7,14 +7,14 @@
  */
 
 import { NextRequest } from 'next/server';
-import { POST } from '@/app/api/github/prs/[prNumber]/collect-summary/route';
+import { POST } from '../../app/api/github/prs/[prNumber]/collect-summary/route';
 
 // Mock dependencies
-jest.mock('@/lib/implementation-summary-service', () => ({
+jest.mock('../../src/lib/implementation-summary-service', () => ({
   getImplementationSummaryService: jest.fn(),
 }));
 
-jest.mock('@/lib/logger', () => ({
+jest.mock('../../src/lib/logger', () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
@@ -26,7 +26,7 @@ describe('POST /api/github/prs/{prNumber}/collect-summary', () => {
   let mockService: any;
 
   beforeEach(() => {
-    const { getImplementationSummaryService } = require('@/lib/implementation-summary-service');
+    const { getImplementationSummaryService } = require('../../src/lib/implementation-summary-service');
     mockService = {
       collectSummary: jest.fn(),
     };
@@ -164,7 +164,7 @@ describe('POST /api/github/prs/{prNumber}/collect-summary', () => {
   });
 
   it('should return 404 for non-existent PR', async () => {
-    const { PrNotFoundError } = require('@/lib/types/implementation-summary');
+    const { PrNotFoundError } = require('../../src/lib/types/implementation-summary');
     mockService.collectSummary.mockRejectedValue(
       new PrNotFoundError('owner', 'repo', 999)
     );
@@ -191,7 +191,7 @@ describe('POST /api/github/prs/{prNumber}/collect-summary', () => {
   });
 
   it('should return 403 for registry authorization failure', async () => {
-    const { RegistryAuthorizationError } = require('@/lib/types/implementation-summary');
+    const { RegistryAuthorizationError } = require('../../src/lib/types/implementation-summary');
     mockService.collectSummary.mockRejectedValue(
       new RegistryAuthorizationError('owner/repo', 'collect_summary')
     );

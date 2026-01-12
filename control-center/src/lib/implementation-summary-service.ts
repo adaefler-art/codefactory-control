@@ -15,6 +15,7 @@ import { getPool } from './db';
 import { logger } from './logger';
 import { createAuthenticatedClient } from './github/auth-wrapper';
 import { getRepoActionsRegistryService } from './repo-actions-registry-service';
+import { ActionType } from './types/repo-actions-registry';
 import {
   CollectSummaryInput,
   CollectSummaryInputSchema,
@@ -145,7 +146,7 @@ export class ImplementationSummaryService {
     const registryService = getRepoActionsRegistryService();
     const validation = await registryService.validateAction(
       repository,
-      'collect_summary' as any, // Extended action type
+      'collect_summary' as ActionType, // Extended action type
       { resourceType: 'pull_request', resourceNumber: 0 } // Dummy context for registry check
     );
 
@@ -171,7 +172,7 @@ export class ImplementationSummaryService {
     const checkRuns: CheckRunSummary[] = [];
 
     // Fetch PR details
-    let pr: any;
+    let pr: Awaited<ReturnType<typeof octokit.rest.pulls.get>>['data'];
     try {
       const prResponse = await octokit.rest.pulls.get({
         owner,
@@ -195,8 +196,8 @@ export class ImplementationSummaryService {
           author: pr.user?.login,
         });
       }
-    } catch (error: any) {
-      if (error.status === 404) {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
         throw new PrNotFoundError(owner, repo, prNumber);
       }
       throw error;
@@ -314,10 +315,22 @@ export class ImplementationSummaryService {
 
   /**
    * Generate deterministic SHA-256 hash of content
+   * Uses stable JSON serialization with sorted keys
    */
   private generateContentHash(content: SummaryContent): string {
-    // Create normalized payload for hashing
-    const normalized = JSON.stringify(content, Object.keys(content).sort());
+    // Create normalized payload for hashing with sorted keys
+    const normalized = JSON.stringify(content, (key, value) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Sort object keys for deterministic output
+        return Object.keys(value)
+          .sort()
+          .reduce((sorted: Record<string, unknown>, k) => {
+            sorted[k] = value[k as keyof typeof value];
+            return sorted;
+          }, {});
+      }
+      return value;
+    });
     return createHash('sha256').update(normalized, 'utf-8').digest('hex');
   }
 
@@ -420,21 +433,21 @@ export class ImplementationSummaryService {
   /**
    * Map database row to record
    */
-  private mapRecord(row: any): ImplementationSummaryRecord {
+  private mapRecord(row: Record<string, unknown>): ImplementationSummaryRecord {
     return {
-      id: row.id,
-      summaryId: row.summary_id,
-      repository: row.repository,
-      owner: row.owner,
-      repo: row.repo,
-      prNumber: row.pr_number,
-      contentHash: row.content_hash,
-      content: row.content,
-      sources: row.sources,
-      version: row.version,
-      requestId: row.request_id,
-      collectedAt: row.collected_at,
-      collectedBy: row.collected_by,
+      id: row.id as number,
+      summaryId: row.summary_id as string,
+      repository: row.repository as string,
+      owner: row.owner as string,
+      repo: row.repo as string,
+      prNumber: row.pr_number as number,
+      contentHash: row.content_hash as string,
+      content: row.content as SummaryContent,
+      sources: row.sources as SourceReference[],
+      version: row.version as number,
+      requestId: row.request_id as string | undefined,
+      collectedAt: row.collected_at as Date,
+      collectedBy: row.collected_by as string | undefined,
     };
   }
 }
