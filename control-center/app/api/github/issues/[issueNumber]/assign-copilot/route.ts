@@ -246,7 +246,7 @@ export const POST = withApi(async (
 
   try {
     // Get active lawbook for lawbookHash
-    const lawbookResult = await getActiveLawbook(pool);
+    const lawbookResult = await getActiveLawbook('AFU9-LAWBOOK', pool);
     if (!lawbookResult.success || !lawbookResult.data) {
       return NextResponse.json(
         {

@@ -259,9 +259,22 @@ describe('POST /api/github/issues/[issueNumber]/assign-copilot', () => {
 
     it('should return 409 when production is blocked', async () => {
       const { isProdEnabled } = require('../../src/lib/utils/prod-control');
+      const { getActiveLawbook } = require('../../src/lib/db/lawbook');
+      
+      // Mock NODE_ENV as production
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      
       isProdEnabled.mockReturnValue(false);
+      
+      getActiveLawbook.mockResolvedValue({
+        success: true,
+        data: {
+          lawbook_hash: 'test-hash',
+        },
+      });
 
-      const request = new NextRequest('http://control.afu9.cloud/api/github/issues/123/assign-copilot', {
+      const request = new NextRequest('http://localhost/api/github/issues/123/assign-copilot', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'owner',
@@ -273,6 +286,9 @@ describe('POST /api/github/issues/[issueNumber]/assign-copilot', () => {
 
       const response = await POST(request, { params });
       const body = await response.json();
+
+      // Restore NODE_ENV
+      process.env.NODE_ENV = originalNodeEnv;
 
       expect(response.status).toBe(409);
       expect(body.error).toBe('Production environment blocked');
