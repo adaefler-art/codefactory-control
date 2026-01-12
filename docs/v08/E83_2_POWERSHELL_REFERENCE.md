@@ -161,12 +161,16 @@ npm run repo:verify
 
 ### Required Environment Variables
 
-```powershell
+Create or update `.env.local` file:
+
+```bash
 # .env.local
-$env:GITHUB_COPILOT_USERNAME = "copilot"
-$env:ENABLE_PROD = "false"
-$env:NODE_ENV = "development"
+GITHUB_COPILOT_USERNAME=copilot
+ENABLE_PROD=false
+NODE_ENV=development
 ```
+
+**Note:** Always use `.env` files or secure configuration management instead of setting environment variables directly in shell scripts to avoid potential exposure of sensitive configuration.
 
 ## Database Verification
 

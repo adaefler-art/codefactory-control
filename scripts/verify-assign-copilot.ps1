@@ -7,6 +7,9 @@
 # 2. Second call (idempotent) → status: NOOP, assignees unchanged
 # 3. Negative cases: prod blocked (409), repo not in registry (403/404), issue not found (404)
 #
+# Note: This script logs request/response details for debugging. In production,
+# ensure sensitive information (like auth tokens) is redacted from logs.
+#
 # Usage:
 #   pwsh scripts/verify-assign-copilot.ps1 -BaseUrl "http://localhost:3000" -IssueNumber 123
 #   pwsh scripts/verify-assign-copilot.ps1 -BaseUrl "https://control-center.stage.afu9.cloud" -IssueNumber 456

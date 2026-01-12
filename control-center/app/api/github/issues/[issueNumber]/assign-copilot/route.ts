@@ -36,7 +36,7 @@ import { createAuthenticatedClient } from '../../../../../../src/lib/github/auth
 import { getRepoActionsRegistryService } from '../../../../../../src/lib/repo-actions-registry-service';
 import { getActiveLawbook } from '../../../../../../src/lib/db/lawbook';
 import { withApi } from '../../../../../../src/lib/http/withApi';
-import { isProdEnabled } from '../../../../../../src/lib/utils/prod-control';
+import { getProdDisabledReason, isProdEnabled } from '../../../../../../src/lib/utils/prod-control';
 
 // ========================================
 // Types
@@ -237,7 +237,7 @@ export const POST = withApi(async (
     return NextResponse.json(
       {
         error: 'Production environment blocked',
-        details: 'Production write operations are disabled. Use staging environment.',
+        details: getProdDisabledReason(),
         environment,
       },
       { status: 409 }
