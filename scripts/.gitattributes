@@ -1,0 +1,2 @@
+# Enforce LF for shell scripts (run in Linux/ECS)
+*.sh text eol=lf
