@@ -6,6 +6,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import IssueDraftPanel from "../../app/intent/components/IssueDraftPanel";
+import IntentPage from "../../app/intent/page";
 import { EXAMPLE_MINIMAL_ISSUE_DRAFT } from "../../src/lib/schemas/issueDraft";
 
 // Mock the API fetch
@@ -500,5 +501,120 @@ describe("IssueDraftPanel", () => {
       // Should not show draft
       expect(screen.queryByText("Preview")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("INTENT Draft E2E", () => {
+  it("should refresh and show a persisted draft after sending a message", async () => {
+    let draftCreated = false;
+
+    const jsonResponse = (data: unknown, init?: ResponseInit) => {
+      const status = init?.status ?? 200;
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        statusText: "",
+        headers: {
+          get: (_name: string) => "application/json",
+        },
+        json: async () => data,
+      } as any;
+    };
+
+    (global.fetch as jest.Mock).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes("/api/intent/status")) {
+        return jsonResponse({ enabled: true });
+      }
+
+      if (url.endsWith("/api/intent/sessions") && (!init || init.method !== "POST")) {
+        return jsonResponse({
+          sessions: [
+            {
+              id: "session-1",
+              title: "Test Session",
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              status: "active",
+            },
+          ],
+        });
+      }
+
+      if (/\/api\/intent\/sessions\/session-1$/.test(url)) {
+        return jsonResponse({ messages: [] });
+      }
+
+      if (/\/api\/intent\/sessions\/session-1\/messages$/.test(url) && init?.method === "POST") {
+        draftCreated = true;
+        return jsonResponse(
+          {
+            userMessage: {
+              id: "m1",
+              session_id: "session-1",
+              role: "user",
+              content: "Create an issue for draft e2e",
+              created_at: "2026-01-01T00:00:01.000Z",
+              seq: 1,
+            },
+            assistantMessage: {
+              id: "m2",
+              session_id: "session-1",
+              role: "assistant",
+              content: "Ok",
+              created_at: "2026-01-01T00:00:02.000Z",
+              seq: 2,
+            },
+          },
+          { status: 201 }
+        );
+      }
+
+      if (/\/api\/intent\/sessions\/session-1\/issue-draft$/.test(url)) {
+        if (!draftCreated) {
+          return jsonResponse({ success: true, draft: null, reason: "NO_DRAFT" });
+        }
+
+        return jsonResponse({
+          success: true,
+          draft: {
+            id: "draft-123",
+            session_id: "session-1",
+            created_at: "2026-01-01T00:00:03.000Z",
+            updated_at: "2026-01-01T00:00:03.000Z",
+            issue_json: EXAMPLE_MINIMAL_ISSUE_DRAFT,
+            issue_hash: "hash",
+            last_validation_status: "valid",
+            last_validation_at: "2026-01-01T00:00:03.000Z",
+            last_validation_result: null,
+          },
+        });
+      }
+
+      return jsonResponse({});
+    });
+
+    render(<IntentPage />);
+
+    const sessionButton = await screen.findByText("Test Session");
+    fireEvent.click(sessionButton);
+
+    const issueDraftButton = await screen.findByRole("button", { name: "Issue Draft" });
+    fireEvent.click(issueDraftButton);
+
+    await screen.findByText("No draft yet");
+
+    const textarea = await screen.findByPlaceholderText(/Type a message/);
+    fireEvent.change(textarea, { target: { value: "Create an issue for draft e2e" } });
+
+    const sendButton = await screen.findByRole("button", { name: "Send" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Preview")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.title)).toBeInTheDocument();
   });
 });

@@ -45,6 +45,15 @@ jest.mock('../../src/lib/db/contextPacks', () => ({
   }),
 }));
 
+jest.mock('../../src/lib/db/intentIssueDrafts', () => ({
+  getIssueDraft: jest.fn().mockResolvedValue({ success: true, data: null }),
+  validateAndSaveIssueDraft: jest.fn().mockResolvedValue({
+    success: true,
+    data: { id: 'draft-1' },
+    validation: { isValid: true, errors: [], warnings: [], meta: { validatedAt: new Date().toISOString(), validatorVersion: 'test' } },
+  }),
+}));
+
 // Mock the INTENT agent
 jest.mock('../../src/lib/intent-agent', () => ({
   isIntentEnabled: jest.fn(() => true),
