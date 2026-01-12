@@ -56,6 +56,7 @@ export const ActionTypeSchema = z.enum([
   // Other
   'dispatch_workflow',
   'collect_artifacts',
+  'collect_summary', // E83.3: Collect implementation summary from PR
 ]);
 
 export type ActionType = z.infer<typeof ActionTypeSchema>;
