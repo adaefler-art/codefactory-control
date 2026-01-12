@@ -58,6 +58,7 @@ export default function IntentPage() {
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [showCrDrawer, setShowCrDrawer] = useState(false);
   const [showIssueDraftDrawer, setShowIssueDraftDrawer] = useState(false);
+  const [issueDraftRefreshKey, setIssueDraftRefreshKey] = useState(0);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isValidSessionId = (value: unknown): value is string => {
@@ -251,6 +252,9 @@ export default function IntentPage() {
         // Append both user and assistant messages
         setMessages([data.userMessage, data.assistantMessage]);
 
+        // Ensure Issue Draft drawer refreshes after first message
+        setIssueDraftRefreshKey((prev) => prev + 1);
+
         // Refresh sessions list to update the title
         await fetchSessions();
       } catch (err) {
@@ -288,6 +292,9 @@ export default function IntentPage() {
       
       // Append both user and assistant messages
       setMessages((prev) => [...prev, data.userMessage, data.assistantMessage]);
+
+      // Refresh Issue Draft panel (if open) after message send
+      setIssueDraftRefreshKey((prev) => prev + 1);
 
       // Refresh sessions list to update the title
       await fetchSessions();
@@ -743,7 +750,7 @@ export default function IntentPage() {
       
       {/* Issue Draft Drawer */}
       {showIssueDraftDrawer && (
-        <IssueDraftPanel sessionId={currentSessionId} />
+        <IssueDraftPanel sessionId={currentSessionId} refreshKey={issueDraftRefreshKey} />
       )}
       
       {/* CR Drawer */}

@@ -53,9 +53,10 @@ interface IssueDraftData {
 
 interface IssueDraftPanelProps {
   sessionId: string | null;
+  refreshKey?: number;
 }
 
-export default function IssueDraftPanel({ sessionId }: IssueDraftPanelProps) {
+export default function IssueDraftPanel({ sessionId, refreshKey }: IssueDraftPanelProps) {
   const [draft, setDraft] = useState<IssueDraftData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -74,7 +75,7 @@ export default function IssueDraftPanel({ sessionId }: IssueDraftPanelProps) {
       setDraft(null);
       setError(null);
     }
-  }, [sessionId]);
+  }, [sessionId, refreshKey]);
 
   const loadDraft = async () => {
     if (!sessionId) return;

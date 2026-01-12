@@ -11,10 +11,57 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { appendIntentMessage, getIntentSession } from '@/lib/db/intentSessions';
 import { generateContextPack } from '@/lib/db/contextPacks';
+import { getIssueDraft, validateAndSaveIssueDraft } from '@/lib/db/intentIssueDrafts';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { UsedSourcesSchema, type UsedSources } from '@/lib/schemas/usedSources';
 import { generateIntentResponse, isIntentEnabled, type IntentMessage } from '@/lib/intent-agent';
+import { ISSUE_DRAFT_VERSION, type IssueDraft } from '@/lib/schemas/issueDraft';
 import { ZodError } from 'zod';
+import { createHash } from 'crypto';
+
+function deterministicI8xx(sessionId: string): string {
+  const digest = createHash('sha256').update(sessionId, 'utf8').digest();
+  const n = digest.readUInt16BE(0) % 100; // 0..99
+  const code = 800 + n; // 800..899
+  return `I${code}`;
+}
+
+function clampTitle(raw: string): string {
+  const line = raw.split(/\r?\n/)[0]?.trim() ?? '';
+  const title = line.length > 0 ? line : 'INTENT Issue Draft';
+  return title.length <= 200 ? title : title.slice(0, 197) + '...';
+}
+
+function buildMinimalDraft(sessionId: string, userText: string): IssueDraft {
+  const canonicalId = deterministicI8xx(sessionId);
+  const title = clampTitle(userText);
+
+  const body = `Canonical-ID: ${canonicalId}\n\n${userText}\n\n## Problem\nUser request captured by INTENT.\n\n## Acceptance Criteria\n- Draft is persisted and visible in the Issue Draft panel\n- Draft validates (schema v${ISSUE_DRAFT_VERSION})\n\n## Verify\n- Run unit tests and ensure UI renders the draft`;
+
+  return {
+    issueDraftVersion: ISSUE_DRAFT_VERSION,
+    title,
+    body,
+    type: 'issue',
+    canonicalId,
+    labels: ['intent', 'v0.8'],
+    dependsOn: [],
+    priority: 'P2',
+    acceptanceCriteria: [
+      'Draft is persisted and visible in the Issue Draft panel',
+      'Draft validates against Issue Draft Schema',
+    ],
+    verify: {
+      commands: ['npm --prefix control-center test'],
+      expected: ['Tests pass'],
+    },
+    guards: {
+      // Schema only allows staging/development; drafts are prod-blocked anyway.
+      env: 'development',
+      prodBlocked: true,
+    },
+  };
+}
 
 /**
  * POST /api/intent/sessions/[id]/messages
@@ -172,6 +219,32 @@ export async function POST(
         details: assistantMessageResult.error,
       });
     }
+
+    // Best-effort: ensure a persisted Issue Draft exists for this session.
+    // This unblocks Draft E2E in the UI (no persistent NO_DRAFT after first user message).
+    let issueDraftAutoCreate: any = undefined;
+    try {
+      const trimmed = typeof body.content === 'string' ? body.content.trim() : '';
+      if (trimmed) {
+        const existing = await getIssueDraft(pool, sessionId, userId);
+        if (existing.success && !existing.data) {
+          const derived = buildMinimalDraft(sessionId, trimmed);
+          issueDraftAutoCreate = await validateAndSaveIssueDraft(pool, sessionId, userId, derived);
+        } else {
+          issueDraftAutoCreate = { attempted: true, created: false };
+        }
+      } else {
+        issueDraftAutoCreate = { attempted: false };
+      }
+    } catch (err) {
+      // Do not fail the message endpoint on draft write issues.
+      console.warn('[API /api/intent/sessions/[id]/messages] Issue draft auto-create failed (non-fatal)', {
+        requestId,
+        sessionId,
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     
     // Generate context pack after successful response (async, don't block response)
     // This ensures audit trail is created for every agent interaction
@@ -199,6 +272,7 @@ export async function POST(
         timestamp: agentResponse.timestamp,
         model: agentResponse.model,
       },
+      issueDraftAutoCreate,
     }, { status: 201, requestId });
   } catch (error) {
     console.error('[API /api/intent/sessions/[id]/messages] Error appending message:', error);

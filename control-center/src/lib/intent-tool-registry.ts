@@ -117,7 +117,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
     {
       name: 'get_issue_draft',
       description:
-        'Get the current Issue Draft for this session (session-bound). Returns issue JSON + validation status, or null if none exists.',
+        'Get the current Issue Draft for this session (session-bound). Returns issue JSON + validation status, or null if none exists. Use FIRST when user wants an issue/ticket.',
       parameters: {
         type: 'object',
         properties: {},
@@ -127,7 +127,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
     {
       name: 'save_issue_draft',
       description:
-        'Save or update the Issue Draft for this session (session-bound). Does NOT validate; stores draft as-is.',
+        'Save or update the Issue Draft for this session (session-bound). Does NOT validate; stores draft as-is. Use before validate_issue_draft when creating a new draft.',
       parameters: {
         type: 'object',
         properties: {
@@ -142,7 +142,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
     {
       name: 'validate_issue_draft',
       description:
-        'Validate and save the Issue Draft for this session. Returns validation result with deterministic ordering.',
+        'Validate and save the Issue Draft for this session. Returns validation result with deterministic ordering. Use to fix missing fields until valid.',
       parameters: {
         type: 'object',
         properties: {
