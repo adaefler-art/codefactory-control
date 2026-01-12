@@ -25,6 +25,7 @@ export const REPO_ACTIONS_REGISTRY_VERSION = '1.0.0';
 export const ActionTypeSchema = z.enum([
   // Issue actions
   'assign_issue',
+  'assign_copilot', // E83.2: Specific action for assigning GitHub Copilot
   'unassign_issue',
   'add_label',
   'remove_label',
