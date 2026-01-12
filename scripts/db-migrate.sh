@@ -185,6 +185,27 @@ echo ""
 
 ensure_afu9_migrations_ledger
 
+# Optional: run a single migration file deterministically.
+# Used by ECS one-off runner to unblock staging without running the full set.
+MIGRATION_FILE="${AFU9_MIGRATION_FILE:-}"
+if [[ -n "${MIGRATION_FILE:-}" ]]; then
+  if [[ "$MIGRATION_FILE" != "$(basename "$MIGRATION_FILE")" ]]; then
+    echo "❌ ERROR: Invalid AFU9_MIGRATION_FILE (must be a bare filename): $MIGRATION_FILE" >&2
+    exit 1
+  fi
+  if [[ "$MIGRATION_FILE" != *.sql ]]; then
+    echo "❌ ERROR: AFU9_MIGRATION_FILE must end with .sql: $MIGRATION_FILE" >&2
+    exit 1
+  fi
+  if [[ ! -f "database/migrations/$MIGRATION_FILE" ]]; then
+    echo "❌ ERROR: Migration file not found: database/migrations/$MIGRATION_FILE" >&2
+    exit 1
+  fi
+  echo "🎯 Targeted migration mode enabled"
+  echo "   File: $MIGRATION_FILE"
+  echo ""
+fi
+
 # Legacy bootstrap: if the ledger is empty but the schema already exists, record all repo migrations
 # (no SQL will be executed). This avoids breakage caused by legacy schema_migrations formats.
 ledger_count=$(psql_exec -t -c "SELECT COUNT(*)::int AS count FROM ${AFU9_LEDGER_TABLE};" 2>/dev/null | tr -d ' ' || echo "0")
@@ -196,7 +217,7 @@ user_table_count=$(psql_exec -t -c "
     AND table_name NOT IN ('schema_migrations', '${AFU9_LEDGER_TABLE}');
 " 2>/dev/null | tr -d ' ' || echo "0")
 
-if [[ "${ledger_count:-0}" == "0" && "${user_table_count:-0}" != "0" ]]; then
+if [[ -z "${MIGRATION_FILE:-}" && "${ledger_count:-0}" == "0" && "${user_table_count:-0}" != "0" ]]; then
   echo ""
   echo "⚠️  Detected existing schema without ${AFU9_LEDGER_TABLE}."
   echo "⚠️  Bootstrapping ${AFU9_LEDGER_TABLE} from repository files (no SQL will be executed)."
@@ -218,7 +239,16 @@ skipped_count=0
 total_count=0
 
 # Process migrations in lexicographic order (deterministic)
-for f in $(ls database/migrations/*.sql | sort); do
+if [[ -n "${MIGRATION_FILE:-}" ]]; then
+  migration_paths=("database/migrations/$MIGRATION_FILE")
+else
+  migration_paths=()
+  while IFS= read -r line; do
+    migration_paths+=("$line")
+  done < <(ls database/migrations/*.sql | sort)
+fi
+
+for f in "${migration_paths[@]}"; do
   filename=$(basename "$f")
   total_count=$((total_count + 1))
   

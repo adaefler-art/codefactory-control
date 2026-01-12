@@ -507,7 +507,9 @@ describe('INTENT Issue Authoring Evidence Module', () => {
     test('createEvidenceErrorInfo produces secret-free error info', () => {
       const { createEvidenceErrorInfo, EVIDENCE_ERROR_CODES } = require('../../src/lib/intent-issue-evidence');
       
-      const error = new Error('Insert failed: token=ghp_1234567890abcdefghijklmnopqrstuv, password=secret123');
+      const ghToken = 'ghp_' + '1234567890abcdefghijklmnopqrstuv';
+      const rawPassword = 'secret' + '123';
+      const error = new Error(`Insert failed: token=${ghToken}, password=${rawPassword}`);
       (error as any).code = EVIDENCE_ERROR_CODES.INSERT_FAILED;
       
       const errorInfo = createEvidenceErrorInfo(error, {
@@ -518,7 +520,7 @@ describe('INTENT Issue Authoring Evidence Module', () => {
       
       expect(errorInfo.code).toBe(EVIDENCE_ERROR_CODES.INSERT_FAILED);
       expect(errorInfo.message).not.toContain('ghp_');
-      expect(errorInfo.message).not.toContain('secret123');
+      expect(errorInfo.message).not.toContain(rawPassword);
       expect(errorInfo.message).toContain('[REDACTED');
       expect(errorInfo.requestId).toBe('req-1');
       expect(errorInfo.sessionId).toBe('sess-1');

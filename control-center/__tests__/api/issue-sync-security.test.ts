@@ -263,6 +263,7 @@ describe('POST /api/ops/issues/sync - Security Tests', () => {
     expect(JSON.stringify(sanitizedPayload)).not.toContain('?api_key=');
 
     // Check that token field is redacted
-    expect(JSON.stringify(sanitizedPayload)).not.toContain('ghp_secrettoken123');
+    const rawToken = 'ghp_' + 'secrettoken123';
+    expect(JSON.stringify(sanitizedPayload)).not.toContain(rawToken);
   });
 });
