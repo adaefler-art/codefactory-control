@@ -10,6 +10,7 @@
 import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
 import { withRetry, DEFAULT_RETRY_CONFIG } from '@/lib/github/retry-policy';
 import { classifyCheck } from '@/lib/github/checks-classifier';
+import { logger } from '@/lib/logger';
 import { createHash } from 'crypto';
 import {
   ChecksTriageReportV1,
@@ -105,7 +106,27 @@ function extractPrimarySignal(excerpt: string, checkName: string): string {
 }
 
 /**
+ * Transient error signal patterns that suggest RERUN
+ * These patterns indicate temporary failures that may succeed on retry
+ */
+const TRANSIENT_ERROR_SIGNALS = [
+  'rate limit',
+  'timeout',
+  'network',
+  'quota',
+  'econnrefused',
+  'econnreset',
+];
+
+/**
  * Determine recommended next action based on failure type and signals
+ * 
+ * Decision logic:
+ * 1. Timeout/cancelled → RERUN (transient infrastructure issue)
+ * 2. Infra/deploy → HOLD (requires manual intervention)
+ * 3. Transient error signals → RERUN (network, quota, rate limit)
+ * 4. Lint/test/build/e2e → PROMPT (code changes needed)
+ * 5. Unknown → PROMPT (default to investigation)
  */
 function determineNextAction(
   type: string,
@@ -131,18 +152,13 @@ function determineNextAction(
   }
   
   // Rate limit, network, or quota errors → RERUN
-  if (
-    signal.includes('rate limit') ||
-    signal.includes('timeout') ||
-    signal.includes('network') ||
-    signal.includes('quota') ||
-    signal.includes('econnrefused') ||
-    signal.includes('econnreset')
-  ) {
-    return {
-      nextAction: 'RERUN',
-      rationale: 'Transient network or quota issue detected',
-    };
+  for (const pattern of TRANSIENT_ERROR_SIGNALS) {
+    if (signal.includes(pattern)) {
+      return {
+        nextAction: 'RERUN',
+        rationale: 'Transient network or quota issue detected',
+      };
+    }
   }
   
   // Lint, test, build failures → PROMPT (fixable by code changes)
@@ -193,7 +209,12 @@ async function fetchJobLogs(
     return logs;
   } catch (error) {
     // If logs are not available, return empty string
-    console.warn(`[Checks Triage] Failed to fetch logs for job ${jobId}:`, error);
+    logger.warn('Failed to fetch job logs', {
+      jobId,
+      owner,
+      repo,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'ChecksTriageService');
     return '';
   }
 }
