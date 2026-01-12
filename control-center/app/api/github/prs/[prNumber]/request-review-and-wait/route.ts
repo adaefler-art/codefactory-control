@@ -172,7 +172,7 @@ export async function POST(
         {
           error: 'Invalid request body',
           code: 'INVALID_INPUT',
-          details: error,
+          message: error.message,
         },
         { status: 400, headers: { 'x-request-id': requestId || '' } }
       );

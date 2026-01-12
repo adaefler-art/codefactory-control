@@ -429,6 +429,58 @@ describe('PrReviewWaitService', () => {
       expect(result.rollup.checks).toBe('GREEN');
     });
 
+    it('should return GREEN when checks are neutral or skipped', async () => {
+      mockOctokit.rest.checks.listForRef.mockResolvedValue({
+        data: {
+          check_runs: [
+            {
+              id: 1,
+              name: 'check-1',
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: '2025-01-01T00:00:00Z',
+              html_url: 'https://github.com/test/check/1',
+            },
+            {
+              id: 2,
+              name: 'check-2',
+              status: 'completed',
+              conclusion: 'neutral',
+              completed_at: '2025-01-01T00:00:00Z',
+              html_url: 'https://github.com/test/check/2',
+            },
+            {
+              id: 3,
+              name: 'check-3',
+              status: 'completed',
+              conclusion: 'skipped',
+              completed_at: '2025-01-01T00:00:00Z',
+              html_url: 'https://github.com/test/check/3',
+            },
+          ],
+        },
+      });
+
+      mockOctokit.rest.pulls.listReviews.mockResolvedValue({
+        data: [],
+      });
+
+      const promise = service.requestReviewAndWait({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        prNumber: 123,
+        reviewers: [],
+        maxWaitSeconds: 10,
+        pollSeconds: 5,
+      });
+
+      // Advance timers to complete the test
+      await jest.advanceTimersByTimeAsync(10 * 1000);
+      const result = await promise;
+
+      expect(result.rollup.checks).toBe('GREEN');
+    });
+
     it('should return YELLOW when checks are pending', async () => {
       mockOctokit.rest.checks.listForRef.mockResolvedValue({
         data: {

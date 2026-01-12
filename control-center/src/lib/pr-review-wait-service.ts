@@ -319,7 +319,7 @@ export class PrReviewWaitService {
   /**
    * Calculate check status rollup
    * 
-   * GREEN: All checks completed successfully
+   * GREEN: All checks completed successfully (success, neutral, skipped)
    * YELLOW: Checks in progress or pending
    * RED: Any check failed
    */
@@ -339,9 +339,13 @@ export class PrReviewWaitService {
       return 'RED';
     }
 
-    // Check if all completed successfully
+    // Check if all completed successfully (including neutral and skipped)
     const allSuccess = checks.every(
-      (check) => check.status === 'completed' && check.conclusion === 'success'
+      (check) =>
+        check.status === 'completed' &&
+        (check.conclusion === 'success' ||
+          check.conclusion === 'neutral' ||
+          check.conclusion === 'skipped')
     );
     if (allSuccess) {
       return 'GREEN';
