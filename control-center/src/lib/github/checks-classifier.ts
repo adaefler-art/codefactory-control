@@ -34,24 +34,7 @@ const CLASSIFICATION_PATTERNS: Array<{
       /\bflake8\b/i,
     ],
   },
-  // Test checks
-  {
-    type: 'test',
-    patterns: [
-      /\btest\b/i,
-      /\bspec\b/i,
-      /\bjest\b/i,
-      /\bmocha\b/i,
-      /\bkarma\b/i,
-      /\bpytest\b/i,
-      /\bunit\b/i,
-      /\bintegration\b.*\btest\b/i,
-      /\brspec\b/i,
-      /\bminitest\b/i,
-      /\bvitest\b/i,
-    ],
-  },
-  // E2E/UI tests
+  // E2E/UI tests (check before generic test patterns)
   {
     type: 'e2e',
     patterns: [
@@ -61,9 +44,43 @@ const CLASSIFICATION_PATTERNS: Array<{
       /\bplaywright\b/i,
       /\bselenium\b/i,
       /\bpuppeteer\b/i,
-      /\bui.*\btest\b/i,
+      /\bui[\s\-]*test/i,
       /\bacceptance\b/i,
-      /\bfunctional\b.*\btest\b/i,
+      /\bfunctional[\s\-]*test/i,
+    ],
+  },
+  // Test checks
+  {
+    type: 'test',
+    patterns: [
+      /\btest/i,
+      /\bspec\b/i,
+      /\bjest\b/i,
+      /\bmocha\b/i,
+      /\bkarma\b/i,
+      /\bpytest\b/i,
+      /\bunit\b/i,
+      /\bintegration/i,
+      /\brspec\b/i,
+      /\bminitest\b/i,
+      /\bvitest\b/i,
+    ],
+  },
+  // Infrastructure checks (check before build to catch docker-build)
+  {
+    type: 'infra',
+    patterns: [
+      /\binfra\b/i,
+      /\binfrastructure\b/i,
+      /\bterraform\b/i,
+      /\bcdk\b/i,
+      /\bcloudformation\b/i,
+      /\bpulumi\b/i,
+      /\bansible\b/i,
+      /\bdocker\b/i,
+      /\bkubernetes\b/i,
+      /\bk8s\b/i,
+      /\bhelm\b/i,
     ],
   },
   // Build checks
@@ -98,23 +115,6 @@ const CLASSIFICATION_PATTERNS: Array<{
       /\baws\b.*\bdeploy\b/i,
       /\bgcp\b.*\bdeploy\b/i,
       /\bazure\b.*\bdeploy\b/i,
-    ],
-  },
-  // Infrastructure checks
-  {
-    type: 'infra',
-    patterns: [
-      /\binfra\b/i,
-      /\binfrastructure\b/i,
-      /\bterraform\b/i,
-      /\bcdk\b/i,
-      /\bcloudformation\b/i,
-      /\bpulumi\b/i,
-      /\bansible\b/i,
-      /\bdocker\b/i,
-      /\bkubernetes\b/i,
-      /\bk8s\b/i,
-      /\bhelm\b/i,
     ],
   },
 ];
