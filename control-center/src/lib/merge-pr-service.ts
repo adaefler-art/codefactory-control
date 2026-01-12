@@ -84,6 +84,8 @@ export class MergePrService {
 
     if (!registry) {
       const auditEventId = await this.logAuditEvent(
+        null, // No registry
+        null, // No version
         repository,
         prNumber,
         'BLOCKED_NO_REGISTRY',
@@ -111,6 +113,8 @@ export class MergePrService {
 
     if (!mergeConfig) {
       const _auditEventId = await this.logAuditEvent(
+        registry.registryId,
+        registry.version,
         repository,
         prNumber,
         'BLOCKED_REGISTRY_DISABLED',
@@ -142,6 +146,8 @@ export class MergePrService {
     if (!validation.preconditionsMet) {
       const reasonCodes = validation.missingPreconditions.map(p => p.type);
       const auditEventId = await this.logAuditEvent(
+        registry.registryId,
+        registry.version,
         repository,
         prNumber,
         'BLOCKED_MISSING_PRECONDITIONS',
@@ -165,6 +171,8 @@ export class MergePrService {
     // Check if approval is met
     if (!validation.approvalMet) {
       const auditEventId = await this.logAuditEvent(
+        registry.registryId,
+        registry.version,
         repository,
         prNumber,
         'BLOCKED_NO_APPROVAL',
@@ -191,6 +199,8 @@ export class MergePrService {
       // In production, require explicit approval token
       if (!approvalToken) {
         const _auditEventId = await this.logAuditEvent(
+          registry.registryId,
+          registry.version,
           repository,
           prNumber,
           'BLOCKED_PROD_DISABLED',
@@ -234,6 +244,8 @@ export class MergePrService {
       );
 
       const _auditEventId = await this.logAuditEvent(
+        registry.registryId,
+        registry.version,
         repository,
         prNumber,
         'BLOCKED_NOT_MERGEABLE',
@@ -256,6 +268,8 @@ export class MergePrService {
 
     // Step 9: Log audit event
     const auditEventId = await this.logAuditEvent(
+      registry.registryId,
+      registry.version,
       repository,
       prNumber,
       'MERGED',
@@ -419,6 +433,8 @@ export class MergePrService {
    * Log merge audit event
    */
   private async logAuditEvent(
+    registryId: string | null,
+    registryVersion: string | null,
     repository: string,
     prNumber: number,
     decision: MergeDecision,
@@ -450,8 +466,8 @@ export class MergePrService {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id`,
       [
-        'codefactory-control-default', // TODO: Get from registry
-        '1.0.0',
+        registryId || 'unknown',
+        registryVersion || 'unknown',
         'merge_pr',
         decision === 'MERGED' ? 'allowed' : 'blocked',
         repository,
