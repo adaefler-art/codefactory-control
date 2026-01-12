@@ -52,6 +52,3 @@ BEGIN
     RAISE NOTICE 'collect_summary action already exists in registry %', v_registry_id;
   END IF;
 END $$;
-
-COMMENT ON TABLE implementation_summaries IS 
-  'E83.3: Requires collect_summary action in repository registry';

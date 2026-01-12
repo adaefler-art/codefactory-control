@@ -15,7 +15,6 @@ import { getPool } from './db';
 import { logger } from './logger';
 import { createAuthenticatedClient } from './github/auth-wrapper';
 import { getRepoActionsRegistryService } from './repo-actions-registry-service';
-import { ActionType } from './types/repo-actions-registry';
 import {
   CollectSummaryInput,
   CollectSummaryInputSchema,
@@ -146,7 +145,7 @@ export class ImplementationSummaryService {
     const registryService = getRepoActionsRegistryService();
     const validation = await registryService.validateAction(
       repository,
-      'collect_summary' as ActionType, // Extended action type
+      'collect_summary',
       { resourceType: 'pull_request', resourceNumber: 0 } // Dummy context for registry check
     );
 
@@ -204,7 +203,11 @@ export class ImplementationSummaryService {
     }
 
     // Fetch comments (bounded, sorted deterministically)
+    let totalComments = 0;
     if (include.comments) {
+      // Get total comment count from PR
+      totalComments = pr.comments || 0;
+
       const commentsResponse = await octokit.rest.issues.listComments({
         owner,
         repo,
@@ -293,7 +296,7 @@ export class ImplementationSummaryService {
         owner,
         repo,
         collectCount: comments.length,
-        totalComments: comments.length, // Note: might be more, but we're bounded
+        totalComments,
       },
     };
 
