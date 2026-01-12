@@ -22,7 +22,6 @@ import {
   MergeMethod,
   PreconditionSnapshot,
   MergeAuditEvent,
-  MergePreconditionsNotMetError,
   ProductionMergeBlockedError,
 } from './types/merge-pr';
 import { PrNotFoundError, RegistryAuthorizationError } from './types/pr-review-wait';
@@ -111,7 +110,7 @@ export class MergePrService {
     );
 
     if (!mergeConfig) {
-      const auditEventId = await this.logAuditEvent(
+      const _auditEventId = await this.logAuditEvent(
         repository,
         prNumber,
         'BLOCKED_REGISTRY_DISABLED',
@@ -191,7 +190,7 @@ export class MergePrService {
     if (prodEnabled) {
       // In production, require explicit approval token
       if (!approvalToken) {
-        const auditEventId = await this.logAuditEvent(
+        const _auditEventId = await this.logAuditEvent(
           repository,
           prNumber,
           'BLOCKED_PROD_DISABLED',
@@ -231,11 +230,10 @@ export class MergePrService {
       logger.error(
         'Failed to merge PR',
         error instanceof Error ? error : new Error(String(error)),
-        { repository, prNumber, mergeMethod, requestId },
-        'MergePr'
+        { repository, prNumber, mergeMethod, requestId }
       );
 
-      const auditEventId = await this.logAuditEvent(
+      const _auditEventId = await this.logAuditEvent(
         repository,
         prNumber,
         'BLOCKED_NOT_MERGEABLE',
@@ -298,6 +296,7 @@ export class MergePrService {
     owner: string,
     repo: string,
     prNumber: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
     try {
       const response = await octokit.rest.pulls.get({
@@ -323,6 +322,7 @@ export class MergePrService {
     owner: string,
     repo: string,
     prNumber: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pr: any
   ): Promise<PreconditionSnapshot> {
     // Get check runs
@@ -356,6 +356,7 @@ export class MergePrService {
       reviews,
       mergeable: pr.mergeable,
       draft: pr.draft || false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       labels: pr.labels.map((label: any) => label.name),
     };
   }
@@ -363,6 +364,7 @@ export class MergePrService {
   /**
    * Get merge method from registry merge policy
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getMergeMethod(mergePolicy: any): MergeMethod {
     if (!mergePolicy) {
       return 'squash'; // Default
@@ -405,10 +407,8 @@ export class MergePrService {
       return true;
     } catch (error) {
       logger.warn(
-        'Failed to delete branch after merge',
-        error instanceof Error ? error : new Error(String(error)),
-        { owner, repo, branch },
-        'MergePr'
+        `Failed to delete branch after merge: ${error instanceof Error ? error.message : String(error)}`,
+        { owner, repo, branch }
       );
 
       return false;

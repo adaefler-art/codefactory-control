@@ -48,9 +48,11 @@ describe('POST /api/github/prs/[prNumber]/merge', () => {
     (getPool as jest.Mock).mockReturnValue(mockPool);
 
     // Setup default mocks
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createAuthenticatedClient } = require('../../src/lib/github/auth-wrapper');
     createAuthenticatedClient.mockResolvedValue(mockOctokit);
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { isProdEnabled } = require('../../src/lib/utils/prod-control');
     isProdEnabled.mockReturnValue(false);
 
@@ -607,6 +609,7 @@ describe('POST /api/github/prs/[prNumber]/merge', () => {
 
     it('should block merge in production without approval token', async () => {
       // Enable prod mode
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { isProdEnabled } = require('../../src/lib/utils/prod-control');
       isProdEnabled.mockReturnValue(true);
 
@@ -710,11 +713,11 @@ describe('POST /api/github/prs/[prNumber]/merge', () => {
         createdBy: 'system',
       });
 
-      // PR not found
-      mockOctokit.rest.pulls.get.mockRejectedValue({
-        status: 404,
-        message: 'Not Found',
-      });
+      // PR not found - create error object with status property
+      const notFoundError = new Error('Not Found');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (notFoundError as any).status = 404;
+      mockOctokit.rest.pulls.get.mockRejectedValue(notFoundError);
 
       // Make request
       const request = new NextRequest('http://localhost/api/github/prs/999/merge', {
