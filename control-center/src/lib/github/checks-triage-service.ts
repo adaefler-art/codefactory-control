@@ -21,16 +21,24 @@ import {
 } from '@/lib/types/checks-triage';
 
 /**
- * Lawbook hash placeholder
+ * Get lawbook hash from environment or use default
  * In production, this should be retrieved from the lawbook/registry service
  */
-const LAWBOOK_HASH = 'v1.0.0-dev';
+function getLawbookHash(): string {
+  return process.env.LAWBOOK_HASH || 'v1.0.0-dev';
+}
 
 /**
- * Deployment environment
- * In production, this should be retrieved from environment variables
+ * Get deployment environment with validation
+ * Defaults to 'staging' if not set or invalid
  */
-const DEPLOYMENT_ENV = (process.env.DEPLOY_ENV || 'staging') as 'staging' | 'prod';
+function getDeploymentEnv(): 'staging' | 'prod' {
+  const env = process.env.DEPLOY_ENV;
+  if (env === 'prod' || env === 'production') {
+    return 'prod';
+  }
+  return 'staging';
+}
 
 /**
  * Normalize log excerpt for hashing
@@ -342,8 +350,8 @@ export async function generateChecksTriageReport(
   return {
     schemaVersion: '1.0',
     requestId: requestId || `triage-${Date.now()}`,
-    deploymentEnv: DEPLOYMENT_ENV,
-    lawbookHash: LAWBOOK_HASH,
+    deploymentEnv: getDeploymentEnv(),
+    lawbookHash: getLawbookHash(),
     repo: { owner, repo },
     pr: { number: prNumber, headSha },
     summary: {

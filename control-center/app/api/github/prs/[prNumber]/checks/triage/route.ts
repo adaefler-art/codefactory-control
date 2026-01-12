@@ -10,7 +10,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ZodError } from 'zod';
 import { generateChecksTriageReport } from '@/lib/github/checks-triage-service';
 import {
   ChecksTriageInputSchema,
@@ -140,12 +139,12 @@ export async function GET(
     }
 
     // Validation errors
-    if (error instanceof ZodError) {
+    if (error instanceof Error && error.name === 'ZodError') {
       return NextResponse.json(
         {
           error: 'Invalid request parameters',
           code: 'INVALID_INPUT',
-          details: error.errors,
+          details: error,
         },
         { status: 400, headers: { 'x-request-id': requestId } }
       );
