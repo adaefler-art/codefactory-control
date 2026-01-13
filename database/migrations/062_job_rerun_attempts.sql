@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS job_rerun_attempts (
   resource_owner VARCHAR(255) NOT NULL,
   resource_repo VARCHAR(255) NOT NULL,
   pr_number INTEGER NOT NULL,
-  workflow_run_id BIGINT NOT NULL,
+  workflow_run_id BIGINT NOT NULL, -- GitHub workflow run ID (not check suite ID)
   job_name VARCHAR(500) NOT NULL,
   
   -- Rerun metadata

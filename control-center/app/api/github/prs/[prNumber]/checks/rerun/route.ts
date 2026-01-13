@@ -156,7 +156,11 @@ export async function POST(
           requestId,
         }, 'JobRerunAPI');
         
-        input.maxAttempts = actionConfig.maxRetries;
+        // Create adjusted input (immutable)
+        input = {
+          ...input,
+          maxAttempts: actionConfig.maxRetries,
+        };
       }
     }
 

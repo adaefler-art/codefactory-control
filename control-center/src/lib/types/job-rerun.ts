@@ -99,7 +99,7 @@ export const JobRerunInputSchema = z.object({
   owner: z.string().min(1),
   repo: z.string().min(1),
   prNumber: z.number().int().positive(),
-  runId: z.number().int().positive().optional(),
+  runId: z.number().int().positive().optional(), // Optional: if not provided, will find from PR
   mode: RerunModeSchema.default('FAILED_ONLY'),
   maxAttempts: z.number().int().min(1).max(5).default(2), // Hard cap at 5
   requestId: z.string().optional(),

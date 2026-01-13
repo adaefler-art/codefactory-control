@@ -251,13 +251,28 @@ export async function rerunFailedJobs(
 
     const headSha = pr.data.head.sha;
 
-    // Get check runs for the PR
-    const checkRuns = await octokit.rest.checks.listForRef({
-      owner: input.owner,
-      repo: input.repo,
-      ref: headSha,
-      per_page: 100,
-    });
+    // Get check runs for the PR (with pagination support)
+    const allCheckRuns: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    
+    while (true) {
+      const checkRuns = await octokit.rest.checks.listForRef({
+        owner: input.owner,
+        repo: input.repo,
+        ref: headSha,
+        per_page: perPage,
+        page,
+      });
+      
+      allCheckRuns.push(...checkRuns.data.check_runs);
+      
+      // Stop if we've fetched all checks or reached a reasonable limit (500)
+      if (checkRuns.data.check_runs.length < perPage || allCheckRuns.length >= 500) {
+        break;
+      }
+      page++;
+    }
 
     // Filter to jobs that need rerun
     const jobStatuses: JobRerunStatus[] = [];
@@ -265,18 +280,60 @@ export async function rerunFailedJobs(
     let rerunCount = 0;
     let blockedCount = 0;
     let skipCount = 0;
+    
+    // If no runId provided, we need to get it from the workflow runs for the PR
+    let effectiveRunId = input.runId;
+    if (!effectiveRunId && allCheckRuns.length > 0) {
+      // Get workflow runs for the PR to find the run ID
+      try {
+        const workflowRuns = await octokit.rest.actions.listWorkflowRunsForRepo({
+          owner: input.owner,
+          repo: input.repo,
+          event: 'pull_request',
+          per_page: 10,
+        });
+        
+        // Find the most recent run for this PR
+        const prRun = workflowRuns.data.workflow_runs.find(
+          (run) => run.pull_requests.some((p) => p.number === input.prNumber)
+        );
+        
+        if (prRun) {
+          effectiveRunId = prRun.id;
+          logger.info('Found workflow run ID from PR', { 
+            runId: effectiveRunId, 
+            prNumber: input.prNumber 
+          }, 'JobRerunService');
+        }
+      } catch (error) {
+        logger.warn('Failed to find workflow run ID', error as Error, {}, 'JobRerunService');
+      }
+    }
 
-    for (const check of checkRuns.data.check_runs) {
+    for (const check of allCheckRuns) {
       const conclusion = check.conclusion;
       const jobName = check.name;
       const jobId = check.id;
       
-      // Determine run ID (use from check or input)
-      const runId = input.runId || check.check_suite?.id || 0;
-      if (runId === 0) {
-        logger.warn('No run ID found for check', { jobName, checkId: check.id }, 'JobRerunService');
+      // Use effective run ID (from input or discovered)
+      // If still not found, skip this check
+      if (!effectiveRunId) {
+        logger.warn('No workflow run ID available, cannot process check', { 
+          jobName, 
+          checkId: check.id,
+        }, 'JobRerunService');
+        skipCount++;
+        jobStatuses.push({
+          jobName,
+          jobId,
+          priorConclusion: conclusion,
+          action: 'SKIP',
+          attemptNumber: 0,
+          reasonCode: 'no_run_id',
+        });
         continue;
       }
+      const runId = effectiveRunId;
 
       // Skip if not failed (unless mode is ALL_JOBS)
       if (input.mode === 'FAILED_ONLY' && conclusion !== 'failure' && conclusion !== 'timed_out') {
@@ -382,8 +439,8 @@ export async function rerunFailedJobs(
     if (rerunCount > 0) {
       decision = 'RERUN_TRIGGERED';
       
-      // Trigger actual rerun via GitHub API
-      if (input.runId) {
+      // Trigger actual rerun via GitHub API (only if we have a run ID)
+      if (effectiveRunId) {
         try {
           // Rerun failed jobs for specific run
           await withRetry(
@@ -391,7 +448,7 @@ export async function rerunFailedJobs(
               await octokit.rest.actions.reRunWorkflowFailedJobs({
                 owner: input.owner,
                 repo: input.repo,
-                run_id: input.runId!,
+                run_id: effectiveRunId!,
               });
             },
             DEFAULT_RETRY_CONFIG,
@@ -405,7 +462,8 @@ export async function rerunFailedJobs(
           reasons.push(`GitHub API error: ${error instanceof Error ? error.message : String(error)}`);
         }
       } else {
-        reasons.push(`Would rerun ${rerunCount} job(s) (no runId provided for actual execution)`);
+        reasons.push(`Cannot trigger rerun: no workflow run ID available`);
+        decision = 'BLOCKED';
       }
     } else if (blockedCount > 0) {
       decision = 'BLOCKED';
@@ -420,7 +478,7 @@ export async function rerunFailedJobs(
       owner: input.owner,
       repo: input.repo,
       prNumber: input.prNumber,
-      runId: input.runId,
+      runId: effectiveRunId,
       decision,
       reasons,
       jobs: jobStatuses,
@@ -434,7 +492,7 @@ export async function rerunFailedJobs(
       deploymentEnv,
       target: {
         prNumber: input.prNumber,
-        runId: input.runId,
+        runId: effectiveRunId,
       },
       decision,
       reasons,

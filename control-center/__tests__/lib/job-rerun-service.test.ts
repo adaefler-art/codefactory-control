@@ -55,6 +55,7 @@ describe('Job Rerun Service', () => {
         },
         actions: {
           reRunWorkflowFailedJobs: jest.fn(),
+          listWorkflowRunsForRepo: jest.fn(),
         },
       },
     };
