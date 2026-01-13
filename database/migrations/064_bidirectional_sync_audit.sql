@@ -193,7 +193,7 @@ DECLARE
 BEGIN
   -- Bucket timestamp to 5-minute intervals for idempotency window
   timestamp_bucket := date_trunc('minute', p_timestamp) + 
-    (EXTRACT(MINUTE FROM p_timestamp)::INTEGER / 5) * INTERVAL '5 minutes';
+    INTERVAL '5 minutes' * (EXTRACT(MINUTE FROM p_timestamp)::INTEGER / 5);
   
   -- Build hash input
   hash_input := concat_ws('|',

@@ -478,7 +478,7 @@ export class BidirectionalSyncEngine {
       state: pr.data.state as 'open' | 'closed',
       merged: pr.data.merged || false,
       mergeable_state: pr.data.mergeable_state || 'unknown',
-      labels: pr.data.labels.map(label => ({ name: typeof label === 'string' ? label : label.name || '' })),
+      labels: pr.data.labels.map(label => ({ name: label?.name || '' })),
       reviews: reviews.data.map(review => ({
         state: review.state,
         submitted_at: review.submitted_at || '',
@@ -492,6 +492,19 @@ export class BidirectionalSyncEngine {
         })),
       },
     };
+  }
+
+  /**
+   * Helper: Check if GitHub check runs passed
+   */
+  private areChecksPassing(checkRuns: Array<{
+    name: string;
+    status: string;
+    conclusion: string | null;
+  }>): boolean {
+    return checkRuns.every(
+      run => run.status === 'completed' && (run.conclusion === 'success' || run.conclusion === 'skipped')
+    );
   }
 
   /**
@@ -514,9 +527,7 @@ export class BidirectionalSyncEngine {
     }
 
     // Check checks and reviews for MERGE_READY
-    const allChecksPass = githubData.checks.check_runs.every(
-      run => run.conclusion === 'success' || run.conclusion === 'skipped'
-    );
+    const allChecksPass = this.areChecksPassing(githubData.checks.check_runs);
     const hasApproval = githubData.reviews.some(review => review.state === 'APPROVED');
 
     if (allChecksPass && hasApproval && githubData.state === 'open') {
@@ -538,9 +549,7 @@ export class BidirectionalSyncEngine {
    * Extract evidence from GitHub data for precondition checking
    */
   private extractEvidenceFromGitHub(githubData: GitHubPRData): Record<string, boolean> {
-    const allChecksPass = githubData.checks.check_runs.every(
-      run => run.conclusion === 'success' || run.conclusion === 'skipped'
-    );
+    const allChecksPass = this.areChecksPassing(githubData.checks.check_runs);
     const hasApproval = githubData.reviews.some(review => review.state === 'APPROVED');
 
     return {
@@ -682,9 +691,7 @@ export class BidirectionalSyncEngine {
 
   private getChecksStatus(githubData: GitHubPRData | null): string | null {
     if (!githubData) return null;
-    const allPass = githubData.checks.check_runs.every(
-      run => run.conclusion === 'success' || run.conclusion === 'skipped'
-    );
+    const allPass = this.areChecksPassing(githubData.checks.check_runs);
     return allPass ? 'success' : 'failure';
   }
 

@@ -352,7 +352,7 @@ export async function querySyncConflictsByIssue(
   try {
     const limit = options?.limit || 100;
     const offset = options?.offset || 0;
-    const includeResolved = options?.includeResolved !== false;
+    const includeResolved = options?.includeResolved ?? true;
 
     const whereClause = includeResolved
       ? 'WHERE issue_id = $1'

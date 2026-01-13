@@ -99,23 +99,33 @@ export function loadStateMachineSpec(
 ): StateMachineSpec {
   const baseDir = specDir || path.join(process.cwd(), 'docs', 'state-machine', 'v1');
 
-  // Load state machine YAML
-  const stateMachineFile = path.join(baseDir, 'state-machine.yaml');
-  const stateMachineYaml = yaml.load(
-    fs.readFileSync(stateMachineFile, 'utf8')
-  ) as any;
+  try {
+    // Load state machine YAML
+    const stateMachineFile = path.join(baseDir, 'state-machine.yaml');
+    if (!fs.existsSync(stateMachineFile)) {
+      throw new Error(`State machine spec not found: ${stateMachineFile}`);
+    }
+    const stateMachineYaml = yaml.load(
+      fs.readFileSync(stateMachineFile, 'utf8')
+    ) as any;
 
-  // Load transitions YAML
-  const transitionsFile = path.join(baseDir, 'transitions.yaml');
-  const transitionsYaml = yaml.load(
-    fs.readFileSync(transitionsFile, 'utf8')
-  ) as any;
+    // Load transitions YAML
+    const transitionsFile = path.join(baseDir, 'transitions.yaml');
+    if (!fs.existsSync(transitionsFile)) {
+      throw new Error(`Transitions spec not found: ${transitionsFile}`);
+    }
+    const transitionsYaml = yaml.load(
+      fs.readFileSync(transitionsFile, 'utf8')
+    ) as any;
 
-  // Load GitHub mapping YAML
-  const githubMappingFile = path.join(baseDir, 'github-mapping.yaml');
-  const githubMappingYaml = yaml.load(
-    fs.readFileSync(githubMappingFile, 'utf8')
-  ) as any;
+    // Load GitHub mapping YAML
+    const githubMappingFile = path.join(baseDir, 'github-mapping.yaml');
+    if (!fs.existsSync(githubMappingFile)) {
+      throw new Error(`GitHub mapping spec not found: ${githubMappingFile}`);
+    }
+    const githubMappingYaml = yaml.load(
+      fs.readFileSync(githubMappingFile, 'utf8')
+    ) as any;
 
   // Parse states
   const states = new Map<string, StateDefinition>();
@@ -171,6 +181,12 @@ export function loadStateMachineSpec(
     transitions,
     githubMapping,
   };
+  } catch (error) {
+    console.error('[loadStateMachineSpec] Failed to load state machine spec:', error);
+    throw new Error(
+      `Failed to load state machine specification: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
 }
 
 /**
