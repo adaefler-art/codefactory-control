@@ -97,7 +97,8 @@ export interface StateMachineSpec {
 export function loadStateMachineSpec(
   specDir?: string
 ): StateMachineSpec {
-  const baseDir = specDir || path.join(process.cwd(), 'docs', 'state-machine', 'v1');
+  // Default path is relative to repo root, not control-center
+  const baseDir = specDir || path.join(process.cwd(), '..', 'docs', 'state-machine', 'v1');
 
   try {
     // Load state machine YAML
