@@ -1035,6 +1035,78 @@ jobs:
 
           echo "✅ Database migrations applied"
 
+      - name: Post-migrate Required Tables Gate
+        # Always runs in STAGING to catch schema drift early (independent of should_migrate).
+        # Fail-closed: gates the deploy if required tables are missing.
+        if: steps.target.outputs.deploy_env == 'staging'
+        shell: pwsh
+        env:
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SHOULD_MIGRATE: ${{ steps.gates.outputs.should_migrate }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $shouldMigrate = [string]($env:SHOULD_MIGRATE)
+          $migrationsSkipped = if ($shouldMigrate.Trim() -eq 'true') { $false } else { $true }
+          Write-Host "migrationsSkipped=$migrationsSkipped"
+
+          $hostName = $env:READY_HOST
+          if (-not $hostName) { throw "READY_HOST is empty" }
+
+          # Staging-only auth: reuse the existing smoke key stored in Secrets Manager.
+          # No new secrets are introduced; the deploy role must already have access.
+          $smokeSecretId = 'afu9/stage/smoke-key'
+          $smokeKey = (aws secretsmanager get-secret-value `
+            --region $env:AWS_REGION `
+            --secret-id $smokeSecretId `
+            --query SecretString `
+            --output text).Trim()
+
+          if (-not $smokeKey) { throw "Smoke key resolved empty (secret-id=$smokeSecretId)" }
+          Write-Host "::add-mask::$smokeKey"
+
+          $uri = "https://$hostName/api/ops/db/migrations?limit=200&env=staging"
+          Write-Host "Calling required tables gate endpoint: $uri"
+
+          $headers = @{
+            'x-afu9-smoke-key' = $smokeKey
+            'x-afu9-sub'       = 'github-actions-deploy-gate'
+          }
+
+          $r = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -TimeoutSec 20
+
+          $requestId = [string]($r.requestId)
+          $deploymentEnv = [string]($r.deploymentEnv)
+          $lawbookHash = [string]($r.lawbookHash)
+          $missing = @()
+
+          if ($null -ne $r.requiredTablesCheck -and $null -ne $r.requiredTablesCheck.missingTables) {
+            $missing = @($r.requiredTablesCheck.missingTables)
+          }
+
+          $status = $null
+          if ($null -ne $r.requiredTablesCheck -and $null -ne $r.requiredTablesCheck.status) {
+            $status = [string]($r.requiredTablesCheck.status)
+          }
+
+          Write-Host "Gate context: requestId=$requestId deploymentEnv=$deploymentEnv lawbookHash=$lawbookHash"
+          Write-Host "Required tables status: $status"
+          Write-Host ("Missing tables count: {0}" -f $missing.Count)
+
+          if ($status -and $status -ne 'PASS') {
+            Write-Error "❌ Required tables gate status is not PASS: $status"
+            exit 1
+          }
+
+          if ($missing.Count -gt 0) {
+            $limited = $missing | Select-Object -First 50
+            Write-Error ("❌ Missing required tables (showing up to 50): {0}" -f ($limited -join ', '))
+            exit 1
+          }
+
+          Write-Host '✅ Post-migrate required tables gate passed'
+
       - name: Check deployment verdict gate
         env:
           DEPLOYMENT_VERDICT: ${{ vars.DEPLOYMENT_VERDICT }}
