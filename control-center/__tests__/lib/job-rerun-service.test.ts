@@ -33,10 +33,15 @@ jest.mock('../../src/lib/github/retry-policy', () => ({
   DEFAULT_RETRY_CONFIG: {},
 }));
 
+jest.mock('../../src/lib/github/stop-decision-service', () => ({
+  makeStopDecision: jest.fn(),
+}));
+
 describe('Job Rerun Service', () => {
   let mockPool: jest.Mocked<Pool>;
   let mockOctokit: any;
   let mockQuery: jest.Mock;
+  let mockMakeStopDecision: jest.Mock;
 
   beforeEach(() => {
     mockQuery = jest.fn();
@@ -62,6 +67,38 @@ describe('Job Rerun Service', () => {
 
     const { createAuthenticatedClient } = require('../../src/lib/github/auth-wrapper');
     createAuthenticatedClient.mockResolvedValue(mockOctokit);
+    
+    // Mock stop decision service to always return CONTINUE by default
+    const { makeStopDecision } = require('../../src/lib/github/stop-decision-service');
+    mockMakeStopDecision = makeStopDecision;
+    mockMakeStopDecision.mockResolvedValue({
+      schemaVersion: '1.0',
+      requestId: 'test-stop-decision',
+      lawbookHash: 'test-hash',
+      deploymentEnv: 'staging',
+      target: {
+        prNumber: 123,
+        runId: 456,
+      },
+      decision: 'CONTINUE',
+      reasons: ['All checks passed'],
+      recommendedNextStep: 'PROMPT',
+      evidence: {
+        attemptCounts: {
+          currentJobAttempts: 0,
+          totalPrAttempts: 0,
+        },
+        thresholds: {
+          maxRerunsPerJob: 2,
+          maxTotalRerunsPerPr: 5,
+          cooldownMinutes: 5,
+        },
+        appliedRules: ['all_checks_passed'],
+      },
+      metadata: {
+        evaluatedAt: new Date().toISOString(),
+      },
+    });
   });
 
   afterEach(() => {
@@ -101,9 +138,14 @@ describe('Job Rerun Service', () => {
       });
 
       // Mock attempt count query (no previous attempts)
+      // First: getTotalPrAttemptCount for stop decision
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '0' }] });
+      // Second: getAttemptCount for the job (for stop decision max calculation)
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '0' }] });
+      // Third: getAttemptCount for the job (in main loop)
       mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '0' }] });
 
-      // Mock insert queries
+      // Mock insert queries (stop decision audit + job rerun audit + workflow audit)
       mockQuery.mockResolvedValue({ rows: [] });
 
       const result = await rerunFailedJobs(input, mockPool);
@@ -148,9 +190,14 @@ describe('Job Rerun Service', () => {
       });
 
       // Mock attempt count query (1 previous attempt)
+      // First: getTotalPrAttemptCount for stop decision
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '1' }] });
+      // Second: getAttemptCount for the job (for stop decision max calculation)
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '1' }] });
+      // Third: getAttemptCount for the job (in main loop)
       mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '1' }] });
 
-      // Mock insert queries
+      // Mock insert queries (stop decision audit + job rerun audit + workflow audit)
       mockQuery.mockResolvedValue({ rows: [] });
 
       const result = await rerunFailedJobs(input, mockPool);
@@ -162,6 +209,37 @@ describe('Job Rerun Service', () => {
     });
 
     it('should block rerun when max attempts exceeded', async () => {
+      // Override stop decision mock to return HOLD
+      mockMakeStopDecision.mockResolvedValueOnce({
+        schemaVersion: '1.0',
+        requestId: 'test-stop-decision-hold',
+        lawbookHash: 'test-hash',
+        deploymentEnv: 'staging',
+        target: {
+          prNumber: 123,
+          runId: 456,
+        },
+        decision: 'HOLD',
+        reasonCode: 'MAX_ATTEMPTS',
+        reasons: ['Max attempts exceeded'],
+        recommendedNextStep: 'MANUAL_REVIEW',
+        evidence: {
+          attemptCounts: {
+            currentJobAttempts: 2,
+            totalPrAttempts: 2,
+          },
+          thresholds: {
+            maxRerunsPerJob: 2,
+            maxTotalRerunsPerPr: 5,
+            cooldownMinutes: 5,
+          },
+          appliedRules: ['maxRerunsPerJob'],
+        },
+        metadata: {
+          evaluatedAt: new Date().toISOString(),
+        },
+      });
+
       const input: JobRerunInput = {
         owner: 'test-owner',
         repo: 'test-repo',
@@ -193,21 +271,19 @@ describe('Job Rerun Service', () => {
       });
 
       // Mock attempt count query (2 previous attempts = max)
+      // First: getTotalPrAttemptCount for stop decision
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '2' }] });
+      // Second: getAttemptCount for the job (for stop decision max calculation)
       mockQuery.mockResolvedValueOnce({ rows: [{ total_attempts: '2' }] });
 
-      // Mock insert queries
+      // Mock insert queries (only stop decision audit + workflow audit, no job rerun audit)
       mockQuery.mockResolvedValue({ rows: [] });
 
       const result = await rerunFailedJobs(input, mockPool);
 
       expect(result.decision).toBe('BLOCKED');
-      expect(result.jobs[0].action).toBe('BLOCKED');
-      expect(result.jobs[0].reasonCode).toBe('max_attempts_exceeded');
-      expect(result.metadata.blockedJobs).toBe(1);
-      expect(result.metadata.rerunJobs).toBe(0);
-      expect(result.reasons).toContain(
-        "Job 'test-job' blocked: max attempts (2) exceeded"
-      );
+      expect(result.jobs).toHaveLength(0); // No jobs processed when HOLD
+      expect(result.reasons[0]).toContain('Stop decision: HOLD');
     });
   });
 

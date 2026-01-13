@@ -1,16 +1,21 @@
 /**
- * Job Rerun Service (E84.3)
+ * Job Rerun Service (E84.3 + E84.4)
  * 
  * Service for rerunning failed GitHub workflow jobs with bounded retry policy,
  * idempotent attempt tracking, and comprehensive audit trail.
  * 
+ * E84.4 Integration: Calls stop decision service before triggering reruns
+ * to prevent infinite loops via lawbook-gated HOLD rules.
+ * 
  * Reference: E84.3 - Tool: rerun_failed_jobs (bounded retry + audit)
+ *           E84.4 - Stop Conditions + HOLD Rules
  */
 
 import { Pool } from 'pg';
 import { getPool } from '../db';
 import { createAuthenticatedClient } from './auth-wrapper';
 import { withRetry, DEFAULT_RETRY_CONFIG } from './retry-policy';
+import { makeStopDecision } from './stop-decision-service';
 import { logger } from '../logger';
 import {
   JobRerunInput,
@@ -20,6 +25,7 @@ import {
   JobRerunAttemptRecord,
   JobRerunAttemptCount,
 } from '../types/job-rerun';
+import { StopDecisionContext } from '../types/stop-decision';
 
 /**
  * Get lawbook hash from environment or use default
@@ -113,6 +119,27 @@ async function getAttemptCount(
        AND workflow_run_id = $4 
        AND job_name = $5`,
     [owner, repo, prNumber, runId, jobName]
+  );
+
+  return parseInt(result.rows[0]?.total_attempts || '0', 10);
+}
+
+/**
+ * Get total attempt count for all jobs in a PR
+ */
+async function getTotalPrAttemptCount(
+  pool: Pool,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<number> {
+  const result = await pool.query<{ total_attempts: string }>(
+    `SELECT COUNT(*) as total_attempts
+     FROM job_rerun_attempts
+     WHERE resource_owner = $1 
+       AND resource_repo = $2 
+       AND pr_number = $3`,
+    [owner, repo, prNumber]
   );
 
   return parseInt(result.rows[0]?.total_attempts || '0', 10);
@@ -309,6 +336,97 @@ export async function rerunFailedJobs(
         logger.warn('Failed to find workflow run ID', error as Error, {}, 'JobRerunService');
       }
     }
+
+    // E84.4: Check stop conditions before processing reruns
+    // Get total PR attempt count for stop decision
+    const totalPrAttempts = await getTotalPrAttemptCount(db, input.owner, input.repo, input.prNumber);
+    
+    // For stop decision, we need to check the highest job attempt count
+    // to determine if we should proceed
+    let maxJobAttempts = 0;
+    if (effectiveRunId) {
+      for (const check of allCheckRuns) {
+        if (check.conclusion === 'failure' || check.conclusion === 'timed_out') {
+          const attempts = await getAttemptCount(
+            db,
+            input.owner,
+            input.repo,
+            input.prNumber,
+            effectiveRunId,
+            check.name
+          );
+          maxJobAttempts = Math.max(maxJobAttempts, attempts);
+        }
+      }
+    }
+
+    // Evaluate stop decision
+    const stopContext: StopDecisionContext = {
+      owner: input.owner,
+      repo: input.repo,
+      prNumber: input.prNumber,
+      runId: effectiveRunId,
+      attemptCounts: {
+        currentJobAttempts: maxJobAttempts,
+        totalPrAttempts,
+      },
+      requestId,
+    };
+
+    const stopDecision = await makeStopDecision(stopContext, db);
+
+    // If stop decision is HOLD or KILL, block the rerun
+    if (stopDecision.decision === 'HOLD' || stopDecision.decision === 'KILL') {
+      logger.warn('Stop decision blocked rerun', {
+        decision: stopDecision.decision,
+        reasonCode: stopDecision.reasonCode,
+        requestId,
+      }, 'JobRerunService');
+
+      // Record audit event for blocked rerun
+      await recordAuditEvent(db, {
+        owner: input.owner,
+        repo: input.repo,
+        prNumber: input.prNumber,
+        runId: effectiveRunId,
+        decision: 'BLOCKED',
+        reasons: [
+          `Blocked by stop decision: ${stopDecision.decision}`,
+          ...stopDecision.reasons,
+        ],
+        jobs: [],
+        requestId,
+      });
+
+      return {
+        schemaVersion: '1.0',
+        requestId,
+        lawbookHash,
+        deploymentEnv,
+        target: {
+          prNumber: input.prNumber,
+          runId: effectiveRunId,
+        },
+        decision: 'BLOCKED',
+        reasons: [
+          `Stop decision: ${stopDecision.decision} (${stopDecision.reasonCode})`,
+          ...stopDecision.reasons,
+        ],
+        jobs: [],
+        metadata: {
+          totalJobs: 0,
+          rerunJobs: 0,
+          blockedJobs: 0,
+          skippedJobs: 0,
+        },
+      };
+    }
+
+    logger.info('Stop decision: CONTINUE - proceeding with rerun evaluation', {
+      requestId,
+      totalPrAttempts,
+      maxJobAttempts,
+    }, 'JobRerunService');
 
     for (const check of allCheckRuns) {
       const conclusion = check.conclusion;
