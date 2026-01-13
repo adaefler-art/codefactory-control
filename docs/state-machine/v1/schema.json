@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AFU-9 State Machine Schema",
+  "description": "JSON Schema for validating AFU-9 state machine specification files",
+  "version": "1.0",
+  
+  "definitions": {
+    "state_name": {
+      "type": "string",
+      "enum": ["CREATED", "SPEC_READY", "IMPLEMENTING", "VERIFIED", "MERGE_READY", "DONE", "HOLD", "KILLED"]
+    },
+    
+    "state_category": {
+      "type": "string",
+      "enum": ["initial", "ready", "work_in_progress", "verification", "merge_pending", "terminal", "special"]
+    },
+    
+    "ui_color": {
+      "type": "string",
+      "enum": ["gray", "blue", "yellow", "purple", "orange", "green", "red", "dark-gray"]
+    },
+    
+    "state_definition": {
+      "type": "object",
+      "required": ["description", "category", "is_terminal", "is_active", "ui_color", "ui_icon", "meaning"],
+      "properties": {
+        "description": { "type": "string" },
+        "category": { "$ref": "#/definitions/state_category" },
+        "is_terminal": { "type": "boolean" },
+        "is_active": { "type": "boolean" },
+        "ui_color": { "$ref": "#/definitions/ui_color" },
+        "ui_icon": { "type": "string" },
+        "meaning": { "type": "string" },
+        "entry_conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exit_conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    
+    "precondition": {
+      "type": "object",
+      "required": ["type", "description"],
+      "properties": {
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" }
+      }
+    },
+    
+    "side_effect": {
+      "type": "object",
+      "required": ["type", "action"],
+      "properties": {
+        "type": { "type": "string" },
+        "action": { "type": "string" },
+        "value": { "type": "string" },
+        "template": { "type": "string" }
+      }
+    },
+    
+    "transition": {
+      "type": "object",
+      "required": ["from", "to", "name", "type", "description", "preconditions", "side_effects", "evidence_required", "auto_transition"],
+      "properties": {
+        "from": { "$ref": "#/definitions/state_name" },
+        "to": { "$ref": "#/definitions/state_name" },
+        "name": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["FORWARD", "BACKWARD", "PAUSE", "RESUME", "TERMINATE"]
+        },
+        "description": { "type": "string" },
+        "preconditions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/precondition" }
+        },
+        "side_effects": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/side_effect" }
+        },
+        "evidence_required": { "type": "boolean" },
+        "evidence_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "auto_transition": { "type": "boolean" },
+        "auto_transition_on": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    
+    "invariant": {
+      "type": "object",
+      "required": ["id", "name", "rule", "description", "enforcement", "enforcement_level"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^INV-[0-9]{3}$" },
+        "name": { "type": "string" },
+        "rule": { "type": "string" },
+        "description": { "type": "string" },
+        "enforcement": {
+          "type": "string",
+          "enum": ["strict", "eventual", "warning"]
+        },
+        "enforcement_level": {
+          "type": "string",
+          "enum": ["blocking", "warning", "info"]
+        },
+        "tolerance_window": { "type": "string" },
+        "validations": { "type": "array" },
+        "violations": { "type": "array" },
+        "exceptions": { "type": "array" }
+      }
+    }
+  },
+  
+  "type": "object",
+  "properties": {
+    "version": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "last_updated": { "type": "string", "format": "date-time" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "purpose": { "type": "string" },
+        "scope": { "type": "string" }
+      }
+    },
+    "states": {
+      "type": "object",
+      "patternProperties": {
+        "^(CREATED|SPEC_READY|IMPLEMENTING|VERIFIED|MERGE_READY|DONE|HOLD|KILLED)$": {
+          "$ref": "#/definitions/state_definition"
+        }
+      }
+    },
+    "transitions": {
+      "type": "object",
+      "patternProperties": {
+        ".*": { "$ref": "#/definitions/transition" }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "patternProperties": {
+        ".*": { "$ref": "#/definitions/invariant" }
+      }
+    }
+  }
+}

@@ -1,0 +1,468 @@
+# AFU-9 State Machine Invariant Rules
+# Defines canonical rules that must always be true
+#
+# Version: 1.0
+# Date: 2026-01-13
+# Status: Canonical
+
+version: "1.0"
+last_updated: "2026-01-13T06:50:00Z"
+
+metadata:
+  title: "AFU-9 State Machine Invariants"
+  description: "Canonical rules and constraints for state management"
+  purpose: "Define guardrails and enforcement policies"
+
+# ============================================================================
+# CANONICAL INVARIANTS
+# Rules that MUST always be true across the system
+# ============================================================================
+
+invariants:
+  # --------------------------------------------------
+  # INVARIANT 1: DONE State Equivalence
+  # --------------------------------------------------
+  DONE_INVARIANT:
+    id: "INV-001"
+    name: "DONE State Equivalence"
+    rule: "DONE state ⇔ (PR merged AND all CI checks green)"
+    description: |
+      An issue is in DONE state if and only if:
+      - The associated PR has been successfully merged to main branch
+      - All CI checks on the merge commit are green
+      
+      This is a bidirectional equivalence:
+      - If issue is DONE, then PR must be merged with green checks
+      - If PR is merged with green checks, then issue must be DONE
+    
+    enforcement: "strict"
+    enforcement_level: "blocking"
+    
+    validations:
+      - condition: "state == DONE"
+        requires:
+          - "pr.merged_at != null"
+          - "pr.merge_commit_sha != null"
+          - "ci_checks(pr.merge_commit_sha).all_green == true"
+        error: "DONE state without merged PR or failed checks"
+        
+      - condition: "pr.merged == true AND ci_checks.all_green == true"
+        requires:
+          - "state == DONE"
+        error: "Merged PR with green checks but state is not DONE"
+    
+    violations:
+      - description: "DONE state without merged PR"
+        severity: "critical"
+        action: "Block state transition to DONE"
+        
+      - description: "Merged PR without DONE state"
+        severity: "warning"
+        action: "Trigger automatic transition to DONE"
+        
+      - description: "DONE state with failed CI checks"
+        severity: "critical"
+        action: "Block state or revert merge"
+    
+    exceptions:
+      - scenario: "Manual override with admin approval"
+        conditions: ["admin_approval == true", "manual_override_reason documented"]
+        notes: "Rare cases only, must be documented"
+
+  # --------------------------------------------------
+  # INVARIANT 2: Terminal State Immutability
+  # --------------------------------------------------
+  TERMINAL_NO_ACTIONS:
+    id: "INV-002"
+    name: "Terminal State Immutability"
+    rule: "Terminal states (DONE, KILLED) allow no further actions or transitions"
+    description: |
+      Once an issue reaches a terminal state (DONE or KILLED), it cannot:
+      - Transition to any other state
+      - Execute workflows or playbooks
+      - Accept new commits or changes
+      
+      This prevents "zombie issues" from continuing to execute after completion.
+      Reactivation requires explicit new intent (reopening issue or creating new one).
+    
+    enforcement: "strict"
+    enforcement_level: "blocking"
+    
+    validations:
+      - condition: "state IN [DONE, KILLED]"
+        blocks:
+          - "state_transitions"
+          - "workflow_execution"
+          - "playbook_execution"
+          - "auto_updates"
+        error: "Action blocked on terminal state"
+    
+    violations:
+      - description: "Workflow execution on KILLED issue"
+        severity: "critical"
+        action: "Abort workflow immediately"
+        
+      - description: "State transition from DONE"
+        severity: "critical"
+        action: "Reject transition"
+        
+      - description: "State transition from KILLED"
+        severity: "critical"
+        action: "Reject transition"
+    
+    exceptions:
+      - scenario: "Manual reactivation via issue reopening"
+        conditions: ["issue.reopened_event", "new_intent_documented"]
+        notes: "Creates new issue lifecycle, not a continuation"
+
+  # --------------------------------------------------
+  # INVARIANT 3: GitHub Sync Consistency
+  # --------------------------------------------------
+  GITHUB_SYNC_CONSISTENCY:
+    id: "INV-003"
+    name: "GitHub Sync Consistency"
+    rule: "AFU-9 state matches GitHub primary label within tolerance window"
+    description: |
+      The primary GitHub status label must reflect the current AFU-9 state
+      within an acceptable time window (eventual consistency).
+      
+      Acceptable states:
+      - AFU-9 state = IMPLEMENTING → GitHub label = "status:implementing"
+      - AFU-9 state = DONE → GitHub label = "status:done" + issue closed
+    
+    enforcement: "eventual"
+    enforcement_level: "warning"
+    tolerance_window: "5 minutes"
+    
+    validations:
+      - condition: "sync_age > tolerance_window"
+        requires:
+          - "afu9_state matches primary_github_label"
+        error: "State/label mismatch exceeds tolerance"
+    
+    violations:
+      - description: "Label mismatch lasting > 5 minutes"
+        severity: "warning"
+        action: "Trigger sync operation"
+        
+      - description: "AFU-9 DONE but GitHub issue open"
+        severity: "warning"
+        action: "Close GitHub issue"
+        
+      - description: "AFU-9 KILLED but GitHub issue open"
+        severity: "warning"
+        action: "Close GitHub issue with killed label"
+    
+    exceptions:
+      - scenario: "Manual label protection enabled"
+        conditions: ["status_source == MANUAL"]
+        notes: "Manual changes take precedence over sync"
+
+  # --------------------------------------------------
+  # INVARIANT 4: No Auto-Transition Without Evidence
+  # --------------------------------------------------
+  NO_AUTO_TRANSITION_WITHOUT_EVIDENCE:
+    id: "INV-004"
+    name: "Evidence-Based Transitions"
+    rule: "Automatic transitions require observable evidence"
+    description: |
+      State changes marked as auto-transition must be justified by
+      observable events or evidence:
+      - MERGE_READY → DONE requires PR merge event
+      - IMPLEMENTING → VERIFIED requires test results
+      
+      This prevents phantom state changes and ensures auditability.
+    
+    enforcement: "strict"
+    enforcement_level: "blocking"
+    
+    validations:
+      - condition: "transition.auto_transition == true"
+        requires:
+          - "evidence_provided == true"
+          - "evidence.type IN transition.evidence_types"
+        error: "Auto-transition without required evidence"
+    
+    violations:
+      - description: "Auto-transition to DONE without PR merge event"
+        severity: "critical"
+        action: "Block transition"
+        
+      - description: "Auto-transition to VERIFIED without test results"
+        severity: "critical"
+        action: "Block transition"
+    
+    exceptions:
+      - scenario: "Manual override by admin"
+        conditions: ["admin_approval", "override_reason"]
+        notes: "Must be logged in audit trail"
+
+  # --------------------------------------------------
+  # INVARIANT 5: MERGE_READY Preconditions
+  # --------------------------------------------------
+  MERGE_READY_PRECONDITIONS:
+    id: "INV-005"
+    name: "MERGE_READY Prerequisites"
+    rule: "MERGE_READY requires (code review approved AND CI checks pass AND no conflicts)"
+    description: |
+      Cannot enter MERGE_READY state without meeting ALL prerequisites:
+      1. At least one code review approval
+      2. All required CI checks pass
+      3. No merge conflicts with base branch
+      
+      Entering MERGE_READY without these signals readiness to merge.
+    
+    enforcement: "strict"
+    enforcement_level: "blocking"
+    
+    validations:
+      - condition: "target_state == MERGE_READY"
+        requires:
+          - "pr.review_decision == APPROVED"
+          - "ci_checks.required.all_pass == true"
+          - "pr.mergeable_state == clean"
+        error: "Cannot enter MERGE_READY without prerequisites"
+    
+    violations:
+      - description: "MERGE_READY with failing CI"
+        severity: "critical"
+        action: "Block transition or revert to VERIFIED"
+        
+      - description: "MERGE_READY without approval"
+        severity: "critical"
+        action: "Block transition"
+        
+      - description: "MERGE_READY with merge conflicts"
+        severity: "critical"
+        action: "Block transition"
+    
+    exceptions:
+      - scenario: "Emergency hotfix"
+        conditions: ["emergency_override", "post_merge_review_required"]
+        notes: "Requires documented reason and followup review"
+
+  # --------------------------------------------------
+  # INVARIANT 6: State Transition Atomicity
+  # --------------------------------------------------
+  STATE_TRANSITION_ATOMICITY:
+    id: "INV-006"
+    name: "Atomic State Transitions"
+    rule: "State transitions are atomic - either fully complete or fully rollback"
+    description: |
+      A state transition must:
+      1. Update AFU-9 internal state
+      2. Apply all side effects (labels, notifications, etc.)
+      3. Record in audit log
+      
+      If any step fails, the entire transition must rollback.
+      No partial state changes allowed.
+    
+    enforcement: "strict"
+    enforcement_level: "blocking"
+    
+    validations:
+      - condition: "transition_in_progress == true"
+        requires:
+          - "transaction_isolation == true"
+          - "rollback_capability == true"
+        error: "Transition not properly isolated"
+    
+    violations:
+      - description: "Partial state change"
+        severity: "critical"
+        action: "Rollback transaction"
+        
+      - description: "State updated but labels not synced"
+        severity: "high"
+        action: "Retry sync or rollback"
+    
+    exceptions:
+      - scenario: "Eventual consistency for non-critical side effects"
+        conditions: ["side_effect.priority == low", "retry_mechanism_exists"]
+        notes: "Notifications can be eventually consistent"
+
+  # --------------------------------------------------
+  # INVARIANT 7: Backward Transition Justification
+  # --------------------------------------------------
+  BACKWARD_TRANSITION_JUSTIFICATION:
+    id: "INV-007"
+    name: "Justified Backward Transitions"
+    rule: "Backward transitions require documented reason"
+    description: |
+      Moving backward in the state machine (e.g., VERIFIED → IMPLEMENTING)
+      must have a documented reason explaining why:
+      - What issue was discovered
+      - Why it requires going back
+      - What needs to be fixed
+      
+      This creates an audit trail for rework.
+    
+    enforcement: "strict"
+    enforcement_level: "blocking"
+    
+    validations:
+      - condition: "transition.type == BACKWARD"
+        requires:
+          - "reason_provided == true"
+          - "reason.length > 10"
+        error: "Backward transition without reason"
+    
+    violations:
+      - description: "VERIFIED → IMPLEMENTING without reason"
+        severity: "high"
+        action: "Block transition until reason provided"
+        
+      - description: "MERGE_READY → VERIFIED without reason"
+        severity: "high"
+        action: "Block transition until reason provided"
+    
+    exceptions:
+      - scenario: "Automated rollback on CI failure"
+        conditions: ["ci_check_failed", "failure_details_available"]
+        notes: "CI failure details serve as reason"
+
+# ============================================================================
+# AUTO-TRANSITION RULES
+# When and how automatic transitions are allowed
+# ============================================================================
+
+auto_transition_rules:
+  ENABLED_TRANSITIONS:
+    - transition: "MERGE_READY → DONE"
+      trigger: "pr_merged_event"
+      conditions:
+        - "pr.merged_at != null"
+        - "ci_checks.all_green == true"
+      evidence_required: true
+      evidence_types:
+        - "pr_merge_commit"
+        - "ci_status"
+      notes: "Only auto-transition with strong evidence"
+  
+  DISABLED_TRANSITIONS:
+    - transition: "IMPLEMENTING → VERIFIED"
+      reason: "Requires manual verification"
+      notes: "Even with passing tests, manual check recommended"
+      
+    - transition: "VERIFIED → MERGE_READY"
+      reason: "Requires manual review approval"
+      notes: "Code review is a human decision"
+  
+  GUARDRAILS:
+    - rule: "No auto-transition without webhook event"
+      description: "Must have GitHub event to justify transition"
+      
+    - rule: "No auto-transition to terminal states without evidence"
+      description: "DONE and KILLED require explicit evidence"
+      
+    - rule: "No auto-transition during manual override window"
+      description: "If manual change made recently, wait before auto-updating"
+
+# ============================================================================
+# EVIDENCE REQUIREMENTS
+# What constitutes valid evidence for transitions
+# ============================================================================
+
+evidence_requirements:
+  pr_merge_commit:
+    description: "GitHub PR merge commit SHA"
+    required_fields:
+      - "merge_commit_sha"
+      - "merged_at"
+      - "merged_by"
+    validation: "Commit exists in main branch"
+    
+  ci_status:
+    description: "CI check results"
+    required_fields:
+      - "check_suite_id"
+      - "conclusion"
+      - "completed_at"
+    validation: "conclusion == success"
+    
+  test_results:
+    description: "Test execution results"
+    required_fields:
+      - "test_run_id"
+      - "total_tests"
+      - "passed_tests"
+      - "failed_tests"
+    validation: "failed_tests == 0"
+    
+  code_commit:
+    description: "Code commit to branch"
+    required_fields:
+      - "commit_sha"
+      - "committed_at"
+      - "author"
+    validation: "Commit exists in PR branch"
+    
+  code_review_approval:
+    description: "Code review approval"
+    required_fields:
+      - "review_id"
+      - "reviewer"
+      - "state"
+    validation: "state == APPROVED"
+
+# ============================================================================
+# VIOLATION HANDLING
+# How to handle invariant violations
+# ============================================================================
+
+violation_handling:
+  CRITICAL:
+    severity: "critical"
+    actions:
+      - "Block the operation immediately"
+      - "Log to audit trail"
+      - "Send alert to ops team"
+      - "Create incident ticket"
+    escalation: "Immediate"
+    
+  HIGH:
+    severity: "high"
+    actions:
+      - "Block the operation"
+      - "Log to audit trail"
+      - "Send warning notification"
+    escalation: "Within 1 hour"
+    
+  WARNING:
+    severity: "warning"
+    actions:
+      - "Allow operation but log violation"
+      - "Trigger background sync/repair"
+      - "Send notification"
+    escalation: "Within 24 hours"
+    
+  INFO:
+    severity: "info"
+    actions:
+      - "Log for monitoring"
+      - "No immediate action"
+    escalation: "Track in metrics"
+
+# ============================================================================
+# CONSISTENCY CHECKS
+# Periodic validation of invariants
+# ============================================================================
+
+consistency_checks:
+  PERIODIC_VALIDATION:
+    schedule: "every 15 minutes"
+    checks:
+      - "Validate DONE state equivalence"
+      - "Check GitHub label sync"
+      - "Verify no actions on terminal states"
+    on_failure: "Trigger repair operation"
+    
+  ON_DEMAND_VALIDATION:
+    triggers:
+      - "Manual request via admin UI"
+      - "After system recovery"
+      - "Before major operations"
+    checks:
+      - "Full invariant validation"
+      - "Cross-reference GitHub and AFU-9"
+    on_failure: "Generate detailed report"
