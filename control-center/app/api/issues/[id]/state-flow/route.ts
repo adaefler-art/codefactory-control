@@ -9,8 +9,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '@/lib/db/pool';
-import { computeStateFlow, getBlockersForDone } from '@/lib/state-flow';
+import { getPool } from '../../../../../src/lib/db';
+import { computeStateFlow, getBlockersForDone } from '../../../../../src/lib/state-flow';
 
 export const dynamic = 'force-dynamic';
 
