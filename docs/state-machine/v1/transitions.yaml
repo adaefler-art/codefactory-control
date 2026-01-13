@@ -1,0 +1,683 @@
+# AFU-9 State Transitions Specification
+# Defines all valid state transitions with preconditions and side effects
+#
+# Version: 1.0
+# Date: 2026-01-13
+# Status: Canonical
+
+version: "1.0"
+last_updated: "2026-01-13T06:50:00Z"
+
+metadata:
+  title: "AFU-9 State Transitions"
+  description: "Complete specification of valid state transitions"
+  purpose: "Define transition rules, preconditions, and effects"
+
+# ============================================================================
+# TRANSITION TYPES
+# ============================================================================
+
+transition_types:
+  FORWARD:
+    description: "Normal progression through workflow"
+    examples: ["IMPLEMENTING → VERIFIED", "VERIFIED → MERGE_READY"]
+    
+  BACKWARD:
+    description: "Regression due to issues found"
+    examples: ["VERIFIED → IMPLEMENTING", "MERGE_READY → VERIFIED"]
+    
+  PAUSE:
+    description: "Transition to HOLD state"
+    examples: ["IMPLEMENTING → HOLD", "VERIFIED → HOLD"]
+    
+  RESUME:
+    description: "Return from HOLD to active state"
+    examples: ["HOLD → IMPLEMENTING", "HOLD → VERIFIED"]
+    
+  TERMINATE:
+    description: "Move to terminal state"
+    examples: ["any → DONE", "any → KILLED"]
+
+# ============================================================================
+# PRECONDITION TYPES
+# ============================================================================
+
+precondition_types:
+  specification_exists:
+    description: "Issue has complete specification"
+    validation: "Check that issue body contains required sections"
+    
+  validation_passed:
+    description: "Specification reviewed and approved"
+    validation: "Manual review or automated validation"
+    
+  resources_available:
+    description: "Developer or agent available"
+    validation: "Check resource allocation"
+    
+  code_committed:
+    description: "Code changes committed to branch"
+    validation: "Check git commit history"
+    
+  tests_pass:
+    description: "All tests pass"
+    validation: "CI test results = success"
+    
+  code_review_approved:
+    description: "Code review approved by reviewer"
+    validation: "GitHub PR approval status"
+    
+  ci_checks_pass:
+    description: "All CI checks pass"
+    validation: "GitHub check suite status = success"
+    
+  no_merge_conflicts:
+    description: "No merge conflicts with base branch"
+    validation: "GitHub PR mergeable status"
+    
+  pr_merged:
+    description: "PR successfully merged"
+    validation: "GitHub PR merged_at timestamp exists"
+    
+  ci_checks_green:
+    description: "CI checks on main branch are green"
+    validation: "GitHub check suite on main = success"
+    
+  reason_provided:
+    description: "Reason for state change documented"
+    validation: "State change comment or metadata"
+    
+  blocking_resolved:
+    description: "Blocking condition resolved"
+    validation: "Manual confirmation or automated check"
+    
+  issues_identified:
+    description: "Issues documented for rework"
+    validation: "Review comments or issue created"
+    
+  ci_checks_failed:
+    description: "CI checks failed"
+    validation: "GitHub check suite status = failure"
+
+# ============================================================================
+# SIDE EFFECT TYPES
+# ============================================================================
+
+side_effect_types:
+  github_label:
+    actions: [add, remove]
+    description: "Add or remove GitHub label"
+    
+  github_issue:
+    actions: [close, reopen, comment]
+    description: "Modify GitHub issue"
+    
+  github_pr:
+    actions: [close, merge, request_review, comment]
+    description: "Modify GitHub PR"
+    
+  execution_state:
+    actions: [set]
+    values: [IDLE, RUNNING, SUCCEEDED, FAILED]
+    description: "Update AFU-9 execution state"
+    
+  notification:
+    actions: [send]
+    channels: [slack, email, webhook]
+    description: "Send notification"
+    
+  audit_log:
+    actions: [record]
+    description: "Record state change in audit log"
+
+# ============================================================================
+# COMPLETE TRANSITION DEFINITIONS
+# Organized by source state
+# ============================================================================
+
+transitions:
+  # ========================================
+  # FROM: CREATED
+  # ========================================
+  CREATED_to_SPEC_READY:
+    from: CREATED
+    to: SPEC_READY
+    name: "specification_complete"
+    type: FORWARD
+    description: "Specification is complete and ready for implementation"
+    preconditions:
+      - type: specification_exists
+        required: true
+      - type: validation_passed
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:spec-ready"
+      - type: github_label
+        action: remove
+        value: "status:created"
+      - type: audit_log
+        action: record
+    evidence_required: false
+    auto_transition: false
+    
+  CREATED_to_HOLD:
+    from: CREATED
+    to: HOLD
+    name: "pause_specification"
+    type: PAUSE
+    description: "Specification work paused"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:hold"
+      - type: github_label
+        action: remove
+        value: "status:created"
+      - type: github_issue
+        action: comment
+        template: "Issue paused: {reason}"
+    evidence_required: false
+    auto_transition: false
+    
+  CREATED_to_KILLED:
+    from: CREATED
+    to: KILLED
+    name: "cancel_early"
+    type: TERMINATE
+    description: "Issue cancelled before specification complete"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:killed"
+      - type: github_label
+        action: remove
+        value: "status:created"
+      - type: github_issue
+        action: close
+    evidence_required: false
+    auto_transition: false
+
+  # ========================================
+  # FROM: SPEC_READY
+  # ========================================
+  SPEC_READY_to_IMPLEMENTING:
+    from: SPEC_READY
+    to: IMPLEMENTING
+    name: "start_implementation"
+    type: FORWARD
+    description: "Implementation work begins"
+    preconditions:
+      - type: resources_available
+        required: false
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:implementing"
+      - type: github_label
+        action: remove
+        value: "status:spec-ready"
+      - type: execution_state
+        action: set
+        value: RUNNING
+    evidence_required: false
+    auto_transition: false
+    
+  SPEC_READY_to_HOLD:
+    from: SPEC_READY
+    to: HOLD
+    name: "pause_before_implementation"
+    type: PAUSE
+    description: "Work paused before implementation starts"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:hold"
+      - type: github_label
+        action: remove
+        value: "status:spec-ready"
+    evidence_required: false
+    auto_transition: false
+    
+  SPEC_READY_to_KILLED:
+    from: SPEC_READY
+    to: KILLED
+    name: "cancel_before_implementation"
+    type: TERMINATE
+    description: "Issue cancelled before implementation starts"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:killed"
+      - type: github_label
+        action: remove
+        value: "status:spec-ready"
+      - type: github_issue
+        action: close
+    evidence_required: false
+    auto_transition: false
+
+  # ========================================
+  # FROM: IMPLEMENTING
+  # ========================================
+  IMPLEMENTING_to_VERIFIED:
+    from: IMPLEMENTING
+    to: VERIFIED
+    name: "implementation_complete"
+    type: FORWARD
+    description: "Implementation complete and ready for verification"
+    preconditions:
+      - type: code_committed
+        required: true
+      - type: tests_pass
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:verified"
+      - type: github_label
+        action: remove
+        value: "status:implementing"
+      - type: execution_state
+        action: set
+        value: SUCCEEDED
+    evidence_required: true
+    evidence_types:
+      - test_results
+      - code_commit
+    auto_transition: false
+    
+  IMPLEMENTING_to_SPEC_READY:
+    from: IMPLEMENTING
+    to: SPEC_READY
+    name: "refinement_needed"
+    type: BACKWARD
+    description: "Implementation reveals specification needs refinement"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:spec-ready"
+      - type: github_label
+        action: remove
+        value: "status:implementing"
+      - type: execution_state
+        action: set
+        value: IDLE
+    evidence_required: false
+    auto_transition: false
+    
+  IMPLEMENTING_to_HOLD:
+    from: IMPLEMENTING
+    to: HOLD
+    name: "pause_implementation"
+    type: PAUSE
+    description: "Implementation work paused"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:hold"
+      - type: github_label
+        action: remove
+        value: "status:implementing"
+      - type: execution_state
+        action: set
+        value: IDLE
+    evidence_required: false
+    auto_transition: false
+    
+  IMPLEMENTING_to_KILLED:
+    from: IMPLEMENTING
+    to: KILLED
+    name: "cancel_during_implementation"
+    type: TERMINATE
+    description: "Issue cancelled during implementation"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:killed"
+      - type: github_label
+        action: remove
+        value: "status:implementing"
+      - type: github_issue
+        action: close
+      - type: execution_state
+        action: set
+        value: IDLE
+    evidence_required: false
+    auto_transition: false
+
+  # ========================================
+  # FROM: VERIFIED
+  # ========================================
+  VERIFIED_to_MERGE_READY:
+    from: VERIFIED
+    to: MERGE_READY
+    name: "ready_for_merge"
+    type: FORWARD
+    description: "All approvals obtained, ready to merge"
+    preconditions:
+      - type: code_review_approved
+        required: true
+      - type: ci_checks_pass
+        required: true
+      - type: no_merge_conflicts
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:merge-ready"
+      - type: github_label
+        action: remove
+        value: "status:verified"
+      - type: github_pr
+        action: request_review
+    evidence_required: true
+    evidence_types:
+      - code_review_approval
+      - ci_status
+    auto_transition: false
+    
+  VERIFIED_to_IMPLEMENTING:
+    from: VERIFIED
+    to: IMPLEMENTING
+    name: "verification_failed"
+    type: BACKWARD
+    description: "Verification uncovered issues requiring rework"
+    preconditions:
+      - type: issues_identified
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:implementing"
+      - type: github_label
+        action: remove
+        value: "status:verified"
+      - type: execution_state
+        action: set
+        value: RUNNING
+    evidence_required: false
+    auto_transition: false
+    
+  VERIFIED_to_HOLD:
+    from: VERIFIED
+    to: HOLD
+    name: "pause_after_verification"
+    type: PAUSE
+    description: "Work paused after verification"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:hold"
+      - type: github_label
+        action: remove
+        value: "status:verified"
+    evidence_required: false
+    auto_transition: false
+    
+  VERIFIED_to_KILLED:
+    from: VERIFIED
+    to: KILLED
+    name: "cancel_after_verification"
+    type: TERMINATE
+    description: "Issue cancelled after verification"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:killed"
+      - type: github_label
+        action: remove
+        value: "status:verified"
+      - type: github_issue
+        action: close
+    evidence_required: false
+    auto_transition: false
+
+  # ========================================
+  # FROM: MERGE_READY
+  # ========================================
+  MERGE_READY_to_DONE:
+    from: MERGE_READY
+    to: DONE
+    name: "merge_successful"
+    type: TERMINATE
+    description: "Successfully merged to main branch"
+    preconditions:
+      - type: pr_merged
+        required: true
+      - type: ci_checks_green
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:done"
+      - type: github_label
+        action: remove
+        value: "status:merge-ready"
+      - type: github_issue
+        action: close
+      - type: github_pr
+        action: merge
+    evidence_required: true
+    evidence_types:
+      - pr_merge_commit
+      - ci_status_main
+    auto_transition: true
+    auto_transition_on:
+      - pr_merged_event
+      
+  MERGE_READY_to_VERIFIED:
+    from: MERGE_READY
+    to: VERIFIED
+    name: "merge_checks_failed"
+    type: BACKWARD
+    description: "Merge checks failed, needs fixes"
+    preconditions:
+      - type: ci_checks_failed
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:verified"
+      - type: github_label
+        action: remove
+        value: "status:merge-ready"
+    evidence_required: false
+    auto_transition: false
+    
+  MERGE_READY_to_HOLD:
+    from: MERGE_READY
+    to: HOLD
+    name: "pause_before_merge"
+    type: PAUSE
+    description: "Merge paused"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:hold"
+      - type: github_label
+        action: remove
+        value: "status:merge-ready"
+    evidence_required: false
+    auto_transition: false
+    
+  MERGE_READY_to_KILLED:
+    from: MERGE_READY
+    to: KILLED
+    name: "cancel_before_merge"
+    type: TERMINATE
+    description: "Issue cancelled before merge"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:killed"
+      - type: github_label
+        action: remove
+        value: "status:merge-ready"
+      - type: github_issue
+        action: close
+      - type: github_pr
+        action: close
+    evidence_required: false
+    auto_transition: false
+
+  # ========================================
+  # FROM: HOLD
+  # Can resume to any non-terminal state
+  # ========================================
+  HOLD_to_CREATED:
+    from: HOLD
+    to: CREATED
+    name: "resume_to_created"
+    type: RESUME
+    description: "Resume work at CREATED state"
+    preconditions:
+      - type: blocking_resolved
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:created"
+      - type: github_label
+        action: remove
+        value: "status:hold"
+    evidence_required: false
+    auto_transition: false
+    
+  HOLD_to_SPEC_READY:
+    from: HOLD
+    to: SPEC_READY
+    name: "resume_to_spec_ready"
+    type: RESUME
+    description: "Resume work at SPEC_READY state"
+    preconditions:
+      - type: blocking_resolved
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:spec-ready"
+      - type: github_label
+        action: remove
+        value: "status:hold"
+    evidence_required: false
+    auto_transition: false
+    
+  HOLD_to_IMPLEMENTING:
+    from: HOLD
+    to: IMPLEMENTING
+    name: "resume_to_implementing"
+    type: RESUME
+    description: "Resume work at IMPLEMENTING state"
+    preconditions:
+      - type: blocking_resolved
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:implementing"
+      - type: github_label
+        action: remove
+        value: "status:hold"
+      - type: execution_state
+        action: set
+        value: RUNNING
+    evidence_required: false
+    auto_transition: false
+    
+  HOLD_to_VERIFIED:
+    from: HOLD
+    to: VERIFIED
+    name: "resume_to_verified"
+    type: RESUME
+    description: "Resume work at VERIFIED state"
+    preconditions:
+      - type: blocking_resolved
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:verified"
+      - type: github_label
+        action: remove
+        value: "status:hold"
+    evidence_required: false
+    auto_transition: false
+    
+  HOLD_to_MERGE_READY:
+    from: HOLD
+    to: MERGE_READY
+    name: "resume_to_merge_ready"
+    type: RESUME
+    description: "Resume work at MERGE_READY state"
+    preconditions:
+      - type: blocking_resolved
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:merge-ready"
+      - type: github_label
+        action: remove
+        value: "status:hold"
+    evidence_required: false
+    auto_transition: false
+    
+  HOLD_to_KILLED:
+    from: HOLD
+    to: KILLED
+    name: "kill_from_hold"
+    type: TERMINATE
+    description: "Cancel issue while on hold"
+    preconditions:
+      - type: reason_provided
+        required: true
+    side_effects:
+      - type: github_label
+        action: add
+        value: "status:killed"
+      - type: github_label
+        action: remove
+        value: "status:hold"
+      - type: github_issue
+        action: close
+    evidence_required: false
+    auto_transition: false
+
+  # ========================================
+  # Terminal states (DONE, KILLED) have no outgoing transitions
+  # ========================================

@@ -1,0 +1,160 @@
+# AFU-9 Canonical State Machine Specification v1
+# Single Source of Truth for AFU-9 Issue States, Transitions, and Actions
+# 
+# Version: 1.0
+# Date: 2026-01-13
+# Status: Canonical
+
+version: "1.0"
+schema_version: "1.0"
+last_updated: "2026-01-13T06:50:00Z"
+
+metadata:
+  title: "AFU-9 Canonical State Machine"
+  description: "Defines AFU-9 issue lifecycle states and their transitions"
+  purpose: "Single source of truth for state management, UI derivations, and automation guardrails"
+  scope: "AFU-9 internal states, GitHub integration, CI/CD coordination"
+
+# ============================================================================
+# STATE DEFINITIONS
+# All possible states an AFU-9 issue can be in throughout its lifecycle
+# ============================================================================
+
+states:
+  CREATED:
+    description: "Issue created, specification in progress"
+    category: "initial"
+    is_terminal: false
+    is_active: true
+    ui_color: "gray"
+    ui_icon: "○"
+    meaning: "Issue exists but requirements are not yet fully specified"
+    entry_conditions:
+      - "Issue created in system or imported from GitHub"
+    exit_conditions:
+      - "Specification is complete and validated"
+
+  SPEC_READY:
+    description: "Specification complete, ready for implementation"
+    category: "ready"
+    is_terminal: false
+    is_active: true
+    ui_color: "blue"
+    ui_icon: "✓"
+    meaning: "Requirements are clear and approved for implementation"
+    entry_conditions:
+      - "Specification is complete"
+      - "Requirements are validated"
+    exit_conditions:
+      - "Implementation work begins"
+
+  IMPLEMENTING:
+    description: "Implementation in progress"
+    category: "work_in_progress"
+    is_terminal: false
+    is_active: true
+    ui_color: "yellow"
+    ui_icon: "⚙"
+    meaning: "Active development work is happening"
+    entry_conditions:
+      - "Developer or AFU-9 agent starts work"
+    exit_conditions:
+      - "Implementation is complete and ready for verification"
+
+  VERIFIED:
+    description: "Implementation complete and verified"
+    category: "verification"
+    is_terminal: false
+    is_active: true
+    ui_color: "purple"
+    ui_icon: "✓✓"
+    meaning: "Code is complete, tested, and reviewed"
+    entry_conditions:
+      - "Code passes all tests"
+      - "Code review approved"
+    exit_conditions:
+      - "Ready for merge approval"
+
+  MERGE_READY:
+    description: "Ready to merge to main branch"
+    category: "merge_pending"
+    is_terminal: false
+    is_active: true
+    ui_color: "orange"
+    ui_icon: "↑"
+    meaning: "All approvals obtained, awaiting merge"
+    entry_conditions:
+      - "All approvals obtained"
+      - "CI checks pass"
+      - "No merge conflicts"
+    exit_conditions:
+      - "Successfully merged to main branch"
+
+  DONE:
+    description: "Completed and merged"
+    category: "terminal"
+    is_terminal: true
+    is_active: false
+    ui_color: "green"
+    ui_icon: "✓"
+    meaning: "Work successfully completed and integrated"
+    entry_conditions:
+      - "Successfully merged to main"
+      - "All CI checks green"
+    exit_conditions: []
+    notes: "Terminal state - no forward transitions allowed"
+
+  HOLD:
+    description: "Temporarily paused or blocked"
+    category: "special"
+    is_terminal: false
+    is_active: false
+    ui_color: "red"
+    ui_icon: "∥"
+    meaning: "Work suspended, awaiting resolution of blocking condition"
+    entry_conditions:
+      - "Blocking dependency identified"
+      - "Resource constraint"
+      - "Priority shift"
+    exit_conditions:
+      - "Blocking condition resolved"
+      - "Resources available"
+      - "Work can resume"
+    notes: "Can transition back to any non-terminal state"
+
+  KILLED:
+    description: "Cancelled, will not be implemented"
+    category: "terminal"
+    is_terminal: true
+    is_active: false
+    ui_color: "dark-gray"
+    ui_icon: "✕"
+    meaning: "Work permanently cancelled"
+    entry_conditions:
+      - "Decision made not to proceed"
+    exit_conditions: []
+    notes: "Terminal state - no forward transitions allowed. Strict enforcement prevents zombie issues."
+
+# ============================================================================
+# PREDECESSOR/SUCCESSOR RELATIONSHIPS
+# ============================================================================
+
+predecessors:
+  CREATED: []
+  SPEC_READY: [CREATED, IMPLEMENTING, HOLD]
+  IMPLEMENTING: [SPEC_READY, VERIFIED, HOLD]
+  VERIFIED: [IMPLEMENTING, MERGE_READY, HOLD]
+  MERGE_READY: [VERIFIED, HOLD]
+  DONE: [MERGE_READY]
+  HOLD: [CREATED, SPEC_READY, IMPLEMENTING, VERIFIED, MERGE_READY]
+  KILLED: [CREATED, SPEC_READY, IMPLEMENTING, VERIFIED, MERGE_READY, HOLD]
+
+successors:
+  CREATED: [SPEC_READY, HOLD, KILLED]
+  SPEC_READY: [IMPLEMENTING, HOLD, KILLED]
+  IMPLEMENTING: [VERIFIED, SPEC_READY, HOLD, KILLED]
+  VERIFIED: [MERGE_READY, IMPLEMENTING, HOLD, KILLED]
+  MERGE_READY: [DONE, VERIFIED, HOLD, KILLED]
+  DONE: []
+  HOLD: [CREATED, SPEC_READY, IMPLEMENTING, VERIFIED, MERGE_READY, KILLED]
+  KILLED: []

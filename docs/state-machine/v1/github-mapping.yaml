@@ -1,0 +1,368 @@
+# AFU-9 ↔ GitHub Mapping Specification
+# Defines bidirectional mapping between AFU-9 states and GitHub entities
+#
+# Version: 1.0
+# Date: 2026-01-13
+# Status: Canonical
+
+version: "1.0"
+last_updated: "2026-01-13T06:50:00Z"
+
+metadata:
+  title: "AFU-9 to GitHub Mapping"
+  description: "Maps AFU-9 internal states to GitHub labels, PR status, checks, and merge state"
+  purpose: "Enable bidirectional synchronization between AFU-9 and GitHub"
+
+# ============================================================================
+# AFU-9 STATE → GITHUB LABELS
+# Canonical mapping from AFU-9 states to GitHub labels
+# ============================================================================
+
+afu9_to_github_labels:
+  CREATED:
+    primary_label: "status:created"
+    additional_labels: []
+    description: "Issue exists but specification incomplete"
+    
+  SPEC_READY:
+    primary_label: "status:spec-ready"
+    additional_labels: ["ready-for-work"]
+    description: "Specification complete, ready for implementation"
+    
+  IMPLEMENTING:
+    primary_label: "status:implementing"
+    additional_labels: ["in-progress"]
+    description: "Active implementation work"
+    
+  VERIFIED:
+    primary_label: "status:verified"
+    additional_labels: []
+    description: "Implementation complete and verified"
+    
+  MERGE_READY:
+    primary_label: "status:merge-ready"
+    additional_labels: ["ready-to-merge"]
+    description: "All checks passed, ready to merge"
+    
+  DONE:
+    primary_label: "status:done"
+    additional_labels: ["completed"]
+    description: "Successfully merged and completed"
+    
+  HOLD:
+    primary_label: "status:hold"
+    additional_labels: ["blocked"]
+    description: "Work paused or blocked"
+    
+  KILLED:
+    primary_label: "status:killed"
+    additional_labels: ["wont-fix", "cancelled"]
+    description: "Permanently cancelled"
+
+# ============================================================================
+# GITHUB LABELS → AFU-9 STATE
+# Mapping from GitHub labels/status to AFU-9 states
+# Priority: Project Status > Labels > Issue State
+# ============================================================================
+
+github_to_afu9_state:
+  # From GitHub Project Status Fields
+  project_status:
+    "To Do": SPEC_READY
+    "Backlog": SPEC_READY
+    "Ready": SPEC_READY
+    "In Progress": IMPLEMENTING
+    "Implementing": IMPLEMENTING
+    "In Review": MERGE_READY
+    "Review": MERGE_READY
+    "PR": MERGE_READY
+    "Done": DONE
+    "Completed": DONE
+    "Blocked": HOLD
+    "Hold": HOLD
+    "Waiting": HOLD
+    "Cancelled": KILLED
+    "Won't Fix": KILLED
+  
+  # From GitHub Labels (with 'status:' prefix)
+  labels:
+    "status:created": CREATED
+    "status:spec-ready": SPEC_READY
+    "status:implementing": IMPLEMENTING
+    "status:verified": VERIFIED
+    "status:merge-ready": MERGE_READY
+    "status:done": DONE
+    "status:hold": HOLD
+    "status:blocked": HOLD
+    "status:killed": KILLED
+    "status:cancelled": KILLED
+    # Alternative label formats
+    "in-progress": IMPLEMENTING
+    "ready-for-work": SPEC_READY
+    "ready-to-merge": MERGE_READY
+    "completed": DONE
+    "wont-fix": KILLED
+  
+  # From GitHub Issue State
+  issue_state:
+    open: null  # No automatic mapping - use other signals
+    closed: null  # No automatic mapping without explicit DONE signal
+    # Note: closed + "status:done" label → DONE
+    # Note: closed without done signal → no state change (prevents false positives)
+
+# ============================================================================
+# GITHUB PR STATUS → AFU-9 STATE
+# Mapping from PR status to AFU-9 states
+# ============================================================================
+
+github_pr_status_to_afu9:
+  draft: IMPLEMENTING
+  open: MERGE_READY
+  merged: DONE
+  closed: null  # No automatic mapping - could be KILLED or abandoned
+
+# ============================================================================
+# GITHUB CHECKS → AFU-9 STATE PRECONDITIONS
+# CI/CD checks required for state transitions
+# ============================================================================
+
+github_checks_requirements:
+  VERIFIED:
+    required_checks:
+      - name: "tests"
+        status: "success"
+        description: "All tests must pass"
+      - name: "lint"
+        status: "success"
+        description: "Linting must pass"
+    optional_checks:
+      - name: "build"
+        status: "success"
+        description: "Build should succeed"
+  
+  MERGE_READY:
+    required_checks:
+      - name: "tests"
+        status: "success"
+        description: "All tests must pass"
+      - name: "lint"
+        status: "success"
+        description: "Linting must pass"
+      - name: "build"
+        status: "success"
+        description: "Build must succeed"
+      - name: "code-review"
+        status: "approved"
+        description: "At least one approval required"
+    optional_checks:
+      - name: "security-scan"
+        status: "success"
+        description: "Security scan should pass"
+  
+  DONE:
+    required_checks:
+      - name: "tests"
+        status: "success"
+        description: "All tests must pass on main"
+      - name: "merge"
+        status: "success"
+        description: "PR successfully merged"
+      - name: "deployment"
+        status: "success"
+        description: "Deployment to staging/production succeeded"
+    optional_checks: []
+
+# ============================================================================
+# GITHUB MERGE STATUS → AFU-9 STATE
+# Mapping from GitHub merge status to AFU-9 states
+# ============================================================================
+
+github_merge_status_to_afu9:
+  mergeable: null  # Can stay in current state
+  conflicting: null  # Might trigger HOLD or back to VERIFIED
+  merged: DONE  # Automatic transition to DONE
+  closed: null  # No automatic mapping
+  
+  # Detailed merge states
+  merge_states:
+    clean:
+      description: "No merge conflicts, ready to merge"
+      allows_states: [MERGE_READY]
+      
+    dirty:
+      description: "Merge conflicts exist"
+      allows_states: [VERIFIED, IMPLEMENTING]
+      recommended_action: "Resolve conflicts"
+      
+    unstable:
+      description: "CI checks failing"
+      allows_states: [VERIFIED, IMPLEMENTING]
+      recommended_action: "Fix failing checks"
+      
+    blocked:
+      description: "Merge blocked by branch protection"
+      allows_states: [VERIFIED, HOLD]
+      recommended_action: "Obtain required approvals"
+      
+    behind:
+      description: "Branch is behind base branch"
+      allows_states: [MERGE_READY, VERIFIED]
+      recommended_action: "Update branch"
+
+# ============================================================================
+# SYNCHRONIZATION RULES
+# Rules for keeping AFU-9 and GitHub in sync
+# ============================================================================
+
+sync_rules:
+  afu9_to_github:
+    on_state_change:
+      - action: "update_labels"
+        description: "Update GitHub labels to match AFU-9 state"
+        priority: "high"
+        
+      - action: "update_project_status"
+        description: "Update GitHub Project status field if available"
+        priority: "medium"
+        
+      - action: "add_comment"
+        description: "Add comment documenting state change"
+        priority: "low"
+        
+    on_terminal_state:
+      - action: "close_issue"
+        states: [DONE, KILLED]
+        description: "Close GitHub issue when reaching terminal state"
+        
+      - action: "close_pr"
+        states: [KILLED]
+        description: "Close PR if issue is KILLED"
+  
+  github_to_afu9:
+    on_label_change:
+      - action: "update_afu9_state"
+        description: "Update AFU-9 state when GitHub labels change"
+        priority: "high"
+        guard: "manual_source_protection"
+        notes: "Do not override manual AFU-9 state changes"
+        
+    on_pr_merge:
+      - action: "transition_to_done"
+        description: "Automatically transition to DONE when PR merges"
+        priority: "critical"
+        evidence_required: true
+        
+    on_issue_close:
+      - action: "check_done_signal"
+        description: "Check for explicit DONE signal before mapping to DONE"
+        priority: "high"
+        notes: "Prevent false positives from closed-but-not-done issues"
+
+# ============================================================================
+# INVARIANT RULES
+# Assertions that must always be true
+# ============================================================================
+
+invariants:
+  - id: "DONE_INVARIANT"
+    rule: "DONE state ⇔ (PR merged AND all CI checks green)"
+    description: "Issue is DONE if and only if PR is merged with all checks passing"
+    enforcement: "strict"
+    violations:
+      - "DONE state without merged PR"
+      - "Merged PR without DONE state"
+    
+  - id: "TERMINAL_NO_ACTIONS"
+    rule: "Terminal states (DONE, KILLED) allow no further actions"
+    description: "Prevents zombie issues from continuing execution"
+    enforcement: "strict"
+    violations:
+      - "Workflow execution on KILLED issue"
+      - "State transition from DONE or KILLED"
+    
+  - id: "GITHUB_SYNC_CONSISTENCY"
+    rule: "AFU-9 state matches GitHub primary label"
+    description: "Primary status label always reflects AFU-9 state"
+    enforcement: "eventual"
+    tolerance: "5 minutes"
+    violations:
+      - "Label mismatch lasting > 5 minutes"
+    
+  - id: "NO_AUTO_TRANSITION_WITHOUT_EVIDENCE"
+    rule: "Automatic transitions require evidence"
+    description: "State changes must be justified by observable events"
+    enforcement: "strict"
+    violations:
+      - "Auto-transition to DONE without PR merge event"
+      - "Auto-transition to VERIFIED without test results"
+    
+  - id: "MERGE_READY_PRECONDITIONS"
+    rule: "MERGE_READY requires (code review approved AND CI checks pass AND no conflicts)"
+    description: "Cannot enter MERGE_READY without meeting all prerequisites"
+    enforcement: "strict"
+    violations:
+      - "MERGE_READY with failing CI"
+      - "MERGE_READY without approval"
+      - "MERGE_READY with merge conflicts"
+
+# ============================================================================
+# GITHUB WEBHOOK EVENT MAPPINGS
+# Map GitHub webhook events to potential state transitions
+# ============================================================================
+
+webhook_event_mappings:
+  pull_request:
+    opened:
+      - from: VERIFIED
+        to: MERGE_READY
+        condition: "checks_pass AND approvals_met"
+        
+    closed:
+      merged:
+        - from: MERGE_READY
+          to: DONE
+          condition: "checks_pass"
+          auto_transition: true
+      not_merged:
+        - from: any
+          to: KILLED
+          condition: "manual_review"
+          auto_transition: false
+    
+    synchronize:
+      - from: any
+        to: null
+        condition: "trigger_ci_checks"
+        notes: "Push to PR - re-run checks"
+  
+  check_suite:
+    completed:
+      success:
+        - from: IMPLEMENTING
+          to: VERIFIED
+          condition: "all_checks_pass"
+          auto_transition: false
+      failure:
+        - from: VERIFIED
+          to: IMPLEMENTING
+          condition: "checks_failed"
+          auto_transition: false
+  
+  issues:
+    closed:
+      - from: any
+        to: null
+        condition: "check_done_signal"
+        notes: "Only map to DONE if explicit done signal present"
+    
+    labeled:
+      - from: any
+        to: null
+        condition: "extract_status_from_label"
+        notes: "Update state based on new label"
+    
+    reopened:
+      - from: KILLED
+        to: CREATED
+        condition: "manual_review"
+        notes: "Explicit reactivation required"
