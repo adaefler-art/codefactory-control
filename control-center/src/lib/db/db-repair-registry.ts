@@ -15,6 +15,21 @@ import { createHash } from 'crypto';
 import { DbRepairPlaybook } from '../contracts/db-repair';
 
 /**
+ * Maximum length for SQL statement display (for preview/logs)
+ */
+export const MAX_SQL_DISPLAY_LENGTH = 500;
+
+/**
+ * Truncate SQL statement for display
+ */
+export function truncateSqlForDisplay(sql: string): string {
+  if (sql.length <= MAX_SQL_DISPLAY_LENGTH) {
+    return sql;
+  }
+  return sql.substring(0, MAX_SQL_DISPLAY_LENGTH) + '...';
+}
+
+/**
  * Compute SHA-256 hash of SQL statements (canonical form)
  */
 function computeSqlHash(sql: string[]): string {

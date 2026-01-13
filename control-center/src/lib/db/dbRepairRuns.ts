@@ -21,7 +21,7 @@ export async function insertDbRepairRun(
   pool: Pool,
   input: DbRepairRunInput
 ): Promise<DbRepairRun> {
-  const result = await pool.query<any>(
+  const result = await pool.query<DbRepairRunRow>(
     `INSERT INTO db_repair_runs (
       repair_id, expected_hash, actual_hash, executed_by,
       deployment_env, lawbook_hash, request_id, status,
@@ -60,7 +60,7 @@ export async function getDbRepairRun(
   pool: Pool,
   id: string
 ): Promise<DbRepairRun | null> {
-  const result = await pool.query<any>(
+  const result = await pool.query<DbRepairRunRow>(
     `SELECT 
       id, repair_id, expected_hash, actual_hash, executed_at,
       executed_by, deployment_env, lawbook_hash, request_id,
@@ -85,7 +85,7 @@ export async function listDbRepairRuns(
   pool: Pool,
   limit: number = 50
 ): Promise<DbRepairRun[]> {
-  const result = await pool.query<any>(
+  const result = await pool.query<DbRepairRunRow>(
     `SELECT 
       id, repair_id, expected_hash, actual_hash, executed_at,
       executed_by, deployment_env, lawbook_hash, request_id,
@@ -108,7 +108,7 @@ export async function listDbRepairRunsByRepairId(
   repairId: string,
   limit: number = 50
 ): Promise<DbRepairRun[]> {
-  const result = await pool.query<any>(
+  const result = await pool.query<DbRepairRunRow>(
     `SELECT 
       id, repair_id, expected_hash, actual_hash, executed_at,
       executed_by, deployment_env, lawbook_hash, request_id,
@@ -125,9 +125,29 @@ export async function listDbRepairRunsByRepairId(
 }
 
 /**
+ * Database row type for db_repair_runs
+ */
+interface DbRepairRunRow {
+  id: string;
+  repair_id: string;
+  expected_hash: string;
+  actual_hash: string;
+  executed_at: Date;
+  executed_by: string;
+  deployment_env: string;
+  lawbook_hash: string | null;
+  request_id: string;
+  status: DbRepairRunStatus;
+  error_code: string | null;
+  error_message: string | null;
+  pre_missing_tables: string | string[];
+  post_missing_tables: string | string[];
+}
+
+/**
  * Map database row to DbRepairRun
  */
-function mapRowToDbRepairRun(row: any): DbRepairRun {
+function mapRowToDbRepairRun(row: DbRepairRunRow): DbRepairRun {
   return {
     id: row.id,
     repair_id: row.repair_id,

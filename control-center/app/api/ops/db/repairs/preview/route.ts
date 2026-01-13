@@ -33,6 +33,7 @@ import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { checkProdWriteGuard } from '@/lib/guards/prod-write-guard';
 import { getRepairPlaybook } from '@/lib/db/db-repair-registry';
+import { truncateSqlForDisplay } from '@/lib/db/db-repair-registry';
 import { getPool } from '@/lib/db';
 import { getMissingTables } from '@/lib/db/migrations';
 import { getActiveLawbook } from '@/lib/db/lawbook';
@@ -112,10 +113,7 @@ export async function POST(request: NextRequest) {
   const wouldApply = requiredTablesCheck.allPresent;
 
   // Build plan (may truncate for large repairs)
-  const plan = playbook.sql.map((stmt, idx) => {
-    const truncated = stmt.length > 500 ? stmt.substring(0, 500) + '...' : stmt;
-    return truncated;
-  });
+  const plan = playbook.sql.map(stmt => truncateSqlForDisplay(stmt));
 
   const response = {
     version: '1.0.0',

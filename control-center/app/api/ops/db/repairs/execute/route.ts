@@ -132,7 +132,10 @@ export async function POST(request: NextRequest) {
   let statementsExecuted = 0;
   let postMissingTables: string[] = [];
 
-  // Execute repair SQL (transactional where possible)
+  // Execute repair SQL
+  // Note: DDL statements (CREATE TABLE, CREATE INDEX, etc.) auto-commit in PostgreSQL
+  // and cannot be wrapped in a transaction. This is acceptable because all SQL is
+  // idempotent (CREATE IF NOT EXISTS) and can be safely re-run if partially executed.
   try {
     // Execute each statement
     for (const stmt of playbook.sql) {
