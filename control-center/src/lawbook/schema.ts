@@ -49,6 +49,34 @@ export const LawbookRemediationSchema = z.object({
 }).strict();
 
 /**
+ * Stop conditions configuration section (E84.4)
+ * Rules to prevent infinite loops in automated reruns
+ */
+export const LawbookStopRulesSchema = z.object({
+  // Maximum reruns per individual job
+  maxRerunsPerJob: z.number().int().positive().default(2),
+  
+  // Maximum total reruns across all jobs in a PR
+  maxTotalRerunsPerPr: z.number().int().positive().default(5),
+  
+  // Maximum wait time for checks to turn green (in minutes)
+  maxWaitMinutesForGreen: z.number().int().positive().optional(),
+  
+  // Cooldown period between rerun attempts (in minutes)
+  cooldownMinutes: z.number().int().positive().default(5),
+  
+  // Failure classes that should immediately block reruns
+  blockOnFailureClasses: z.array(z.string()).default([
+    'build deterministic',
+    'lint error',
+    'syntax error',
+  ]),
+  
+  // Number of cycles with no signal change before triggering HOLD
+  noSignalChangeThreshold: z.number().int().positive().default(2),
+}).strict();
+
+/**
  * Evidence requirements section
  */
 export const LawbookEvidenceSchema = z.object({
@@ -84,6 +112,7 @@ export const LawbookV1Schema = z.object({
   github: LawbookGitHubSchema,
   determinism: LawbookDeterminismSchema,
   remediation: LawbookRemediationSchema,
+  stopRules: LawbookStopRulesSchema.optional(), // E84.4: Stop conditions
   evidence: LawbookEvidenceSchema,
   enforcement: LawbookEnforcementSchema,
   ui: LawbookUISchema,
@@ -96,6 +125,7 @@ export const LawbookV1Schema = z.object({
 export type LawbookGitHub = z.infer<typeof LawbookGitHubSchema>;
 export type LawbookDeterminism = z.infer<typeof LawbookDeterminismSchema>;
 export type LawbookRemediation = z.infer<typeof LawbookRemediationSchema>;
+export type LawbookStopRules = z.infer<typeof LawbookStopRulesSchema>;
 export type LawbookEvidence = z.infer<typeof LawbookEvidenceSchema>;
 export type LawbookEnforcement = z.infer<typeof LawbookEnforcementSchema>;
 export type LawbookUI = z.infer<typeof LawbookUISchema>;
@@ -124,6 +154,10 @@ export function canonicalizeLawbook(lawbook: LawbookV1): string {
       allowedPlaybooks: lawbook.remediation.allowedPlaybooks.slice().sort(),
       allowedActions: lawbook.remediation.allowedActions.slice().sort(),
     },
+    stopRules: lawbook.stopRules ? {
+      ...lawbook.stopRules,
+      blockOnFailureClasses: lawbook.stopRules.blockOnFailureClasses?.slice().sort(),
+    } : undefined,
     enforcement: {
       ...lawbook.enforcement,
       requiredFields: lawbook.enforcement.requiredFields.slice().sort(),
@@ -215,6 +249,14 @@ export function createMinimalLawbook(overrides?: Partial<LawbookV1>): LawbookV1 
       allowedActions: ['runner_dispatch', 'verification_run', 'ecs_force_new_deploy'],
       maxRunsPerIncident: 3,
       cooldownMinutes: 15,
+    },
+    stopRules: {
+      maxRerunsPerJob: 2,
+      maxTotalRerunsPerPr: 5,
+      maxWaitMinutesForGreen: 60,
+      cooldownMinutes: 5,
+      blockOnFailureClasses: ['build deterministic', 'lint error', 'syntax error'],
+      noSignalChangeThreshold: 2,
     },
     evidence: {
       requiredKindsByCategory: {},
