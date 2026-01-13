@@ -40,7 +40,7 @@ export async function GET(
         handoff_state,
         execution_state
       FROM afu9_issues
-      WHERE id = $1 OR public_id = $1`,
+      WHERE id = $1`,
       [id]
     );
 

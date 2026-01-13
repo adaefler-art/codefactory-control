@@ -97,7 +97,8 @@ export interface StateMachineSpec {
 export function loadStateMachineSpec(
   specDir?: string
 ): StateMachineSpec {
-  // Default path is relative to repo root, not control-center
+  // Default path is relative to repo root (one level up from control-center)
+  // This matches the pattern used in mcp-catalog.ts and works across different environments
   const baseDir = specDir || path.join(process.cwd(), '..', 'docs', 'state-machine', 'v1');
 
   try {

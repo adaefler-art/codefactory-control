@@ -11,7 +11,7 @@
  * - Next action button (only shown when allowed)
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface BlockingReason {
   type: 'missing_check' | 'missing_review' | 'guardrail' | 'precondition';
@@ -47,11 +47,7 @@ export function StateFlowViewer({ issueId, readOnly = false, onStateTransition }
   const [error, setError] = useState<string | null>(null);
   const [selectedNextState, setSelectedNextState] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchStateFlow();
-  }, [issueId]);
-
-  const fetchStateFlow = async () => {
+  const fetchStateFlow = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -74,7 +70,11 @@ export function StateFlowViewer({ issueId, readOnly = false, onStateTransition }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [issueId]);
+
+  useEffect(() => {
+    fetchStateFlow();
+  }, [fetchStateFlow]);
 
   const getBlockingReasonIcon = (type: BlockingReason['type']) => {
     switch (type) {

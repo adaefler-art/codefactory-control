@@ -8,7 +8,7 @@
  * - Blocking reasons (missing checks, reviews, guardrails)
  */
 
-import { loadStateMachineSpec, getTransition, checkPreconditions, getRequiredChecks, isTransitionAllowed } from './state-machine/loader';
+import { loadStateMachineSpec, getTransition, checkPreconditions } from './state-machine/loader';
 import type { StateMachineSpec } from './state-machine/loader';
 
 export interface BlockingReason {
