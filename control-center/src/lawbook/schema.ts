@@ -215,7 +215,7 @@ export function parseLawbook(data: unknown): LawbookV1 {
 /**
  * Safe parse (returns success/error result)
  */
-export function safeParseLawbook(data: unknown): z.SafeParseReturnType<unknown, LawbookV1> {
+export function safeParseLawbook(data: unknown) {
   return LawbookV1Schema.safeParse(data);
 }
 

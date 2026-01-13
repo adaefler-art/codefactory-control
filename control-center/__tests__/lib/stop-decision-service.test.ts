@@ -18,8 +18,8 @@ jest.mock('../../src/lib/logger', () => ({
   },
 }));
 
-jest.mock('../../src/lib/lawbook-version-helper', () => ({
-  getLawbookVersion: jest.fn(),
+jest.mock('../../src/lib/db/lawbook', () => ({
+  getActiveLawbookVersion: jest.fn(),
 }));
 
 describe('Stop Decision Service', () => {
@@ -66,8 +66,8 @@ describe('Stop Decision Service', () => {
       ui: {},
     };
 
-    const { getLawbookVersion } = require('../../src/lib/lawbook-version-helper');
-    getLawbookVersion.mockResolvedValue(mockLawbook);
+    const { getActiveLawbookVersion } = require('../../src/lib/db/lawbook');
+    getActiveLawbookVersion.mockResolvedValue(mockLawbook);
 
     // Mock audit insert (always succeeds)
     mockQuery.mockResolvedValue({ rows: [] });
@@ -442,8 +442,8 @@ describe('Stop Decision Service', () => {
 
   describe('Default rules fallback', () => {
     it('should use default rules if lawbook fails to load', async () => {
-      const { getLawbookVersion } = require('../../src/lib/lawbook-version-helper');
-      getLawbookVersion.mockRejectedValueOnce(new Error('Lawbook load failed'));
+      const { getActiveLawbookVersion } = require('../../src/lib/db/lawbook');
+      getActiveLawbookVersion.mockRejectedValueOnce(new Error('Lawbook load failed'));
 
       const context: StopDecisionContext = {
         owner: 'test-owner',
@@ -466,8 +466,8 @@ describe('Stop Decision Service', () => {
       const lawbookWithoutStopRules = { ...mockLawbook };
       delete (lawbookWithoutStopRules as any).stopRules;
 
-      const { getLawbookVersion } = require('../../src/lib/lawbook-version-helper');
-      getLawbookVersion.mockResolvedValueOnce(lawbookWithoutStopRules);
+      const { getActiveLawbookVersion } = require('../../src/lib/db/lawbook');
+      getActiveLawbookVersion.mockResolvedValueOnce(lawbookWithoutStopRules);
 
       const context: StopDecisionContext = {
         owner: 'test-owner',

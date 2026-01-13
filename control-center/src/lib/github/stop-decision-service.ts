@@ -11,7 +11,6 @@
 import { Pool } from 'pg';
 import { getPool } from '../db';
 import { logger } from '../logger';
-import { getLawbookVersion } from '../lawbook-version-helper';
 import { LawbookV1, LawbookStopRules } from '../../lawbook/schema';
 import {
   StopDecisionContext,
@@ -20,6 +19,9 @@ import {
   StopReasonCode,
   RecommendedNextStep,
 } from '../types/stop-decision';
+
+// Import the database helper to get lawbook
+import { getActiveLawbookVersion } from '../db/lawbook';
 
 /**
  * Get lawbook hash from environment or use default
@@ -58,12 +60,12 @@ function getDefaultStopRules(): LawbookStopRules {
  */
 async function loadStopRules(): Promise<LawbookStopRules> {
   try {
-    const lawbook = await getLawbookVersion();
+    const lawbook = await getActiveLawbookVersion();
     if (lawbook && lawbook.stopRules) {
       return lawbook.stopRules;
     }
   } catch (error) {
-    logger.warn('Failed to load lawbook, using default stop rules', error as Error, {}, 'StopDecisionService');
+    logger.warn('Failed to load lawbook, using default stop rules', error as Error, {});
   }
   
   return getDefaultStopRules();
@@ -167,7 +169,7 @@ export async function makeStopDecision(
   // Get lawbook version for evidence
   let lawbookVersion: string | undefined;
   try {
-    const lawbook = await getLawbookVersion();
+    const lawbook = await getActiveLawbookVersion();
     lawbookVersion = lawbook?.lawbookVersion;
   } catch {
     lawbookVersion = undefined;
