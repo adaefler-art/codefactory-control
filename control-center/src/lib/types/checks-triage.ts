@@ -162,3 +162,46 @@ export const ChecksTriageInputSchema = z.object({
 });
 
 export type ChecksTriageInput = z.infer<typeof ChecksTriageInputSchema>;
+
+// ========================================
+// Copilot Prompt Types (E84.2)
+// ========================================
+
+/**
+ * Attachments for the generated prompt
+ */
+export const PromptAttachmentsSchema = z.object({
+  evidenceUrls: z.array(z.string()),
+  excerptHashes: z.array(z.string()),
+});
+
+export type PromptAttachments = z.infer<typeof PromptAttachmentsSchema>;
+
+/**
+ * Generated Copilot prompt (v1)
+ */
+export const CopilotPromptV1Schema = z.object({
+  schemaVersion: z.literal('1.0'),
+  requestId: z.string(),
+  lawbookHash: z.string(),
+  failureClass: FailureTypeSchema,
+  promptText: z.string(),
+  attachments: PromptAttachmentsSchema,
+  verifySteps: z.array(z.string()), // PowerShell commands
+  doneDefinition: z.array(z.string()),
+});
+
+export type CopilotPromptV1 = z.infer<typeof CopilotPromptV1Schema>;
+
+/**
+ * Input for copilot prompt generation
+ */
+export const CopilotPromptInputSchema = z.object({
+  triageReport: ChecksTriageReportV1Schema,
+  constraints: z.object({
+    maxFiles: z.number().int().positive().default(5),
+    preferMinimalDiff: z.boolean().default(true),
+  }).optional(),
+});
+
+export type CopilotPromptInput = z.infer<typeof CopilotPromptInputSchema>;
