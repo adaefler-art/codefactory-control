@@ -147,7 +147,12 @@ export async function middleware(request: NextRequest) {
       (request.method === 'POST' && pathname === '/api/integrations/github/ingest/issue') ||
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
       (request.method === 'GET' && /^\/api\/intent\/sessions\/[^/]+$/.test(pathname)) ||
-      (request.method === 'POST' && /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname));
+      (request.method === 'POST' && /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname)) ||
+      // GitHub API endpoints for issue/PR automation (E83.2+)
+      (request.method === 'POST' && /^\/api\/github\/issues\/\d+\/assign-copilot$/.test(pathname)) ||
+      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/request-review-and-wait$/.test(pathname)) ||
+      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/collect-summary$/.test(pathname)) ||
+      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/merge$/.test(pathname));
 
     if (allowlisted) {
       const smokeSubRaw = request.headers.get('x-afu9-sub');
