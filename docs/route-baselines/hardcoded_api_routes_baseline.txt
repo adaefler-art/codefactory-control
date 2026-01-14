@@ -11,6 +11,7 @@ control-center/app/agents/[agentType]/page.tsx:61|/api/agents/${encodeURICompone
 control-center/app/agents/[agentType]/page.tsx:121|/api/agent/execute
 control-center/app/agents/page.tsx:45|/api/agents?limit=100
 control-center/app/auth/refresh/refresh-client.tsx:23|/api/auth/refresh
+control-center/app/components/StateFlowViewer.tsx:55|/api/issues/${issueId}/state-flow
 control-center/app/dashboard/page.tsx:114|/api/workflow/executions?limit=10
 control-center/app/dashboard/page.tsx:118|/api/workflows
 control-center/app/dashboard/page.tsx:122|/api/agents?limit=100
@@ -24,10 +25,6 @@ control-center/app/factory/page.tsx:19|/api/v1/factory/status?limit=20&errorLimi
 control-center/app/forgot-password/page.tsx:30|/api/auth/forgot-password
 control-center/app/issues/new/page.tsx:63|/api/issues/new
 control-center/app/issues/new/page.tsx:95|/api/issues/new
-control-center/app/issues/page.tsx:105|/api/issues?${params.toString()}
-control-center/app/issues/page.tsx:138|/api/issues/import
-control-center/app/issues/page.tsx:170|/api/import/backlog-file
-control-center/app/issues/page.tsx:223|/api/issues/${deleteConfirmIssue.id}
 control-center/app/lawbook/page.tsx:127|/api/lawbook/guardrails
 control-center/app/lawbook/page.tsx:128|/api/lawbook/parameters
 control-center/app/lawbook/page.tsx:129|/api/lawbook/memory
@@ -35,6 +32,9 @@ control-center/app/login/page.tsx:25|/api/build-metadata
 control-center/app/login/page.tsx:36|/api/auth/login
 control-center/app/observability/page.tsx:71|/api/observability/alarms
 control-center/app/observability/page.tsx:91|/api/infrastructure/health
+control-center/app/ops/db/repairs/page.tsx:88|/api/ops/db/repairs
+control-center/app/ops/db/repairs/page.tsx:112|/api/ops/db/repairs/preview
+control-center/app/ops/db/repairs/page.tsx:153|/api/ops/db/repairs/execute
 control-center/app/repositories/[id]/page.tsx:85|/api/repositories/${id}
 control-center/app/repositories/page.tsx:28|/api/repositories
 control-center/app/reset-password/page.tsx:34|/api/auth/reset-password

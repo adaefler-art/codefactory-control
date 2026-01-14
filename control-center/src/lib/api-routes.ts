@@ -130,6 +130,9 @@ export const API_ROUTES = {
       status: (env: string) => `/api/admin/cost-control/status?env=${env}`,
       settingsPatch: '/api/admin/cost-control/settings',
     },
+    tools: {
+      catalog: '/api/admin/tools/catalog',
+    },
   },
 
   // Playbooks
