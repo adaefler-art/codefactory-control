@@ -31,7 +31,7 @@ function isAdminUser(userId: string): boolean {
  * Generate a deterministic hash for schema objects
  */
 function hashSchema(schema: Record<string, unknown> | undefined | null): string {
-  if (!schema) return 'none';
+  if (!schema || typeof schema !== 'object') return 'none';
   const normalized = JSON.stringify(schema, Object.keys(schema).sort());
   return crypto.createHash('sha256').update(normalized).digest('hex').substring(0, 16);
 }

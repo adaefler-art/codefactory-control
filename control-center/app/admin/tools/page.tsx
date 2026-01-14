@@ -258,7 +258,7 @@ export default function AdminToolsPage() {
             >
               {/* Server Header */}
               <div
-                className="p-4 cursor-pointer hover:bg-gray-850"
+                className="p-4 cursor-pointer hover:bg-gray-800"
                 onClick={() => toggleServer(server.name)}
               >
                 <div className="flex items-center justify-between">
@@ -309,7 +309,7 @@ export default function AdminToolsPage() {
                           {server.tools.map((tool) => (
                             <tr
                               key={tool.toolId}
-                              className="border-b border-gray-800 hover:bg-gray-850"
+                              className="border-b border-gray-800 hover:bg-gray-800"
                             >
                               <td className="py-2 px-4 font-mono text-blue-300">
                                 {tool.toolId}
