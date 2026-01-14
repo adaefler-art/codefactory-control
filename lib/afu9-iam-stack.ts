@@ -418,7 +418,6 @@ export class Afu9IamStack extends cdk.Stack {
 
     // Allow CI/CD to validate required keys in AFU-9 secrets.
     // Justification: repo build/deploy scripts run secret validation (reads secret JSON).
-    // Also includes stage/smoke-key for staging deploy smoke tests.
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'SecretsManagerGetAfu9SecretsForValidation',
@@ -428,7 +427,6 @@ export class Afu9IamStack extends cdk.Stack {
           `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/database*`,
           `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/github*`,
           `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/llm*`,
-          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/stage/smoke-key*`,
         ],
       })
     );
