@@ -54,9 +54,10 @@ interface IssueDraftData {
 interface IssueDraftPanelProps {
   sessionId: string | null;
   refreshKey?: number;
+  onDraftUpdated?: () => void; // Callback for when draft is updated (e.g., from PATCH)
 }
 
-export default function IssueDraftPanel({ sessionId, refreshKey }: IssueDraftPanelProps) {
+export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated }: IssueDraftPanelProps) {
   const [draft, setDraft] = useState<IssueDraftData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -66,14 +67,18 @@ export default function IssueDraftPanel({ sessionId, refreshKey }: IssueDraftPan
   const [showErrors, setShowErrors] = useState(true);
   const [showWarnings, setShowWarnings] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [lastRequestId, setLastRequestId] = useState<string | null>(null);
 
-  // Auto-load draft when session changes
+  // Auto-load draft when session changes or refreshKey changes
   useEffect(() => {
     if (sessionId) {
       loadDraft();
     } else {
       setDraft(null);
       setError(null);
+      setLastUpdatedAt(null);
+      setLastRequestId(null);
     }
   }, [sessionId, refreshKey]);
 
@@ -357,7 +362,15 @@ export default function IssueDraftPanel({ sessionId, refreshKey }: IssueDraftPan
       <div className="border-b border-gray-800 px-4 py-3 shrink-0">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold text-gray-100">Issue Draft</h3>
-          {renderValidationBadge()}
+          <div className="flex items-center gap-3">
+            {renderValidationBadge()}
+            {draft && lastUpdatedAt && (
+              <span className="text-xs text-gray-400">
+                Updated: {new Date(lastUpdatedAt).toLocaleTimeString()}
+                {lastRequestId && <span className="ml-1">({lastRequestId.substring(0, 8)})</span>}
+              </span>
+            )}
+          </div>
         </div>
         
         {/* Action Buttons */}

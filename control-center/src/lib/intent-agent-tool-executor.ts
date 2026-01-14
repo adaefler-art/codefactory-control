@@ -294,6 +294,112 @@ export async function executeIntentTool(
         });
       }
 
+      case 'apply_issue_draft_patch': {
+        const { patch, validateAfterUpdate } = args;
+
+        if (!patch) {
+          return JSON.stringify({
+            success: false,
+            error: 'patch is required',
+            code: 'MISSING_PATCH',
+          });
+        }
+
+        // Get current draft
+        const draftResult = await getIssueDraft(pool, sessionId, userId);
+
+        if (!draftResult.success) {
+          return JSON.stringify({
+            success: false,
+            error: draftResult.error,
+            code: 'ISSUE_DRAFT_GET_FAILED',
+          });
+        }
+
+        if (!draftResult.data) {
+          return JSON.stringify({
+            success: false,
+            error: 'No Issue Draft exists to patch. Create one first with save_issue_draft.',
+            code: 'NO_DRAFT',
+          });
+        }
+
+        // Import patch application
+        const { applyPatchToDraft } = await import('@/lib/drafts/patchApply');
+        
+        // Apply patch
+        const currentDraft = draftResult.data.issue_json as IssueDraft;
+        const patchResult = applyPatchToDraft(currentDraft, patch);
+
+        if (!patchResult.success) {
+          return JSON.stringify({
+            success: false,
+            error: patchResult.error,
+            code: patchResult.code || 'PATCH_FAILED',
+          });
+        }
+
+        // Save patched draft (with optional validation)
+        let saveResult;
+        let validationResult;
+
+        if (validateAfterUpdate) {
+          const validateResult = await validateAndSaveIssueDraft(
+            pool,
+            sessionId,
+            userId,
+            patchResult.draft!
+          );
+
+          if (!validateResult.success) {
+            return JSON.stringify({
+              success: false,
+              error: validateResult.error,
+              code: 'ISSUE_DRAFT_SAVE_FAILED',
+            });
+          }
+
+          saveResult = validateResult.data;
+          validationResult = validateResult.validation;
+        } else {
+          const simpleSaveResult = await saveIssueDraft(
+            pool,
+            sessionId,
+            userId,
+            patchResult.draft!
+          );
+
+          if (!simpleSaveResult.success) {
+            return JSON.stringify({
+              success: false,
+              error: simpleSaveResult.error,
+              code: 'ISSUE_DRAFT_SAVE_FAILED',
+            });
+          }
+
+          saveResult = simpleSaveResult.data;
+        }
+
+        // Return minimal response (no schema dump)
+        return JSON.stringify({
+          success: true,
+          updated: {
+            id: saveResult.id,
+            issue_hash: saveResult.issue_hash?.substring(0, 12),
+            last_validation_status: saveResult.last_validation_status,
+            updated_at: saveResult.updated_at,
+          },
+          diffSummary: patchResult.diffSummary,
+          validation: validationResult
+            ? {
+                isValid: validationResult.isValid,
+                errorCount: validationResult.errors?.length || 0,
+              }
+            : undefined,
+          message: `Draft updated: ${patchResult.diffSummary?.changedFields.join(', ')}`,
+        });
+      }
+
       case 'validate_issue_draft': {
         const { issueJson } = args;
 

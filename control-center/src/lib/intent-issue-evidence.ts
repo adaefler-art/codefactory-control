@@ -82,6 +82,7 @@ const EXACT_SECRET_KEYS = [
  */
 export type EvidenceAction =
   | 'draft_save'
+  | 'draft_update'
   | 'draft_validate'
   | 'draft_commit'
   | 'issue_set_generate'
