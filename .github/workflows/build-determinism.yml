@@ -107,6 +107,7 @@ jobs:
           - $ROOT/.next/app-path-routes-manifest.json
           - $ROOT/.next/prerender-manifest.json
           - $ROOT/**/*client-reference-manifest*
+          - $ROOT/.next/server/**/*.js (webpack module IDs non-deterministic)
           - /etc/alternatives/*.gz (future RootFS-only noise)
           EOF
           )
@@ -147,6 +148,8 @@ jobs:
             export TZ=UTC LC_ALL=C LANG=C
             cd /app/control-center
             find . -path "./.next/cache" -prune -o \
+              -path "./.next/server/*.js" -prune -o \
+              -path "./.next/server/**/*.js" -prune -o \
               -type f \
               ! -path "./.next/app-path-routes-manifest.json" \
               ! -path "./.next/prerender-manifest.json" \
@@ -165,6 +168,8 @@ jobs:
             export TZ=UTC LC_ALL=C LANG=C
             cd /app/control-center
             find . -path "./.next/cache" -prune -o \
+              -path "./.next/server/*.js" -prune -o \
+              -path "./.next/server/**/*.js" -prune -o \
               -type f \
               ! -path "./.next/app-path-routes-manifest.json" \
               ! -path "./.next/prerender-manifest.json" \
