@@ -63,11 +63,11 @@ export async function GET(request: NextRequest) {
 
   try {
     // Build capability manifest with user context
-    // Note: sessionId is not available here, so we use a placeholder
-    // The manifest is user-agnostic anyway (gates evaluated per-user basis)
+    // sessionId is required by IntentToolContext interface but not used for manifest generation
+    // (manifest is user-agnostic; tool gates are evaluated per-user but manifest structure is same)
     const manifest = await buildCapabilityManifest({
       userId,
-      sessionId: 'manifest-request', // Placeholder - not used for manifest generation
+      sessionId: 'manifest-request', // Static placeholder - manifest generation doesn't use session
     });
 
     // Check If-None-Match header for ETag caching

@@ -118,7 +118,22 @@ export async function buildCapabilityManifest(
       const constraints: CapabilityConstraint[] = [];
 
       // Check guardrails from catalog
-      const guardrails = (tool as any).guardrails || [];
+      // Note: guardrails is an optional extension to the MCP tool schema
+      interface MCPToolWithGuardrails {
+        name: string;
+        description: string;
+        contractVersion: string;
+        guardrails?: Array<{
+          id: string;
+          description: string;
+          severity: string;
+          appliesTo: string;
+        }>;
+      }
+
+      const toolWithGuardrails = tool as MCPToolWithGuardrails;
+      const guardrails = toolWithGuardrails.guardrails || [];
+      
       for (const guardrail of guardrails) {
         if (guardrail.id === 'READ_ONLY') {
           constraints.push('read_only');
@@ -252,8 +267,9 @@ export async function buildCapabilityManifest(
  * @returns SHA256 hash (hex)
  */
 function computeCapabilityHash(capabilities: CapabilityEntry[]): string {
-  // Create deterministic JSON string (sorted keys, no whitespace)
-  const normalized = JSON.stringify(capabilities, Object.keys(capabilities).sort());
+  // Create deterministic JSON string (no whitespace, stable key order)
+  // Note: Using null as replacer ensures default serialization behavior
+  const normalized = JSON.stringify(capabilities, null);
   
   // Compute SHA256
   const hash = crypto.createHash('sha256');
