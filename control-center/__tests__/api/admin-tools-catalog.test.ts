@@ -186,7 +186,7 @@ describe('GET /api/admin/tools/catalog', () => {
     const response = await getToolsCatalog(request);
     const data = await response.json();
 
-    const githubServer = data.servers.find((s: any) => s.name === 'github');
+    const githubServer = data.servers.find((s: { name: string }) => s.name === 'github');
     expect(githubServer.tools[0].toolId).toBe('getIssue');
     expect(githubServer.tools[1].toolId).toBe('listIssues');
   });
@@ -205,8 +205,8 @@ describe('GET /api/admin/tools/catalog', () => {
     const response = await getToolsCatalog(request);
     const data = await response.json();
 
-    const githubServer = data.servers.find((s: any) => s.name === 'github');
-    const deployServer = data.servers.find((s: any) => s.name === 'deploy');
+    const githubServer = data.servers.find((s: { name: string }) => s.name === 'github');
+    const deployServer = data.servers.find((s: { name: string }) => s.name === 'deploy');
 
     expect(githubServer.health).toBe('OK');
     expect(deployServer.health).toBe('UNREACHABLE');
@@ -234,8 +234,8 @@ describe('GET /api/admin/tools/catalog', () => {
     const response = await getToolsCatalog(request);
     const data = await response.json();
 
-    const githubServer = data.servers.find((s: any) => s.name === 'github');
-    const getIssueTool = githubServer.tools.find((t: any) => t.toolId === 'getIssue');
+    const githubServer = data.servers.find((s: { name: string }) => s.name === 'github');
+    const getIssueTool = githubServer.tools.find((t: { toolId: string }) => t.toolId === 'getIssue');
 
     expect(getIssueTool.inputSchemaHash).toBeDefined();
     expect(getIssueTool.inputSchemaHash).not.toBe('none');
@@ -255,7 +255,7 @@ describe('GET /api/admin/tools/catalog', () => {
 
     // Should still return 200 with UNREACHABLE status for all servers
     expect(response.status).toBe(200);
-    expect(data.servers.every((s: any) => s.health === 'UNREACHABLE')).toBe(true);
+    expect(data.servers.every((s: { health: string }) => s.health === 'UNREACHABLE')).toBe(true);
   });
 
   test('response is deterministic across multiple calls', async () => {
@@ -281,12 +281,12 @@ describe('GET /api/admin/tools/catalog', () => {
     delete data2.timestamp;
 
     // Server order and tool order should be identical
-    expect(data1.servers.map((s: any) => s.name)).toEqual(
-      data2.servers.map((s: any) => s.name)
+    expect(data1.servers.map((s: { name: string }) => s.name)).toEqual(
+      data2.servers.map((s: { name: string }) => s.name)
     );
     
-    expect(data1.servers[0].tools.map((t: any) => t.toolId)).toEqual(
-      data2.servers[0].tools.map((t: any) => t.toolId)
+    expect(data1.servers[0].tools.map((t: { toolId: string }) => t.toolId)).toEqual(
+      data2.servers[0].tools.map((t: { toolId: string }) => t.toolId)
     );
   });
 });

@@ -30,7 +30,7 @@ function isAdminUser(userId: string): boolean {
 /**
  * Generate a deterministic hash for schema objects
  */
-function hashSchema(schema: any): string {
+function hashSchema(schema: Record<string, unknown> | undefined | null): string {
   if (!schema) return 'none';
   const normalized = JSON.stringify(schema, Object.keys(schema).sort());
   return crypto.createHash('sha256').update(normalized).digest('hex').substring(0, 16);
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     // Get health status (cached, no external calls on demand)
     const client = getMCPClient();
-    let healthChecks: Map<string, any>;
+    let healthChecks: Map<string, { status: string; timestamp?: string; error?: string }>;
     try {
       healthChecks = await client.checkAllHealth();
     } catch (error) {
@@ -103,8 +103,8 @@ export async function GET(request: NextRequest) {
         const tools = (server.tools || []).map((tool) => ({
           toolId: tool.name,
           description: tool.description || '',
-          inputSchemaHash: hashSchema((tool as any).inputSchema),
-          outputSchemaHash: hashSchema((tool as any).outputSchema),
+          inputSchemaHash: hashSchema(tool.inputSchema),
+          outputSchemaHash: hashSchema(tool.outputSchema),
           lastUsedAt: null, // Not tracked in Phase 1
           contractVersion: tool.contractVersion,
         }));
