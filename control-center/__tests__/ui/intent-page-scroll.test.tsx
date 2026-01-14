@@ -98,14 +98,11 @@ describe('IntentPage scroll containment', () => {
     // @ts-expect-error override global
     global.fetch = fetchMock;
 
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
-
     render(<IntentPage />);
 
-    // Overflow should be locked on mount
-    expect(document.body.style.overflow).toBe('hidden');
-    expect(document.documentElement.style.overflow).toBe('hidden');
+    // Overflow should be locked via CSS class on mount
+    expect(document.body.classList.contains('intent-page-active')).toBe(true);
+    expect(document.documentElement.classList.contains('intent-page-active')).toBe(true);
 
     const chatScroll = await screen.findByTestId('intent-chat-scroll');
 
@@ -127,10 +124,5 @@ describe('IntentPage scroll containment', () => {
 
     expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     expect(scrollToSpy).not.toHaveBeenCalled();
-
-    // cleanup happens automatically by RTL between tests, but we can assert we didn't mutate previous values here
-    // (restoration is validated implicitly by page unmount in other suites)
-    document.body.style.overflow = prevBodyOverflow;
-    document.documentElement.style.overflow = prevHtmlOverflow;
   });
 });

@@ -67,12 +67,12 @@ export default function IntentPage() {
 
   // Fetch sessions on mount
   useEffect(() => {
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevScrollRestoration = (history as any).scrollRestoration;
 
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    // Add class to html and body to trigger overflow: hidden via CSS
+    document.documentElement.classList.add("intent-page-active");
+    document.body.classList.add("intent-page-active");
+    
     if (typeof (history as any).scrollRestoration === "string") {
       (history as any).scrollRestoration = "manual";
     }
@@ -81,8 +81,10 @@ export default function IntentPage() {
     fetchSessions();
 
     return () => {
-      document.body.style.overflow = prevBodyOverflow;
-      document.documentElement.style.overflow = prevHtmlOverflow;
+      // Remove class to restore normal scrolling on other pages
+      document.documentElement.classList.remove("intent-page-active");
+      document.body.classList.remove("intent-page-active");
+      
       if (typeof (history as any).scrollRestoration === "string") {
         (history as any).scrollRestoration = prevScrollRestoration;
       }
