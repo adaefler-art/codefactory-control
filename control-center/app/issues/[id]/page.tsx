@@ -11,6 +11,7 @@ import { Afu9IssueStatus } from "@/lib/contracts/afu9Issue";
 import { RunsSection } from "../../components/runs/RunsSection";
 import { getEffectiveStatusReason, detectStateDrift } from "@/lib/issues/stateModel";
 import type { IssueStateModel } from "@/lib/schemas/issueStateModel";
+import { StateFlowViewer } from "../../components/StateFlowViewer";
 
 interface Issue {
   id: string;
@@ -1166,6 +1167,20 @@ export default function IssueDetailPage({
 
         {/* Runs Section */}
         <RunsSection issueId={id} />
+
+        {/* State Flow Viewer - E85.3 */}
+        <div className="mt-6">
+          <StateFlowViewer 
+            issueId={id}
+            readOnly={false}
+            onStateTransition={(newState) => {
+              // TODO: Implement state transition handler
+              console.log('[StateTransition] Requested transition to:', newState);
+              setActionMessage(`State transition to ${newState} requested (implementation pending)`);
+              setTimeout(() => setActionMessage(null), 3000);
+            }}
+          />
+        </div>
 
         {/* Activation Warning Dialog */}
         {showActivationWarning && currentActiveIssue && (

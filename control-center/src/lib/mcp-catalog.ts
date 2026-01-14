@@ -19,6 +19,8 @@ export interface MCPCatalogServer {
     name: string;
     description: string;
     contractVersion: string;
+    inputSchema?: Record<string, unknown>;
+    outputSchema?: Record<string, unknown>;
   }>;
 }
 
