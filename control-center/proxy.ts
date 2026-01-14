@@ -152,7 +152,11 @@ export async function middleware(request: NextRequest) {
       (request.method === 'POST' && /^\/api\/github\/issues\/\d+\/assign-copilot$/.test(pathname)) ||
       (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/request-review-and-wait$/.test(pathname)) ||
       (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/collect-summary$/.test(pathname)) ||
-      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/merge$/.test(pathname));
+      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/merge$/.test(pathname)) ||
+      // PR checks endpoints for smoke testing
+      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/triage$/.test(pathname)) ||
+      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/stop-decision$/.test(pathname)) ||
+      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/prompt$/.test(pathname));
 
     if (allowlisted) {
       const smokeSubRaw = request.headers.get('x-afu9-sub');
