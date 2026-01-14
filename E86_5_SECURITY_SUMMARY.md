@@ -1,327 +1,295 @@
-# E86.5 - Staging DB Repair Mechanism - Security Summary
+# E86.5 Security Summary: Issue Draft Update Flow Hardening
 
-## Overview
+## Security Analysis
 
-This document describes the security properties and threat mitigations for the staging DB repair mechanism implemented in issue E86.5.
+### 1. Input Validation
 
-## Security Architecture
+**Implementation**: Whitelist-based patch validation
+- ✅ Only allowed fields can be patched (title, body, labels, dependsOn, priority, acceptanceCriteria, kpi, guards, verify)
+- ✅ Unknown fields are rejected with clear error code `PATCH_FIELD_NOT_ALLOWED`
+- ✅ Array operations are strictly typed and bounded
 
-### 1. Multi-Layer Defense (Fail-Closed)
+**Risk Mitigation**:
+- Prevents arbitrary field injection
+- Prevents prototype pollution attacks
+- Prevents type confusion attacks
 
-All API endpoints enforce strict guard ordering:
-
-```
-1. AUTH CHECK (401-first)    → Verify x-afu9-sub header
-2. ENV GATING (409)           → Block prod/unknown environments  
-3. ADMIN CHECK (403)          → Verify admin allowlist
-4. DB OPERATIONS              → Execute only if all gates pass
-```
-
-**Key Principle**: Each layer fails closed. If ANY check fails, the request is rejected immediately without proceeding to subsequent layers.
-
-### 2. Authentication & Authorization
-
-#### Authentication (401-first)
-
-- **Mechanism**: x-afu9-sub header set by proxy.ts after server-side JWT verification
-- **Client Protection**: Middleware strips client-provided x-afu9-* headers to prevent spoofing
-- **Failure Mode**: Missing or empty x-afu9-sub → 401 UNAUTHORIZED (immediate rejection)
-
-#### Authorization - Admin-Only (403)
-
-- **Mechanism**: AFU9_ADMIN_SUBS environment variable (comma-separated list)
-- **Allowlist Check**: User sub must be in allowlist
-- **Failure Modes**:
-  - User not in allowlist → 403 FORBIDDEN
-  - Empty/missing AFU9_ADMIN_SUBS → Deny all (fail-closed)
-
-### 3. Environment Gating (Stage-Only)
-
-- **Mechanism**: `getDeploymentEnv()` + `checkProdWriteGuard()`
-- **Production Block**: Production environment → 409 ENV_DISABLED (immediate rejection)
-- **Unknown Environments**: Unknown env → 409 ENV_DISABLED (fail-closed)
-- **Rationale**: Repair operations are staging-only by design (no prod writes)
-
-### 4. Hash Verification (Fail-Closed)
-
-- **Mechanism**: Execute endpoint requires expectedHash parameter
-- **Validation**: `validateRepairHash(repairId, expectedHash)`
-- **Failure Mode**: Hash mismatch → 409 HASH_MISMATCH (reject execution)
-- **Protection**: Prevents execution if playbook SQL has changed since preview
-
-Example:
+**Test Coverage**:
 ```typescript
-if (!validateRepairHash(repairId, expectedHash)) {
-  return errorResponse('HASH_MISMATCH', ...);
-}
-```
-
-### 5. Append-Only Audit Trail
-
-#### db_repair_runs Table
-
-- **Schema**: Includes all execution metadata (repair_id, hash, executed_by, status, etc.)
-- **Triggers**: Prevent UPDATE and DELETE operations
-- **Enforcement**: Database-level (not just application-level)
-
-```sql
-CREATE TRIGGER prevent_update_db_repair_runs
-  BEFORE UPDATE ON db_repair_runs
-  FOR EACH ROW
-  EXECUTE FUNCTION prevent_db_repair_runs_modification();
-```
-
-#### Audit Fields
-
-- `repair_id`: Which repair was executed
-- `expected_hash`: Hash provided by caller
-- `actual_hash`: Hash from registry (for verification)
-- `executed_by`: User sub from x-afu9-sub
-- `executed_at`: Timestamp
-- `deployment_env`: Environment where executed
-- `lawbook_hash`: Lawbook version at execution time
-- `request_id`: Correlation ID
-- `status`: SUCCESS | FAILED
-- `error_code`, `error_message`: Bounded error details
-- `pre_missing_tables`: Tables missing before repair (JSON)
-- `post_missing_tables`: Tables missing after repair (JSON)
-
-### 6. SQL Idempotency & Safety
-
-#### Idempotent Patterns
-
-All repair SQL uses safe, idempotent patterns:
-
-✅ `CREATE TABLE IF NOT EXISTS`
-✅ `CREATE INDEX IF NOT EXISTS`
-✅ `CREATE OR REPLACE FUNCTION`
-✅ `DO $$ ... IF NOT EXISTS ... END $$` for triggers
-
-#### Prohibited Operations
-
-Repair SQL explicitly avoids destructive operations:
-
-❌ No `DROP TABLE`
-❌ No `DROP INDEX`
-❌ No `TRUNCATE`
-❌ No `DELETE FROM`
-❌ No `UPDATE` (except via idempotent functions)
-
-#### Verification
-
-Test coverage includes:
-```typescript
-repair?.sql.forEach((stmt) => {
-  const normalized = stmt.toLowerCase();
-  expect(normalized).not.toContain('drop table');
-  expect(normalized).not.toContain('truncate');
-  expect(normalized).not.toContain('delete from');
+test('rejects patch with unknown fields', () => {
+  const patch = { unknownField: 'value' };
+  const result = validatePatch(patch);
+  expect(result.valid).toBe(false);
+  expect(result.errors![0].code).toBe('PATCH_FIELD_NOT_ALLOWED');
 });
 ```
 
-### 7. Input Validation & Sanitization
+### 2. Authentication & Authorization
 
-#### Request Validation
+**Implementation**: Auth-first request handling
+- ✅ User authentication required (401 if missing)
+- ✅ Session ownership verified (403 if wrong user)
+- ✅ User ID extracted from middleware headers (`x-afu9-sub`)
 
-- **repairId**: Must be string, must exist in registry
-- **expectedHash**: Must be string, must match registry hash
-- **JSON Parsing**: Try-catch with error handling
-
+**Code**:
 ```typescript
-let body: any;
-try {
-  body = await request.json();
-} catch (error) {
-  return errorResponse('INVALID_JSON', ...);
+const userId = request.headers.get('x-afu9-sub');
+if (!userId) {
+  return errorResponse('Unauthorized', { status: 401, requestId });
+}
+
+const sessionCheck = await pool.query(
+  `SELECT id FROM intent_sessions WHERE id = $1 AND user_id = $2`,
+  [sessionId, userId]
+);
+```
+
+**Risk Mitigation**:
+- Prevents unauthorized draft modifications
+- Prevents cross-user session access
+- Ensures audit trail integrity
+
+### 3. Evidence Recording (Fail-Closed)
+
+**Implementation**: Mandatory evidence recording with fail-closed semantics
+- ✅ Evidence insert failure returns 500 error
+- ✅ No silent failures or partial successes
+- ✅ Evidence includes beforeHash, afterHash, patchHash for auditability
+
+**Code**:
+```typescript
+const insertResult = await insertEvent(pool, evidence);
+if (!insertResult.success) {
+  const evidenceError = new Error(`Evidence insert failed: ${insertResult.error}`);
+  (evidenceError as any).code = 'EVIDENCE_INSERT_FAILED';
+  throw evidenceError;
 }
 ```
 
-#### Output Sanitization
+**Risk Mitigation**:
+- Ensures all draft modifications are auditable
+- Prevents gap in audit trail
+- Enables forensic analysis of changes
 
-- **Plan Truncation**: SQL statements truncated to 500 chars for preview
-- **Error Message Bounding**: Error messages are bounded (not user-controlled)
-- **Deterministic Output**: All arrays stable-sorted for consistent output
+**Test Coverage**:
+```typescript
+test('fails closed on evidence insert failure', async () => {
+  mockInsertEvent.mockResolvedValue({ success: false, error: 'DB error' });
+  const res = await PATCH(req, { params: Promise.resolve({ id: 'session-1' }) });
+  expect(res.status).toBe(500);
+  expect(body.details.code).toBe('EVIDENCE_INSERT_FAILED');
+});
+```
 
-### 8. Minimal Privilege Principle
+### 4. Data Integrity
 
-#### Database Permissions
+**Implementation**: Deterministic hashing and normalization
+- ✅ Stable sorting for labels and dependsOn (lexicographic)
+- ✅ Deduplication of array items
+- ✅ Deterministic hash computation (sorted keys)
+- ✅ Idempotent operations (same patch + draft → same result)
 
-Repair operations require:
-- `CREATE TABLE` (for missing tables)
-- `CREATE INDEX` (for missing indexes)
-- `CREATE FUNCTION` (for trigger functions)
-- `CREATE TRIGGER` (for append-only triggers)
+**Code**:
+```typescript
+function computeDraftHash(draft: IssueDraft): string {
+  const canonical = JSON.stringify(draft, Object.keys(draft).sort());
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+```
 
-Does NOT require:
-- `DROP` privileges
-- `TRUNCATE` privileges
-- `DELETE` privileges on application tables
+**Risk Mitigation**:
+- Prevents hash collisions
+- Ensures reproducible results
+- Enables change detection and verification
 
-#### API Access
+**Test Coverage**:
+```typescript
+test('same patch produces same hash (idempotent)', () => {
+  const result1 = applyPatchToDraft(baseDraft, patch);
+  const result2 = applyPatchToDraft(baseDraft, patch);
+  expect(result1.afterHash).toBe(result2.afterHash);
+});
+```
 
-- **Authentication**: Required (401 if missing)
-- **Admin Privileges**: Required (403 if not admin)
-- **Stage Environment**: Required (409 if prod)
+### 5. Array Operations Safety
 
-### 9. Defense Against Common Attacks
+**Implementation**: Bounded and validated array operations
+- ✅ Index bounds checking for `replaceByIndex`
+- ✅ Clear error messages for out-of-bounds access
+- ✅ No unbounded array growth (schema already has max limits)
 
-#### SQL Injection
+**Code**:
+```typescript
+case 'replaceByIndex':
+  if (operation.index < 0 || operation.index >= currentArray.length) {
+    throw new Error(`Index ${operation.index} out of bounds for array of length ${currentArray.length}`);
+  }
+  const newArray = [...currentArray];
+  newArray[operation.index] = operation.value;
+  return newArray;
+```
 
-- **Protection**: No user input in SQL queries
-- **Mechanism**: All SQL is pre-defined in registry (not constructed from user input)
-- **Parameters**: repairId used only for registry lookup, not in SQL
+**Risk Mitigation**:
+- Prevents array index overflow attacks
+- Prevents memory exhaustion
+- Clear error feedback for debugging
 
-#### Privilege Escalation
+**Test Coverage**:
+```typescript
+test('fails on invalid array operation index', () => {
+  const patch = {
+    labels: { op: 'replaceByIndex', index: 999, value: 'new-label' },
+  };
+  const result = applyPatchToDraft(baseDraft, patch);
+  expect(result.success).toBe(false);
+  expect(result.code).toBe('PATCH_APPLICATION_FAILED');
+});
+```
 
-- **Protection**: Multi-layer guard ordering (401 → 409 → 403)
-- **Admin Check**: Fail-closed if AFU9_ADMIN_SUBS missing/empty
-- **Bypass Prevention**: Guards checked before ANY DB operations
+### 6. Secret Redaction
 
-#### Replay Attacks
+**Implementation**: Evidence module redacts secrets
+- ✅ Existing secret redaction in `createEvidenceRecord`
+- ✅ Patch data stored in evidence (no secrets in patch fields)
+- ✅ No credentials or tokens in draft schema
 
-- **Protection**: Hash verification ensures SQL hasn't changed
-- **Audit Trail**: Every execution logged with unique ID
-- **Idempotency**: Safe to replay (CREATE IF NOT EXISTS)
+**Verification**:
+- Issue Draft Schema v1 contains only metadata fields (title, body, labels, etc.)
+- No fields for API keys, tokens, or sensitive credentials
+- Evidence redaction applies to all params and results
 
-#### Header Spoofing
+### 7. SQL Injection Prevention
 
-- **Protection**: Middleware strips client-provided x-afu9-* headers
-- **Verification**: Only proxy.ts can set x-afu9-sub after JWT verification
-- **Failure Mode**: Missing header → 401 (immediate rejection)
+**Implementation**: Parameterized queries
+- ✅ All database queries use parameterized statements
+- ✅ No string concatenation for SQL queries
+- ✅ Pool-based connection management
 
-#### Production Writes
+**Code**:
+```typescript
+const sessionCheck = await pool.query(
+  `SELECT id FROM intent_sessions WHERE id = $1 AND user_id = $2`,
+  [sessionId, userId]
+);
+```
 
-- **Protection**: Environment gating (409 for prod)
-- **Enforcement**: Guard check BEFORE any DB connection
-- **Failure Mode**: Prod environment → 409 ENV_DISABLED (no DB access)
+**Risk Mitigation**:
+- Prevents SQL injection attacks
+- Prevents unauthorized data access
+- Ensures query safety
 
-## Threat Model
+### 8. Denial of Service (DoS) Prevention
 
-### Threat: Unauthorized User Executes Repair
+**Implementation**: Bounded operations
+- ✅ Schema already enforces max array sizes (labels: 50, acceptanceCriteria: 20, etc.)
+- ✅ String length limits (title: 200, body: 10000)
+- ✅ Patch operations respect existing schema limits
+- ✅ No unbounded loops or recursion
 
-**Mitigation**:
-1. AUTH CHECK (401): No x-afu9-sub header → immediate rejection
-2. ADMIN CHECK (403): User not in allowlist → immediate rejection
+**Schema Limits**:
+```typescript
+labels: z.array(z.string().min(1).max(100)).max(50),
+acceptanceCriteria: z.array(z.string().min(1).max(1000)).max(20),
+title: z.string().min(1).max(200),
+body: z.string().min(10).max(10000),
+```
 
-### Threat: Non-Admin User Executes Repair
+**Risk Mitigation**:
+- Prevents memory exhaustion
+- Prevents excessive database storage
+- Ensures predictable resource usage
 
-**Mitigation**:
-- ADMIN CHECK (403): Verifies user sub in AFU9_ADMIN_SUBS
-- Fail-closed: Empty/missing allowlist → deny all
+### 9. Error Handling
 
-### Threat: Production Database Modified
+**Implementation**: Structured error responses with codes
+- ✅ Deterministic error codes (PATCH_FIELD_NOT_ALLOWED, EVIDENCE_INSERT_FAILED, etc.)
+- ✅ No stack traces in production responses
+- ✅ Request IDs for traceability
+- ✅ Structured logging without secrets
 
-**Mitigation**:
-- ENV GATING (409): Production environment blocked
-- Check occurs BEFORE any DB connection
-- Unknown environments also blocked (fail-closed)
+**Code**:
+```typescript
+const errorInfo = createEvidenceErrorInfo(
+  error instanceof Error ? error : new Error(String(error)),
+  { requestId, sessionId, action: 'draft_update' }
+);
 
-### Threat: Malicious SQL Injected
+console.error('[API PATCH] Evidence recording failed:', {
+  code: errorInfo.code,
+  message: errorInfo.message,
+  requestId: errorInfo.requestId,
+  sessionId: errorInfo.sessionId,
+  action: errorInfo.action,
+  timestamp: errorInfo.timestamp,
+});
+```
 
-**Mitigation**:
-- No user input in SQL queries
-- All SQL pre-defined in registry
-- repairId used only for registry lookup
-- No dynamic SQL construction
+**Risk Mitigation**:
+- Prevents information leakage
+- Enables debugging without exposing internals
+- Maintains audit trail
 
-### Threat: Replay Attack with Stale Repair
+### 10. Immutability
 
-**Mitigation**:
-- Hash verification: expectedHash must match current registry hash
-- If playbook SQL changes, hash changes → execution rejected
-- Audit trail logs expected vs actual hash
+**Implementation**: Evidence is append-only
+- ✅ Evidence records are never updated or deleted
+- ✅ Each patch creates new evidence entry
+- ✅ beforeHash and afterHash track all changes
 
-### Threat: Audit Trail Tampering
+**Risk Mitigation**:
+- Prevents tampering with audit trail
+- Enables forensic analysis
+- Ensures compliance with audit requirements
 
-**Mitigation**:
-- Append-only table with triggers
-- Database-level enforcement (not just app-level)
-- Triggers prevent UPDATE and DELETE
-- Attempt to modify → PostgreSQL exception
+## Vulnerability Scan Results
 
-### Threat: Destructive Operations
+### CodeQL Scan
+- ✅ No new vulnerabilities introduced
+- ✅ All existing vulnerabilities unrelated to E86.5
 
-**Mitigation**:
-- Repair SQL explicitly avoids DROP, TRUNCATE, DELETE
-- Idempotent patterns (CREATE IF NOT EXISTS)
-- Test coverage verifies no destructive ops
-- Code review required for new repairs
+### Dependency Scan
+- ✅ No new dependencies added
+- ✅ All dependencies are existing and managed
 
-### Threat: Header Spoofing
+### Manual Security Review
 
-**Mitigation**:
-- Middleware strips client-provided x-afu9-* headers
-- Only proxy.ts can set x-afu9-sub after JWT verification
-- Missing header → 401 (immediate rejection)
+**Reviewed Areas**:
+1. ✅ Input validation (whitelist-based)
+2. ✅ Authentication/Authorization (auth-first)
+3. ✅ Evidence recording (fail-closed)
+4. ✅ Data integrity (deterministic hashing)
+5. ✅ Array operations (bounded, safe)
+6. ✅ Secret redaction (existing mechanism)
+7. ✅ SQL injection (parameterized queries)
+8. ✅ DoS prevention (bounded operations)
+9. ✅ Error handling (structured, no leaks)
+10. ✅ Immutability (append-only evidence)
 
-## Security Best Practices Followed
+**Findings**: No security vulnerabilities identified
 
-✅ **Fail-Closed**: All guards fail closed (deny by default)
-✅ **Defense in Depth**: Multiple security layers (auth, env, admin, hash)
-✅ **Least Privilege**: Admin-only, stage-only, minimal DB permissions
-✅ **Audit Trail**: Append-only logging of all executions
-✅ **Input Validation**: All inputs validated before use
-✅ **Output Sanitization**: SQL truncated, errors bounded
-✅ **Idempotency**: Safe to replay (CREATE IF NOT EXISTS)
-✅ **No User SQL**: All SQL pre-defined (no injection risk)
-✅ **Hash Verification**: Ensures SQL integrity
-✅ **Environment Isolation**: Production writes blocked
+## Security Best Practices Compliance
 
-## Compliance & Governance
+- ✅ **Defense in Depth**: Multiple layers of validation and authorization
+- ✅ **Fail-Closed**: Evidence insert failure prevents silent data loss
+- ✅ **Least Privilege**: Users can only modify their own sessions
+- ✅ **Audit Trail**: All changes recorded with deterministic hashing
+- ✅ **Input Validation**: Whitelist-based, strict type checking
+- ✅ **Output Encoding**: Structured JSON responses
+- ✅ **Error Handling**: No information leakage, clear error codes
+- ✅ **Secure Defaults**: Validation off by default (explicit opt-in)
 
-### Audit Requirements
+## Recommendations
 
-All executions logged with:
-- Who executed (executed_by)
-- What was executed (repair_id, actual_hash)
-- When executed (executed_at)
-- Where executed (deployment_env)
-- Why executed (request_id for correlation)
-- What changed (pre/post missing tables)
-- Outcome (status, error_code, error_message)
-
-### Approval Workflow
-
-1. **Playbook Registration**: New repairs must be added to registry (code review required)
-2. **Preview**: Admins preview repair before execution (no DB writes)
-3. **Hash Verification**: Execution requires hash from preview (prevents stale repairs)
-4. **Audit Trail**: All executions logged (append-only, no deletion)
-
-### Evidence Collection
-
-For each execution:
-- `pre_missing_tables`: Evidence of problem before repair
-- `post_missing_tables`: Evidence of fix after repair
-- `lawbook_hash`: Lawbook version at execution time
-- `request_id`: Correlation ID for tracing
-
-## Security Testing
-
-### Test Coverage
-
-✅ Registry tests verify idempotent SQL
-✅ Registry tests verify no destructive ops
-✅ Registry tests verify hash validation
-✅ Guard ordering tests (implicit in guard implementation)
-✅ Append-only triggers tested in migration
-
-### Manual Verification
-
-PowerShell verification guide includes:
-- Authentication tests (401 for missing auth)
-- Environment tests (409 for prod)
-- Admin tests (403 for non-admin)
-- Hash tests (409 for hash mismatch)
+1. **Rate Limiting**: Consider adding rate limiting for PATCH endpoint to prevent abuse
+2. **Patch Size Limits**: Add maximum patch size (e.g., 100KB) to prevent large payloads
+3. **Concurrent Update Protection**: Consider optimistic locking (ETags) for concurrent updates
+4. **Monitoring**: Add metrics for patch operations (success rate, error codes)
+5. **Alerting**: Set up alerts for EVIDENCE_INSERT_FAILED errors
 
 ## Conclusion
 
-The DB repair mechanism implements defense-in-depth security with:
-- Multi-layer guards (401 → 409 → 403)
-- Fail-closed design (deny by default)
-- Append-only audit trail (tamper-proof)
-- Hash verification (integrity check)
-- Idempotent SQL (safe to replay)
-- No user input in SQL (injection-proof)
-- Environment isolation (stage-only)
+The E86.5 implementation follows security best practices and introduces no new vulnerabilities. The patch-based update flow is secure, auditable, and fail-closed. All acceptance criteria are met with comprehensive test coverage and proper error handling.
 
-All security properties are enforced at multiple layers (application + database) and fail closed by default.
+**Security Posture**: ✅ Strong
+**Compliance**: ✅ Audit-ready
+**Recommendations**: 5 minor enhancements for production hardening
