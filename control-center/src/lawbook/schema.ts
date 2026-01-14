@@ -100,6 +100,50 @@ export const LawbookUISchema = z.object({
 }).strict();
 
 /**
+ * Automation Policy configuration (E87.2)
+ * 
+ * Machine-readable policies for automation steps:
+ * - Allowed actions per environment
+ * - Cooldowns and rate limits
+ * - Idempotency key templates
+ * - Approval requirements
+ */
+export const AutomationPolicyActionSchema = z.object({
+  // Action identifier (e.g., 'rerun_checks', 'merge_pr', 'prod_deploy')
+  actionType: z.string().min(1),
+  
+  // Allowed deployment environments
+  allowedEnvs: z.array(z.enum(['staging', 'prod', 'development'])).default(['staging']),
+  
+  // Cooldown period in seconds (minimum time between executions)
+  cooldownSeconds: z.number().int().nonnegative().default(0),
+  
+  // Maximum runs per time window
+  maxRunsPerWindow: z.number().int().positive().optional(),
+  
+  // Window duration in seconds (for maxRunsPerWindow)
+  windowSeconds: z.number().int().positive().optional(),
+  
+  // Idempotency key template (fields from context to use for stable key generation)
+  // e.g., ['owner', 'repo', 'prNumber', 'runId']
+  idempotencyKeyTemplate: z.array(z.string()).default([]),
+  
+  // Whether this action requires explicit approval (E87.1 integration)
+  requiresApproval: z.boolean().default(false),
+  
+  // Optional description
+  description: z.string().optional(),
+}).strict();
+
+export const LawbookAutomationPolicySchema = z.object({
+  // List of automation policies
+  policies: z.array(AutomationPolicyActionSchema).default([]),
+  
+  // Default enforcement mode
+  enforcementMode: z.enum(['strict', 'permissive']).default('strict'),
+}).strict();
+
+/**
  * Complete Lawbook Document Schema v0.7.0
  */
 export const LawbookV1Schema = z.object({
@@ -113,6 +157,7 @@ export const LawbookV1Schema = z.object({
   determinism: LawbookDeterminismSchema,
   remediation: LawbookRemediationSchema,
   stopRules: LawbookStopRulesSchema.optional(), // E84.4: Stop conditions
+  automationPolicy: LawbookAutomationPolicySchema.optional(), // E87.2: Automation policies
   evidence: LawbookEvidenceSchema,
   enforcement: LawbookEnforcementSchema,
   ui: LawbookUISchema,
@@ -126,6 +171,8 @@ export type LawbookGitHub = z.infer<typeof LawbookGitHubSchema>;
 export type LawbookDeterminism = z.infer<typeof LawbookDeterminismSchema>;
 export type LawbookRemediation = z.infer<typeof LawbookRemediationSchema>;
 export type LawbookStopRules = z.infer<typeof LawbookStopRulesSchema>;
+export type AutomationPolicyAction = z.infer<typeof AutomationPolicyActionSchema>;
+export type LawbookAutomationPolicy = z.infer<typeof LawbookAutomationPolicySchema>;
 export type LawbookEvidence = z.infer<typeof LawbookEvidenceSchema>;
 export type LawbookEnforcement = z.infer<typeof LawbookEnforcementSchema>;
 export type LawbookUI = z.infer<typeof LawbookUISchema>;
@@ -157,6 +204,17 @@ export function canonicalizeLawbook(lawbook: LawbookV1): string {
     stopRules: lawbook.stopRules ? {
       ...lawbook.stopRules,
       blockOnFailureClasses: lawbook.stopRules.blockOnFailureClasses?.slice().sort(),
+    } : undefined,
+    automationPolicy: lawbook.automationPolicy ? {
+      ...lawbook.automationPolicy,
+      // Sort policies by actionType for deterministic ordering
+      policies: lawbook.automationPolicy.policies
+        .map(p => ({
+          ...p,
+          allowedEnvs: p.allowedEnvs.slice().sort(),
+          idempotencyKeyTemplate: p.idempotencyKeyTemplate.slice().sort(),
+        }))
+        .sort((a, b) => a.actionType.localeCompare(b.actionType)),
     } : undefined,
     enforcement: {
       ...lawbook.enforcement,
