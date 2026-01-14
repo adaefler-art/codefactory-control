@@ -101,30 +101,46 @@ export function ApprovalDialog({
     }
   };
 
-  const getActionColor = () => {
+  const getActionStyles = () => {
     switch (actionType) {
       case 'merge':
-        return 'purple';
+        return {
+          borderColor: 'border-purple-700',
+          textColor: 'text-purple-400',
+          bgColor: 'bg-purple-600',
+          hoverBgColor: 'hover:bg-purple-700',
+        };
       case 'prod_operation':
-        return 'blue';
+        return {
+          borderColor: 'border-blue-700',
+          textColor: 'text-blue-400',
+          bgColor: 'bg-blue-600',
+          hoverBgColor: 'hover:bg-blue-700',
+        };
       case 'destructive_operation':
-        return 'red';
+        return {
+          borderColor: 'border-red-700',
+          textColor: 'text-red-400',
+          bgColor: 'bg-red-600',
+          hoverBgColor: 'hover:bg-red-700',
+        };
       default:
-        return 'yellow';
+        return {
+          borderColor: 'border-yellow-700',
+          textColor: 'text-yellow-400',
+          bgColor: 'bg-yellow-600',
+          hoverBgColor: 'hover:bg-yellow-700',
+        };
     }
   };
 
-  const color = getActionColor();
-  const borderColor = `border-${color}-700`;
-  const textColor = `text-${color}-400`;
-  const bgColor = `bg-${color}-600`;
-  const hoverBgColor = `hover:bg-${color}-700`;
+  const styles = getActionStyles();
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className={`bg-gray-900 border ${borderColor} rounded-lg p-6 max-w-2xl mx-4 w-full`}>
+      <div className={`bg-gray-900 border ${styles.borderColor} rounded-lg p-6 max-w-2xl mx-4 w-full`}>
         {/* Header */}
-        <h3 className={`text-xl font-bold ${textColor} mb-4`}>
+        <h3 className={`text-xl font-bold ${styles.textColor} mb-4`}>
           {getActionIcon()} {actionSummary.title}
         </h3>
 
@@ -220,7 +236,7 @@ export function ApprovalDialog({
           <button
             onClick={handleApprove}
             disabled={!phraseValid || isProcessing}
-            className={`px-4 py-2 ${bgColor} ${hoverBgColor} text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-4 py-2 ${styles.bgColor} ${styles.hoverBgColor} text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {isProcessing ? 'Processing...' : 'Approve'}
           </button>

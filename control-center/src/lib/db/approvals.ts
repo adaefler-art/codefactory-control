@@ -67,6 +67,13 @@ export async function insertApprovalRecord(
   const actionFingerprint = computeActionFingerprint(request.actionContext);
   const signedPhraseHash = computeHash(request.signedPhrase);
   
+  // SECURITY NOTE: Raw phrase storage vs. hash-only
+  // Current: Store both raw phrase and hash for audit purposes
+  // Production consideration: Set REDACT_SIGNED_PHRASES=true to store NULL instead of raw phrase
+  // The hash is sufficient for verification; raw phrase is kept for audit transparency
+  const shouldRedactPhrase = process.env.REDACT_SIGNED_PHRASES === 'true';
+  const signedPhraseToStore = shouldRedactPhrase ? null : request.signedPhrase;
+  
   const query = `
     INSERT INTO approval_gates (
       request_id,
@@ -100,7 +107,7 @@ export async function insertApprovalRecord(
     request.approvalContext.contextPackHash || null,
     request.approvalContext.contextSummary ? JSON.stringify(request.approvalContext.contextSummary) : null,
     decision,
-    request.signedPhrase, // Store raw phrase for audit (consider redacting in production)
+    signedPhraseToStore, // Redactable via env var
     signedPhraseHash,
     request.reason || null,
     request.actor,

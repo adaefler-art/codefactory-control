@@ -35,8 +35,8 @@ import {
   ActionContext,
   computeActionFingerprint,
   checkApprovalGate,
-} from './approvals/approval-gate';
-import { getApprovalByFingerprint } from './db/approvals';
+} from './approval-gate';
+import { getApprovalByFingerprint } from '../db/approvals';
 
 export interface ApprovalGateCheckParams {
   actionType: ActionType;
