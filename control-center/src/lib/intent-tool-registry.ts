@@ -140,6 +140,26 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
       },
     },
     {
+      name: 'apply_issue_draft_patch',
+      description:
+        'Apply a partial update (patch) to the existing Issue Draft. Use this for targeted changes instead of replacing the entire draft. IMPORTANT: Do NOT output the full schema after patching - just confirm what changed. Supports field updates: title, body, labels, dependsOn, priority, acceptanceCriteria, kpi, guards, verify. For arrays, can use operations: {op: "append", values: ["..."]} or {op: "remove", values: ["..."]} or {op: "replaceAll", values: ["..."]}. Example: To add an AC, use {acceptanceCriteria: {op: "append", values: ["New acceptance criterion"]}}. Returns minimal diff summary.',
+      parameters: {
+        type: 'object',
+        properties: {
+          patch: {
+            type: 'object',
+            description: 'Partial update object with only fields to change. Each field value can be a direct replacement (string, array) or an array operation object.',
+          },
+          validateAfterUpdate: {
+            type: 'boolean',
+            description: 'Whether to validate the draft after applying the patch (default: false)',
+            default: false,
+          },
+        },
+        required: ['patch'],
+      },
+    },
+    {
       name: 'validate_issue_draft',
       description:
         'Validate and save the Issue Draft for this session. Returns validation result with deterministic ordering. Use to fix missing fields until valid.',
