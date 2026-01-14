@@ -244,14 +244,5 @@ export function validateApprovalRequest(request: ApprovalRequest): {
 }
 
 // ========================================
-// Exports
+// Types are exported inline above
 // ========================================
-
-export {
-  ActionContext,
-  ApprovalContext,
-  ApprovalRequest,
-  ApprovalGateResult,
-  ActionType,
-  ApprovalDecision,
-};
