@@ -142,13 +142,13 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
     {
       name: 'apply_issue_draft_patch',
       description:
-        'Apply a partial update (patch) to the existing Issue Draft. Use this for targeted changes instead of replacing the entire draft. IMPORTANT: Do NOT output the full schema after patching - just confirm what changed. Supports field updates: title, body, labels, dependsOn, priority, acceptanceCriteria, kpi, guards, verify. For arrays, can use operations: {op: "append", values: ["..."]} or {op: "remove", values: ["..."]} or {op: "replaceAll", values: ["..."]}. Example: To add an AC, use {acceptanceCriteria: {op: "append", values: ["New acceptance criterion"]}}. Returns minimal diff summary.',
+        'Apply a partial update (patch) to the existing Issue Draft. Use this for targeted changes instead of replacing the entire draft. IMPORTANT: Do NOT output the full schema after patching - just confirm what changed. For arrays: {op: "append", values: ["..."]} or {op: "remove", values: [...]}} or {op: "replaceAll", values: [...]}. Example: {acceptanceCriteria: {op: "append", values: ["New AC"]}}. Returns minimal diff summary.',
       parameters: {
         type: 'object',
         properties: {
           patch: {
             type: 'object',
-            description: 'Partial update object with only fields to change. Each field value can be a direct replacement (string, array) or an array operation object.',
+            description: 'Partial update object with only fields to change. Supports: title (string), body (string), labels (array or operation), dependsOn (array or operation), priority (P0|P1|P2), acceptanceCriteria (array or operation), kpi (object), guards (object), verify (object). For arrays, use direct replacement or operations: {op: "append", values: [...]} | {op: "remove", values: [...]} | {op: "replaceAll", values: [...]}',
           },
           validateAfterUpdate: {
             type: 'boolean',

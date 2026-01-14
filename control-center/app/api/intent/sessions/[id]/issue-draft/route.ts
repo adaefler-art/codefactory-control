@@ -453,6 +453,29 @@ export async function PATCH(
       }
       
       evidenceRecorded = true;
+      
+      // Success response with minimal diff summary (reuse lawbookVersion and deploymentEnv)
+      return jsonResponse({
+        success: true,
+        updatedDraft: {
+          id: saveResult.id,
+          issue_hash: saveResult.issue_hash,
+          last_validation_status: saveResult.last_validation_status,
+          updated_at: saveResult.updated_at,
+        },
+        draftHash: saveResult.issue_hash?.substring(0, 12),
+        diffSummary: patchResult.diffSummary,
+        validation: validationResult,
+        evidenceRecorded,
+        requestId,
+        lawbookHash: lawbookVersion?.hash?.substring(0, 12),
+        deploymentEnv,
+      }, { 
+        requestId,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
     } catch (error) {
       // Create secret-free error info
       const errorInfo = createEvidenceErrorInfo(
@@ -481,32 +504,6 @@ export async function PATCH(
         },
       });
     }
-    
-    // Success response with minimal diff summary
-    const lawbookVersion = await getActiveLawbookVersion();
-    const deploymentEnv = getDeploymentEnv();
-    
-    return jsonResponse({
-      success: true,
-      updatedDraft: {
-        id: saveResult.id,
-        issue_hash: saveResult.issue_hash,
-        last_validation_status: saveResult.last_validation_status,
-        updated_at: saveResult.updated_at,
-      },
-      draftHash: saveResult.issue_hash?.substring(0, 12),
-      diffSummary: patchResult.diffSummary,
-      validation: validationResult,
-      evidenceRecorded,
-      requestId,
-      lawbookHash: lawbookVersion?.hash?.substring(0, 12),
-      deploymentEnv,
-    }, { 
-      requestId,
-      headers: {
-        'Cache-Control': 'no-store',
-      },
-    });
   } catch (error) {
     console.error('[API PATCH /api/intent/sessions/[id]/issue-draft] Error patching draft:', error);
     return errorResponse('Failed to patch issue draft', {
