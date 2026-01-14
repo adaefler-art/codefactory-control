@@ -5,6 +5,19 @@ import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 import { API_ROUTES } from "@/lib/api-routes";
 
+interface ReadinessCheck {
+  id: string;
+  status: 'PASS' | 'FAIL';
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+interface ReadinessData {
+  status: 'PASS' | 'FAIL';
+  checks: ReadinessCheck[];
+  timestamp: string;
+}
+
 interface DashboardKpi {
   kpi_name: string;
   points: Array<{
@@ -49,11 +62,34 @@ interface DashboardData {
 
 export default function OpsPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingReadiness, setIsLoadingReadiness] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
 
   // Filter states
   const [window, setWindow] = useState<string>("weekly");
+
+  const fetchReadiness = useCallback(async () => {
+    setIsLoadingReadiness(true);
+    setReadinessError(null);
+
+    try {
+      const response = await fetch(API_ROUTES.ops.readiness, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const result = await safeFetch(response);
+      setReadiness(result);
+    } catch (err) {
+      console.error("Error fetching readiness:", err);
+      setReadinessError(formatErrorMessage(err));
+    } finally {
+      setIsLoadingReadiness(false);
+    }
+  }, []);
 
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true);
@@ -82,7 +118,8 @@ export default function OpsPage() {
 
   useEffect(() => {
     fetchDashboard();
-  }, [fetchDashboard]);
+    fetchReadiness();
+  }, [fetchDashboard, fetchReadiness]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -182,6 +219,127 @@ export default function OpsPage() {
                 </select>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Integration Readiness Section (E86.3) */}
+        <div className="mb-8">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-200">
+                Integration Readiness
+              </h2>
+              <button
+                onClick={fetchReadiness}
+                disabled={isLoadingReadiness}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white rounded-md text-sm transition-colors"
+              >
+                {isLoadingReadiness ? "Checking..." : "Re-check"}
+              </button>
+            </div>
+
+            {isLoadingReadiness && (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                <p className="mt-2 text-gray-400 text-sm">Running integration checks...</p>
+              </div>
+            )}
+
+            {readinessError && (
+              <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+                <p className="text-red-300">Error: {readinessError}</p>
+              </div>
+            )}
+
+            {!isLoadingReadiness && !readinessError && readiness && (
+              <div className="space-y-4">
+                {/* Overall Status Banner */}
+                <div className={`p-4 rounded-lg border ${
+                  readiness.status === 'PASS'
+                    ? 'bg-green-900/20 border-green-700'
+                    : 'bg-red-900/20 border-red-700'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="text-2xl mr-3">
+                        {readiness.status === 'PASS' ? '✅' : '❌'}
+                      </span>
+                      <div>
+                        <div className={`text-lg font-semibold ${
+                          readiness.status === 'PASS' ? 'text-green-200' : 'text-red-200'
+                        }`}>
+                          {readiness.status === 'PASS' ? 'GO' : 'NO-GO'}
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          {readiness.status === 'PASS' 
+                            ? 'All integration checks passed' 
+                            : 'Integration readiness checks failed'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      Last checked: {new Date(readiness.timestamp).toLocaleString('de-DE')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Checks Table */}
+                <div className="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-700">
+                    <thead className="bg-gray-800">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-16">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                          Check
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                          Message
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-gray-800/30 divide-y divide-gray-700">
+                      {readiness.checks.map((check) => (
+                        <tr key={check.id} className={
+                          check.status === 'FAIL' ? 'bg-red-900/10' : ''
+                        }>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className="text-xl">
+                              {check.status === 'PASS' ? '✅' : '❌'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-200">
+                              {check.id.split('_').map(word => 
+                                word.charAt(0).toUpperCase() + word.slice(1)
+                              ).join(' ')}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className={`text-sm ${
+                              check.status === 'FAIL' ? 'text-red-200' : 'text-gray-300'
+                            }`}>
+                              {check.message}
+                            </div>
+                            {check.details && Object.keys(check.details).length > 0 && (
+                              <details className="mt-2">
+                                <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                                  Show details
+                                </summary>
+                                <pre className="mt-2 text-xs text-gray-400 bg-gray-900 p-2 rounded overflow-x-auto">
+                                  {JSON.stringify(check.details, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
