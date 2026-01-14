@@ -15,6 +15,8 @@ import { JobRerunInputSchema } from '@/lib/types/job-rerun';
 import { RepoActionsRegistryService } from '@/lib/repo-actions-registry-service';
 import { logger } from '@/lib/logger';
 import { RepoAccessDeniedError } from '@/lib/github/auth-wrapper';
+import { evaluateAndRecordPolicy } from '@/lib/automation/policy-evaluator';
+import { PolicyEvaluationContext } from '@/lib/lawbook/automation-policy';
 
 type RouteContext = {
   params: Promise<{
@@ -100,6 +102,55 @@ export async function POST(
       repo: input.repo,
       prNumber,
       requestId,
+    }, 'JobRerunAPI');
+
+    // E87.2: Automation Policy Enforcement
+    const targetIdentifier = `${input.owner}/${input.repo}#${prNumber}`;
+    const policyContext: PolicyEvaluationContext = {
+      requestId,
+      actionType: 'rerun_checks',
+      targetType: 'pr',
+      targetIdentifier,
+      deploymentEnv: deployEnv as 'staging' | 'prod' | 'development' | undefined,
+      actor: request.headers.get('x-afu9-sub') || undefined,
+      actionContext: {
+        owner: input.owner,
+        repo: input.repo,
+        prNumber,
+        runId: input.runId,
+        mode: input.mode,
+      },
+    };
+
+    const policyResult = await evaluateAndRecordPolicy(policyContext);
+
+    if (!policyResult.allow) {
+      logger.warn('Action denied by automation policy', {
+        requestId,
+        reason: policyResult.reason,
+        nextAllowedAt: policyResult.nextAllowedAt?.toISOString(),
+        requiresApproval: policyResult.requiresApproval,
+      }, 'JobRerunAPI');
+
+      return NextResponse.json(
+        {
+          error: 'Action denied by automation policy',
+          code: 'POLICY_DENIED',
+          details: {
+            reason: policyResult.reason,
+            nextAllowedAt: policyResult.nextAllowedAt?.toISOString(),
+            requiresApproval: policyResult.requiresApproval,
+            policyName: policyResult.policyName,
+          },
+        },
+        { status: 429, headers: { 'x-request-id': requestId } }
+      );
+    }
+
+    logger.info('Action allowed by automation policy', {
+      requestId,
+      policyName: policyResult.policyName,
+      idempotencyKey: policyResult.idempotencyKey,
     }, 'JobRerunAPI');
 
     // E83.1 Registry check: Validate action is allowed
