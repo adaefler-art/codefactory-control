@@ -24,3 +24,9 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* INTENT Console: Prevent window scroll, enforce container scroll */
+body.intent-page-active,
+html.intent-page-active {
+  overflow: hidden;
+}
