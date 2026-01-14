@@ -107,10 +107,11 @@ export const API_ROUTES = {
     classify: (id: string) => `/api/incidents/${id}/classify`,
   },
 
-  // Ops Dashboard (E78.4, E80.1)
+  // Ops Dashboard (E78.4, E80.1, E86.3)
   ops: {
     dashboard: '/api/ops/dashboard',
     migrations: '/api/ops/db/migrations',
+    readiness: '/api/ops/readiness',
     whoami: '/api/whoami',
     db: {
       issues: {

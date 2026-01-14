@@ -78,6 +78,11 @@ id = "afu9-private-key-block"
 description = "Private Key Block (RSA, EC, etc.)"
 regex = '''-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'''
 tags = ["key", "private-key", "AFU-9"]
+[rules.allowlist]
+paths = [
+	'''control-center/__tests__/.*\.test\.ts''',
+	'''__tests__/.*\.test\.ts''',
+]
 
 [[rules]]
 id = "afu9-env-github-token"
