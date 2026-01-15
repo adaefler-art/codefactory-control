@@ -202,14 +202,14 @@ export async function POST(
       });
     }
     
-    // Append assistant message (no used_sources in MVP)
+    // Append assistant message with used_sources (E89.5)
     const assistantMessageResult = await appendIntentMessage(
       pool,
       sessionId,
       userId,
       'assistant',
       agentResponse.content,
-      null // No sources in MVP
+      agentResponse.usedSources || null // E89.5: Pass sources from tool calls
     );
     
     if (!assistantMessageResult.success) {

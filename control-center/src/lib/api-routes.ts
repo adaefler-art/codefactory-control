@@ -297,13 +297,14 @@ export const API_ROUTES = {
     },
   },
 
-  // INTENT Console (E73.1, E73.3, E73.4, E74.3, E81.2, E81.3)
+  // INTENT Console (E73.1, E73.3, E73.4, E74.3, E81.2, E81.3, E89.5)
   intent: {
     status: '/api/intent/status',
     sessions: {
       list: '/api/intent/sessions',
       create: '/api/intent/sessions',
       get: (id: string) => `/api/intent/sessions/${id}`,
+      sources: (id: string) => `/api/intent/sessions/${id}/sources`, // E89.5
       contextPack: (id: string) => `/api/intent/sessions/${id}/context-pack`,
       contextPacks: (id: string) => `/api/intent/sessions/${id}/context-packs`,
     },
