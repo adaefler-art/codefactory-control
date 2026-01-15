@@ -22,6 +22,7 @@ import { Pool } from 'pg';
 import crypto from 'crypto';
 import { getIssueDraftVersion } from '../db/intentIssueDraftVersions';
 import { publishIssueDraftBatch, type BatchPublishResult } from './issue-draft-publisher';
+import { getActiveLawbook } from '../db/lawbook';
 import type { IssueDraft } from '../schemas/issueDraft';
 
 /**
@@ -277,6 +278,12 @@ export async function publishIssueDraftVersionBatch(
     // New batch - generate ID and publish
     const batchId = crypto.randomUUID();
     
+    // Get active lawbook version
+    const lawbookResult = await getActiveLawbook(pool);
+    const lawbookVersion = lawbookResult.success && lawbookResult.data 
+      ? lawbookResult.data.lawbook_version 
+      : 'unknown';
+    
     // Step 5: Publish via existing batch publisher
     const publishResult = await publishIssueDraftBatch(boundedDrafts, owner, repo);
     
@@ -294,8 +301,7 @@ export async function publishIssueDraftVersionBatch(
       labels_applied: r.labelsApplied,
     }));
     
-    // Step 7: Record in audit ledger (simplified for now)
-    // TODO: Extend with full ledger integration if needed
+    // Step 7: Record in audit ledger
     await pool.query(
       `INSERT INTO intent_issue_set_publish_batch_events (
         batch_id, issue_set_id, session_id, event_type, request_id,
@@ -308,7 +314,7 @@ export async function publishIssueDraftVersionBatch(
         session_id,
         'completed',
         request_id,
-        'unknown', // Lawbook version
+        lawbookVersion,
         publishResult.total,
         items.filter(i => i.action === 'created').length,
         items.filter(i => i.action === 'updated').length,

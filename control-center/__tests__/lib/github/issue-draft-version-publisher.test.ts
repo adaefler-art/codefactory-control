@@ -148,6 +148,8 @@ describe('IssueDraft Version Batch Publisher (E89.6)', () => {
       expect(existingBatchId).toBe('batch-123');
     });
   });
+
+  describe('Partial success handling', () => {
     it('should continue processing after individual failure', () => {
       // Test that batch processing continues even if one item fails
       const results = [
@@ -163,6 +165,7 @@ describe('IssueDraft Version Batch Publisher (E89.6)', () => {
       expect(failed).toBe(1);
       expect(results.length).toBe(3); // All items processed
     });
+  });
   });
 
   describe('Result structure', () => {
