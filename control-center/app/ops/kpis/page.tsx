@@ -60,12 +60,10 @@ export default function AutomationKpiPage() {
 
       const url = `${API_ROUTES.ops.kpis}?${params.toString()}`;
 
-      const response = await fetch(url, {
+      const result = await safeFetch(url, {
         credentials: "include",
         cache: "no-store",
       });
-
-      const result = await safeFetch(response);
       setData(result);
     } catch (err) {
       console.error("Error fetching automation KPIs:", err);
@@ -115,6 +113,10 @@ export default function AutomationKpiPage() {
     }
     
     return value.toFixed(2);
+  };
+
+  const formatTouchpointType = (type: string): string => {
+    return type.replace(/_/g, ' ');
   };
 
   return (
@@ -264,7 +266,7 @@ export default function AutomationKpiPage() {
                       {data.touchpointBreakdown.map((tp) => (
                         <tr key={tp.type}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-200">
-                            {tp.type.replace(/_/g, ' ')}
+                            {formatTouchpointType(tp.type)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-200 text-right">
                             {tp.count}

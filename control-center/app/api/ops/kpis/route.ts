@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
     const touchpoints = touchpointResult.rows;
     
     // 5. CALCULATE HSH (Human Steering Hours)
-    // Assumption: Each touchpoint = 0.25 hours (15 minutes) average
+    // Assumption: Each touchpoint represents 15 minutes of manual intervention on average
     // This can be refined with actual timing data later
     const HOURS_PER_TOUCHPOINT = 0.25;
     const totalTouchpoints = touchpoints.length;
@@ -282,6 +282,8 @@ export async function GET(request: NextRequest) {
     
     // Match deploys to cycles (simplified: use creation time proximity)
     // In a real system, this would use explicit cycle → deploy mapping
+    const MAX_CYCLE_DEPLOY_CORRELATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+    
     for (const deploy of deploys) {
       const deployDate = new Date(deploy.created_at);
       
@@ -297,7 +299,7 @@ export async function GET(request: NextRequest) {
         }
       }
       
-      if (closestCycle && closestDiff < 7 * 24 * 60 * 60 * 1000) { // Within 7 days
+      if (closestCycle && closestDiff < MAX_CYCLE_DEPLOY_CORRELATION_MS) {
         const cycleData = cycleMap.get(closestCycle)!;
         if (!cycleData.lastDeploy || deployDate > cycleData.lastDeploy) {
           cycleData.lastDeploy = deployDate;
