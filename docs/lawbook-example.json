@@ -31,6 +31,71 @@
     "maxRunsPerIncident": 3,
     "cooldownMinutes": 15
   },
+  "automationPolicy": {
+    "enforcementMode": "strict",
+    "policies": [
+      {
+        "actionType": "rerun_checks",
+        "description": "Rerun failed GitHub workflow checks",
+        "allowedEnvs": ["staging", "prod"],
+        "cooldownSeconds": 300,
+        "maxRunsPerWindow": 3,
+        "windowSeconds": 3600,
+        "idempotencyKeyTemplate": ["owner", "repo", "prNumber", "runId"],
+        "requiresApproval": false
+      },
+      {
+        "actionType": "merge_pr",
+        "description": "Merge pull request",
+        "allowedEnvs": ["staging"],
+        "cooldownSeconds": 60,
+        "maxRunsPerWindow": 5,
+        "windowSeconds": 1800,
+        "idempotencyKeyTemplate": ["owner", "repo", "prNumber"],
+        "requiresApproval": true
+      },
+      {
+        "actionType": "prod_deploy",
+        "description": "Deploy to production environment",
+        "allowedEnvs": ["prod"],
+        "cooldownSeconds": 600,
+        "maxRunsPerWindow": 2,
+        "windowSeconds": 7200,
+        "idempotencyKeyTemplate": ["targetEnv", "deploymentId"],
+        "requiresApproval": true
+      },
+      {
+        "actionType": "workflow_dispatch",
+        "description": "Trigger GitHub workflow via dispatch event",
+        "allowedEnvs": ["staging", "prod"],
+        "cooldownSeconds": 120,
+        "maxRunsPerWindow": 10,
+        "windowSeconds": 3600,
+        "idempotencyKeyTemplate": ["owner", "repo", "workflowId"],
+        "requiresApproval": false
+      },
+      {
+        "actionType": "ecs_force_new_deploy",
+        "description": "Force new ECS deployment",
+        "allowedEnvs": ["staging"],
+        "cooldownSeconds": 180,
+        "maxRunsPerWindow": 3,
+        "windowSeconds": 3600,
+        "idempotencyKeyTemplate": ["clusterName", "serviceName"],
+        "requiresApproval": false
+      },
+      {
+        "actionType": "rollback_deployment",
+        "description": "Rollback deployment to previous version",
+        "allowedEnvs": ["staging", "prod"],
+        "cooldownSeconds": 300,
+        "maxRunsPerWindow": 2,
+        "windowSeconds": 7200,
+        "idempotencyKeyTemplate": ["targetEnv", "deploymentId"],
+        "requiresApproval": true
+      }
+    ]
+  },
   "evidence": {
     "requiredKindsByCategory": {
       "deployment": [
