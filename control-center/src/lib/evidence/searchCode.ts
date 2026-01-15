@@ -282,10 +282,11 @@ export async function searchCodeEvidence(
         generatedAt: new Date().toISOString(),
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Map known error types to evidence error codes
-    const errorCode = error.code || 'UNKNOWN_ERROR';
-    const errorMessage = error.message || 'Unknown error occurred';
+    const err = error as { code?: string; message?: string };
+    const errorCode = err.code || 'UNKNOWN_ERROR';
+    const errorMessage = err.message || (error instanceof Error ? error.message : 'Unknown error occurred');
 
     // Map error codes to HTTP-like status codes for clarity
     let mappedErrorCode = errorCode;
