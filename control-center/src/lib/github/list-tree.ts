@@ -238,10 +238,15 @@ export function decodeCursor(cursor: string): CursorData | null {
 /**
  * Serialize object to canonical JSON with sorted keys
  * This ensures deterministic serialization for hash computation
+ * Always returns a string representation
  */
 export function canonicalJSON(obj: any): string {
-  if (obj === null || obj === undefined) {
-    return JSON.stringify(obj);
+  if (obj === null) {
+    return 'null';
+  }
+  
+  if (obj === undefined) {
+    return 'null'; // Treat undefined as null for consistency
   }
   
   if (typeof obj !== 'object') {
@@ -253,11 +258,12 @@ export function canonicalJSON(obj: any): string {
     return '[' + obj.map(item => canonicalJSON(item)).join(',') + ']';
   }
   
-  // Objects: sort keys and serialize
+  // Objects: sort keys and serialize with proper escaping
   const sortedKeys = Object.keys(obj).sort();
   const pairs = sortedKeys.map(key => {
+    const escapedKey = JSON.stringify(key); // Properly escape the key
     const value = canonicalJSON(obj[key]);
-    return `"${key}":${value}`;
+    return `${escapedKey}:${value}`;
   });
   
   return '{' + pairs.join(',') + '}';

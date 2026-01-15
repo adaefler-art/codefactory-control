@@ -547,11 +547,19 @@ describe('GitHub List Tree', () => {
   describe('canonicalJSON (E89.2)', () => {
     it('should serialize primitives', () => {
       expect(canonicalJSON(null)).toBe('null');
-      // Note: JSON.stringify(undefined) returns undefined, not the string "undefined"
-      expect(canonicalJSON(undefined)).toBe(undefined);
+      // undefined is treated as null for consistency
+      expect(canonicalJSON(undefined)).toBe('null');
       expect(canonicalJSON(42)).toBe('42');
       expect(canonicalJSON('hello')).toBe('"hello"');
       expect(canonicalJSON(true)).toBe('true');
+    });
+
+    it('should properly escape keys with special characters', () => {
+      const obj = { 'key with "quotes"': 'value', 'key:colon': 'test' };
+      const result = canonicalJSON(obj);
+      // Keys should be properly JSON-escaped
+      expect(result).toContain('"key with \\"quotes\\""');
+      expect(result).toContain('"key:colon"');
     });
 
     it('should serialize arrays in order', () => {
