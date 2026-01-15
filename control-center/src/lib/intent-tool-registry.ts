@@ -241,6 +241,49 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         required: [],
       },
     },
+
+    // E89.3 - Evidence Tool: readFile
+    {
+      name: 'readFile',
+      description:
+        'Read file content from a GitHub repository with evidence tracking. Supports line ranges, size limits (max 256KB), and returns deterministic SHA-256 hash. Use for reading source code, docs, or config files. Enforces allowlist policy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner: {
+            type: 'string',
+            description: 'Repository owner (e.g., "adaefler-art")',
+          },
+          repo: {
+            type: 'string',
+            description: 'Repository name (e.g., "codefactory-control")',
+          },
+          ref: {
+            type: 'string',
+            description: 'Branch, tag, or commit SHA (default: "main")',
+            default: 'main',
+          },
+          path: {
+            type: 'string',
+            description: 'File path (e.g., "src/lib/utils.ts")',
+          },
+          startLine: {
+            type: 'number',
+            description: 'Start line number (1-indexed, optional)',
+          },
+          endLine: {
+            type: 'number',
+            description: 'End line number (1-indexed, optional, must be >= startLine)',
+          },
+          maxBytes: {
+            type: 'number',
+            description: 'Maximum bytes to return (default: 256KB, max: 256KB)',
+            default: 256 * 1024,
+          },
+        },
+        required: ['owner', 'repo', 'path'],
+      },
+    },
   ];
 }
 

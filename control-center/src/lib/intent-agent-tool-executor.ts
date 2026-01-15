@@ -701,6 +701,59 @@ export async function executeIntentTool(
         }
       }
       
+      // E89.3 - Evidence Tool: readFile
+      case 'readFile': {
+        const { owner, repo, ref, path, startLine, endLine, maxBytes } = args;
+        
+        // Validate required parameters
+        if (!owner || typeof owner !== 'string') {
+          return JSON.stringify({
+            success: false,
+            error: 'owner parameter is required and must be a string',
+            code: 'MISSING_OWNER',
+          });
+        }
+        
+        if (!repo || typeof repo !== 'string') {
+          return JSON.stringify({
+            success: false,
+            error: 'repo parameter is required and must be a string',
+            code: 'MISSING_REPO',
+          });
+        }
+        
+        if (!path || typeof path !== 'string') {
+          return JSON.stringify({
+            success: false,
+            error: 'path parameter is required and must be a string',
+            code: 'MISSING_PATH',
+          });
+        }
+        
+        // Import and call readFileEvidence
+        try {
+          const { readFileEvidence } = await import('@/lib/evidence/readFile');
+          
+          const result = await readFileEvidence({
+            owner,
+            repo,
+            ref: ref as string | undefined,
+            path,
+            startLine: startLine as number | undefined,
+            endLine: endLine as number | undefined,
+            maxBytes: maxBytes as number | undefined,
+          });
+          
+          return JSON.stringify(result);
+        } catch (readError) {
+          return JSON.stringify({
+            success: false,
+            error: readError instanceof Error ? readError.message : 'Unknown error',
+            code: 'READ_FILE_FAILED',
+          });
+        }
+      }
+      
       default:
         return JSON.stringify({
           success: false,
