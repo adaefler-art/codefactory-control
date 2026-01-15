@@ -41,8 +41,11 @@ export type ListTreeParams = z.infer<typeof ListTreeParamsSchema>;
 // E89.2: Bounded Output Constraints
 // ========================================
 
+/**
+ * Maximum items per page (E89.2)
+ * Prevents unbounded responses that could cause memory/network issues
+ */
 const MAX_ITEMS_PER_PAGE = 200;
-const MAX_RESPONSE_BYTES = 200 * 1024; // 200KB
 
 /**
  * Tree entry item
@@ -459,7 +462,7 @@ export async function listTree(params: ListTreeParams): Promise<ListTreeResult> 
   const validated = ListTreeParamsSchema.parse(params);
   const { owner, repo, branch, path, recursive, cursor, limit, requestId } = validated;
 
-  // E89.2: Generate requestId if not provided
+  // E89.2: Generate requestId if not provided (intentionally non-deterministic for audit trail)
   const effectiveRequestId = requestId || `listTree-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
   // Normalize and validate path
@@ -513,7 +516,7 @@ export async function listTree(params: ListTreeParams): Promise<ListTreeResult> 
         branch,
         path: normalizedPath,
         recursive,
-        generatedAt: new Date().toISOString(),
+        generatedAt: new Date().toISOString(), // Timestamp for audit trail (non-deterministic by design)
         toolVersion: '1.1.0', // E89.2
         contractVersion: 'E89.2',
         ordering: 'path_asc',
