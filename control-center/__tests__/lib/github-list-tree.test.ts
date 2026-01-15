@@ -2,6 +2,7 @@
  * Tests for GitHub List Tree Tool
  * 
  * Reference: I712 (E71.2) - Tool listTree
+ * Reference: E89.2 - Evidence Tool with result-hash and metadata
  */
 
 import {
@@ -16,6 +17,8 @@ import {
   GitHubAPIError,
   ListTreeParams,
   TreeEntry,
+  canonicalJSON,
+  computeResultHash,
 } from '../../src/lib/github/list-tree';
 import { RepoAccessDeniedError } from '../../src/lib/github/policy';
 
@@ -534,6 +537,373 @@ describe('GitHub List Tree', () => {
         path: 'src/lib',
         ref: 'main',
       });
+    });
+  });
+
+  // ========================================
+  // E89.2: Canonical JSON & Result Hash
+  // ========================================
+
+  describe('canonicalJSON (E89.2)', () => {
+    it('should serialize primitives', () => {
+      expect(canonicalJSON(null)).toBe('null');
+      // undefined is treated as null for consistency
+      expect(canonicalJSON(undefined)).toBe('null');
+      expect(canonicalJSON(42)).toBe('42');
+      expect(canonicalJSON('hello')).toBe('"hello"');
+      expect(canonicalJSON(true)).toBe('true');
+    });
+
+    it('should properly escape keys with special characters', () => {
+      const obj = { 'key with "quotes"': 'value', 'key:colon': 'test' };
+      const result = canonicalJSON(obj);
+      // Keys should be properly JSON-escaped
+      expect(result).toContain('"key with \\"quotes\\""');
+      expect(result).toContain('"key:colon"');
+    });
+
+    it('should serialize arrays in order', () => {
+      const arr = [3, 1, 2];
+      expect(canonicalJSON(arr)).toBe('[3,1,2]');
+    });
+
+    it('should serialize objects with sorted keys', () => {
+      const obj = { z: 3, a: 1, m: 2 };
+      const result = canonicalJSON(obj);
+      expect(result).toBe('{"a":1,"m":2,"z":3}');
+    });
+
+    it('should be deterministic for complex nested objects', () => {
+      const obj1 = {
+        items: [{ path: 'a.txt', type: 'file' }, { path: 'b.txt', type: 'file' }],
+        meta: { owner: 'test', repo: 'repo' },
+      };
+      const obj2 = {
+        meta: { repo: 'repo', owner: 'test' }, // Different key order
+        items: [{ type: 'file', path: 'a.txt' }, { type: 'file', path: 'b.txt' }], // Different key order
+      };
+
+      const json1 = canonicalJSON(obj1);
+      const json2 = canonicalJSON(obj2);
+
+      expect(json1).toBe(json2);
+    });
+
+    it('should handle nested arrays and objects', () => {
+      const complex = {
+        z: [{ b: 2, a: 1 }],
+        a: { y: 'hello', x: 'world' },
+      };
+      const result = canonicalJSON(complex);
+      // Keys should be sorted at every level
+      expect(result).toContain('"a":');
+      expect(result).toContain('"z":');
+      expect(result).toContain('"x":"world"');
+      expect(result).toContain('"y":"hello"');
+    });
+  });
+
+  describe('computeResultHash (E89.2)', () => {
+    it('should compute SHA256 hash of canonical result', () => {
+      const result = {
+        items: [
+          { type: 'file' as const, path: 'a.txt', name: 'a.txt', sha: 'sha1', size: 10 },
+        ],
+        pageInfo: { nextCursor: null, totalEstimate: 1 },
+        meta: {
+          owner: 'test',
+          repo: 'repo',
+          branch: 'main',
+          path: '',
+          recursive: false,
+          generatedAt: '2025-01-01T00:00:00.000Z',
+          toolVersion: '1.1.0',
+          contractVersion: 'E89.2',
+          ordering: 'path_asc' as const,
+        },
+        evidence: {
+          requestId: 'test-123',
+          owner: 'test',
+          repo: 'repo',
+          ref: 'main',
+          path: '',
+          itemCount: 1,
+          truncated: false,
+        },
+      };
+
+      const hash = computeResultHash(result);
+
+      // Should be a valid SHA256 hex string (64 chars)
+      expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('should produce same hash for same input', () => {
+      const result = {
+        items: [
+          { type: 'file' as const, path: 'test.txt', name: 'test.txt', sha: 'abc', size: 100 },
+        ],
+        pageInfo: { nextCursor: null, totalEstimate: 1 },
+        meta: {
+          owner: 'test',
+          repo: 'repo',
+          branch: 'main',
+          path: '',
+          recursive: false,
+          generatedAt: '2025-01-01T00:00:00.000Z',
+          toolVersion: '1.1.0',
+          contractVersion: 'E89.2',
+          ordering: 'path_asc' as const,
+        },
+        evidence: {
+          requestId: 'test-123',
+          owner: 'test',
+          repo: 'repo',
+          ref: 'main',
+          path: '',
+          itemCount: 1,
+          truncated: false,
+        },
+      };
+
+      const hash1 = computeResultHash(result);
+      const hash2 = computeResultHash(result);
+
+      expect(hash1).toBe(hash2);
+    });
+
+    it('should produce different hash for different input', () => {
+      const result1 = {
+        items: [
+          { type: 'file' as const, path: 'a.txt', name: 'a.txt', sha: 'sha1', size: 10 },
+        ],
+        pageInfo: { nextCursor: null, totalEstimate: 1 },
+        meta: {
+          owner: 'test',
+          repo: 'repo',
+          branch: 'main',
+          path: '',
+          recursive: false,
+          generatedAt: '2025-01-01T00:00:00.000Z',
+          toolVersion: '1.1.0',
+          contractVersion: 'E89.2',
+          ordering: 'path_asc' as const,
+        },
+        evidence: {
+          requestId: 'test-123',
+          owner: 'test',
+          repo: 'repo',
+          ref: 'main',
+          path: '',
+          itemCount: 1,
+          truncated: false,
+        },
+      };
+
+      const result2 = {
+        ...result1,
+        items: [
+          { type: 'file' as const, path: 'b.txt', name: 'b.txt', sha: 'sha2', size: 20 },
+        ],
+      };
+
+      const hash1 = computeResultHash(result1);
+      const hash2 = computeResultHash(result2);
+
+      expect(hash1).not.toBe(hash2);
+    });
+  });
+
+  describe('paginateEntries with truncation (E89.2)', () => {
+    const mockEntries: TreeEntry[] = Array.from({ length: 300 }, (_, i) => ({
+      type: 'file' as const,
+      path: `file${i.toString().padStart(3, '0')}.txt`,
+      name: `file${i.toString().padStart(3, '0')}.txt`,
+      sha: `sha${i}`,
+      size: i * 10,
+    }));
+
+    it('should clamp limit to MAX_ITEMS_PER_PAGE (200)', () => {
+      const result = paginateEntries(mockEntries, undefined, 500);
+
+      expect(result.items).toHaveLength(200); // Clamped to 200
+      expect(result.truncated).toBe(true); // Truncated because limit > MAX
+      expect(result.nextCursor).not.toBeNull(); // More items available
+    });
+
+    it('should mark truncated=true when there are more pages', () => {
+      const result = paginateEntries(mockEntries, undefined, 100);
+
+      expect(result.items).toHaveLength(100);
+      expect(result.truncated).toBe(true); // Has more pages
+      expect(result.nextCursor).not.toBeNull();
+    });
+
+    it('should mark truncated=false when on last page', () => {
+      const smallList: TreeEntry[] = [
+        { type: 'file', path: 'a.txt', name: 'a.txt', sha: 'sha1', size: 10 },
+        { type: 'file', path: 'b.txt', name: 'b.txt', sha: 'sha2', size: 20 },
+      ];
+
+      const result = paginateEntries(smallList, undefined, 10);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.truncated).toBe(false); // No more pages
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('should produce reproducible pagination', () => {
+      // First page
+      const page1 = paginateEntries(mockEntries, undefined, 50);
+      expect(page1.items).toHaveLength(50);
+
+      // Second page using cursor from first
+      const page2 = paginateEntries(mockEntries, page1.nextCursor!, 50);
+      expect(page2.items).toHaveLength(50);
+
+      // Verify no duplicates
+      const page1Paths = page1.items.map(e => e.path);
+      const page2Paths = page2.items.map(e => e.path);
+      const overlap = page1Paths.filter(p => page2Paths.includes(p));
+      expect(overlap).toHaveLength(0);
+
+      // Verify sequential
+      expect(page1.items[49].path < page2.items[0].path).toBe(true);
+    });
+  });
+
+  describe('listTree with E89.2 features', () => {
+    const mockOctokit = {
+      rest: {
+        repos: {
+          getContent: jest.fn(),
+        },
+        git: {
+          getRef: jest.fn(),
+          getCommit: jest.fn(),
+          getTree: jest.fn(),
+        },
+      },
+    };
+
+    beforeEach(() => {
+      mockCreateClient.mockResolvedValue(mockOctokit as any);
+    });
+
+    it('should include evidence metadata', async () => {
+      mockOctokit.rest.repos.getContent.mockResolvedValue({
+        data: [
+          { type: 'file', path: 'test.txt', name: 'test.txt', sha: 'sha1', size: 100 },
+        ],
+      });
+
+      const result = await listTree({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: 'src',
+        recursive: false,
+        requestId: 'custom-req-123',
+      });
+
+      expect(result.evidence).toBeDefined();
+      expect(result.evidence.requestId).toBe('custom-req-123');
+      expect(result.evidence.owner).toBe('test');
+      expect(result.evidence.repo).toBe('repo');
+      expect(result.evidence.ref).toBe('main');
+      expect(result.evidence.path).toBe('src');
+      expect(result.evidence.itemCount).toBe(1);
+      expect(result.evidence.truncated).toBe(false);
+    });
+
+    it('should generate requestId if not provided', async () => {
+      mockOctokit.rest.repos.getContent.mockResolvedValue({
+        data: [],
+      });
+
+      const result = await listTree({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: '',
+        recursive: false,
+      });
+
+      expect(result.evidence.requestId).toBeDefined();
+      expect(result.evidence.requestId).toContain('listTree-');
+    });
+
+    it('should include resultHash', async () => {
+      mockOctokit.rest.repos.getContent.mockResolvedValue({
+        data: [
+          { type: 'file', path: 'test.txt', name: 'test.txt', sha: 'sha1', size: 100 },
+        ],
+      });
+
+      const result = await listTree({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: '',
+        recursive: false,
+      });
+
+      expect(result.resultHash).toBeDefined();
+      expect(result.resultHash).toMatch(/^[a-f0-9]{64}$/); // Valid SHA256
+    });
+
+    it('should produce same hash for same result (determinism)', async () => {
+      mockOctokit.rest.repos.getContent.mockResolvedValue({
+        data: [
+          { type: 'file', path: 'a.txt', name: 'a.txt', sha: 'sha1', size: 10 },
+          { type: 'file', path: 'b.txt', name: 'b.txt', sha: 'sha2', size: 20 },
+        ],
+      });
+
+      // Call twice with same fixed timestamp (mock Date)
+      const fixedDate = '2025-01-01T00:00:00.000Z';
+      jest.spyOn(global, 'Date').mockImplementation(() => ({
+        toISOString: () => fixedDate,
+      } as any));
+
+      const result1 = await listTree({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: '',
+        recursive: false,
+        requestId: 'fixed-id',
+      });
+
+      const result2 = await listTree({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: '',
+        recursive: false,
+        requestId: 'fixed-id',
+      });
+
+      expect(result1.resultHash).toBe(result2.resultHash);
+
+      jest.restoreAllMocks();
+    });
+
+    it('should update contractVersion to E89.2', async () => {
+      mockOctokit.rest.repos.getContent.mockResolvedValue({
+        data: [],
+      });
+
+      const result = await listTree({
+        owner: 'test',
+        repo: 'repo',
+        branch: 'main',
+        path: '',
+        recursive: false,
+      });
+
+      expect(result.meta.contractVersion).toBe('E89.2');
+      expect(result.meta.toolVersion).toBe('1.1.0');
     });
   });
 });

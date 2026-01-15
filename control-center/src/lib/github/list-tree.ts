@@ -1,16 +1,20 @@
 /**
- * GitHub List Tree Tool (I712 - E71.2)
+ * GitHub List Tree Tool (I712 - E71.2, E89.2)
  * 
  * Server-side tool for listing repository contents with:
  * - Deterministic ordering (path ascending)
  * - Cursor-based pagination
  * - Policy enforcement via I711 auth wrapper
  * - Support for recursive and non-recursive listing
+ * - Result hash (SHA256) for deterministic verification (E89.2)
+ * - Evidence metadata for audit trails (E89.2)
  * 
  * Reference: I712 (E71.2) - Tool listTree (branch/path, pagination, deterministic ordering)
+ * Reference: E89.2 - Evidence Tool with result-hash and metadata
  */
 
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { createAuthenticatedClient, RepoAccessDeniedError } from './auth-wrapper';
 
 // ========================================
@@ -28,9 +32,20 @@ export const ListTreeParamsSchema = z.object({
   recursive: z.boolean().default(false),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(500).default(200),
+  requestId: z.string().optional(), // E89.2: Request ID for audit trail
 }).strict();
 
 export type ListTreeParams = z.infer<typeof ListTreeParamsSchema>;
+
+// ========================================
+// E89.2: Bounded Output Constraints
+// ========================================
+
+/**
+ * Maximum items per page (E89.2)
+ * Prevents unbounded responses that could cause memory/network issues
+ */
+const MAX_ITEMS_PER_PAGE = 200;
 
 /**
  * Tree entry item
@@ -52,6 +67,19 @@ export interface PageInfo {
 }
 
 /**
+ * E89.2: Evidence metadata for audit trail
+ */
+export interface EvidenceMetadata {
+  requestId: string;
+  owner: string;
+  repo: string;
+  ref: string; // branch/tag
+  path: string;
+  itemCount: number;
+  truncated: boolean; // true if output was clamped due to size/count limits
+}
+
+/**
  * Metadata for the response
  */
 export interface TreeMeta {
@@ -67,12 +95,14 @@ export interface TreeMeta {
 }
 
 /**
- * Complete listTree response
+ * Complete listTree response (E89.2)
  */
 export interface ListTreeResult {
   items: TreeEntry[];
   pageInfo: PageInfo;
   meta: TreeMeta;
+  evidence: EvidenceMetadata; // E89.2: Evidence metadata
+  resultHash: string; // E89.2: SHA256 hash of canonical result
 }
 
 /**
@@ -205,6 +235,54 @@ export function decodeCursor(cursor: string): CursorData | null {
 }
 
 // ========================================
+// E89.2: Canonical JSON & Result Hash
+// ========================================
+
+/**
+ * Serialize object to canonical JSON with sorted keys
+ * This ensures deterministic serialization for hash computation
+ * Always returns a string representation
+ */
+export function canonicalJSON(obj: any): string {
+  if (obj === null) {
+    return 'null';
+  }
+  
+  if (obj === undefined) {
+    return 'null'; // Treat undefined as null for consistency
+  }
+  
+  if (typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    // Arrays: serialize each element canonically
+    return '[' + obj.map(item => canonicalJSON(item)).join(',') + ']';
+  }
+  
+  // Objects: sort keys and serialize with proper escaping
+  const sortedKeys = Object.keys(obj).sort();
+  const pairs = sortedKeys.map(key => {
+    const escapedKey = JSON.stringify(key); // Properly escape the key
+    const value = canonicalJSON(obj[key]);
+    return `${escapedKey}:${value}`;
+  });
+  
+  return '{' + pairs.join(',') + '}';
+}
+
+/**
+ * Compute SHA256 hash of canonical JSON representation
+ */
+export function computeResultHash(result: Omit<ListTreeResult, 'resultHash'>): string {
+  const canonical = canonicalJSON(result);
+  return createHash('sha256')
+    .update(canonical, 'utf-8')
+    .digest('hex');
+}
+
+// ========================================
 // GitHub API Adapters
 // ========================================
 
@@ -329,13 +407,16 @@ export function sortByPath(entries: TreeEntry[]): TreeEntry[] {
 }
 
 /**
- * Apply pagination to sorted entries
+ * Apply pagination to sorted entries with bounded output (E89.2)
  */
 export function paginateEntries(
   entries: TreeEntry[],
   cursor: string | undefined,
   limit: number
-): { items: TreeEntry[]; nextCursor: string | null } {
+): { items: TreeEntry[]; nextCursor: string | null; truncated: boolean } {
+  // E89.2: Clamp limit to MAX_ITEMS_PER_PAGE
+  const effectiveLimit = Math.min(limit, MAX_ITEMS_PER_PAGE);
+  
   // Decode cursor if present
   let startIndex = 0;
   if (cursor) {
@@ -345,21 +426,24 @@ export function paginateEntries(
       startIndex = entries.findIndex((e) => e.path > cursorData.lastPath);
       if (startIndex === -1) {
         // No more items after cursor
-        return { items: [], nextCursor: null };
+        return { items: [], nextCursor: null, truncated: false };
       }
     }
   }
 
   // Slice the page
-  const items = entries.slice(startIndex, startIndex + limit);
+  const items = entries.slice(startIndex, startIndex + effectiveLimit);
 
   // Generate next cursor if there are more items
   const nextCursor =
-    startIndex + limit < entries.length && items.length > 0
+    startIndex + effectiveLimit < entries.length && items.length > 0
       ? encodeCursor({ lastPath: items[items.length - 1].path, lastSha: items[items.length - 1].sha || undefined })
       : null;
 
-  return { items, nextCursor };
+  // E89.2: Detect truncation (if limit was clamped or if there's more data)
+  const truncated = limit > MAX_ITEMS_PER_PAGE || nextCursor !== null;
+
+  return { items, nextCursor, truncated };
 }
 
 // ========================================
@@ -376,7 +460,10 @@ export function paginateEntries(
 export async function listTree(params: ListTreeParams): Promise<ListTreeResult> {
   // Validate and normalize input
   const validated = ListTreeParamsSchema.parse(params);
-  const { owner, repo, branch, path, recursive, cursor, limit } = validated;
+  const { owner, repo, branch, path, recursive, cursor, limit, requestId } = validated;
+
+  // E89.2: Generate requestId if not provided (intentionally non-deterministic for audit trail)
+  const effectiveRequestId = requestId || `listTree-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
   // Normalize and validate path
   const normalizedPath = normalizePath(path, { owner, repo, branch });
@@ -387,6 +474,7 @@ export async function listTree(params: ListTreeParams): Promise<ListTreeResult> 
     repo,
     branch,
     path: normalizedPath,
+    requestId: effectiveRequestId,
   });
 
   try {
@@ -401,11 +489,22 @@ export async function listTree(params: ListTreeParams): Promise<ListTreeResult> 
     // Sort deterministically by path
     const sortedEntries = sortByPath(entries);
 
-    // Apply pagination
-    const { items, nextCursor } = paginateEntries(sortedEntries, cursor, limit);
+    // Apply pagination with bounded output (E89.2)
+    const { items, nextCursor, truncated } = paginateEntries(sortedEntries, cursor, limit);
 
-    // Build response
-    const result: ListTreeResult = {
+    // E89.2: Build evidence metadata
+    const evidence: EvidenceMetadata = {
+      requestId: effectiveRequestId,
+      owner,
+      repo,
+      ref: branch,
+      path: normalizedPath,
+      itemCount: items.length,
+      truncated,
+    };
+
+    // Build response without hash first
+    const resultWithoutHash: Omit<ListTreeResult, 'resultHash'> = {
       items,
       pageInfo: {
         nextCursor,
@@ -417,11 +516,21 @@ export async function listTree(params: ListTreeParams): Promise<ListTreeResult> 
         branch,
         path: normalizedPath,
         recursive,
-        generatedAt: new Date().toISOString(),
-        toolVersion: '1.0.0',
-        contractVersion: 'E71.2',
+        generatedAt: new Date().toISOString(), // Timestamp for audit trail (non-deterministic by design)
+        toolVersion: '1.1.0', // E89.2
+        contractVersion: 'E89.2',
         ordering: 'path_asc',
       },
+      evidence,
+    };
+
+    // E89.2: Compute result hash
+    const resultHash = computeResultHash(resultWithoutHash);
+
+    // Build final result with hash
+    const result: ListTreeResult = {
+      ...resultWithoutHash,
+      resultHash,
     };
 
     return result;
@@ -439,21 +548,21 @@ export async function listTree(params: ListTreeParams): Promise<ListTreeResult> 
     if (error.status === 404) {
       throw new GitHubAPIError(
         `Repository, branch, or path not found: ${owner}/${repo} (branch: ${branch}, path: ${normalizedPath})`,
-        { owner, repo, branch, path: normalizedPath, httpStatus: 404 }
+        { owner, repo, branch, path: normalizedPath, httpStatus: 404, requestId: effectiveRequestId }
       );
     }
 
     if (error.status === 403) {
       throw new GitHubAPIError(
         'GitHub API access forbidden. Check GitHub App permissions.',
-        { owner, repo, branch, path: normalizedPath, httpStatus: 403 }
+        { owner, repo, branch, path: normalizedPath, httpStatus: 403, requestId: effectiveRequestId }
       );
     }
 
     // Generic error
     throw new GitHubAPIError(
       error instanceof Error ? error.message : 'Failed to list repository tree',
-      { owner, repo, branch, path: normalizedPath, httpStatus: error.status }
+      { owner, repo, branch, path: normalizedPath, httpStatus: error.status, requestId: effectiveRequestId }
     );
   }
 }
