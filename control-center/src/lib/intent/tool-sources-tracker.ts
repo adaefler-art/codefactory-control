@@ -24,6 +24,30 @@ export interface ToolInvocation {
 }
 
 /**
+ * Helper: Generate snippet hash from SHA-256
+ * Uses first 12 characters, falls back to 'unknown'
+ */
+function getSnippetHashFromSha256(sha256: string | undefined): string {
+  return sha256?.substring(0, 12) || 'unknown';
+}
+
+/**
+ * Helper: Deduplicate sources using JSON.stringify as key
+ */
+export function deduplicateSources(sources: SourceRef[]): SourceRef[] {
+  const uniqueSourcesMap = new Map<string, SourceRef>();
+  
+  for (const source of sources) {
+    const key = JSON.stringify(source);
+    if (!uniqueSourcesMap.has(key)) {
+      uniqueSourcesMap.set(key, source);
+    }
+  }
+
+  return Array.from(uniqueSourcesMap.values());
+}
+
+/**
  * Convert a readFile tool invocation to a SourceRef
  */
 function readFileToSourceRef(args: Record<string, unknown>, result: any): SourceRef | null {
@@ -42,7 +66,7 @@ function readFileToSourceRef(args: Record<string, unknown>, result: any): Source
       path,
       startLine: 1,
       endLine: result.meta.totalLines || 1,
-      snippetHash: snippetHash || sha256?.substring(0, 12) || 'unknown',
+      snippetHash: snippetHash || getSnippetHashFromSha256(sha256),
       contentSha256: sha256,
     };
   }
@@ -54,7 +78,7 @@ function readFileToSourceRef(args: Record<string, unknown>, result: any): Source
     path,
     startLine,
     endLine,
-    snippetHash: snippetHash || sha256?.substring(0, 12) || 'unknown',
+    snippetHash: snippetHash || getSnippetHashFromSha256(sha256),
     contentSha256: sha256,
   };
 }
@@ -79,7 +103,7 @@ function searchCodeToSourceRefs(args: Record<string, unknown>, result: any): Sou
       path: r.path,
       startLine: 1, // searchCode doesn't provide line ranges
       endLine: 1,
-      snippetHash: r.sha?.substring(0, 12) || 'unknown',
+      snippetHash: getSnippetHashFromSha256(r.sha),
     }));
 }
 
@@ -138,17 +162,8 @@ export function aggregateToolSources(invocations: ToolInvocation[]): UsedSources
     allSources.push(...sources);
   }
 
-  // Deduplicate by converting to JSON and using Set
-  const uniqueSourcesMap = new Map<string, SourceRef>();
-  
-  for (const source of allSources) {
-    const key = JSON.stringify(source);
-    if (!uniqueSourcesMap.has(key)) {
-      uniqueSourcesMap.set(key, source);
-    }
-  }
-
-  return Array.from(uniqueSourcesMap.values());
+  // Deduplicate using shared helper
+  return deduplicateSources(allSources);
 }
 
 /**

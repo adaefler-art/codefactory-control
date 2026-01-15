@@ -129,6 +129,22 @@ function sanitizeContent(content: string): string {
 }
 
 /**
+ * Safely parse tool result JSON
+ * Returns parsed object or null if parse fails
+ */
+function safeParseToolResult(toolResult: string): unknown | null {
+  try {
+    return JSON.parse(toolResult);
+  } catch (parseError) {
+    console.warn('[INTENT Agent] Failed to parse tool result:', {
+      error: parseError instanceof Error ? parseError.message : 'Unknown',
+      resultPreview: toolResult.substring(0, 100),
+    });
+    return null;
+  }
+}
+
+/**
  * Check and enforce rate limit for a user
  * 
  * @param userId - User ID to check
@@ -371,15 +387,9 @@ Response language: German (user may use English or German)`;
           });
           
           // E89.5: Record tool invocation for source tracking
-          try {
-            const parsedResult = JSON.parse(toolResult);
+          const parsedResult = safeParseToolResult(toolResult);
+          if (parsedResult) {
             sourcesTracker.recordInvocation(functionName, functionArgs, parsedResult);
-          } catch (parseError) {
-            console.warn(`[INTENT Agent] Failed to parse tool result for source tracking:`, {
-              requestId,
-              tool: functionName,
-              error: parseError instanceof Error ? parseError.message : 'Unknown',
-            });
           }
           
           // Add tool result to messages

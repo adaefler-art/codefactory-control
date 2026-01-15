@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import type { UsedSources, SourceRef } from '@/lib/schemas/usedSources';
+import { deduplicateSources } from '@/lib/intent/tool-sources-tracker';
 
 /**
  * GET /api/intent/sessions/[id]/sources
@@ -105,17 +106,8 @@ export async function GET(
       filteredSources = allSources.filter(source => source.kind === typeFilter);
     }
     
-    // Deduplicate sources (same source might appear in multiple messages)
-    // Use JSON.stringify as a simple dedup key
-    const uniqueSourcesMap = new Map<string, SourceRef>();
-    for (const source of filteredSources) {
-      const key = JSON.stringify(source);
-      if (!uniqueSourcesMap.has(key)) {
-        uniqueSourcesMap.set(key, source);
-      }
-    }
-    
-    const uniqueSources = Array.from(uniqueSourcesMap.values());
+    // Deduplicate sources using shared helper
+    const uniqueSources = deduplicateSources(filteredSources);
     
     return jsonResponse({
       sources: uniqueSources,
