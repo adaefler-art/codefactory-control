@@ -17,6 +17,8 @@ import { logger } from '@/lib/logger';
 import { RepoAccessDeniedError } from '@/lib/github/auth-wrapper';
 import { evaluateAndRecordPolicy } from '@/lib/automation/policy-evaluator';
 import { PolicyEvaluationContext } from '@/lib/lawbook/automation-policy';
+import { recordDebugInterventionTouchpoint } from '@/lib/touchpoints/manual-touchpoints';
+import { getPool } from '@/lib/db';
 
 type RouteContext = {
   params: Promise<{
@@ -217,6 +219,25 @@ export async function POST(
 
     // Execute rerun
     const result = await rerunFailedJobs(input);
+
+    // E88.1: Record manual touchpoint for debug intervention
+    // Only record if any jobs were actually rerun (not NOOP/BLOCKED)
+    if (result.decision === 'RERUN_TRIGGERED' && result.metadata.rerunJobs > 0) {
+      const pool = getPool();
+      await recordDebugInterventionTouchpoint(pool, {
+        prNumber: input.prNumber,
+        actor: 'api', // Could be extracted from auth if available
+        requestId,
+        source: 'API',
+        metadata: {
+          owner: input.owner,
+          repo: input.repo,
+          runId: input.runId,
+          mode: input.mode,
+          rerunJobs: result.metadata.rerunJobs,
+        },
+      });
+    }
 
     logger.info('Job rerun completed', {
       requestId,
