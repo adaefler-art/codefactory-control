@@ -27,6 +27,7 @@ import {
   computeActionFingerprint,
 } from '@/lib/approvals/approval-gate';
 import { insertApprovalRecord } from '@/lib/db/approvals';
+import { recordMergeApprovalTouchpoint } from '@/lib/touchpoints/manual-touchpoints';
 
 // ========================================
 // Request Schema
@@ -117,6 +118,30 @@ export async function POST(request: NextRequest) {
       approvalRequest,
       body.decision
     );
+    
+    // E88.1: Record manual touchpoint for merge approvals
+    // Only record for 'merge' action type when decision is 'approved'
+    if (
+      approvalRecord.action_type === 'merge' && 
+      approvalRecord.decision === 'approved'
+    ) {
+      // Extract PR number from target_identifier if it's a PR
+      // Format: "owner/repo#123" or similar
+      const prMatch = approvalRecord.target_identifier.match(/#(\d+)/);
+      const prNumber = prMatch ? parseInt(prMatch[1], 10) : undefined;
+      
+      await recordMergeApprovalTouchpoint(pool, {
+        prNumber,
+        actor: userId,
+        requestId,
+        source: 'API',
+        metadata: {
+          actionType: approvalRecord.action_type,
+          targetIdentifier: approvalRecord.target_identifier,
+          signedPhrase: body.signedPhrase,
+        },
+      });
+    }
     
     // Return success with approval details
     return jsonResponse(

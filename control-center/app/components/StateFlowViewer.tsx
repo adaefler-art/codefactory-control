@@ -11,7 +11,8 @@
  * - Next action button (only shown when allowed)
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { API_ROUTES } from '@/lib/api-routes';
 
 interface BlockingReason {
   type: 'missing_check' | 'missing_review' | 'guardrail' | 'precondition';
@@ -40,41 +41,83 @@ interface StateFlowViewerProps {
   onStateTransition?: (newState: string) => void;
 }
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function StateFlowViewer({ issueId, readOnly = false, onStateTransition }: StateFlowViewerProps) {
   const [stateFlow, setStateFlow] = useState<StateFlowData | null>(null);
   const [blockersForDone, setBlockersForDone] = useState<BlockingReason[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNextState, setSelectedNextState] = useState<string | null>(null);
-
-  const fetchStateFlow = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/issues/${issueId}/state-flow`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch state flow: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setStateFlow(data.stateFlow);
-      setBlockersForDone(data.blockersForDone);
-    } catch (err) {
-      console.error('[StateFlowViewer] Error fetching state flow:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load state flow');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [issueId]);
+  // Track if we've had a client error (4xx) to prevent retries
+  const hasClientErrorRef = useRef(false);
 
   useEffect(() => {
+    // Reset error state when issueId changes
+    hasClientErrorRef.current = false;
+    setError(null);
+    
+    // Validate issueId before fetching
+    if (!issueId || typeof issueId !== 'string' || !UUID_REGEX.test(issueId)) {
+      setError('Invalid issue ID');
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchStateFlow() {
+      // Don't retry if we already had a client error
+      if (hasClientErrorRef.current) {
+        return;
+      }
+
+      setIsLoading(true);
+
+      try {
+        const response = await fetch(API_ROUTES.issues.stateFlow(issueId), {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+
+        if (cancelled) return;
+
+        if (!response.ok) {
+          // For 4xx errors, don't retry - set error once
+          if (response.status >= 400 && response.status < 500) {
+            hasClientErrorRef.current = true;
+            const errorData = await response.json().catch(() => ({}));
+            setError(errorData.error || `Client error: ${response.status}`);
+            setIsLoading(false);
+            return;
+          }
+          throw new Error(`Failed to fetch state flow: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        if (cancelled) return;
+
+        setStateFlow(data.stateFlow);
+        setBlockersForDone(data.blockersForDone);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[StateFlowViewer] Error fetching state flow:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load state flow');
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
     fetchStateFlow();
-  }, [fetchStateFlow]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [issueId]);
 
   const getBlockingReasonIcon = (type: BlockingReason['type']) => {
     switch (type) {

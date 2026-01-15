@@ -95,6 +95,7 @@ export const API_ROUTES = {
     execution: (id: string) => `/api/issues/${id}/execution`,
     events: (id: string) => `/api/issues/${id}/events`,
     runs: (id: string) => `/api/issues/${id}/runs`,
+    stateFlow: (id: string) => `/api/issues/${id}/state-flow`,
     new: '/api/issues/new',
     import: '/api/issues/import',
     activeCheck: '/api/issues/active-check',

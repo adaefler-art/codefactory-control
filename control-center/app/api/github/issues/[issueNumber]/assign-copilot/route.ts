@@ -37,6 +37,7 @@ import { getRepoActionsRegistryService } from '../../../../../../src/lib/repo-ac
 import { getActiveLawbook } from '../../../../../../src/lib/db/lawbook';
 import { withApi } from '../../../../../../src/lib/http/withApi';
 import { getProdDisabledReason, isProdEnabled } from '../../../../../../src/lib/utils/prod-control';
+import { recordAssignTouchpoint } from '../../../../../../src/lib/touchpoints/manual-touchpoints';
 
 // ========================================
 // Types
@@ -412,6 +413,21 @@ export const POST = withApi(async (
       lawbookHash,
       executedBy: 'api', // Could be extracted from auth if available
     });
+
+    // E88.1: Record manual touchpoint (ASSIGN)
+    // Only record if actually assigned (not NOOP)
+    if (status === 'ASSIGNED') {
+      await recordAssignTouchpoint(pool, {
+        ghIssueNumber: issueNumber,
+        actor: 'api', // Could be extracted from auth if available
+        requestId,
+        source: 'API',
+        metadata: {
+          repository,
+          assignee: COPILOT_ASSIGNEE,
+        },
+      });
+    }
 
     // Return success response
     const response: AssignCopilotResponse = {
