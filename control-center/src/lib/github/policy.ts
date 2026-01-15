@@ -27,6 +27,17 @@ export const RepoAllowlistEntrySchema = z.object({
 export type RepoAllowlistEntry = z.infer<typeof RepoAllowlistEntrySchema>;
 
 /**
+ * Internal normalized allowlist entry (for efficient matching)
+ * @internal
+ */
+interface NormalizedRepoAllowlistEntry {
+  owner: string; // lowercase
+  repo: string; // lowercase
+  branches: string[]; // original patterns (not normalized)
+  paths?: string[];
+}
+
+/**
  * Schema for the full repository access policy
  */
 export const RepoAccessPolicyConfigSchema = z.object({
@@ -167,9 +178,17 @@ export function matchPathPattern(path: string, pattern: string): boolean {
 
 export class RepoAccessPolicy {
   private readonly config: RepoAccessPolicyConfig;
+  private readonly normalizedAllowlist: NormalizedRepoAllowlistEntry[];
 
   constructor(config: RepoAccessPolicyConfig) {
     this.config = config;
+    // Normalize allowlist entries once at initialization for performance
+    this.normalizedAllowlist = config.allowlist.map(entry => ({
+      owner: normalizeOwner(entry.owner),
+      repo: normalizeRepo(entry.repo),
+      branches: entry.branches, // Keep original patterns
+      paths: entry.paths,
+    }));
   }
 
   /**
@@ -190,9 +209,9 @@ export class RepoAccessPolicy {
     const branch = request.branch ? normalizeBranch(request.branch) : undefined;
     const { path } = request;
 
-    // Find matching entry for owner/repo (using normalized values)
-    const entry = this.config.allowlist.find(
-      (e) => normalizeOwner(e.owner) === owner && normalizeRepo(e.repo) === repo
+    // Find matching entry (using pre-normalized allowlist)
+    const entry = this.normalizedAllowlist.find(
+      (e) => e.owner === owner && e.repo === repo
     );
 
     if (!entry) {
@@ -232,8 +251,8 @@ export class RepoAccessPolicy {
   public isRepoAllowed(owner: string, repo: string): boolean {
     const normalizedOwner = normalizeOwner(owner);
     const normalizedRepo = normalizeRepo(repo);
-    return this.config.allowlist.some(
-      (e) => normalizeOwner(e.owner) === normalizedOwner && normalizeRepo(e.repo) === normalizedRepo
+    return this.normalizedAllowlist.some(
+      (e) => e.owner === normalizedOwner && e.repo === normalizedRepo
     );
   }
 

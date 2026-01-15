@@ -33,7 +33,6 @@ export interface GitHubAuthResult {
   auditEvidence?: {
     requestId?: string;
     allowlistHash: string;
-    installationId?: number;
   };
 }
 
@@ -68,13 +67,17 @@ export class GitHubAuthError extends Error {
 let cachedPolicy: ReturnType<typeof loadRepoAccessPolicy> | null = null;
 let cachedPolicyHash: string | null = null;
 
+// Default policy hash constant (used when GITHUB_REPO_ALLOWLIST is not set)
+const DEFAULT_POLICY_HASH_SEED = 'default-dev-allowlist-codefactory-control';
+
 function getPolicy() {
   if (!cachedPolicy) {
     cachedPolicy = loadRepoAccessPolicy();
     // Calculate hash of allowlist for audit evidence
-    const allowlistJson = process.env.GITHUB_REPO_ALLOWLIST || '';
+    const allowlistJson = process.env.GITHUB_REPO_ALLOWLIST;
+    const hashInput = allowlistJson || DEFAULT_POLICY_HASH_SEED;
     cachedPolicyHash = createHash('sha256')
-      .update(allowlistJson || 'default-dev-policy')
+      .update(hashInput)
       .digest('hex')
       .substring(0, 16);
   }
@@ -135,8 +138,6 @@ export async function getAuthenticatedToken(
           auditEvidence: {
             requestId: request.requestId,
             allowlistHash: getPolicyHash(),
-            // installationId is not exposed by getGitHubInstallationToken
-            // but is logged internally for audit purposes
           },
         };
       },

@@ -189,7 +189,7 @@ describe('E89.1 - Repo Read Policy', () => {
       }).not.toThrow();
     });
 
-    it('should deny access when normalized values dont match', () => {
+    it('should deny access when normalized values don\'t match', () => {
       expect(() => {
         policy.checkAccess({ 
           owner: 'DIFFERENT-ORG', 
