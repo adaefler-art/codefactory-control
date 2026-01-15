@@ -227,7 +227,7 @@ export async function getRecentTimelineEvents(
   pool: Pool,
   limit: number = 100
 ): Promise<UnifiedTimelineEvent[]> {
-  return queryTimelineEvents(pool, { limit });
+  return queryTimelineEvents(pool, { limit, offset: 0 });
 }
 
 /**
@@ -243,7 +243,7 @@ export async function getTimelineEventsBySession(
   sessionId: string,
   limit: number = 100
 ): Promise<UnifiedTimelineEvent[]> {
-  return queryTimelineEvents(pool, { session_id: sessionId, limit });
+  return queryTimelineEvents(pool, { session_id: sessionId, limit, offset: 0 });
 }
 
 /**
@@ -259,7 +259,7 @@ export async function getTimelineEventsByCanonicalId(
   canonicalId: string,
   limit: number = 100
 ): Promise<UnifiedTimelineEvent[]> {
-  return queryTimelineEvents(pool, { canonical_id: canonicalId, limit });
+  return queryTimelineEvents(pool, { canonical_id: canonicalId, limit, offset: 0 });
 }
 
 /**
@@ -275,7 +275,7 @@ export async function getTimelineEventsByGitHubIssue(
   issueNumber: number,
   limit: number = 100
 ): Promise<UnifiedTimelineEvent[]> {
-  return queryTimelineEvents(pool, { gh_issue_number: issueNumber, limit });
+  return queryTimelineEvents(pool, { gh_issue_number: issueNumber, limit, offset: 0 });
 }
 
 /**
@@ -291,7 +291,7 @@ export async function getTimelineEventsByPR(
   prNumber: number,
   limit: number = 100
 ): Promise<UnifiedTimelineEvent[]> {
-  return queryTimelineEvents(pool, { pr_number: prNumber, limit });
+  return queryTimelineEvents(pool, { pr_number: prNumber, limit, offset: 0 });
 }
 
 /**

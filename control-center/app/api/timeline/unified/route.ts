@@ -66,7 +66,7 @@ const QueryParamsSchema = z.object({
  * - events: Array of timeline events (sorted by timestamp DESC)
  * - metadata: Query metadata (total count, pagination info)
  */
-export const GET = withApi(async (request: NextRequest) => {
+export const GET = withApi(async (request: NextRequest): Promise<NextResponse> => {
   const pool = getPool();
   
   // Parse and validate query parameters
