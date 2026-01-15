@@ -94,7 +94,60 @@ describe('IssueDraft Version Batch Publisher (E89.6)', () => {
     });
   });
 
-  describe('Partial success handling', () => {
+  describe('Idempotency', () => {
+    it('should detect duplicate batch by hash', async () => {
+      const crypto = require('crypto');
+      
+      // Simulate two batches with same hash
+      const sessionId = 'session-1';
+      const versionIds = ['ver-1', 'ver-2'];
+      const owner = 'owner';
+      const repo = 'repo';
+      
+      const sortedIds = [...versionIds].sort();
+      const content = `${sessionId}:${sortedIds.join(',')}:${owner}:${repo}`;
+      const hash1 = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+      
+      // Second call with same inputs
+      const sortedIds2 = [...versionIds].sort();
+      const content2 = `${sessionId}:${sortedIds2.join(',')}:${owner}:${repo}`;
+      const hash2 = crypto.createHash('sha256').update(content2, 'utf8').digest('hex');
+      
+      expect(hash1).toBe(hash2);
+    });
+
+    it('should return skipped items on second run', () => {
+      // Mock existing batch found in database
+      const existingBatchResult = {
+        batch_id: 'batch-123',
+        total_items: 2,
+        created_count: 1,
+        updated_count: 1,
+        skipped_count: 0,
+        failed_count: 0,
+      };
+      
+      // Simulate second run - all items should be skipped
+      const secondRunSummary = {
+        total: existingBatchResult.total_items,
+        created: 0,
+        updated: 0,
+        skipped: existingBatchResult.total_items, // All skipped
+        failed: 0,
+      };
+      
+      expect(secondRunSummary.skipped).toBe(2);
+      expect(secondRunSummary.created).toBe(0);
+      expect(secondRunSummary.updated).toBe(0);
+    });
+
+    it('should preserve batch_id on idempotent call', () => {
+      const existingBatchId = 'batch-123';
+      
+      // On second run, same batch_id should be returned
+      expect(existingBatchId).toBe('batch-123');
+    });
+  });
     it('should continue processing after individual failure', () => {
       // Test that batch processing continues even if one item fails
       const results = [

@@ -131,11 +131,15 @@ async function loadDraftsFromVersions(
  * 2. Sort by canonicalId for deterministic ordering
  * 3. Enforce batch size limit (max 25)
  * 4. Generate batch hash for idempotency
- * 5. Publish via existing batch publisher
- * 6. Record in audit ledger
+ * 5. Check if batch already published (by hash)
+ *    - If yes: return existing results with 'skipped' status
+ *    - If no: continue to publish
+ * 6. Publish via existing batch publisher
+ * 7. Record in audit ledger
  * 
  * **Idempotency:**
  * - Same input (version IDs, owner, repo) → same batch hash
+ * - Second run with same hash returns all items as 'skipped'
  * - Delegate to issue-draft-publisher for canonicalId resolution
  * 
  * **Bounded Execution:**
@@ -214,6 +218,63 @@ export async function publishIssueDraftVersionBatch(
     
     // Step 4: Generate batch hash for idempotency
     const batchHash = generateBatchHash(session_id, versionIds, owner, repo);
+    
+    // Check if this batch has already been published (idempotency)
+    const existingBatch = await pool.query(
+      `SELECT batch_id, created_at, total_items, created_count, updated_count, skipped_count, failed_count
+       FROM intent_issue_set_publish_batch_events
+       WHERE batch_hash = $1 AND event_type = 'completed'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [batchHash]
+    );
+    
+    if (existingBatch.rows.length > 0) {
+      // Batch already published - return skipped result (idempotent)
+      const existing = existingBatch.rows[0];
+      
+      // Query items for this batch
+      const itemsQuery = await pool.query(
+        `SELECT canonical_id, action, github_issue_number, github_issue_url,
+                rendered_issue_hash, labels_applied, error_message
+         FROM intent_issue_set_publish_item_events
+         WHERE batch_id = $1 AND event_type = 'succeeded'
+         ORDER BY created_at ASC`,
+        [existing.batch_id]
+      );
+      
+      const items = itemsQuery.rows.map(row => ({
+        canonical_id: row.canonical_id,
+        action: 'skipped' as const,
+        status: 'success' as const,
+        github_issue_number: row.github_issue_number,
+        github_issue_url: row.github_issue_url,
+        rendered_issue_hash: row.rendered_issue_hash,
+        labels_applied: row.labels_applied,
+      }));
+      
+      return {
+        success: true,
+        data: {
+          batch_id: existing.batch_id,
+          summary: {
+            total: existing.total_items,
+            created: 0,
+            updated: 0,
+            skipped: existing.total_items,
+            failed: 0,
+          },
+          items,
+          links: {
+            batch_id: existing.batch_id,
+            request_id,
+          },
+          warnings: warnings.length > 0 ? warnings : undefined,
+        },
+      };
+    }
+    
+    // New batch - generate ID and publish
     const batchId = crypto.randomUUID();
     
     // Step 5: Publish via existing batch publisher
