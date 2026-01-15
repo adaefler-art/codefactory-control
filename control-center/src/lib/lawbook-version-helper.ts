@@ -18,6 +18,7 @@
 import { Pool } from 'pg';
 import { getActiveLawbook } from './db/lawbook';
 import { logger } from './logger';
+import { LawbookV1, LawbookStopRules } from '../lawbook/schema';
 
 // Cache duration: 60 seconds (short TTL to ensure fresh data)
 const CACHE_TTL_MS = 60 * 1000;
@@ -115,6 +116,67 @@ export async function getActiveLawbookVersion(
     }, 'LawbookVersionHelper');
     
     // Don't cache errors
+    return null;
+  }
+}
+
+/**
+ * Active Lawbook Data - Contains version and parsed lawbook content
+ * 
+ * Used by services that need the full lawbook content (e.g., stop-decision-service)
+ */
+export interface ActiveLawbookData {
+  lawbookVersion: string;
+  stopRules?: LawbookStopRules;
+  lawbook: LawbookV1;
+}
+
+/**
+ * Get active lawbook data including stopRules
+ * 
+ * Returns:
+ * - ActiveLawbookData: Active lawbook with version and content
+ * - null: No active lawbook configured
+ * 
+ * Use this when you need the full lawbook content (e.g., for stopRules).
+ * 
+ * @param pool - Optional database pool
+ * @param lawbookId - Lawbook ID to fetch (defaults to 'AFU9-LAWBOOK')
+ */
+export async function getActiveLawbookData(
+  pool?: Pool,
+  lawbookId: string = 'AFU9-LAWBOOK'
+): Promise<ActiveLawbookData | null> {
+  try {
+    const result = await getActiveLawbook(lawbookId, pool);
+    
+    if (result.success && result.data) {
+      const version = result.data.lawbook_version;
+      const lawbook = result.data.lawbook_json;
+      
+      return {
+        lawbookVersion: version,
+        stopRules: lawbook.stopRules,
+        lawbook,
+      };
+    } else if (result.notConfigured) {
+      logger.warn('No active lawbook configured', {
+        error: result.error,
+        lawbookId,
+      }, 'LawbookVersionHelper');
+      return null;
+    } else {
+      logger.error('Failed to fetch active lawbook data', {
+        error: result.error,
+        lawbookId,
+      }, 'LawbookVersionHelper');
+      return null;
+    }
+  } catch (error) {
+    logger.error('Exception fetching active lawbook data', {
+      error: error instanceof Error ? error.message : String(error),
+      lawbookId,
+    }, 'LawbookVersionHelper');
     return null;
   }
 }
