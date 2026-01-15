@@ -7,6 +7,7 @@ import { scrollContainerToBottom } from "@/lib/ui/scroll";
 import { SourcesPanel, SourcesBadge } from "./components/SourcesPanel";
 import CrEditor from "./components/CrEditor";
 import IssueDraftPanel from "./components/IssueDraftPanel";
+import PublishHistoryPanel from "./components/PublishHistoryPanel";
 import type { UsedSources } from "@/lib/schemas/usedSources";
 
 interface IntentSession {
@@ -58,6 +59,7 @@ export default function IntentPage() {
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [showCrDrawer, setShowCrDrawer] = useState(false);
   const [showIssueDraftDrawer, setShowIssueDraftDrawer] = useState(false);
+  const [showPublishHistoryDrawer, setShowPublishHistoryDrawer] = useState(false);
   const [issueDraftRefreshKey, setIssueDraftRefreshKey] = useState(0);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -511,6 +513,14 @@ export default function IntentPage() {
                   {showPacksDrawer ? "Hide Packs" : "View Packs"}
                 </button>
                 
+                {/* Publish History Button */}
+                <button
+                  onClick={() => setShowPublishHistoryDrawer(!showPublishHistoryDrawer)}
+                  className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors text-sm font-medium"
+                >
+                  {showPublishHistoryDrawer ? "Hide History" : "Publish History"}
+                </button>
+                
                 {/* Export (Generate) Button */}
                 <div className="flex flex-col items-end gap-1">
                   <button
@@ -753,6 +763,15 @@ export default function IntentPage() {
       {/* Issue Draft Drawer */}
       {showIssueDraftDrawer && (
         <IssueDraftPanel sessionId={currentSessionId} refreshKey={issueDraftRefreshKey} />
+      )}
+      
+      {/* Publish History Drawer */}
+      {showPublishHistoryDrawer && currentSessionId && (
+        <PublishHistoryPanel
+          sessionId={currentSessionId}
+          isOpen={showPublishHistoryDrawer}
+          onClose={() => setShowPublishHistoryDrawer(false)}
+        />
       )}
       
       {/* CR Drawer */}
