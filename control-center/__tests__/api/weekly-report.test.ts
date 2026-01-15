@@ -8,12 +8,12 @@
  * - Lawbook hash and version inclusion
  */
 
-import { GET } from '../app/api/ops/reports/weekly/route';
-import { getPool } from '../src/lib/db';
-import { generateWeeklyReport } from '../src/lib/weekly-report-service';
+import { GET } from '../../app/api/ops/reports/weekly/route';
+import { getPool } from '../../src/lib/db';
+import { generateWeeklyReport } from '../../src/lib/weekly-report-service';
 
 // Mock the database
-jest.mock('../src/lib/db');
+jest.mock('../../src/lib/db');
 
 describe('Weekly Report Export API', () => {
   const mockPool = {

@@ -289,20 +289,35 @@ async function fetchLawbookChanges(
     LEFT JOIN lawbook_versions lv ON le.lawbook_version_id = lv.id
     WHERE le.created_at >= $1
       AND le.created_at <= $2
-      AND le.event_type IN ('version_created', 'version_activated')
+      AND le.event_type IN ('version_created', 'version_activated', 'version_deactivated')
     ORDER BY le.created_at DESC
   `;
   
   try {
     const result = await pool.query(query, [periodStart, periodEnd]);
     
-    return result.rows.map(row => ({
-      lawbookId: row.lawbook_id,
-      previousVersion: row.previous_version || null,
-      currentVersion: row.lawbook_version,
-      changedAt: row.created_at.toISOString(),
-      changeType: row.event_type === 'version_created' ? 'created' : 'activated',
-    }));
+    return result.rows.map(row => {
+      // Map event_type to changeType with explicit handling
+      let changeType: 'created' | 'activated' | 'deactivated';
+      if (row.event_type === 'version_created') {
+        changeType = 'created';
+      } else if (row.event_type === 'version_activated') {
+        changeType = 'activated';
+      } else if (row.event_type === 'version_deactivated') {
+        changeType = 'deactivated';
+      } else {
+        // Default to activated for unknown types (defensive)
+        changeType = 'activated';
+      }
+      
+      return {
+        lawbookId: row.lawbook_id,
+        previousVersion: row.previous_version || null,
+        currentVersion: row.lawbook_version,
+        changedAt: row.created_at.toISOString(),
+        changeType,
+      };
+    });
   } catch (error) {
     // Table might not exist yet
     console.warn('[Weekly Report] Lawbook tables not available:', error);
