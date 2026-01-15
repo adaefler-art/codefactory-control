@@ -108,13 +108,17 @@ export const API_ROUTES = {
     classify: (id: string) => `/api/incidents/${id}/classify`,
   },
 
-  // Ops Dashboard (E78.4, E80.1, E86.3, E88.2)
+  // Ops Dashboard (E78.4, E80.1, E86.3, E88.2, E89.8)
   ops: {
     dashboard: '/api/ops/dashboard',
     kpis: '/api/ops/kpis', // E88.2: Automation KPI Dashboard
     migrations: '/api/ops/db/migrations',
     readiness: '/api/ops/readiness',
     whoami: '/api/whoami',
+    capabilities: {
+      manifest: '/api/ops/capabilities/manifest', // E89.8: Capabilities Registry
+      probe: '/api/ops/capabilities/probe', // E89.8: Trigger health probe (staging-only)
+    },
     db: {
       issues: {
         previewSetDone: '/api/ops/db/issues/preview-set-done',
