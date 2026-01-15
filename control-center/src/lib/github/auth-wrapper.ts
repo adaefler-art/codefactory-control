@@ -259,4 +259,3 @@ export async function postGitHubIssueComment(
 // ========================================
 
 export { RepoAccessDeniedError } from './policy';
-export { GitHubAuthError };
