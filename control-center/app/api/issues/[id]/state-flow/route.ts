@@ -9,23 +9,31 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getPool } from '../../../../../src/lib/db';
 import { computeStateFlow, getBlockersForDone } from '../../../../../src/lib/state-flow';
 
 export const dynamic = 'force-dynamic';
 
+const UuidSchema = z.string().uuid();
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const id = params.id;
+  // Next.js 15 App Router: params is a Promise
+  const { id } = await params;
 
-  if (!id) {
+  // Validate UUID format
+  const parseResult = UuidSchema.safeParse(id);
+  if (!parseResult.success) {
     return NextResponse.json(
-      { error: 'Issue ID is required' },
+      { error: 'Invalid issue ID format', errorCode: 'INVALID_ISSUE_ID' },
       { status: 400 }
     );
   }
+
+  const issueId = parseResult.data;
 
   try {
     const pool = getPool();
@@ -41,7 +49,7 @@ export async function GET(
         execution_state
       FROM afu9_issues
       WHERE id = $1`,
-      [id]
+      [issueId]
     );
 
     if (result.rows.length === 0) {
