@@ -60,7 +60,7 @@ CREATE INDEX idx_capability_probes_time
 -- View: afu9_capability_manifest_view
 -- ============================================================================
 -- Latest probe status for each capability
--- This is a VIEW (not materialized) to always show current state
+-- This is a regular VIEW (not materialized) to always show current state
 -- Query optimized with index on (capability_name, probed_at DESC)
 CREATE OR REPLACE VIEW afu9_capability_manifest_view AS
 SELECT DISTINCT ON (capability_name)

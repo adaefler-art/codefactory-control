@@ -395,7 +395,7 @@ export default function CapabilitiesPage() {
                     {/* Last Probe */}
                     <td className="py-3 px-4 text-gray-500 text-xs">
                       {cap.lastProbeAt
-                        ? new Date(cap.lastProbeAt).toLocaleString("de-DE")
+                        ? new Date(cap.lastProbeAt).toLocaleString()
                         : "—"}
                     </td>
 

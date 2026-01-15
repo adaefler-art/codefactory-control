@@ -168,11 +168,23 @@ describe('Capabilities Manifest API', () => {
       mockGetLatestProbeResults.mockResolvedValue([]);
       mockGetDbPool.mockReturnValue({ query: jest.fn() } as any);
 
+      // First request to get the actual hash
+      const firstRequest = new NextRequest('http://localhost/api/ops/capabilities/manifest', {
+        method: 'GET',
+        headers: {
+          'x-afu9-sub': 'user-123',
+        },
+      });
+      const firstResponse = await manifestGet(firstRequest);
+      const firstData = await firstResponse.json();
+      const actualHash = firstData.hash;
+
+      // Second request with matching ETag
       const request = new NextRequest('http://localhost/api/ops/capabilities/manifest', {
         method: 'GET',
         headers: {
           'x-afu9-sub': 'user-123',
-          'if-none-match': 'sha256:5bf1fd927dfb8679496a2e6cf00cbe50c1c87145af1c5cfcde0405ca6c329086', // Hash of empty array
+          'if-none-match': actualHash,
         },
       });
 
