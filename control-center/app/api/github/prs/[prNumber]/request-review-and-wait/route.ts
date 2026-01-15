@@ -22,6 +22,8 @@ import {
 } from '@/lib/types/pr-review-wait';
 import { logger } from '@/lib/logger';
 import { RepoAccessDeniedError } from '@/lib/github/auth-wrapper';
+import { recordReviewTouchpoint } from '@/lib/touchpoints/manual-touchpoints';
+import { getPool } from '@/lib/db';
 
 type RouteContext = {
   params: Promise<{
@@ -113,6 +115,24 @@ export async function POST(
     // Request review and wait
     const service = getPrReviewWaitService();
     const result = await service.requestReviewAndWait(input);
+
+    // E88.1: Record manual touchpoint for review request
+    // Only record if reviewers were specified (actual review request)
+    if (input.reviewers && input.reviewers.length > 0) {
+      const pool = getPool();
+      await recordReviewTouchpoint(pool, {
+        prNumber: input.prNumber,
+        actor: 'api', // Could be extracted from auth if available
+        requestId: requestId || 'unknown',
+        source: 'API',
+        metadata: {
+          owner: input.owner,
+          repo: input.repo,
+          reviewers: input.reviewers,
+          rollup: result.rollup,
+        },
+      });
+    }
 
     logger.info('Completed review request and checks wait', {
       rollup: result.rollup,
