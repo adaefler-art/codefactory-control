@@ -205,7 +205,7 @@ export default function PublishHistoryPanel({
               >
                 {/* Batch Header */}
                 <div
-                  className="bg-gray-50 dark:bg-gray-800 px-4 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-750"
+                  className="bg-gray-50 dark:bg-gray-800 px-4 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => toggleBatch(batch.batch_id)}
                 >
                   <div className="flex items-center justify-between">

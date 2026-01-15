@@ -35,8 +35,8 @@ DECLARE
   max_size INTEGER := 32768; -- 32KB in bytes
 BEGIN
   IF NEW.result_json IS NOT NULL THEN
-    -- Calculate size of JSONB in bytes (approximate)
-    json_size := octet_length(NEW.result_json::text);
+    -- Calculate actual storage size of JSONB column
+    json_size := pg_column_size(NEW.result_json);
     
     IF json_size > max_size THEN
       -- Truncate to empty object and set flag
