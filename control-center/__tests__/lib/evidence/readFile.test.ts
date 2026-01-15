@@ -281,6 +281,46 @@ describe('Evidence Tool: readFile', () => {
 
       expect(result.success).toBe(true);
     });
+
+    it('should reject range with endLine < startLine', async () => {
+      const result = await readFileEvidence({
+        owner: 'test',
+        repo: 'repo',
+        path: 'test.txt',
+        startLine: 10,
+        endLine: 5,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('RANGE_INVALID_416');
+      expect(result.error).toContain('endLine must be >= startLine');
+    });
+
+    it('should reject incomplete range (only startLine)', async () => {
+      const result = await readFileEvidence({
+        owner: 'test',
+        repo: 'repo',
+        path: 'test.txt',
+        startLine: 5,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('INCOMPLETE_RANGE');
+      expect(result.error).toContain('Both startLine and endLine must be provided together');
+    });
+
+    it('should reject incomplete range (only endLine)', async () => {
+      const result = await readFileEvidence({
+        owner: 'test',
+        repo: 'repo',
+        path: 'test.txt',
+        endLine: 10,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('INCOMPLETE_RANGE');
+      expect(result.error).toContain('Both startLine and endLine must be provided together');
+    });
   });
 
   // ========================================
@@ -646,7 +686,8 @@ describe('Evidence Tool: readFile', () => {
     });
 
     it('should handle unknown errors gracefully', async () => {
-      const error = new Error('Unknown error');
+      const error = new Error('Unexpected error');
+      (error as any).code = 'UNKNOWN_CODE';
       mockGitHubReadFile.mockRejectedValueOnce(error);
 
       const result = await readFileEvidence({
@@ -656,8 +697,8 @@ describe('Evidence Tool: readFile', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Unknown error');
-      expect(result.errorCode).toBe('UNKNOWN_ERROR');
+      expect(result.error).toBe('Unexpected error');
+      expect(result.errorCode).toBe('UNKNOWN_CODE');
     });
   });
 

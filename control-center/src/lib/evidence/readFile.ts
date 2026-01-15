@@ -20,7 +20,7 @@ import { createHash } from 'crypto';
 
 /**
  * Maximum file size for evidence tool (256KB)
- * Smaller than GitHub read-file default to ensure bounded output
+ * Smaller than GitHub read-file default (200KB) to ensure bounded output
  */
 export const MAX_EVIDENCE_FILE_SIZE = 256 * 1024; // 256 KB
 
@@ -108,39 +108,58 @@ function getSnippetHash(sha256: string): string {
 export async function readFileEvidence(
   params: ReadFileEvidenceParams
 ): Promise<ReadFileEvidenceResult> {
-  try {
-    // Validate and apply evidence-specific constraints
-    const {
-      owner,
-      repo,
-      ref = 'main',
-      path,
-      startLine,
-      endLine,
-      maxBytes = MAX_EVIDENCE_FILE_SIZE,
-    } = params;
+  // Validate and apply evidence-specific constraints
+  const {
+    owner,
+    repo,
+    ref = 'main',
+    path,
+    startLine,
+    endLine,
+    maxBytes = MAX_EVIDENCE_FILE_SIZE,
+  } = params;
 
-    // Enforce max file size limit
-    if (maxBytes > MAX_EVIDENCE_FILE_SIZE) {
+  // Enforce max file size limit
+  if (maxBytes > MAX_EVIDENCE_FILE_SIZE) {
+    return {
+      success: false,
+      error: `maxBytes cannot exceed ${MAX_EVIDENCE_FILE_SIZE} (got ${maxBytes})`,
+      errorCode: 'MAX_BYTES_EXCEEDED',
+    };
+  }
+
+  // Enforce max line range limit
+  if (startLine !== undefined && endLine !== undefined) {
+    // Validate that endLine >= startLine
+    if (endLine < startLine) {
       return {
         success: false,
-        error: `maxBytes cannot exceed ${MAX_EVIDENCE_FILE_SIZE} (got ${maxBytes})`,
-        errorCode: 'MAX_BYTES_EXCEEDED',
+        error: `endLine must be >= startLine (got startLine=${startLine}, endLine=${endLine})`,
+        errorCode: 'RANGE_INVALID_416',
       };
     }
-
-    // Enforce max line range limit
-    if (startLine !== undefined && endLine !== undefined) {
-      const lineCount = endLine - startLine + 1;
-      if (lineCount > MAX_EVIDENCE_LINES) {
-        return {
-          success: false,
-          error: `Line range cannot exceed ${MAX_EVIDENCE_LINES} lines (got ${lineCount})`,
-          errorCode: 'MAX_LINES_EXCEEDED',
-        };
-      }
+    
+    const lineCount = endLine - startLine + 1;
+    if (lineCount > MAX_EVIDENCE_LINES) {
+      return {
+        success: false,
+        error: `Line range cannot exceed ${MAX_EVIDENCE_LINES} lines (got ${lineCount})`,
+        errorCode: 'MAX_LINES_EXCEEDED',
+      };
     }
+  }
 
+  // Validate that both startLine and endLine are provided together
+  if ((startLine !== undefined && endLine === undefined) || 
+      (startLine === undefined && endLine !== undefined)) {
+    return {
+      success: false,
+      error: 'Both startLine and endLine must be provided together for range reading',
+      errorCode: 'INCOMPLETE_RANGE',
+    };
+  }
+
+  try {
     // Build parameters for underlying readFile
     const readParams: ReadFileParams = {
       owner,
