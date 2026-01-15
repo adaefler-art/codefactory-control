@@ -37,8 +37,8 @@
  */
 
 import { NextRequest } from 'next/server';
-import { getRequestId, jsonResponse, errorResponse } from '../../../../../../src/lib/api/response-helpers';
-import { generateWeeklyReport, reportToMarkdown } from '../../../../../../src/lib/weekly-report-service';
+import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { generateWeeklyReport, reportToMarkdown } from '@/lib/weekly-report-service';
 import { z } from 'zod';
 
 /**
