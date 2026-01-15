@@ -18,6 +18,8 @@ import OpenAI from "openai";
 import { randomUUID } from "crypto";
 import { executeIntentTool, type ToolContext } from './intent-agent-tool-executor';
 import { buildOpenAITools, renderIntentToolCapabilities } from './intent-tool-registry';
+import { ToolSourcesTracker } from './intent/tool-sources-tracker';
+import type { UsedSources } from './schemas/usedSources';
 
 // Environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -72,6 +74,7 @@ export interface IntentAgentResponse {
   requestId: string;
   timestamp: string;
   model: string;
+  usedSources?: UsedSources; // E89.5: Sources from evidence tools
 }
 
 /**
@@ -339,6 +342,9 @@ Response language: German (user may use English or German)`;
         // Create tool execution context
         const toolContext: ToolContext = { userId, sessionId };
         
+        // E89.5: Track tool sources
+        const sourcesTracker = new ToolSourcesTracker();
+        
         // Execute each tool call
         for (const toolCall of responseMessage.tool_calls) {
           // Type guard: only process function tool calls
@@ -363,6 +369,18 @@ Response language: German (user may use English or German)`;
             tool: functionName,
             result: toolResult.substring(0, 200),
           });
+          
+          // E89.5: Record tool invocation for source tracking
+          try {
+            const parsedResult = JSON.parse(toolResult);
+            sourcesTracker.recordInvocation(functionName, functionArgs, parsedResult);
+          } catch (parseError) {
+            console.warn(`[INTENT Agent] Failed to parse tool result for source tracking:`, {
+              requestId,
+              tool: functionName,
+              error: parseError instanceof Error ? parseError.message : 'Unknown',
+            });
+          }
           
           // Add tool result to messages
           toolMessages.push({
@@ -393,6 +411,9 @@ Response language: German (user may use English or German)`;
 
         // Sanitize content to remove potential secrets
         const sanitizedContent = sanitizeContent(finalMessage.content);
+        
+        // E89.5: Get aggregated sources
+        const usedSources = sourcesTracker.getAggregatedSources();
 
         // Log success (NOT the content)
         console.log("[INTENT Agent] Response generated successfully (with tools)", {
@@ -400,6 +421,7 @@ Response language: German (user may use English or German)`;
           timestamp,
           outputLength: sanitizedContent.length,
           tokensUsed: (completion.usage?.total_tokens || 0) + (finalCompletion.usage?.total_tokens || 0),
+          sourcesCount: usedSources.length,
         });
 
         return {
@@ -407,6 +429,7 @@ Response language: German (user may use English or German)`;
           requestId,
           timestamp,
           model: OPENAI_MODEL,
+          usedSources: usedSources.length > 0 ? usedSources : undefined,
         };
       }
 
