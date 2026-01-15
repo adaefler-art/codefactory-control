@@ -4,7 +4,7 @@
  * INTENT agent tool for searching code in GitHub repositories with:
  * - Query constraints (max 200 chars, disallow empty/dangerous queries)
  * - maxResults clamping (default 20, max 50)
- * - Deterministic ordering (path, then line, then sha)
+ * - Deterministic ordering (path, then sha)
  * - Result hash (SHA-256 of canonical results)
  * - Rate-limit handling with E82.4 retry policy
  * - Optional path prefix filtering
