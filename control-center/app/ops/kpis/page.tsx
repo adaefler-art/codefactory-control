@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 // ========================================
 // Type Definitions
@@ -57,7 +58,7 @@ export default function AutomationKpiPage() {
       const params = new URLSearchParams();
       params.append("period", period);
 
-      const url = `/api/ops/kpis?${params.toString()}`;
+      const url = `${API_ROUTES.ops.kpis}?${params.toString()}`;
 
       const response = await fetch(url, {
         credentials: "include",
