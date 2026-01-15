@@ -6,12 +6,14 @@
  * 
  * Reference: I711 (E71.1) - Repo Access Policy + Auth Wrapper
  * Reference: E82.4 - GH Rate-limit & Retry Policy
+ * Reference: E89.1 - Enhanced error codes and audit evidence
  */
 
 import { Octokit } from 'octokit';
 import { getGitHubInstallationToken } from '../github-app-auth';
 import { loadRepoAccessPolicy, RepoAccessDeniedError } from './policy';
 import { withRetry, DEFAULT_RETRY_CONFIG, type RetryPolicyConfig } from './retry-policy';
+import { createHash } from 'crypto';
 
 // ========================================
 // Types
@@ -22,15 +24,40 @@ export interface GitHubAuthRequest {
   repo: string;
   branch?: string;
   path?: string;
+  requestId?: string; // Optional request ID for audit trail
 }
 
 export interface GitHubAuthResult {
   token: string;
   expiresAt?: string;
+  auditEvidence?: {
+    requestId?: string;
+    allowlistHash: string;
+    installationId?: number;
+  };
 }
 
 export interface GitHubClientOptions {
   retryConfig?: RetryPolicyConfig;
+}
+
+// ========================================
+// Error Types
+// ========================================
+
+export class GitHubAuthError extends Error {
+  public readonly code = 'GITHUB_AUTH_FAILED';
+  public readonly details: {
+    owner: string;
+    repo: string;
+    reason?: string;
+  };
+
+  constructor(details: { owner: string; repo: string; reason?: string }) {
+    super(`GitHub authentication failed for ${details.owner}/${details.repo}: ${details.reason || 'Unknown error'}`);
+    this.name = 'GitHubAuthError';
+    this.details = details;
+  }
 }
 
 // ========================================
@@ -39,12 +66,26 @@ export interface GitHubClientOptions {
 
 // Cached policy instance (loaded once per runtime)
 let cachedPolicy: ReturnType<typeof loadRepoAccessPolicy> | null = null;
+let cachedPolicyHash: string | null = null;
 
 function getPolicy() {
   if (!cachedPolicy) {
     cachedPolicy = loadRepoAccessPolicy();
+    // Calculate hash of allowlist for audit evidence
+    const allowlistJson = process.env.GITHUB_REPO_ALLOWLIST || '';
+    cachedPolicyHash = createHash('sha256')
+      .update(allowlistJson || 'default-dev-policy')
+      .digest('hex')
+      .substring(0, 16);
   }
   return cachedPolicy;
+}
+
+function getPolicyHash(): string {
+  if (!cachedPolicyHash) {
+    getPolicy(); // Ensure policy is loaded and hash is calculated
+  }
+  return cachedPolicyHash!;
 }
 
 /**
@@ -53,6 +94,7 @@ function getPolicy() {
  */
 export function __resetPolicyCache() {
   cachedPolicy = null;
+  cachedPolicyHash = null;
 }
 
 /**
@@ -64,8 +106,9 @@ export function __resetPolicyCache() {
  * 
  * @param request - Repository and optional branch/path to access
  * @param options - Optional client options (retry config, etc.)
- * @returns GitHub installation token
+ * @returns GitHub installation token with audit evidence
  * @throws RepoAccessDeniedError if access is denied by policy
+ * @throws GitHubAuthError if token acquisition fails
  */
 export async function getAuthenticatedToken(
   request: GitHubAuthRequest,
@@ -78,19 +121,43 @@ export async function getAuthenticatedToken(
   // 2. Obtain installation token with retry logic (E82.4)
   const retryConfig = options?.retryConfig || DEFAULT_RETRY_CONFIG;
   
-  return await withRetry(
-    async () => {
-      const { token, expiresAt } = await getGitHubInstallationToken({
-        owner: request.owner,
-        repo: request.repo,
-      });
-      return { token, expiresAt };
-    },
-    retryConfig,
-    (decision, attempt) => {
-      console.log(`[GitHub Auth] ${decision.reason}`);
+  try {
+    const result = await withRetry(
+      async () => {
+        const { token, expiresAt } = await getGitHubInstallationToken({
+          owner: request.owner,
+          repo: request.repo,
+        });
+        
+        return { 
+          token, 
+          expiresAt,
+          auditEvidence: {
+            requestId: request.requestId,
+            allowlistHash: getPolicyHash(),
+            // installationId is not exposed by getGitHubInstallationToken
+            // but is logged internally for audit purposes
+          },
+        };
+      },
+      retryConfig,
+      (decision, attempt) => {
+        console.log(`[GitHub Auth] ${decision.reason}`);
+      }
+    );
+    
+    return result;
+  } catch (error) {
+    // Wrap token acquisition errors in GitHubAuthError
+    if (error instanceof RepoAccessDeniedError) {
+      throw error; // Re-throw policy errors as-is
     }
-  );
+    throw new GitHubAuthError({
+      owner: request.owner,
+      repo: request.repo,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
@@ -192,3 +259,4 @@ export async function postGitHubIssueComment(
 // ========================================
 
 export { RepoAccessDeniedError } from './policy';
+export { GitHubAuthError };
