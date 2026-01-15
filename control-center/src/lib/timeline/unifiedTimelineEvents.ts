@@ -199,14 +199,14 @@ export function formatIssuePublishSummary(
  * Sanitize details object (remove secrets, enforce size limit)
  */
 export function sanitizeDetails(details: Record<string, any>): Record<string, any> {
-  const SENSITIVE_KEYS = [
+  const SENSITIVE_PATTERNS = [
     'password',
     'token',
     'secret',
     'api_key',
-    'apiKey',
+    'apikey',
     'private_key',
-    'privateKey',
+    'privatekey',
     'credential',
     'auth',
   ];
@@ -214,8 +214,9 @@ export function sanitizeDetails(details: Record<string, any>): Record<string, an
   const sanitized: Record<string, any> = {};
   
   for (const [key, value] of Object.entries(details)) {
-    // Skip sensitive keys
-    if (SENSITIVE_KEYS.some(sk => key.toLowerCase().includes(sk))) {
+    // Skip sensitive keys (case-insensitive partial match)
+    const lowerKey = key.toLowerCase();
+    if (SENSITIVE_PATTERNS.some(pattern => lowerKey.includes(pattern))) {
       continue;
     }
     
