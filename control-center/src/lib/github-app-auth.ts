@@ -267,6 +267,11 @@ export async function loadGitHubAppConfig(): Promise<GitHubAppConfig> {
   return cachedSecretPromise;
 }
 
+/**
+ * Alias for loadGitHubAppConfig for backward compatibility
+ */
+export const getGitHubAppConfig = loadGitHubAppConfig;
+
 export async function getGitHubWebhookSecret(): Promise<string> {
   const config = await loadGitHubAppConfig();
   if (!config.webhookSecret) {

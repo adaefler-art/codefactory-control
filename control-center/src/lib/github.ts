@@ -1,3 +1,4 @@
+import { Octokit } from 'octokit';
 import { createAuthenticatedClient } from "./github/auth-wrapper";
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
@@ -432,4 +433,24 @@ export async function getIssue(
 
     throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
   }
+}
+
+/**
+ * Get a simple Octokit instance using the GITHUB_TOKEN environment variable.
+ * 
+ * This is a convenience function for scripts and routes that need a simple
+ * GitHub client without full policy enforcement (e.g., drift detection).
+ * 
+ * For production code that modifies repositories, prefer createAuthenticatedClient
+ * which enforces repo access policies.
+ * 
+ * @returns Octokit instance authenticated with GITHUB_TOKEN
+ * @throws Error if GITHUB_TOKEN is not set
+ */
+export function getOctokit(): Octokit {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error('GITHUB_TOKEN environment variable is required');
+  }
+  return new Octokit({ auth: token });
 }
