@@ -20,8 +20,8 @@ import {
   RecommendedNextStep,
 } from '../types/stop-decision';
 
-// Import the database helper to get lawbook
-import { getActiveLawbookVersion } from '../db/lawbook';
+// Import the lawbook version helper to get active lawbook data
+import { getActiveLawbookData } from '../lawbook-version-helper';
 
 /**
  * Get lawbook hash from environment or use default
@@ -60,9 +60,9 @@ function getDefaultStopRules(): LawbookStopRules {
  */
 async function loadStopRules(): Promise<LawbookStopRules> {
   try {
-    const lawbook = await getActiveLawbookVersion();
-    if (lawbook && lawbook.stopRules) {
-      return lawbook.stopRules;
+    const lawbookData = await getActiveLawbookData();
+    if (lawbookData && lawbookData.stopRules) {
+      return lawbookData.stopRules;
     }
   } catch (error) {
     logger.warn('Failed to load lawbook, using default stop rules', error as Error, {});
@@ -169,8 +169,8 @@ export async function makeStopDecision(
   // Get lawbook version for evidence
   let lawbookVersion: string | undefined;
   try {
-    const lawbook = await getActiveLawbookVersion();
-    lawbookVersion = lawbook?.lawbookVersion;
+    const lawbookData = await getActiveLawbookData();
+    lawbookVersion = lawbookData?.lawbookVersion;
   } catch {
     lawbookVersion = undefined;
   }
