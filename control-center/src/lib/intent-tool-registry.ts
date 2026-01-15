@@ -284,6 +284,45 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         required: ['owner', 'repo', 'path'],
       },
     },
+
+    // E89.4 - Evidence Tool: searchCode
+    {
+      name: 'searchCode',
+      description:
+        'Search code in a GitHub repository with evidence tracking. Enforces query constraints (max 200 chars, no wildcards), bounded results (max 50), deterministic ordering (path, then sha), and returns SHA-256 hash of results. Use for finding code patterns, functions, or specific text. Enforces allowlist policy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner: {
+            type: 'string',
+            description: 'Repository owner (e.g., "adaefler-art")',
+          },
+          repo: {
+            type: 'string',
+            description: 'Repository name (e.g., "codefactory-control")',
+          },
+          ref: {
+            type: 'string',
+            description: 'Branch, tag, or commit SHA (default: "main")',
+            default: 'main',
+          },
+          query: {
+            type: 'string',
+            description: 'Search query (max 200 chars, no wildcards-only like "*" or "**")',
+          },
+          path: {
+            type: 'string',
+            description: 'Optional path prefix filter (e.g., "src/lib")',
+          },
+          maxResults: {
+            type: 'number',
+            description: 'Maximum results to return (default: 20, max: 50)',
+            default: 20,
+          },
+        },
+        required: ['owner', 'repo', 'query'],
+      },
+    },
   ];
 }
 
