@@ -3,10 +3,16 @@
  * 
  * Provides functions for managing the audit trail of issue set publishing to GitHub.
  * Issue E82.3: Publish Audit Log + Backlinks (AFU9 Issue ↔ GitHub Issue)
+ * Issue E89.7: Publish Audit Trail (DB table + session-scoped UI view; append-only, bounded result_json)
  */
 
 import { Pool } from 'pg';
 import crypto from 'crypto';
+
+/**
+ * Maximum size for result_json in bytes (32KB)
+ */
+const MAX_RESULT_JSON_SIZE = 32768;
 
 /**
  * Publish batch record
@@ -29,6 +35,8 @@ export interface PublishBatch {
   error_message: string | null;
   error_details: unknown | null;
   batch_hash: string;
+  result_json: unknown | null;
+  result_truncated: boolean;
 }
 
 /**
@@ -53,6 +61,8 @@ export interface PublishItem {
   rendered_issue_hash: string | null;
   labels_applied: string[] | null;
   request_id: string;
+  result_json: unknown | null;
+  result_truncated: boolean;
 }
 
 /**
@@ -270,7 +280,8 @@ export async function queryPublishBatches(
       `SELECT 
         id, issue_set_id, session_id, created_at, request_id, lawbook_version,
         status, started_at, completed_at, total_items, created_count, updated_count,
-        skipped_count, failed_count, error_message, error_details, batch_hash
+        skipped_count, failed_count, error_message, error_details, batch_hash,
+        result_json, result_truncated
       FROM intent_issue_set_publish_batches
       WHERE issue_set_id = $1
       ORDER BY created_at DESC
@@ -298,6 +309,8 @@ export async function queryPublishBatches(
         error_message: row.error_message,
         error_details: row.error_details,
         batch_hash: row.batch_hash,
+        result_json: row.result_json || null,
+        result_truncated: row.result_truncated || false,
       })),
     };
   } catch (error) {
@@ -329,7 +342,7 @@ export async function queryPublishItems(
         id, batch_id, issue_set_item_id, created_at, canonical_id, issue_hash,
         owner, repo, github_issue_number, github_issue_url, action, status,
         error_message, error_details, lawbook_version, rendered_issue_hash,
-        labels_applied, request_id
+        labels_applied, request_id, result_json, result_truncated
       FROM intent_issue_set_publish_items
       WHERE batch_id = $1
       ORDER BY created_at ASC
@@ -358,6 +371,8 @@ export async function queryPublishItems(
         rendered_issue_hash: row.rendered_issue_hash,
         labels_applied: row.labels_applied,
         request_id: row.request_id,
+        result_json: row.result_json || null,
+        result_truncated: row.result_truncated || false,
       })),
     };
   } catch (error) {
@@ -389,7 +404,7 @@ export async function queryPublishItemsByCanonicalId(
         id, batch_id, issue_set_item_id, created_at, canonical_id, issue_hash,
         owner, repo, github_issue_number, github_issue_url, action, status,
         error_message, error_details, lawbook_version, rendered_issue_hash,
-        labels_applied, request_id
+        labels_applied, request_id, result_json, result_truncated
       FROM intent_issue_set_publish_items
       WHERE canonical_id = $1
       ORDER BY created_at DESC
@@ -418,10 +433,184 @@ export async function queryPublishItemsByCanonicalId(
         rendered_issue_hash: row.rendered_issue_hash,
         labels_applied: row.labels_applied,
         request_id: row.request_id,
+        result_json: row.result_json || null,
+        result_truncated: row.result_truncated || false,
       })),
     };
   } catch (error) {
     console.error('[DB] Error querying publish items by canonical ID:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database error',
+    };
+  }
+}
+
+/**
+ * Truncate result_json if it exceeds the size limit
+ * Returns { data, truncated } where truncated indicates if truncation occurred
+ */
+export function truncateResultJson(data: unknown): { data: unknown; truncated: boolean } {
+  if (data === null || data === undefined) {
+    return { data: null, truncated: false };
+  }
+
+  const jsonString = JSON.stringify(data);
+  const sizeInBytes = Buffer.byteLength(jsonString, 'utf8');
+
+  if (sizeInBytes <= MAX_RESULT_JSON_SIZE) {
+    return { data, truncated: false };
+  }
+
+  // Data is too large - return empty object and mark as truncated
+  console.warn(`[DB] result_json truncated: size=${sizeInBytes} bytes, max=${MAX_RESULT_JSON_SIZE} bytes`);
+  return { data: {}, truncated: true };
+}
+
+/**
+ * Query publish batch events by session ID
+ * Returns batches ordered by created_at DESC (newest first), with stable tie-breaking by batch_id
+ */
+export async function queryPublishBatchesBySession(
+  pool: Pool,
+  sessionId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ success: true; data: any[] } | { success: false; error: string }> {
+  try {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+
+    // Query using the view which gives us the latest state per batch
+    // Order by created_at DESC (newest first), tie-break by batch_id for determinism
+    const result = await pool.query(
+      `SELECT 
+        batch_id,
+        status,
+        status_updated_at as created_at,
+        issue_set_id,
+        session_id,
+        request_id,
+        lawbook_version,
+        total_items,
+        created_count,
+        updated_count,
+        skipped_count,
+        failed_count,
+        error_message,
+        batch_hash,
+        owner,
+        repo,
+        result_json,
+        result_truncated
+      FROM v_latest_publish_batch_state
+      WHERE session_id = $1
+      ORDER BY status_updated_at DESC, batch_id ASC
+      LIMIT $2 OFFSET $3`,
+      [sessionId, limit, offset]
+    );
+
+    return {
+      success: true,
+      data: result.rows.map(row => ({
+        batch_id: row.batch_id,
+        status: row.status,
+        created_at: row.created_at?.toISOString() || new Date().toISOString(),
+        issue_set_id: row.issue_set_id,
+        session_id: row.session_id,
+        request_id: row.request_id,
+        lawbook_version: row.lawbook_version,
+        total_items: row.total_items || 0,
+        created_count: row.created_count || 0,
+        updated_count: row.updated_count || 0,
+        skipped_count: row.skipped_count || 0,
+        failed_count: row.failed_count || 0,
+        error_message: row.error_message,
+        batch_hash: row.batch_hash,
+        owner: row.owner,
+        repo: row.repo,
+        result_json: row.result_json || null,
+        result_truncated: row.result_truncated || false,
+      })),
+    };
+  } catch (error) {
+    console.error('[DB] Error querying publish batches by session:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database error',
+    };
+  }
+}
+
+/**
+ * Query publish item events by batch ID
+ * Returns items ordered by created_at ASC for deterministic ordering
+ */
+export async function queryPublishItemsByBatchId(
+  pool: Pool,
+  batchId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ success: true; data: any[] } | { success: false; error: string }> {
+  try {
+    const limit = options?.limit || 100;
+    const offset = options?.offset || 0;
+
+    // Query using the view which gives us the latest state per item
+    const result = await pool.query(
+      `SELECT 
+        item_id,
+        batch_id,
+        status,
+        status_updated_at as created_at,
+        canonical_id,
+        issue_hash,
+        owner,
+        repo,
+        github_issue_number,
+        github_issue_url,
+        action,
+        error_message,
+        lawbook_version,
+        rendered_issue_hash,
+        labels_applied,
+        result_json,
+        result_truncated
+      FROM v_latest_publish_item_state
+      WHERE batch_id = $1
+      ORDER BY status_updated_at ASC, item_id ASC
+      LIMIT $2 OFFSET $3`,
+      [batchId, limit, offset]
+    );
+
+    return {
+      success: true,
+      data: result.rows.map(row => ({
+        item_id: row.item_id,
+        batch_id: row.batch_id,
+        status: row.status,
+        created_at: row.created_at?.toISOString() || new Date().toISOString(),
+        canonical_id: row.canonical_id,
+        issue_hash: row.issue_hash,
+        owner: row.owner,
+        repo: row.repo,
+        github_issue_number: row.github_issue_number,
+        github_issue_url: row.github_issue_url,
+        action: row.action,
+        error_message: row.error_message,
+        lawbook_version: row.lawbook_version,
+        rendered_issue_hash: row.rendered_issue_hash,
+        labels_applied: row.labels_applied,
+        result_json: row.result_json || null,
+        result_truncated: row.result_truncated || false,
+      })),
+    };
+  } catch (error) {
+    console.error('[DB] Error querying publish items by batch ID:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Database error',
