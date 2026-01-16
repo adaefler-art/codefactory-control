@@ -91,9 +91,9 @@ describe("IssueDraftPanel", () => {
         expect(screen.getByText("Preview")).toBeInTheDocument();
       });
 
-      // Check metadata is rendered
-      expect(screen.getByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.canonicalId)).toBeInTheDocument();
-      expect(screen.getByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.title)).toBeInTheDocument();
+      // Check metadata is rendered (use getAllByText for duplicates in summary + preview)
+      expect(screen.getAllByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.canonicalId)[0]).toBeInTheDocument();
+      expect(screen.getAllByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.title)[0]).toBeInTheDocument();
     });
   });
 
@@ -120,7 +120,7 @@ describe("IssueDraftPanel", () => {
       render(<IssueDraftPanel sessionId={mockSessionId} />);
 
       await waitFor(() => {
-        expect(screen.getByText("VALID")).toBeInTheDocument();
+        expect(screen.getAllByText("VALID")[0]).toBeInTheDocument();
       });
     });
 
@@ -162,7 +162,7 @@ describe("IssueDraftPanel", () => {
       render(<IssueDraftPanel sessionId={mockSessionId} />);
 
       await waitFor(() => {
-        expect(screen.getByText("INVALID")).toBeInTheDocument();
+        expect(screen.getAllByText("INVALID")[0]).toBeInTheDocument();
       });
     });
 
@@ -615,6 +615,6 @@ describe("INTENT Draft E2E", () => {
       expect(screen.getByText("Preview")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.title)).toBeInTheDocument();
+    expect(screen.getAllByText(EXAMPLE_MINIMAL_ISSUE_DRAFT.title)[0]).toBeInTheDocument();
   });
 });

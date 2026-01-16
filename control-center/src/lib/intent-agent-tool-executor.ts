@@ -367,6 +367,34 @@ async function executeToolInternal(
       }
 
       // E81.x - Issue Draft tools
+      case 'get_issue_draft_summary': {
+        const { createDraftSummary, createEmptyDraftSummary } = await import('@/lib/schemas/issueDraftSummary');
+        
+        const result = await getIssueDraft(pool, sessionId, userId);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_DRAFT_GET_FAILED',
+          });
+        }
+
+        if (!result.data) {
+          const summary = createEmptyDraftSummary();
+          return JSON.stringify({
+            success: true,
+            summary,
+          });
+        }
+
+        const summary = createDraftSummary(result.data);
+        return JSON.stringify({
+          success: true,
+          summary,
+        });
+      }
+
       case 'get_issue_draft': {
         const result = await getIssueDraft(pool, sessionId, userId);
 
