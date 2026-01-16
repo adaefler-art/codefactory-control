@@ -241,6 +241,88 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         required: [],
       },
     },
+
+    // E89.3 - Evidence Tool: readFile
+    {
+      name: 'readFile',
+      description:
+        'Read file content from a GitHub repository with evidence tracking. Supports line ranges, size limits (max 256KB), and returns deterministic SHA-256 hash. Use for reading source code, docs, or config files. Enforces allowlist policy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner: {
+            type: 'string',
+            description: 'Repository owner (e.g., "adaefler-art")',
+          },
+          repo: {
+            type: 'string',
+            description: 'Repository name (e.g., "codefactory-control")',
+          },
+          ref: {
+            type: 'string',
+            description: 'Branch, tag, or commit SHA (default: "main")',
+            default: 'main',
+          },
+          path: {
+            type: 'string',
+            description: 'File path (e.g., "src/lib/utils.ts")',
+          },
+          startLine: {
+            type: 'number',
+            description: 'Start line number (1-indexed, optional)',
+          },
+          endLine: {
+            type: 'number',
+            description: 'End line number (1-indexed, optional, must be >= startLine)',
+          },
+          maxBytes: {
+            type: 'number',
+            description: 'Maximum bytes to return (default: 256KB, max: 256KB)',
+            default: 256 * 1024,
+          },
+        },
+        required: ['owner', 'repo', 'path'],
+      },
+    },
+
+    // E89.4 - Evidence Tool: searchCode
+    {
+      name: 'searchCode',
+      description:
+        'Search code in a GitHub repository with evidence tracking. Enforces query constraints (max 200 chars, no wildcards), bounded results (max 50), deterministic ordering (path, then sha), and returns SHA-256 hash of results. Use for finding code patterns, functions, or specific text. Enforces allowlist policy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          owner: {
+            type: 'string',
+            description: 'Repository owner (e.g., "adaefler-art")',
+          },
+          repo: {
+            type: 'string',
+            description: 'Repository name (e.g., "codefactory-control")',
+          },
+          ref: {
+            type: 'string',
+            description: 'Branch, tag, or commit SHA (default: "main")',
+            default: 'main',
+          },
+          query: {
+            type: 'string',
+            description: 'Search query (max 200 chars, no wildcards-only like "*" or "**")',
+          },
+          path: {
+            type: 'string',
+            description: 'Optional path prefix filter (e.g., "src/lib")',
+          },
+          maxResults: {
+            type: 'number',
+            description: 'Maximum results to return (default: 20, max: 50)',
+            default: 20,
+          },
+        },
+        required: ['owner', 'repo', 'query'],
+      },
+    },
   ];
 }
 

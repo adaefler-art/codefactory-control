@@ -27,6 +27,17 @@ export const RepoAllowlistEntrySchema = z.object({
 export type RepoAllowlistEntry = z.infer<typeof RepoAllowlistEntrySchema>;
 
 /**
+ * Internal normalized allowlist entry (for efficient matching)
+ * @internal
+ */
+interface NormalizedRepoAllowlistEntry {
+  owner: string; // lowercase
+  repo: string; // lowercase
+  branches: string[]; // original patterns (not normalized)
+  paths?: string[];
+}
+
+/**
  * Schema for the full repository access policy
  */
 export const RepoAccessPolicyConfigSchema = z.object({
@@ -40,7 +51,7 @@ export type RepoAccessPolicyConfig = z.infer<typeof RepoAccessPolicyConfigSchema
 // ========================================
 
 export class RepoAccessDeniedError extends Error {
-  public readonly code = 'REPO_NOT_ALLOWED';
+  public readonly code: 'REPO_NOT_ALLOWED' | 'BRANCH_NOT_ALLOWED';
   public readonly details: {
     owner: string;
     repo: string;
@@ -48,11 +59,15 @@ export class RepoAccessDeniedError extends Error {
     path?: string;
   };
 
-  constructor(details: { owner: string; repo: string; branch?: string; path?: string }) {
+  constructor(
+    details: { owner: string; repo: string; branch?: string; path?: string },
+    reason?: 'repo' | 'branch'
+  ) {
     const branchInfo = details.branch ? ` on branch '${details.branch}'` : '';
     const pathInfo = details.path ? ` at path '${details.path}'` : '';
     super(`Access denied to repository ${details.owner}/${details.repo}${branchInfo}${pathInfo}`);
     this.name = 'RepoAccessDeniedError';
+    this.code = reason === 'branch' ? 'BRANCH_NOT_ALLOWED' : 'REPO_NOT_ALLOWED';
     this.details = details;
   }
 }
@@ -64,6 +79,53 @@ export class PolicyConfigError extends Error {
     super(message);
     this.name = 'PolicyConfigError';
   }
+}
+
+// ========================================
+// Normalization
+// ========================================
+
+/**
+ * Normalize owner name to lowercase for consistent matching
+ * GitHub treats owner names case-insensitively, so we normalize to lowercase.
+ * 
+ * @param owner - Repository owner name
+ * @returns Normalized (lowercase) owner name
+ */
+export function normalizeOwner(owner: string): string {
+  return owner.trim().toLowerCase();
+}
+
+/**
+ * Normalize repo name to lowercase for consistent matching
+ * GitHub treats repo names case-insensitively, so we normalize to lowercase.
+ * 
+ * @param repo - Repository name
+ * @returns Normalized (lowercase) repo name
+ */
+export function normalizeRepo(repo: string): string {
+  return repo.trim().toLowerCase();
+}
+
+/**
+ * Normalize branch name for canonical comparison
+ * Removes leading/trailing whitespace and refs/ prefixes.
+ * 
+ * @param branch - Branch name or ref
+ * @returns Normalized branch name
+ */
+export function normalizeBranch(branch: string): string {
+  let normalized = branch.trim();
+  
+  // Remove common ref prefixes
+  if (normalized.startsWith('refs/heads/')) {
+    normalized = normalized.substring('refs/heads/'.length);
+  }
+  if (normalized.startsWith('refs/tags/')) {
+    normalized = normalized.substring('refs/tags/'.length);
+  }
+  
+  return normalized;
 }
 
 // ========================================
@@ -116,9 +178,17 @@ export function matchPathPattern(path: string, pattern: string): boolean {
 
 export class RepoAccessPolicy {
   private readonly config: RepoAccessPolicyConfig;
+  private readonly normalizedAllowlist: NormalizedRepoAllowlistEntry[];
 
   constructor(config: RepoAccessPolicyConfig) {
     this.config = config;
+    // Normalize allowlist entries once at initialization for performance
+    this.normalizedAllowlist = config.allowlist.map(entry => ({
+      owner: normalizeOwner(entry.owner),
+      repo: normalizeRepo(entry.repo),
+      branches: entry.branches, // Keep original patterns
+      paths: entry.paths,
+    }));
   }
 
   /**
@@ -133,15 +203,19 @@ export class RepoAccessPolicy {
     branch?: string;
     path?: string;
   }): void {
-    const { owner, repo, branch, path } = request;
+    // Normalize inputs for consistent matching
+    const owner = normalizeOwner(request.owner);
+    const repo = normalizeRepo(request.repo);
+    const branch = request.branch ? normalizeBranch(request.branch) : undefined;
+    const { path } = request;
 
-    // Find matching entry for owner/repo
-    const entry = this.config.allowlist.find(
+    // Find matching entry (using pre-normalized allowlist)
+    const entry = this.normalizedAllowlist.find(
       (e) => e.owner === owner && e.repo === repo
     );
 
     if (!entry) {
-      throw new RepoAccessDeniedError({ owner, repo, branch, path });
+      throw new RepoAccessDeniedError({ owner, repo, branch, path }, 'repo');
     }
 
     // If branch is specified, check branch pattern
@@ -150,7 +224,7 @@ export class RepoAccessPolicy {
         matchBranchPattern(branch, pattern)
       );
       if (!branchAllowed) {
-        throw new RepoAccessDeniedError({ owner, repo, branch, path });
+        throw new RepoAccessDeniedError({ owner, repo, branch, path }, 'branch');
       }
     }
 
@@ -160,7 +234,7 @@ export class RepoAccessPolicy {
         matchPathPattern(path, pattern)
       );
       if (!pathAllowed) {
-        throw new RepoAccessDeniedError({ owner, repo, branch, path });
+        throw new RepoAccessDeniedError({ owner, repo, branch, path }, 'repo');
       }
     }
 
@@ -175,8 +249,10 @@ export class RepoAccessPolicy {
    * @returns true if the repository is in the allowlist
    */
   public isRepoAllowed(owner: string, repo: string): boolean {
-    return this.config.allowlist.some(
-      (e) => e.owner === owner && e.repo === repo
+    const normalizedOwner = normalizeOwner(owner);
+    const normalizedRepo = normalizeRepo(repo);
+    return this.normalizedAllowlist.some(
+      (e) => e.owner === normalizedOwner && e.repo === normalizedRepo
     );
   }
 

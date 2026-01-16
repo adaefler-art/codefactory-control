@@ -108,12 +108,17 @@ export const API_ROUTES = {
     classify: (id: string) => `/api/incidents/${id}/classify`,
   },
 
-  // Ops Dashboard (E78.4, E80.1, E86.3)
+  // Ops Dashboard (E78.4, E80.1, E86.3, E88.2, E89.8)
   ops: {
     dashboard: '/api/ops/dashboard',
+    kpis: '/api/ops/kpis', // E88.2: Automation KPI Dashboard
     migrations: '/api/ops/db/migrations',
     readiness: '/api/ops/readiness',
     whoami: '/api/whoami',
+    capabilities: {
+      manifest: '/api/ops/capabilities/manifest', // E89.8: Capabilities Registry
+      probe: '/api/ops/capabilities/probe', // E89.8: Trigger health probe (staging-only)
+    },
     db: {
       issues: {
         previewSetDone: '/api/ops/db/issues/preview-set-done',
@@ -296,15 +301,17 @@ export const API_ROUTES = {
     },
   },
 
-  // INTENT Console (E73.1, E73.3, E73.4, E74.3, E81.2, E81.3)
+  // INTENT Console (E73.1, E73.3, E73.4, E74.3, E81.2, E81.3, E89.5, E89.7)
   intent: {
     status: '/api/intent/status',
     sessions: {
       list: '/api/intent/sessions',
       create: '/api/intent/sessions',
       get: (id: string) => `/api/intent/sessions/${id}`,
+      sources: (id: string) => `/api/intent/sessions/${id}/sources`, // E89.5
       contextPack: (id: string) => `/api/intent/sessions/${id}/context-pack`,
       contextPacks: (id: string) => `/api/intent/sessions/${id}/context-packs`,
+      publishBatches: (id: string) => `/api/intent/sessions/${id}/publish-batches`, // E89.7
     },
     messages: {
       create: (sessionId: string) => `/api/intent/sessions/${sessionId}/messages`,

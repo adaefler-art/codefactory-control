@@ -81,10 +81,20 @@ describe('E71.2: GitHub List Tree API Route', () => {
           path: '',
           recursive: false,
           generatedAt: '2025-12-30T21:00:00.000Z',
-          toolVersion: '1.0.0',
-          contractVersion: 'E71.2',
+          toolVersion: '1.1.0',
+          contractVersion: 'E89.2',
           ordering: 'path_asc' as const,
         },
+        evidence: {
+          requestId: 'test-req-123',
+          owner: 'adaefler-art',
+          repo: 'codefactory-control',
+          ref: 'main',
+          path: '',
+          itemCount: 2,
+          truncated: false,
+        },
+        resultHash: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
       };
 
       mockListTree.mockResolvedValue(mockResult);
@@ -103,6 +113,8 @@ describe('E71.2: GitHub List Tree API Route', () => {
       expect(body.data.items[0].path).toBe('.github');
       expect(body.data.pageInfo.nextCursor).toBeNull();
       expect(body.data.meta.ordering).toBe('path_asc');
+      expect(body.data.evidence).toBeDefined();
+      expect(body.data.resultHash).toBeDefined();
     });
 
     it('should list subdirectory successfully', async () => {
@@ -121,10 +133,20 @@ describe('E71.2: GitHub List Tree API Route', () => {
           path: 'src',
           recursive: false,
           generatedAt: '2025-12-30T21:00:00.000Z',
-          toolVersion: '1.0.0',
-          contractVersion: 'E71.2',
+          toolVersion: '1.1.0',
+          contractVersion: 'E89.2',
           ordering: 'path_asc' as const,
         },
+        evidence: {
+          requestId: 'test-req-124',
+          owner: 'adaefler-art',
+          repo: 'codefactory-control',
+          ref: 'main',
+          path: 'src',
+          itemCount: 1,
+          truncated: false,
+        },
+        resultHash: 'b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3',
       };
 
       mockListTree.mockResolvedValue(mockResult);
@@ -162,10 +184,20 @@ describe('E71.2: GitHub List Tree API Route', () => {
           path: '',
           recursive: false,
           generatedAt: '2025-12-30T21:00:00.000Z',
-          toolVersion: '1.0.0',
-          contractVersion: 'E71.2',
+          toolVersion: '1.1.0',
+          contractVersion: 'E89.2',
           ordering: 'path_asc' as const,
         },
+        evidence: {
+          requestId: 'test-req-125',
+          owner: 'adaefler-art',
+          repo: 'codefactory-control',
+          ref: 'main',
+          path: '',
+          itemCount: 2,
+          truncated: true,
+        },
+        resultHash: 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
       };
 
       mockListTree.mockResolvedValue(mockResult);
