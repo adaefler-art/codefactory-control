@@ -191,7 +191,7 @@ async function executeToolInternal(
   const { userId, sessionId } = context;
   
   switch (toolName) {
-      case 'get_context_pack': {
+    case 'get_context_pack': {
         // Generate or get latest context pack for THIS session
         const result = await generateContextPack(pool, sessionId, userId);
         
@@ -937,6 +937,5 @@ async function executeToolInternal(
           error: `Unknown tool: ${toolName}`,
           code: 'UNKNOWN_TOOL',
         });
-    }
   }
 }

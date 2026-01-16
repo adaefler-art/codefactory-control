@@ -26,8 +26,27 @@ export interface MessageClassification {
 
 /**
  * Explicit action keywords (deterministic pattern matching)
+ * 
+ * IMPORTANT: Order matters! More specific patterns should come first
+ * to avoid false matches (e.g., "issue set" before "issue")
  */
 const ACTION_PATTERNS = {
+  // Issue Set patterns (must come before draft patterns)
+  issue_set_generate: [
+    /\bgenerate\s+(the\s+)?issue\s+set\b/i,
+    /\bcreate\s+(the\s+)?issue\s+set\b/i,
+    /\bmake\s+(the\s+)?issue\s+set\b/i,
+  ],
+  issue_set_commit: [
+    /\bcommit\s+(the\s+)?issue\s+set\b/i,
+  ],
+  issue_set_publish: [
+    /\bpublish\s+(the\s+)?issue\s+set\b/i,
+    /\bpublish\s+issues\s+to\s+github\b/i,
+    /\bpublish\s+batch\b/i,
+  ],
+  
+  // Draft patterns
   draft_create: [
     /\bcreate\s+(the\s+)?draft\s+(now|immediately)\b/i,
     /\bmake\s+(a|an|the)\s+draft\s+(now|immediately)\b/i,
@@ -51,6 +70,8 @@ const ACTION_PATTERNS = {
     /\bpublish\s+to\s+github\b/i,
     /\bpublish\s+issue\b/i,
   ],
+  
+  // Change Request patterns
   cr_save: [
     /\bsave\s+(the\s+)?change\s+request\b/i,
     /\bsave\s+(the\s+)?cr\b/i,
@@ -60,19 +81,6 @@ const ACTION_PATTERNS = {
   cr_publish: [
     /\bpublish\s+(the\s+)?change\s+request\b/i,
     /\bpublish\s+(the\s+)?cr\b/i,
-  ],
-  issue_set_generate: [
-    /\bgenerate\s+(the\s+)?issue\s+set\b/i,
-    /\bcreate\s+(the\s+)?issue\s+set\b/i,
-    /\bmake\s+(the\s+)?issue\s+set\b/i,
-  ],
-  issue_set_commit: [
-    /\bcommit\s+(the\s+)?issue\s+set\b/i,
-  ],
-  issue_set_publish: [
-    /\bpublish\s+(the\s+)?issue\s+set\b/i,
-    /\bpublish\s+issues\s+to\s+github\b/i,
-    /\bpublish\s+batch\b/i,
   ],
 } as const;
 
@@ -118,10 +126,10 @@ export function classifyMessage(message: string): MessageClassification {
  */
 export function hasSoftDraftIndicators(message: string): boolean {
   const softPatterns = [
-    /\bmake\s+(an?|the)\s+issue\b/i,
-    /\bcreate\s+(an?|the)\s+issue\b/i,
-    /\bgenerate\s+(an?|the)\s+issue\b/i,
-    /\bwrite\s+(an?|the)\s+issue\b/i,
+    /\bmake\s+(an?|the)?\s*issue\b/i,
+    /\bcreate\s+(an?|the)?\s*issue\b/i,
+    /\bgenerate\s+(an?|the)?\s*issue\b/i,
+    /\bwrite\s+(an?|the)?\s*issue\b/i,
   ];
   
   const normalized = message.trim().toLowerCase();
