@@ -15,41 +15,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_ROUTES } from "@/lib/api-routes";
-
-type RunbookTag = 'deploy' | 'migrations' | 'smoke' | 'gh' | 'ops' | 'intent' | 'ecs' | 'db' | 'cloudformation' | 'low-cost' | 'bulk-ops';
-
-type Runbook = {
-  id: string;
-  slug: string;
-  title: string;
-  filePath: string;
-  tags: RunbookTag[];
-  lastUpdated?: string;
-  purpose?: string;
-  canonicalId?: string;
-  author?: string;
-  version?: string;
-  content: string;
-};
-
-type RunbookResponse = {
-  ok: boolean;
-  runbook: Runbook;
-};
-
-const TAG_COLORS: Record<RunbookTag, string> = {
-  'deploy': 'bg-blue-100 text-blue-800',
-  'migrations': 'bg-green-100 text-green-800',
-  'smoke': 'bg-yellow-100 text-yellow-800',
-  'gh': 'bg-purple-100 text-purple-800',
-  'ops': 'bg-gray-100 text-gray-800',
-  'intent': 'bg-pink-100 text-pink-800',
-  'ecs': 'bg-indigo-100 text-indigo-800',
-  'db': 'bg-teal-100 text-teal-800',
-  'cloudformation': 'bg-orange-100 text-orange-800',
-  'low-cost': 'bg-red-100 text-red-800',
-  'bulk-ops': 'bg-cyan-100 text-cyan-800',
-};
+import { RunbookTag, Runbook, RunbookResponse, TAG_COLORS } from "@/lib/runbooks/types";
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
@@ -162,10 +128,18 @@ function MarkdownRenderer({ content }: { content: string }) {
       }
       // Bold/Italic inline (basic support)
       else if (line.trim().length > 0) {
-        const processedLine = line
-          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*(.+?)\*/g, '<em>$1</em>')
-          .replace(/`(.+?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>');
+        // Escape HTML entities first to prevent XSS
+        const escapeHtml = (text: string) => {
+          const div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+        };
+        
+        const escapedLine = escapeHtml(line);
+        const processedLine = escapedLine
+          .replace(/\*\*(.+?)\*\*/g, (_, p1) => `<strong>${escapeHtml(p1)}</strong>`)
+          .replace(/\*(.+?)\*/g, (_, p1) => `<em>${escapeHtml(p1)}</em>`)
+          .replace(/`(.+?)`/g, (_, p1) => `<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">${escapeHtml(p1)}</code>`);
         
         elements.push(
           <p

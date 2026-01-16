@@ -16,42 +16,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { API_ROUTES } from "@/lib/api-routes";
-
-type RunbookTag = 'deploy' | 'migrations' | 'smoke' | 'gh' | 'ops' | 'intent' | 'ecs' | 'db' | 'cloudformation' | 'low-cost' | 'bulk-ops';
-
-type RunbookMetadata = {
-  id: string;
-  slug: string;
-  title: string;
-  filePath: string;
-  tags: RunbookTag[];
-  lastUpdated?: string;
-  purpose?: string;
-  canonicalId?: string;
-  author?: string;
-  version?: string;
-};
-
-type RunbookManifest = {
-  ok: boolean;
-  runbooks: RunbookMetadata[];
-  generatedAt: string;
-  totalCount: number;
-};
-
-const TAG_COLORS: Record<RunbookTag, string> = {
-  'deploy': 'bg-blue-100 text-blue-800',
-  'migrations': 'bg-green-100 text-green-800',
-  'smoke': 'bg-yellow-100 text-yellow-800',
-  'gh': 'bg-purple-100 text-purple-800',
-  'ops': 'bg-gray-100 text-gray-800',
-  'intent': 'bg-pink-100 text-pink-800',
-  'ecs': 'bg-indigo-100 text-indigo-800',
-  'db': 'bg-teal-100 text-teal-800',
-  'cloudformation': 'bg-orange-100 text-orange-800',
-  'low-cost': 'bg-red-100 text-red-800',
-  'bulk-ops': 'bg-cyan-100 text-cyan-800',
-};
+import { RunbookTag, RunbookMetadata, RunbookManifestResponse, TAG_COLORS } from "@/lib/runbooks/types";
 
 export default function AdminRunbooksPage() {
   const [runbooks, setRunbooks] = useState<RunbookMetadata[]>([]);
@@ -74,7 +39,7 @@ export default function AdminRunbooksPage() {
         throw new Error('Failed to load runbooks');
       }
 
-      const data: RunbookManifest = await response.json();
+      const data: RunbookManifestResponse = await response.json();
       
       if (data.ok) {
         setRunbooks(data.runbooks);
