@@ -140,6 +140,11 @@ export const API_ROUTES = {
     tools: {
       catalog: '/api/admin/tools/catalog',
     },
+    runbooks: {
+      list: '/api/admin/runbooks',
+      get: (slug: string) => `/api/admin/runbooks/${slug}`,
+    },
+    activity: '/api/admin/activity',
   },
 
   // Playbooks
