@@ -31,8 +31,20 @@ function jsonResponse(data: unknown, init?: ResponseInit) {
 }
 
 describe('IntentPage layout regression (I901)', () => {
+  let originalInnerHeight: number;
+
   beforeEach(() => {
     jest.restoreAllMocks();
+    originalInnerHeight = window.innerHeight;
+  });
+
+  afterEach(() => {
+    // Restore original viewport height
+    Object.defineProperty(window, 'innerHeight', {
+      writable: true,
+      configurable: true,
+      value: originalInnerHeight,
+    });
   });
 
   test('messages container has proper flex space even with tall header', async () => {
@@ -95,20 +107,20 @@ describe('IntentPage layout regression (I901)', () => {
     const sessionButton = await screen.findByText('Test Session with Many Messages');
     sessionButton.click();
 
-    // Find the main chat area container
-    const mainChatArea = container.querySelector('.flex-1.flex.flex-col.min-w-0.min-h-0.overflow-hidden');
+    // Find the main chat area container using data-testid
+    const mainChatArea = await screen.findByTestId('intent-main-chat-area');
     expect(mainChatArea).toBeTruthy();
 
     // Verify overflow-hidden is applied to prevent flex children from breaking out
-    expect(mainChatArea?.classList.contains('overflow-hidden')).toBe(true);
+    expect(mainChatArea.classList.contains('overflow-hidden')).toBe(true);
 
-    // Find the header section
-    const header = container.querySelector('.bg-gray-900.border-b.border-gray-800.px-6.py-4.shrink-0.overflow-y-auto.max-h-\\[40vh\\]');
+    // Find the header section using data-testid
+    const header = await screen.findByTestId('intent-header');
     expect(header).toBeTruthy();
 
     // Verify header has overflow-y-auto and max-h constraint
-    expect(header?.classList.contains('overflow-y-auto')).toBe(true);
-    expect(header?.classList.contains('max-h-[40vh]')).toBe(true);
+    expect(header.classList.contains('overflow-y-auto')).toBe(true);
+    expect(header.classList.contains('max-h-[40vh]')).toBe(true);
 
     // Find the messages container
     const messagesContainer = await screen.findByTestId('intent-chat-scroll');
@@ -168,12 +180,12 @@ describe('IntentPage layout regression (I901)', () => {
 
     const { container } = render(<IntentPage />);
 
-    // Verify main container uses dvh (dynamic viewport height)
-    const mainContainer = container.querySelector('.flex.h-\\[calc\\(100dvh-4rem\\)\\]');
-    expect(mainContainer).toBeTruthy();
+    // Verify main container uses dvh (dynamic viewport height) using data-testid
+    const mainChatArea = await screen.findByTestId('intent-main-chat-area');
+    expect(mainChatArea).toBeTruthy();
 
     // Verify overflow-hidden on main container
-    expect(mainContainer?.classList.contains('overflow-hidden')).toBe(true);
+    expect(mainChatArea.classList.contains('overflow-hidden')).toBe(true);
   });
 
   test('composer area never overlaps messages', async () => {

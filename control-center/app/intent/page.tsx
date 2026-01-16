@@ -500,9 +500,9 @@ export default function IntentPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden" data-testid="intent-main-chat-area">
         {/* Header - Fixed at top with scroll if needed */}
-        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0 overflow-y-auto max-h-[40vh]">
+        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0 overflow-y-auto max-h-[40vh]" data-testid="intent-header">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
