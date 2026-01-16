@@ -39,7 +39,7 @@ export type ConversationMode = z.infer<typeof ConversationModeEnum>;
  * Deterministic API response format
  */
 export const ConversationModeResponseV1Schema = z.object({
-  version: z.literal(CONVERSATION_MODE_VERSION),
+  version: z.enum(ACTIVE_CONVERSATION_MODE_VERSIONS as unknown as [string, ...string[]]),
   mode: ConversationModeEnum,
   updatedAt: z.string().datetime(),
 });
