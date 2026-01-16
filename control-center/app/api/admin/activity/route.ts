@@ -84,7 +84,7 @@ function parseDate(dateStr: string | null): string | undefined {
  * 
  * Query params:
  * - cursor: offset for pagination (default: 0)
- * - types: comma-separated event types to filter (optional)
+ * - types: comma-separated event types to filter (NOTE: only first type is used currently)
  * - sessionId: filter by AFU-9 session ID (optional)
  * - issueId: filter by GitHub issue number (optional)
  * - limit: max events to return (default: 50, max: 200)
@@ -136,10 +136,10 @@ export async function GET(request: NextRequest) {
   const pool = getPool();
   
   try {
-    // If event types specified, we need to query multiple times (one per type)
-    // or modify the query logic. For now, support single type filter.
+    // NOTE: Current implementation supports single event type filtering.
+    // Multi-type filtering would require OR query support in the DB layer.
+    // For now, we use the first type if multiple are specified.
     if (eventTypes && eventTypes.length > 0) {
-      // Use first type for simplicity (multi-type requires OR query)
       filter.event_type = eventTypes[0] as any;
     }
     

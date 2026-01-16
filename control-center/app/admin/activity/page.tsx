@@ -342,7 +342,11 @@ export default function AdminActivityPage() {
                           {event.summary}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                          {event.correlationId.substring(0, 8)}...
+                          {event.correlationId 
+                            ? (event.correlationId.length > 8 
+                                ? event.correlationId.substring(0, 8) + '...' 
+                                : event.correlationId)
+                            : 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <button
