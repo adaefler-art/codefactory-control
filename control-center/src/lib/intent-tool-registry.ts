@@ -118,9 +118,19 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
 
     // E81.x (Issue Draft / Issue Set)
     {
+      name: 'get_issue_draft_summary',
+      description:
+        'Get a compact summary of the current Issue Draft for this session. Returns: exists (boolean), canonicalId, title, updatedAt, validationStatus (VALID|INVALID|UNKNOWN), bodyHash (first 12 chars). Use this for quick draft awareness in conversation. Returns exists:false with reason:"NO_DRAFT" when no draft exists (not an error).',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+    {
       name: 'get_issue_draft',
       description:
-        'Get the current Issue Draft for this session (session-bound). Returns issue JSON + validation status, or null if none exists. Use FIRST when user wants an issue/ticket.',
+        'Get the current Issue Draft for this session (session-bound). Returns full issue JSON + validation status, or null if none exists. Use when you need the complete draft details.',
       parameters: {
         type: 'object',
         properties: {},
