@@ -16,6 +16,7 @@ interface IntentSession {
   created_at: string;
   updated_at: string;
   status: "active" | "archived";
+  conversation_mode: "FREE" | "DRAFTING";
 }
 
 interface IntentMessage {
@@ -61,6 +62,8 @@ export default function IntentPage() {
   const [showIssueDraftDrawer, setShowIssueDraftDrawer] = useState(false);
   const [showPublishHistoryDrawer, setShowPublishHistoryDrawer] = useState(false);
   const [issueDraftRefreshKey, setIssueDraftRefreshKey] = useState(0);
+  const [conversationMode, setConversationMode] = useState<"FREE" | "DRAFTING">("FREE");
+  const [isTogglingMode, setIsTogglingMode] = useState(false);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isValidSessionId = (value: unknown): value is string => {
@@ -172,11 +175,39 @@ export default function IntentPage() {
       });
       const data = await safeFetch(response);
       setMessages(data.messages || []);
+      // Update conversation mode when fetching session data
+      setConversationMode(data.conversation_mode || "FREE");
     } catch (err) {
       console.error("Failed to fetch messages:", err);
       setError(formatErrorMessage(err));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const toggleConversationMode = async () => {
+    if (!currentSessionId) return;
+
+    const newMode = conversationMode === "FREE" ? "DRAFTING" : "FREE";
+    
+    setIsTogglingMode(true);
+    setError(null);
+
+    try {
+      const response = await fetch(API_ROUTES.intent.sessions.mode(currentSessionId), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode: newMode }),
+      });
+
+      const data = await safeFetch(response);
+      setConversationMode(data.mode);
+    } catch (err) {
+      console.error("Failed to toggle conversation mode:", err);
+      setError(formatErrorMessage(err));
+    } finally {
+      setIsTogglingMode(false);
     }
   };
 
@@ -193,6 +224,7 @@ export default function IntentPage() {
       setCurrentSessionId(newSession.id);
       setMessages([]);
       setInputValue("");
+      setConversationMode(newSession.conversation_mode || "FREE");
     } catch (err) {
       console.error("Failed to create session:", err);
       setError(formatErrorMessage(err));
@@ -470,15 +502,39 @@ export default function IntentPage() {
         {/* Header - Sticky */}
         <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0 sticky top-0 z-10">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-100">
-                {currentSessionId
-                  ? getSessionTitle(sessions.find((s) => s.id === currentSessionId) || { title: null } as IntentSession)
-                  : "INTENT Console"}
-              </h1>
-              <p className="text-sm text-gray-400 mt-1">
-                Session-based chat interface for INTENT steering
-              </p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-xl font-semibold text-gray-100">
+                  {currentSessionId
+                    ? getSessionTitle(sessions.find((s) => s.id === currentSessionId) || { title: null } as IntentSession)
+                    : "INTENT Console"}
+                </h1>
+                <p className="text-sm text-gray-400 mt-1">
+                  Session-based chat interface for INTENT steering
+                </p>
+              </div>
+              
+              {/* Conversation Mode Badge & Toggle */}
+              {currentSessionId && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleConversationMode}
+                    disabled={isTogglingMode}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                      conversationMode === "FREE"
+                        ? "bg-green-900/30 text-green-300 border border-green-700 hover:bg-green-900/40"
+                        : "bg-purple-900/30 text-purple-300 border border-purple-700 hover:bg-purple-900/40"
+                    } ${isTogglingMode ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                    title={
+                      conversationMode === "FREE"
+                        ? "FREE mode: Unrestricted conversation. Click to switch to DRAFTING mode."
+                        : "DRAFTING mode: Focused on issue/CR creation. Click to switch to FREE mode."
+                    }
+                  >
+                    {isTogglingMode ? "..." : conversationMode}
+                  </button>
+                </div>
+              )}
             </div>
             
             {/* Export Context Pack Button */}
