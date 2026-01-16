@@ -90,7 +90,7 @@ export async function GET(
       [sessionId]
     );
     
-    // Aggregate all sources
+    // Aggregate all sources from messages
     const allSources: SourceRef[] = [];
     
     for (const row of messagesResult.rows) {
@@ -98,6 +98,27 @@ export async function GET(
       if (sources && Array.isArray(sources)) {
         allSources.push(...sources);
       }
+    }
+    
+    // Fetch all uploads for session and convert to SourceRef
+    const uploadsResult = await pool.query(
+      `SELECT id, filename, content_type, size_bytes, content_sha256, created_at
+       FROM intent_session_uploads
+       WHERE session_id = $1
+       ORDER BY created_at ASC`,
+      [sessionId]
+    );
+    
+    for (const row of uploadsResult.rows) {
+      allSources.push({
+        kind: 'upload',
+        uploadId: row.id,
+        filename: row.filename,
+        contentType: row.content_type,
+        sizeBytes: row.size_bytes,
+        contentSha256: row.content_sha256,
+        uploadedAt: row.created_at,
+      });
     }
     
     // Apply type filter if specified
