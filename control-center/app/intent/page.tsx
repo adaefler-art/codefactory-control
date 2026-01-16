@@ -500,9 +500,9 @@ export default function IntentPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* Header - Sticky */}
-        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0 sticky top-0 z-10">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        {/* Header - Fixed at top with scroll if needed */}
+        <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 shrink-0 overflow-y-auto max-h-[40vh]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
