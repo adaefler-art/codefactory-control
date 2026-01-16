@@ -433,6 +433,41 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
 
         {draft && (
           <>
+            {/* Draft Summary - Compact Snapshot (V09-I03) */}
+            <div className="bg-gray-800/50 border border-gray-700 rounded p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase">Draft Snapshot</h4>
+                {draft.issue_hash && (
+                  <span className="font-mono text-xs text-gray-500" title={`Hash: ${draft.issue_hash}`}>
+                    {draft.issue_hash.substring(0, 12)}
+                  </span>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-gray-500">ID:</span>
+                  <span className="ml-2 font-mono text-purple-300">{draft.issue_json.canonicalId}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Status:</span>
+                  <span className="ml-2">
+                    {draft.last_validation_status === 'valid' && <span className="text-green-300">VALID</span>}
+                    {draft.last_validation_status === 'invalid' && <span className="text-red-300">INVALID</span>}
+                    {(!draft.last_validation_status || draft.last_validation_status === 'draft') && <span className="text-yellow-300">UNKNOWN</span>}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">Title:</span>
+                  <span className="ml-2 text-gray-200 truncate block">{draft.issue_json.title}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">Updated:</span>
+                  <span className="ml-2 text-gray-400">{new Date(draft.updated_at).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
             {/* Validation Errors */}
             {errors.length > 0 && (
               <div className="bg-red-900/20 border border-red-700 rounded">

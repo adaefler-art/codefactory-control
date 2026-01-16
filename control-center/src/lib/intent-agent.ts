@@ -203,10 +203,14 @@ function boundConversationHistory(
 /**
  * Generate INTENT agent response
  * 
+ * V09-I02: Added triggerType and conversationMode for tool gating
+ * 
  * @param userMessage - User's message content
  * @param conversationHistory - Previous messages in conversation
  * @param userId - User ID for rate limiting and tool execution
  * @param sessionId - Session ID for tool execution context
+ * @param triggerType - Trigger type for tool execution (V09-I02)
+ * @param conversationMode - Conversation mode (FREE or DRAFTING) (V09-I02)
  * @returns Agent response with metadata
  * @throws Error if INTENT is disabled, rate limited, or LLM call fails
  */
@@ -214,7 +218,9 @@ export async function generateIntentResponse(
   userMessage: string,
   conversationHistory: IntentMessage[] = [],
   userId: string,
-  sessionId: string
+  sessionId: string,
+  triggerType: 'AUTO_BLOCKED' | 'USER_EXPLICIT' | 'UI_ACTION' | 'AUTO_ALLOWED' = 'AUTO_ALLOWED',
+  conversationMode: 'FREE' | 'DRAFTING' = 'FREE'
 ): Promise<IntentAgentResponse> {
   // Feature flag check: fail-closed if disabled
   if (!INTENT_ENABLED) {
@@ -253,8 +259,8 @@ export async function generateIntentResponse(
   try {
     const openai = getOpenAIClient();
 
-    const toolContext: ToolContext = { userId, sessionId };
-    const toolCapabilities = renderIntentToolCapabilities(toolContext);
+    const toolContext: ToolContext = { userId, sessionId, triggerType, conversationMode };
+    const toolCapabilities = renderIntentToolCapabilities({ userId, sessionId });
 
     // System prompt: define INTENT agent behavior with tool capabilities
     const systemPrompt = `You are the INTENT Agent for AFU-9 Control Center.
@@ -355,8 +361,8 @@ Response language: German (user may use English or German)`;
           responseMessage,
         ];
         
-        // Create tool execution context
-        const toolContext: ToolContext = { userId, sessionId };
+        // Create tool execution context (V09-I02: with trigger type and mode)
+        const toolExecutionContext: ToolContext = { userId, sessionId, triggerType, conversationMode };
         
         // E89.5: Track tool sources
         const sourcesTracker = new ToolSourcesTracker();
@@ -377,8 +383,8 @@ Response language: German (user may use English or German)`;
             args: functionArgs,
           });
           
-          // Execute tool with context
-          const toolResult = await executeIntentTool(functionName, functionArgs, toolContext);
+          // Execute tool with context (V09-I02: includes trigger type and mode)
+          const toolResult = await executeIntentTool(functionName, functionArgs, toolExecutionContext);
           
           console.log(`[INTENT Agent] Tool result:`, {
             requestId,

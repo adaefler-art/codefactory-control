@@ -21,22 +21,31 @@ import { exportIssueSetToAFU9Markdown, generateIssueSetSummary } from '@/lib/uti
 import { createOrUpdateFromCR } from '@/lib/github/issue-creator';
 import { publishIssueDraftBatch } from '@/lib/github/issue-draft-publisher';
 import type { IssueDraft } from '@/lib/schemas/issueDraft';
-import { getToolGateStatus } from './intent-tool-registry';
+import { getToolGateStatus, isDraftMutatingTool } from './intent-tool-registry';
+import { logToolExecution, type TriggerType } from '@/lib/db/toolExecutionAudit';
 
 /**
  * Tool execution context
+ * V09-I02: Added triggerType and conversationMode for tool gating
  */
 export interface ToolContext {
   userId: string;
   sessionId: string;
+  triggerType: TriggerType;
+  conversationMode: 'FREE' | 'DRAFTING';
 }
 
 /**
  * Execute an INTENT tool call
  * 
+ * V09-I02: Implements tool gating based on conversation mode and trigger type
+ * - In FREE mode: draft-mutating tools blocked unless triggerType is USER_EXPLICIT or UI_ACTION
+ * - In DRAFTING mode: all tools allowed (existing behavior)
+ * - All executions logged to audit trail
+ * 
  * @param toolName - The tool to execute
  * @param args - Tool arguments (from LLM)
- * @param context - Execution context (userId, sessionId from request)
+ * @param context - Execution context (userId, sessionId, triggerType, conversationMode)
  * @returns Tool execution result as JSON string
  */
 export async function executeIntentTool(
@@ -45,17 +54,61 @@ export async function executeIntentTool(
   context: ToolContext
 ): Promise<string> {
   const pool = getPool();
-  const { userId, sessionId } = context;
+  const { userId, sessionId, triggerType, conversationMode } = context;
   
   console.log(`[Tool Executor] Executing ${toolName}`, {
     sessionId: sessionId.substring(0, 20),
     userId: userId.substring(0, 8),
+    triggerType,
+    conversationMode,
     args,
   });
   
   try {
+    // V09-I02: Tool gating enforcement
+    // 1. Check if tool is draft-mutating
+    const isDraftMutating = isDraftMutatingTool(toolName);
+    
+    // 2. In FREE mode, block draft-mutating tools unless explicitly triggered
+    if (conversationMode === 'FREE' && isDraftMutating) {
+      if (triggerType !== 'USER_EXPLICIT' && triggerType !== 'UI_ACTION') {
+        // Log blocked execution
+        await logToolExecution(pool, {
+          sessionId,
+          userId,
+          toolName,
+          triggerType,
+          conversationMode,
+          success: false,
+          errorCode: 'DRAFT_TOOL_BLOCKED_IN_FREE_MODE',
+        });
+        
+        return JSON.stringify({
+          success: false,
+          error: 'Draft-mutating tools are not allowed in FREE mode without explicit user command',
+          code: 'DRAFT_TOOL_BLOCKED_IN_FREE_MODE',
+          tool: toolName,
+          suggestion: 'Switch to DRAFTING mode or use explicit commands like "create draft now", "update draft", "commit draft"',
+          triggerType,
+          conversationMode,
+        });
+      }
+    }
+    
+    // 3. Existing gate check (prod disabled, etc.)
     const gate = getToolGateStatus(toolName, { userId, sessionId });
     if (!gate.enabled) {
+      // Log disabled tool execution
+      await logToolExecution(pool, {
+        sessionId,
+        userId,
+        toolName,
+        triggerType,
+        conversationMode,
+        success: false,
+        errorCode: gate.code || 'TOOL_DISABLED',
+      });
+      
       return JSON.stringify({
         success: false,
         error: 'Tool is disabled by gate',
@@ -65,8 +118,87 @@ export async function executeIntentTool(
       });
     }
 
-    switch (toolName) {
-      case 'get_context_pack': {
+    // Tool execution follows (with audit logging)
+    let executionSuccess = true;
+    let executionErrorCode: string | undefined;
+    let result: string;
+    
+    try {
+      // Execute tool (existing switch statement follows)
+      result = await executeToolInternal(toolName, args, { userId, sessionId, triggerType, conversationMode });
+      
+      // Parse result to check for success (assume failure for non-JSON)
+      try {
+        const parsed = JSON.parse(result);
+        executionSuccess = parsed.success !== false;
+        executionErrorCode = parsed.code;
+      } catch (parseError) {
+        // Non-JSON result is unexpected - log and treat as failure
+        console.warn('[Tool Executor] Non-JSON result from tool', {
+          toolName,
+          sessionId: sessionId.substring(0, 20),
+          resultPreview: result.substring(0, 100),
+        });
+        executionSuccess = false;
+        executionErrorCode = 'NON_JSON_RESULT';
+      }
+    } catch (toolError) {
+      executionSuccess = false;
+      executionErrorCode = 'TOOL_EXECUTION_ERROR';
+      result = JSON.stringify({
+        success: false,
+        error: toolError instanceof Error ? toolError.message : 'Unknown error',
+        code: 'TOOL_EXECUTION_ERROR',
+      });
+    }
+    
+    // Log execution to audit trail
+    await logToolExecution(pool, {
+      sessionId,
+      userId,
+      toolName,
+      triggerType,
+      conversationMode,
+      success: executionSuccess,
+      errorCode: executionErrorCode,
+    });
+    
+    return result;
+  } catch (error) {
+    console.error(`[Tool Executor] Error executing ${toolName}:`, error);
+    
+    // Log failed execution
+    await logToolExecution(pool, {
+      sessionId,
+      userId,
+      toolName,
+      triggerType,
+      conversationMode,
+      success: false,
+      errorCode: 'TOOL_EXECUTION_ERROR',
+    });
+    
+    return JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      code: 'TOOL_EXECUTION_ERROR',
+    });
+  }
+}
+
+/**
+ * Internal tool execution logic (extracted from original executeIntentTool)
+ */
+async function executeToolInternal(
+  toolName: string,
+  args: Record<string, unknown>,
+  context: ToolContext
+): Promise<string> {
+  const pool = getPool();
+  const { userId, sessionId } = context;
+  
+  switch (toolName) {
+    case 'get_context_pack': {
         // Generate or get latest context pack for THIS session
         const result = await generateContextPack(pool, sessionId, userId);
         
@@ -235,6 +367,34 @@ export async function executeIntentTool(
       }
 
       // E81.x - Issue Draft tools
+      case 'get_issue_draft_summary': {
+        const { createDraftSummary, createEmptyDraftSummary } = await import('@/lib/schemas/issueDraftSummary');
+        
+        const result = await getIssueDraft(pool, sessionId, userId);
+
+        if (!result.success) {
+          return JSON.stringify({
+            success: false,
+            error: result.error,
+            code: 'ISSUE_DRAFT_GET_FAILED',
+          });
+        }
+
+        if (!result.data) {
+          const summary = createEmptyDraftSummary();
+          return JSON.stringify({
+            success: true,
+            summary,
+          });
+        }
+
+        const summary = createDraftSummary(result.data);
+        return JSON.stringify({
+          success: true,
+          summary,
+        });
+      }
+
       case 'get_issue_draft': {
         const result = await getIssueDraft(pool, sessionId, userId);
 
@@ -812,13 +972,5 @@ export async function executeIntentTool(
           error: `Unknown tool: ${toolName}`,
           code: 'UNKNOWN_TOOL',
         });
-    }
-  } catch (error) {
-    console.error(`[Tool Executor] Error executing ${toolName}:`, error);
-    return JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      code: 'TOOL_EXECUTION_ERROR',
-    });
   }
 }

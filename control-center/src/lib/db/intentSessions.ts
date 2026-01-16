@@ -17,6 +17,7 @@ export interface IntentSession {
   created_at: string;
   updated_at: string;
   status: 'active' | 'archived';
+  conversation_mode: 'FREE' | 'DRAFTING';
 }
 
 export interface IntentMessage {
@@ -51,7 +52,7 @@ export async function listIntentSessions(
     const offset = options?.offset || 0;
     
     let query = `
-      SELECT id, user_id, title, created_at, updated_at, status
+      SELECT id, user_id, title, created_at, updated_at, status, conversation_mode
       FROM intent_sessions
       WHERE user_id = $1
     `;
@@ -76,6 +77,7 @@ export async function listIntentSessions(
         created_at: row.created_at.toISOString(),
         updated_at: row.updated_at.toISOString(),
         status: row.status,
+        conversation_mode: row.conversation_mode,
       })),
     };
   } catch (error) {
@@ -102,7 +104,7 @@ export async function createIntentSession(
     const result = await pool.query(
       `INSERT INTO intent_sessions (user_id, title, status)
        VALUES ($1, $2, $3)
-       RETURNING id, user_id, title, created_at, updated_at, status`,
+       RETURNING id, user_id, title, created_at, updated_at, status, conversation_mode`,
       [userId, data.title || null, data.status || 'active']
     );
     
@@ -116,6 +118,7 @@ export async function createIntentSession(
         created_at: row.created_at.toISOString(),
         updated_at: row.updated_at.toISOString(),
         status: row.status,
+        conversation_mode: row.conversation_mode,
       },
     };
   } catch (error) {
@@ -139,7 +142,7 @@ export async function getIntentSession(
   try {
     // Get session with user ownership check
     const sessionResult = await pool.query(
-      `SELECT id, user_id, title, created_at, updated_at, status
+      `SELECT id, user_id, title, created_at, updated_at, status, conversation_mode
        FROM intent_sessions
        WHERE id = $1 AND user_id = $2`,
       [sessionId, userId]
@@ -171,6 +174,7 @@ export async function getIntentSession(
       created_at: sessionRow.created_at.toISOString(),
       updated_at: sessionRow.updated_at.toISOString(),
       status: sessionRow.status,
+      conversation_mode: sessionRow.conversation_mode,
       messages: messagesResult.rows.map(row => ({
         id: row.id,
         session_id: row.session_id,
@@ -296,5 +300,59 @@ export async function appendIntentMessage(
     };
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Update conversation mode for a session
+ * 
+ * V09-I01: Session Conversation Mode (FREE vs DRAFTING) + Persistenz
+ * Only session owner can update mode
+ */
+export async function updateSessionMode(
+  pool: Pool,
+  sessionId: string,
+  userId: string,
+  mode: 'FREE' | 'DRAFTING'
+): Promise<{ success: true; data: { mode: 'FREE' | 'DRAFTING'; updated_at: string } } | { success: false; error: string }> {
+  try {
+    // Validate mode (defense in depth, schema validates at API layer)
+    if (mode !== 'FREE' && mode !== 'DRAFTING') {
+      return {
+        success: false,
+        error: 'Invalid conversation mode. Must be FREE or DRAFTING.',
+      };
+    }
+    
+    // Update mode with user ownership check
+    const result = await pool.query(
+      `UPDATE intent_sessions
+       SET conversation_mode = $1, updated_at = NOW()
+       WHERE id = $2 AND user_id = $3
+       RETURNING conversation_mode, updated_at`,
+      [mode, sessionId, userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: 'Session not found or access denied',
+      };
+    }
+    
+    const row = result.rows[0];
+    return {
+      success: true,
+      data: {
+        mode: row.conversation_mode,
+        updated_at: row.updated_at.toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error('[DB] Error updating session mode:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
