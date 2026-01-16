@@ -39,7 +39,11 @@ export const GOLDEN_DRAFT_MINIMAL: IssueDraft = {
   },
 };
 
-export const GOLDEN_BODYHASH_MINIMAL = 'c6f3f3e5b9f6';
+/**
+ * Note: Body hash should be computed dynamically in tests
+ * using the computeBodyHash function from the compiler.
+ * Hard-coding hashes makes tests brittle to whitespace changes.
+ */
 
 /**
  * Golden Fixture 2: Complete Plan with all sections

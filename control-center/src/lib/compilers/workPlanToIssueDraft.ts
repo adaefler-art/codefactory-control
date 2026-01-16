@@ -380,6 +380,9 @@ function deriveVerification(plan: WorkPlanContentV1): { commands: string[]; expe
     commands.push(match[1].trim());
   }
   
+  // Reset lastIndex to prevent state issues with global flag
+  commandPattern.lastIndex = 0;
+  
   if (commands.length > 0) {
     return {
       commands: commands.slice(0, 10), // Max 10 per schema
