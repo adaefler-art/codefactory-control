@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useState, useMemo } from "react";
+import { API_ROUTES } from "@/lib/api-routes";
 
 type ActivityEvent = {
   id: string;
@@ -89,7 +90,7 @@ export default function AdminActivityPage() {
       if (startDateFilter) params.set("startDate", startDateFilter);
       if (endDateFilter) params.set("endDate", endDateFilter);
 
-      const response = await fetch(`/api/admin/activity?${params.toString()}`, {
+      const response = await fetch(`${API_ROUTES.admin.activity}?${params.toString()}`, {
         credentials: "include",
         cache: "no-store",
       });

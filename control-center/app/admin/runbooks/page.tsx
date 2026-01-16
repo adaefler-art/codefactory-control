@@ -15,6 +15,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { API_ROUTES } from "@/lib/api-routes";
 
 type RunbookTag = 'deploy' | 'migrations' | 'smoke' | 'gh' | 'ops' | 'intent' | 'ecs' | 'db' | 'cloudformation' | 'low-cost' | 'bulk-ops';
 
@@ -64,7 +65,7 @@ export default function AdminRunbooksPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/admin/runbooks', {
+      const response = await fetch(API_ROUTES.admin.runbooks.list, {
         credentials: 'include',
         cache: 'no-store',
       });
