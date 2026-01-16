@@ -186,7 +186,7 @@ export default function IntentPage() {
   };
 
   const toggleConversationMode = async () => {
-    if (!currentSessionId) return;
+    if (!currentSessionId || isTogglingMode) return;
 
     const newMode = conversationMode === "FREE" ? "DRAFTING" : "FREE";
     
@@ -520,6 +520,8 @@ export default function IntentPage() {
                   <button
                     onClick={toggleConversationMode}
                     disabled={isTogglingMode}
+                    aria-disabled={isTogglingMode}
+                    aria-label={`Current mode: ${conversationMode}. Click to toggle.`}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                       conversationMode === "FREE"
                         ? "bg-green-900/30 text-green-300 border border-green-700 hover:bg-green-900/40"

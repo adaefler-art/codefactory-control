@@ -16,8 +16,11 @@
 -- Add conversation_mode column to intent_sessions
 -- ============================================================================
 ALTER TABLE intent_sessions
-  ADD COLUMN conversation_mode TEXT NOT NULL DEFAULT 'FREE'
-  CONSTRAINT chk_intent_session_conversation_mode 
+  ADD COLUMN conversation_mode TEXT NOT NULL DEFAULT 'FREE';
+
+-- Add constraint for allowed values
+ALTER TABLE intent_sessions
+  ADD CONSTRAINT chk_intent_session_conversation_mode 
     CHECK (conversation_mode IN ('FREE', 'DRAFTING'));
 
 -- Index for filtering sessions by mode (if needed for future features)
