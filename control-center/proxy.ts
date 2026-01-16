@@ -156,7 +156,9 @@ export async function middleware(request: NextRequest) {
       // PR checks endpoints for smoke testing
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/triage$/.test(pathname)) ||
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/stop-decision$/.test(pathname)) ||
-      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/prompt$/.test(pathname));
+      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/prompt$/.test(pathname)) ||
+      // Issues state-flow endpoint for smoke testing (E85.3)
+      (request.method === 'GET' && /^\/api\/issues\/[^/]+\/state-flow$/.test(pathname));
 
     if (allowlisted) {
       const smokeSubRaw = request.headers.get('x-afu9-sub');
