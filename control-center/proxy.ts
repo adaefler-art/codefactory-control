@@ -148,6 +148,8 @@ export async function middleware(request: NextRequest) {
       ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
       (request.method === 'GET' && /^\/api\/intent\/sessions\/[^/]+$/.test(pathname)) ||
       (request.method === 'POST' && /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname)) ||
+      // INTENT issue-draft endpoints for smoke testing
+      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions\/[^/]+\/issue-draft$/.test(pathname)) ||
       // GitHub API endpoints for issue/PR automation (E83.2+)
       (request.method === 'POST' && /^\/api\/github\/issues\/\d+\/assign-copilot$/.test(pathname)) ||
       (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/request-review-and-wait$/.test(pathname)) ||
