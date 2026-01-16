@@ -239,10 +239,16 @@ function buildBody(plan: WorkPlanContentV1): string {
  * Returns placeholder if not found
  */
 function deriveCanonicalId(plan: WorkPlanContentV1): string {
-  const canonicalPattern = /\b(I8\d{2}|E81\.\d+|CID:(I8\d{2}|E81\.\d+))\b/;
+  const canonicalPattern = /\b(I8\d{2}|E81\.\d+)\b/;
+  const cidPattern = /\bCID:(I8\d{2}|E81\.\d+)\b/;
   
   // Check context
   if (plan.context) {
+    // Check for CID: prefix first
+    const cidMatch = plan.context.match(cidPattern);
+    if (cidMatch) return cidMatch[1]; // Extract ID from CID:xxx
+    
+    // Then check for direct ID
     const match = plan.context.match(canonicalPattern);
     if (match) return match[1];
   }
@@ -250,6 +256,11 @@ function deriveCanonicalId(plan: WorkPlanContentV1): string {
   // Check goals
   if (plan.goals) {
     for (const goal of plan.goals) {
+      // Check for CID: prefix first
+      const cidMatch = goal.text.match(cidPattern);
+      if (cidMatch) return cidMatch[1];
+      
+      // Then check for direct ID
       const match = goal.text.match(canonicalPattern);
       if (match) return match[1];
     }
@@ -257,6 +268,11 @@ function deriveCanonicalId(plan: WorkPlanContentV1): string {
   
   // Check notes
   if (plan.notes) {
+    // Check for CID: prefix first
+    const cidMatch = plan.notes.match(cidPattern);
+    if (cidMatch) return cidMatch[1];
+    
+    // Then check for direct ID
     const match = plan.notes.match(canonicalPattern);
     if (match) return match[1];
   }
@@ -398,22 +414,37 @@ function derivePriority(plan: WorkPlanContentV1): 'P0' | 'P1' | 'P2' {
  */
 function deriveDependencies(plan: WorkPlanContentV1): string[] {
   const deps = new Set<string>();
-  const canonicalPattern = /\b(I8\d{2}|E81\.\d+|CID:(I8\d{2}|E81\.\d+))\b/g;
+  const canonicalPattern = /\b(I8\d{2}|E81\.\d+)\b/g;
+  const cidPattern = /\bCID:(I8\d{2}|E81\.\d+)\b/g;
+  
+  // Helper to extract IDs from text
+  const extractIds = (text: string) => {
+    // Extract from CID: patterns
+    let match;
+    while ((match = cidPattern.exec(text)) !== null) {
+      deps.add(match[1]); // Extract ID from CID:xxx
+    }
+    
+    // Reset lastIndex for next pattern
+    cidPattern.lastIndex = 0;
+    
+    // Extract direct IDs
+    while ((match = canonicalPattern.exec(text)) !== null) {
+      deps.add(match[1]);
+    }
+    
+    // Reset lastIndex for next use
+    canonicalPattern.lastIndex = 0;
+  };
   
   // Check context
   if (plan.context) {
-    let match;
-    while ((match = canonicalPattern.exec(plan.context)) !== null) {
-      deps.add(match[1]);
-    }
+    extractIds(plan.context);
   }
   
   // Check notes
   if (plan.notes) {
-    let match;
-    while ((match = canonicalPattern.exec(plan.notes)) !== null) {
-      deps.add(match[1]);
-    }
+    extractIds(plan.notes);
   }
   
   // Remove the derived canonicalId itself (can't depend on self)
