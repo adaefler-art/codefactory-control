@@ -67,18 +67,26 @@ export function createDraftSummary(draft: {
   let title: string | undefined;
   
   try {
-    const issueData = draft.issue_json as any;
-    canonicalId = typeof issueData?.canonicalId === 'string' ? issueData.canonicalId : undefined;
-    title = typeof issueData?.title === 'string' ? issueData.title : undefined;
+    // Use unknown and proper type guards instead of any
+    const issueData: unknown = draft.issue_json;
+    
+    if (typeof issueData === 'object' && issueData !== null) {
+      const data = issueData as Record<string, unknown>;
+      canonicalId = typeof data.canonicalId === 'string' ? data.canonicalId : undefined;
+      title = typeof data.title === 'string' ? data.title : undefined;
+    }
   } catch {
     // If parsing fails, leave as undefined
   }
   
-  // Map DB validation status to schema enum
-  const validationStatus: ValidationStatus = 
-    draft.last_validation_status === 'valid' ? 'VALID' :
-    draft.last_validation_status === 'invalid' ? 'INVALID' :
-    'UNKNOWN';
+  // Map DB validation status to schema enum using object mapping
+  const statusMap: Record<'valid' | 'invalid' | 'unknown', ValidationStatus> = {
+    valid: 'VALID',
+    invalid: 'INVALID',
+    unknown: 'UNKNOWN',
+  };
+  
+  const validationStatus: ValidationStatus = statusMap[draft.last_validation_status];
   
   return {
     exists: true,
