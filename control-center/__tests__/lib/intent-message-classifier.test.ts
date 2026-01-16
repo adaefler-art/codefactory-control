@@ -8,6 +8,65 @@ import { classifyMessage, hasSoftDraftIndicators } from '@/lib/intent/message-cl
 
 describe('Message Classifier', () => {
   describe('classifyMessage', () => {
+    describe('slash commands (highest priority)', () => {
+      it('should detect "/draft" command', () => {
+        const result = classifyMessage('/draft create a new issue for login bug');
+        expect(result.isActionIntent).toBe(true);
+        expect(result.actionType).toBe('slash_draft');
+        expect(result.confidence).toBe('high');
+      });
+
+      it('should detect "/patch" command', () => {
+        const result = classifyMessage('/patch add acceptance criteria');
+        expect(result.isActionIntent).toBe(true);
+        expect(result.actionType).toBe('slash_patch');
+      });
+
+      it('should detect "/commit" command', () => {
+        const result = classifyMessage('/commit');
+        expect(result.isActionIntent).toBe(true);
+        expect(result.actionType).toBe('slash_commit');
+      });
+
+      it('should detect "/publish" command', () => {
+        const result = classifyMessage('/publish to github');
+        expect(result.isActionIntent).toBe(true);
+        expect(result.actionType).toBe('slash_publish');
+      });
+
+      it('should NOT detect slash command in middle of message', () => {
+        const result = classifyMessage('can you /draft something');
+        expect(result.isActionIntent).toBe(false);
+      });
+    });
+
+    describe('DISCUSS mode scenarios - should NOT trigger action', () => {
+      it('should NOT detect "Ich möchte ein Issue erstellen"', () => {
+        const result = classifyMessage('Ich möchte ein Issue erstellen');
+        expect(result.isActionIntent).toBe(false);
+      });
+
+      it('should NOT detect "mach ein ticket"', () => {
+        const result = classifyMessage('mach ein ticket');
+        expect(result.isActionIntent).toBe(false);
+      });
+
+      it('should NOT detect "create an issue for this bug"', () => {
+        const result = classifyMessage('create an issue for this bug');
+        expect(result.isActionIntent).toBe(false);
+      });
+
+      it('should NOT detect "lass uns ein Issue besprechen"', () => {
+        const result = classifyMessage('lass uns ein Issue besprechen');
+        expect(result.isActionIntent).toBe(false);
+      });
+
+      it('should NOT detect "what should the issue contain?"', () => {
+        const result = classifyMessage('what should the issue contain?');
+        expect(result.isActionIntent).toBe(false);
+      });
+    });
+
     describe('draft_create action intents', () => {
       it('should detect "create draft now"', () => {
         const result = classifyMessage('create draft now');
@@ -223,25 +282,26 @@ describe('Message Classifier', () => {
     });
   });
 
-  describe('hasSoftDraftIndicators', () => {
-    it('should detect "make an issue"', () => {
-      expect(hasSoftDraftIndicators('make an issue')).toBe(true);
+  describe('hasSoftDraftIndicators (DEPRECATED)', () => {
+    // V09-I02: hasSoftDraftIndicators is deprecated and always returns false
+    // to prevent auto-switching to ACT mode on soft keywords like "issue"
+
+    it('should return false for "make an issue" (deprecated)', () => {
+      expect(hasSoftDraftIndicators('make an issue')).toBe(false);
     });
 
-    it('should detect "create the issue"', () => {
-      expect(hasSoftDraftIndicators('create the issue')).toBe(true);
+    it('should return false for "create the issue" (deprecated)', () => {
+      expect(hasSoftDraftIndicators('create the issue')).toBe(false);
     });
 
-    it('should detect "generate issue"', () => {
-      expect(hasSoftDraftIndicators('generate issue')).toBe(true);
+    it('should return false for "generate issue" (deprecated)', () => {
+      expect(hasSoftDraftIndicators('generate issue')).toBe(false);
     });
 
-    it('should NOT detect "what is an issue?"', () => {
-      expect(hasSoftDraftIndicators('what is an issue?')).toBe(false);
-    });
-
-    it('should be case insensitive', () => {
-      expect(hasSoftDraftIndicators('MAKE AN ISSUE')).toBe(true);
+    it('should return false for any input (deprecated)', () => {
+      expect(hasSoftDraftIndicators('MAKE AN ISSUE')).toBe(false);
+      expect(hasSoftDraftIndicators('ich möchte ein ticket erstellen')).toBe(false);
+      expect(hasSoftDraftIndicators('mach mir ein issue')).toBe(false);
     });
   });
 });

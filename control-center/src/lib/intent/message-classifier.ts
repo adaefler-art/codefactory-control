@@ -20,7 +20,7 @@
 
 export interface MessageClassification {
   isActionIntent: boolean;
-  actionType?: 'draft_create' | 'draft_update' | 'draft_commit' | 'draft_publish' | 'cr_save' | 'cr_publish' | 'issue_set_generate' | 'issue_set_commit' | 'issue_set_publish';
+  actionType?: 'slash_draft' | 'slash_patch' | 'slash_commit' | 'slash_publish' | 'draft_create' | 'draft_update' | 'draft_commit' | 'draft_publish' | 'cr_save' | 'cr_publish' | 'issue_set_generate' | 'issue_set_commit' | 'issue_set_publish';
   confidence: 'high' | 'low';
 }
 
@@ -29,8 +29,24 @@ export interface MessageClassification {
  * 
  * IMPORTANT: Order matters! More specific patterns should come first
  * to avoid false matches (e.g., "issue set" before "issue")
+ * 
+ * SLASH COMMANDS: Highest priority, unambiguous user intent
  */
 const ACTION_PATTERNS = {
+  // Slash commands (highest priority, explicit user intent)
+  slash_draft: [
+    /^\/draft\b/i,
+  ],
+  slash_patch: [
+    /^\/patch\b/i,
+  ],
+  slash_commit: [
+    /^\/commit\b/i,
+  ],
+  slash_publish: [
+    /^\/publish\b/i,
+  ],
+  
   // Issue Set patterns (must come before draft patterns)
   issue_set_generate: [
     /\bgenerate\s+(the\s+)?issue\s+set\b/i,
@@ -122,16 +138,16 @@ export function classifyMessage(message: string): MessageClassification {
 
 /**
  * Check if message contains soft indicators that might suggest draft intent
- * (for logging/debugging purposes, not used for gating)
+ * (for logging/debugging purposes ONLY, NOT used for gating)
+ * 
+ * WARNING: This function should NEVER be used to trigger ACT mode.
+ * It exists only for telemetry and debugging.
+ * 
+ * @deprecated Do not use for mode switching - use classifyMessage instead
  */
 export function hasSoftDraftIndicators(message: string): boolean {
-  const softPatterns = [
-    /\bmake\s+(an?|the)?\s*issue\b/i,
-    /\bcreate\s+(an?|the)?\s*issue\b/i,
-    /\bgenerate\s+(an?|the)?\s*issue\b/i,
-    /\bwrite\s+(an?|the)?\s*issue\b/i,
-  ];
-  
-  const normalized = message.trim().toLowerCase();
-  return softPatterns.some(p => p.test(normalized));
+  // Intentionally returns false to prevent any accidental mode switching
+  // based on keyword matching. Use explicit commands only.
+  console.warn('[Message Classifier] hasSoftDraftIndicators is deprecated and always returns false');
+  return false;
 }
