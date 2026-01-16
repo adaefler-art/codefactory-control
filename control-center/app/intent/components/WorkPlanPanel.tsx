@@ -18,14 +18,17 @@ import type { WorkPlanContentV1, WorkPlanGoal, WorkPlanTodo, WorkPlanOption } fr
 
 interface WorkPlanPanelProps {
   sessionId: string | null;
+  onDraftCompiled?: () => void; // Callback when plan is compiled to draft
 }
 
-export default function WorkPlanPanel({ sessionId }: WorkPlanPanelProps) {
+export default function WorkPlanPanel({ sessionId, onDraftCompiled }: WorkPlanPanelProps) {
   const [plan, setPlan] = useState<WorkPlanContentV1 | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [compileSuccess, setCompileSuccess] = useState(false);
   const [contentHash, setContentHash] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
@@ -111,6 +114,42 @@ export default function WorkPlanPanel({ sessionId }: WorkPlanPanelProps) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const compileToDraft = async () => {
+    if (!sessionId) return;
+
+    setIsCompiling(true);
+    setError(null);
+    setCompileSuccess(false);
+
+    try {
+      const response = await fetch(API_ROUTES.intent.sessions.compilePlanToDraft(sessionId), {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to compile plan: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setCompileSuccess(true);
+      setTimeout(() => setCompileSuccess(false), 2000);
+      
+      // Notify parent that draft was compiled
+      if (onDraftCompiled) {
+        onDraftCompiled();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsCompiling(false);
     }
   };
 
@@ -229,12 +268,23 @@ export default function WorkPlanPanel({ sessionId }: WorkPlanPanelProps) {
           {saveSuccess && (
             <span className="text-xs text-green-400">Saved ✓</span>
           )}
+          {compileSuccess && (
+            <span className="text-xs text-green-400">Compiled ✓</span>
+          )}
           <button
             onClick={savePlan}
-            disabled={isSaving}
+            disabled={isSaving || isCompiling}
             className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white text-xs rounded"
           >
             {isSaving ? 'Saving...' : 'Save Plan'}
+          </button>
+          <button
+            onClick={compileToDraft}
+            disabled={isCompiling || isSaving || !contentHash}
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white text-xs rounded"
+            title={!contentHash ? 'Save plan first' : 'Compile plan to issue draft'}
+          >
+            {isCompiling ? 'Compiling...' : 'Compile → Draft'}
           </button>
         </div>
       </div>

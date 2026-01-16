@@ -836,7 +836,10 @@ export default function IntentPage() {
       {/* Work Plan Drawer */}
       {showWorkPlanDrawer && (
         <div className="w-[600px] border-l border-gray-800 bg-gray-900 flex flex-col">
-          <WorkPlanPanel sessionId={currentSessionId} />
+          <WorkPlanPanel 
+            sessionId={currentSessionId}
+            onDraftCompiled={() => setIssueDraftRefreshKey((prev) => prev + 1)}
+          />
         </div>
       )}
       
