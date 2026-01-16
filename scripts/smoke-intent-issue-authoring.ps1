@@ -325,10 +325,14 @@ if ([string]::IsNullOrWhiteSpace($draftId)) {
 }
 
 Write-Pass "Draft saved: $draftId"
-Write-Info "Draft hash: $($draftHash.Substring(0, 12))..."
+if (-not [string]::IsNullOrWhiteSpace($draftHash) -and $draftHash.Length -ge 12) {
+  Write-Info "Draft hash: $($draftHash.Substring(0, 12))..."
+} else {
+  Write-Info "Draft hash: $draftHash"
+}
 
 $Evidence.DraftId = $draftId
-$Evidence.DraftHash = $draftHash
+$Evidence.DraftHash = $draftHash ?? "N/A"
 
 # ============================================================================
 # STEP 3: Validate Issue Draft
@@ -388,10 +392,14 @@ if ([string]::IsNullOrWhiteSpace($versionId)) {
 
 Write-Pass "Draft committed: $versionId"
 Write-Info "Is new version: $isNewVersion"
-Write-Info "Version hash: $($versionHash.Substring(0, 12))..."
+if (-not [string]::IsNullOrWhiteSpace($versionHash) -and $versionHash.Length -ge 12) {
+  Write-Info "Version hash: $($versionHash.Substring(0, 12))..."
+} else {
+  Write-Info "Version hash: $versionHash"
+}
 
 $Evidence.VersionId = $versionId
-$Evidence.VersionHash = $versionHash
+$Evidence.VersionHash = $versionHash ?? "N/A"
 $Evidence.IsNewVersion = $isNewVersion
 
 # Idempotency check: commit again
@@ -507,7 +515,7 @@ Session ID: $($Evidence.SessionId)
 --- Draft ---
 Draft ID: $($Evidence.DraftId)
 Draft Hash (SHA-256): $($Evidence.DraftHash)
-Draft Hash (short): $($Evidence.DraftHash.Substring(0,12))
+Draft Hash (short): $(if ($Evidence.DraftHash -and $Evidence.DraftHash.Length -ge 12) { $Evidence.DraftHash.Substring(0,12) } else { $Evidence.DraftHash })
 
 --- Validation ---
 Validation Status: $($Evidence.ValidationStatus)
@@ -516,7 +524,7 @@ Validation Errors: $(if ($Evidence.ValidationErrors.Count -eq 0) { "None" } else
 --- Commit ---
 Version ID: $($Evidence.VersionId)
 Version Hash (SHA-256): $($Evidence.VersionHash)
-Version Hash (short): $($Evidence.VersionHash.Substring(0,12))
+Version Hash (short): $(if ($Evidence.VersionHash -and $Evidence.VersionHash.Length -ge 12) { $Evidence.VersionHash.Substring(0,12) } else { $Evidence.VersionHash })
 Is New Version: $($Evidence.IsNewVersion)
 
 --- Publish ---
