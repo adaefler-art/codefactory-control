@@ -26,13 +26,26 @@ type AllowedConversationModeVersion = typeof ACTIVE_CONVERSATION_MODE_VERSIONS[n
 export const CONVERSATION_MODE_VERSION: AllowedConversationModeVersion = '1.0.0';
 
 /**
- * Conversation Mode Values
- * - FREE: Default mode, unrestricted conversation
- * - DRAFTING: Focused mode for issue/CR drafting with tool restrictions
+ * Conversation Mode Values (I903: DISCUSS/DRAFTING/ACT)
+ * - DISCUSS: Free planning and discussion, no auto-drafting, draft-mutating tools blocked
+ * - DRAFTING: Structured drafting mode, schema-guided but not validated yet
+ * - ACT: Validation and write operations, commits, publishes
+ * 
+ * Backward compatibility:
+ * - FREE is alias for DISCUSS (deprecated, maps to DISCUSS)
  */
-export const ConversationModeEnum = z.enum(['FREE', 'DRAFTING']);
+export const ConversationModeEnum = z.enum(['DISCUSS', 'DRAFTING', 'ACT', 'FREE']);
 
 export type ConversationMode = z.infer<typeof ConversationModeEnum>;
+
+/**
+ * Normalize mode values for backward compatibility
+ * FREE → DISCUSS
+ */
+export function normalizeConversationMode(mode: string): ConversationMode {
+  if (mode === 'FREE') return 'DISCUSS';
+  return mode as ConversationMode;
+}
 
 /**
  * Conversation Mode Response Schema V1
@@ -59,4 +72,4 @@ export type ConversationModeUpdateRequest = z.infer<typeof ConversationModeUpdat
 /**
  * Default conversation mode for new sessions
  */
-export const DEFAULT_CONVERSATION_MODE: ConversationMode = 'FREE';
+export const DEFAULT_CONVERSATION_MODE: ConversationMode = 'DISCUSS';
