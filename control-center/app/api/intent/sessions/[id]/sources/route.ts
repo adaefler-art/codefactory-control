@@ -117,7 +117,7 @@ export async function GET(
         contentType: row.content_type,
         sizeBytes: row.size_bytes,
         contentSha256: row.content_sha256,
-        uploadedAt: row.created_at,
+        uploadedAt: new Date(row.created_at).toISOString(),
       });
     }
     

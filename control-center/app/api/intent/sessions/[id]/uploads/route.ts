@@ -127,6 +127,15 @@ export async function POST(
         });
       }
       
+      // Ensure contentType is present (should be guaranteed by validation)
+      if (!validation.contentType) {
+        return errorResponse(`Invalid file: ${file.name}`, {
+          status: 400,
+          requestId,
+          details: 'Content type validation failed',
+        });
+      }
+      
       // Read file content
       const arrayBuffer = await file.arrayBuffer();
       const content = Buffer.from(arrayBuffer);
@@ -140,35 +149,16 @@ export async function POST(
         uploadId,
         file.name,
         content,
-        validation.contentType!
+        validation.contentType
       );
       
-      // Check for duplicate hash in session (using unique constraint)
-      const existingUpload = await pool.query(
-        `SELECT id, filename FROM intent_session_uploads 
-         WHERE session_id = $1 AND content_sha256 = $2`,
-        [sessionId, uploadResult.contentSha256]
-      );
-      
-      if (existingUpload.rows.length > 0) {
-        // File already uploaded to this session
-        const existing = existingUpload.rows[0];
-        uploads.push({
-          id: existing.id,
-          filename: existing.filename,
-          contentType: uploadResult.contentType,
-          sizeBytes: uploadResult.sizeBytes,
-          contentSha256: uploadResult.contentSha256,
-          createdAt: existing.created_at,
-        });
-        continue;
-      }
-      
-      // Insert into database
+      // Insert into database with ON CONFLICT DO NOTHING to handle race conditions
+      // If duplicate hash exists, the insert will be ignored and we'll fetch the existing record
       const insertResult = await pool.query(
         `INSERT INTO intent_session_uploads 
          (id, session_id, filename, content_type, size_bytes, storage_key, content_sha256, metadata_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (session_id, content_sha256) DO NOTHING
          RETURNING id, filename, content_type, size_bytes, content_sha256, created_at`,
         [
           uploadId,
@@ -182,15 +172,38 @@ export async function POST(
         ]
       );
       
-      const row = insertResult.rows[0];
-      uploads.push({
-        id: row.id,
-        filename: row.filename,
-        contentType: row.content_type,
-        sizeBytes: row.size_bytes,
-        contentSha256: row.content_sha256,
-        createdAt: row.created_at,
-      });
+      // If insert was skipped (conflict), fetch existing upload
+      if (insertResult.rows.length === 0) {
+        const existingUpload = await pool.query(
+          `SELECT id, filename, content_type, size_bytes, content_sha256, created_at
+           FROM intent_session_uploads 
+           WHERE session_id = $1 AND content_sha256 = $2`,
+          [sessionId, uploadResult.contentSha256]
+        );
+        
+        if (existingUpload.rows.length > 0) {
+          const existing = existingUpload.rows[0];
+          uploads.push({
+            id: existing.id,
+            filename: existing.filename,
+            contentType: existing.content_type,
+            sizeBytes: existing.size_bytes,
+            contentSha256: existing.content_sha256,
+            createdAt: new Date(existing.created_at).toISOString(),
+          });
+          continue;
+        }
+      } else {
+        const row = insertResult.rows[0];
+        uploads.push({
+          id: row.id,
+          filename: row.filename,
+          contentType: row.content_type,
+          sizeBytes: row.size_bytes,
+          contentSha256: row.content_sha256,
+          createdAt: new Date(row.created_at).toISOString(),
+        });
+      }
     }
     
     return jsonResponse({
@@ -287,7 +300,7 @@ export async function GET(
       contentType: row.content_type,
       sizeBytes: row.size_bytes,
       contentSha256: row.content_sha256,
-      createdAt: row.created_at,
+      createdAt: new Date(row.created_at).toISOString(),
     }));
     
     return jsonResponse({
