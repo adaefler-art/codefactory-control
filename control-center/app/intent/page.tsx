@@ -17,7 +17,7 @@ interface IntentSession {
   created_at: string;
   updated_at: string;
   status: "active" | "archived";
-  conversation_mode: "FREE" | "DRAFTING";
+  conversation_mode: "DISCUSS" | "DRAFTING" | "ACT";
 }
 
 interface IntentMessage {
@@ -64,7 +64,7 @@ export default function IntentPage() {
   const [showWorkPlanDrawer, setShowWorkPlanDrawer] = useState(false);
   const [showPublishHistoryDrawer, setShowPublishHistoryDrawer] = useState(false);
   const [issueDraftRefreshKey, setIssueDraftRefreshKey] = useState(0);
-  const [conversationMode, setConversationMode] = useState<"FREE" | "DRAFTING">("FREE");
+  const [conversationMode, setConversationMode] = useState<"DISCUSS" | "DRAFTING" | "ACT">("DISCUSS");
   const [isTogglingMode, setIsTogglingMode] = useState(false);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -178,7 +178,7 @@ export default function IntentPage() {
       const data = await safeFetch(response);
       setMessages(data.messages || []);
       // Update conversation mode when fetching session data
-      setConversationMode(data.conversation_mode || "FREE");
+      setConversationMode(data.conversation_mode || "DISCUSS");
     } catch (err) {
       console.error("Failed to fetch messages:", err);
       setError(formatErrorMessage(err));
@@ -190,7 +190,15 @@ export default function IntentPage() {
   const toggleConversationMode = async () => {
     if (!currentSessionId || isTogglingMode) return;
 
-    const newMode = conversationMode === "FREE" ? "DRAFTING" : "FREE";
+    // I903: Cycle through DISCUSS → DRAFTING → ACT → DISCUSS
+    let newMode: "DISCUSS" | "DRAFTING" | "ACT";
+    if (conversationMode === "DISCUSS") {
+      newMode = "DRAFTING";
+    } else if (conversationMode === "DRAFTING") {
+      newMode = "ACT";
+    } else {
+      newMode = "DISCUSS";
+    }
     
     setIsTogglingMode(true);
     setError(null);
@@ -226,7 +234,7 @@ export default function IntentPage() {
       setCurrentSessionId(newSession.id);
       setMessages([]);
       setInputValue("");
-      setConversationMode(newSession.conversation_mode || "FREE");
+      setConversationMode(newSession.conversation_mode || "DISCUSS");
     } catch (err) {
       console.error("Failed to create session:", err);
       setError(formatErrorMessage(err));
@@ -523,16 +531,20 @@ export default function IntentPage() {
                     onClick={toggleConversationMode}
                     disabled={isTogglingMode}
                     aria-disabled={isTogglingMode}
-                    aria-label={`Current mode: ${conversationMode}. Click to toggle.`}
+                    aria-label={`Current mode: ${conversationMode}. Click to cycle modes.`}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                      conversationMode === "FREE"
+                      conversationMode === "DISCUSS"
                         ? "bg-green-900/30 text-green-300 border border-green-700 hover:bg-green-900/40"
+                        : conversationMode === "DRAFTING"
+                        ? "bg-blue-900/30 text-blue-300 border border-blue-700 hover:bg-blue-900/40"
                         : "bg-purple-900/30 text-purple-300 border border-purple-700 hover:bg-purple-900/40"
                     } ${isTogglingMode ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     title={
-                      conversationMode === "FREE"
-                        ? "FREE mode: Unrestricted conversation. Click to switch to DRAFTING mode."
-                        : "DRAFTING mode: Focused on issue/CR creation. Click to switch to FREE mode."
+                      conversationMode === "DISCUSS"
+                        ? "DISCUSS mode: Free planning and discussion. Click to switch to DRAFTING mode."
+                        : conversationMode === "DRAFTING"
+                        ? "DRAFTING mode: Structured drafting. Click to switch to ACT mode."
+                        : "ACT mode: Validation and write operations. Click to switch to DISCUSS mode."
                     }
                   >
                     {isTogglingMode ? "..." : conversationMode}

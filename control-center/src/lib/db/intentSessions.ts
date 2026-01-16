@@ -17,7 +17,7 @@ export interface IntentSession {
   created_at: string;
   updated_at: string;
   status: 'active' | 'archived';
-  conversation_mode: 'FREE' | 'DRAFTING';
+  conversation_mode: 'DISCUSS' | 'DRAFTING' | 'ACT';
 }
 
 export interface IntentMessage {
@@ -306,21 +306,21 @@ export async function appendIntentMessage(
 /**
  * Update conversation mode for a session
  * 
- * V09-I01: Session Conversation Mode (FREE vs DRAFTING) + Persistenz
+ * I903: Session Conversation Mode (DISCUSS/DRAFTING/ACT) + Persistenz
  * Only session owner can update mode
  */
 export async function updateSessionMode(
   pool: Pool,
   sessionId: string,
   userId: string,
-  mode: 'FREE' | 'DRAFTING'
-): Promise<{ success: true; data: { mode: 'FREE' | 'DRAFTING'; updated_at: string } } | { success: false; error: string }> {
+  mode: 'DISCUSS' | 'DRAFTING' | 'ACT'
+): Promise<{ success: true; data: { mode: 'DISCUSS' | 'DRAFTING' | 'ACT'; updated_at: string } } | { success: false; error: string }> {
   try {
     // Validate mode (defense in depth, schema validates at API layer)
-    if (mode !== 'FREE' && mode !== 'DRAFTING') {
+    if (mode !== 'DISCUSS' && mode !== 'DRAFTING' && mode !== 'ACT') {
       return {
         success: false,
-        error: 'Invalid conversation mode. Must be FREE or DRAFTING.',
+        error: 'Invalid conversation mode. Must be DISCUSS, DRAFTING, or ACT.',
       };
     }
     

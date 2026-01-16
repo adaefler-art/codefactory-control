@@ -203,14 +203,14 @@ function boundConversationHistory(
 /**
  * Generate INTENT agent response
  * 
- * V09-I02: Added triggerType and conversationMode for tool gating
+ * I903: Added three-stage conversation mode (DISCUSS/DRAFTING/ACT) for tool gating
  * 
  * @param userMessage - User's message content
  * @param conversationHistory - Previous messages in conversation
  * @param userId - User ID for rate limiting and tool execution
  * @param sessionId - Session ID for tool execution context
- * @param triggerType - Trigger type for tool execution (V09-I02)
- * @param conversationMode - Conversation mode (FREE or DRAFTING) (V09-I02)
+ * @param triggerType - Trigger type for tool execution (I903)
+ * @param conversationMode - Conversation mode (DISCUSS/DRAFTING/ACT) (I903)
  * @returns Agent response with metadata
  * @throws Error if INTENT is disabled, rate limited, or LLM call fails
  */
@@ -220,7 +220,7 @@ export async function generateIntentResponse(
   userId: string,
   sessionId: string,
   triggerType: 'AUTO_BLOCKED' | 'USER_EXPLICIT' | 'UI_ACTION' | 'AUTO_ALLOWED' = 'AUTO_ALLOWED',
-  conversationMode: 'FREE' | 'DRAFTING' = 'FREE'
+  conversationMode: 'DISCUSS' | 'DRAFTING' | 'ACT' = 'DISCUSS'
 ): Promise<IntentAgentResponse> {
   // Feature flag check: fail-closed if disabled
   if (!INTENT_ENABLED) {
@@ -262,27 +262,47 @@ export async function generateIntentResponse(
     const toolContext: ToolContext = { userId, sessionId, triggerType, conversationMode };
     const toolCapabilities = renderIntentToolCapabilities({ userId, sessionId });
 
-    // V09-I07: Mode-aware system prompt
-    // DISCUSS mode: Free planning, no auto-drafting
-    // ACT mode (DRAFTING): Write/validate drafts when explicitly requested
-    const modeInstructions = conversationMode === 'DRAFTING' 
-      ? `
-CONVERSATION MODE: DRAFTING (ACT)
-You are in DRAFTING mode. Draft-mutating tools are ENABLED.
-When the user gives explicit commands (e.g., "/draft", "/patch", "/commit", "/publish", 
-"create draft now", "update draft", "commit draft", "publish draft"), execute the corresponding tool.`
-      : `
-CONVERSATION MODE: FREE (DISCUSS)
-You are in FREE/DISCUSS mode. Draft-mutating tools are DISABLED.
-- DO NOT attempt to create, save, or modify drafts
+    // I903: Three-stage mode-aware system prompt
+    // DISCUSS mode: Free planning, no auto-drafting, tools gated
+    // DRAFTING mode: Structured drafting, schema-guided but validation optional
+    // ACT mode: Full validation, commits, publishes
+    let modeInstructions: string;
+    
+    if (conversationMode === 'ACT') {
+      modeInstructions = `
+CONVERSATION MODE: ACT
+You are in ACT mode. Full validation and write operations are ENABLED.
+- Execute draft/commit/publish operations when explicitly requested
+- Validate all drafts against schema (Zod) before saving
+- If required fields are missing, ask user ONCE (max 1 clarification round)
+- After clarification, proceed to save/commit/publish
+- NO endless loops: if user cannot provide required field, use sensible defaults
+- Commands: "/draft", "/patch", "/commit", "/publish", or natural language equivalents`;
+    } else if (conversationMode === 'DRAFTING') {
+      modeInstructions = `
+CONVERSATION MODE: DRAFTING
+You are in DRAFTING mode. Draft-mutating tools are ENABLED but validation is optional.
+- Help user structure their draft (guide with schema fields)
+- Allow incomplete drafts (prodBlocked=true)
+- Suggest missing fields but don't block on them
+- Validate when user explicitly asks or before ACT operations
+- To commit/publish, user should switch to ACT mode or use explicit commands
+- Commands: "/draft", "update draft", "save draft"`;
+    } else {
+      // DISCUSS mode (default)
+      modeInstructions = `
+CONVERSATION MODE: DISCUSS
+You are in DISCUSS mode. Draft-mutating tools are DISABLED.
+- DO NOT attempt to create, save, or modify drafts automatically
 - DO NOT call save_issue_draft, commit_issue_draft, or publish tools
 - If the user says "issue" or "ticket", they are DISCUSSING, not commanding
-- Help them plan, clarify requirements, brainstorm - do NOT auto-draft
-- If they want to create a draft, tell them to use explicit commands:
-  "/draft" - create/update draft
-  "/commit" - commit a version
-  "/publish" - publish to GitHub
-  Or click "Issue Draft" button in the UI to switch to DRAFTING mode.`;
+- Help them plan, clarify requirements, brainstorm, explore options
+- If they want to create a draft, tell them to:
+  1. Use explicit commands: "/draft", "/commit", "/publish"
+  2. Or switch to DRAFTING mode via UI
+  3. Or switch to ACT mode for full validation+write operations
+- Read-only tools (get_issue_draft, get_context_pack) are always allowed`;
+    }
 
     // System prompt: define INTENT agent behavior with tool capabilities
     const systemPrompt = `You are the INTENT Agent for AFU-9 Control Center.
@@ -308,10 +328,12 @@ CRITICAL RULES FOR TOOL USAGE:
 
 ISSUE DRAFT RULES:
 - In DISCUSS mode: DO NOT create drafts. Help user plan and clarify.
-- In ACT/DRAFTING mode with explicit command (/draft, "create draft now", etc.):
+- In DRAFTING mode: Allow draft creation/updates, guide with schema, don't enforce validation.
+- In ACT mode with explicit command (/draft, "create draft now", etc.):
   1) Call get_issue_draft first
   2) If draft is null/empty: call save_issue_draft with schema-shaped JSON (prodBlocked=true)
-  3) Call validate_issue_draft and fix errors iteratively
+  3) Call validate_issue_draft and fix errors iteratively (MAX 1 clarification round)
+  4) If missing required fields: ask user ONCE, then use defaults if no answer
 - Only call commit_issue_draft on explicit "commit" / "version" / "freeze" command
 - Show short summary (title + canonicalId + key AC) and instruct to open Issue Draft drawer
 

@@ -15,7 +15,7 @@ export interface ToolExecutionAudit {
   user_id: string;
   tool_name: string;
   trigger_type: TriggerType;
-  conversation_mode: 'FREE' | 'DRAFTING';
+  conversation_mode: 'DISCUSS' | 'DRAFTING' | 'ACT';
   success: boolean;
   error_code?: string | null;
   executed_at: string;
@@ -35,7 +35,7 @@ export async function logToolExecution(
     userId: string;
     toolName: string;
     triggerType: TriggerType;
-    conversationMode: 'FREE' | 'DRAFTING';
+    conversationMode: 'DISCUSS' | 'DRAFTING' | 'ACT';
     success: boolean;
     errorCode?: string;
   }
