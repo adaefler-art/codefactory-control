@@ -31,8 +31,8 @@ export const CONVERSATION_MODE_VERSION: AllowedConversationModeVersion = '1.0.0'
  * - DRAFTING: Structured drafting mode, schema-guided but not validated yet
  * - ACT: Validation and write operations, commits, publishes
  * 
- * Backward compatibility:
- * - FREE is alias for DISCUSS (deprecated, maps to DISCUSS)
+ * Note: 'FREE' is accepted for backward compatibility but is not a first-class mode.
+ * It will be normalized to 'DISCUSS' by the application layer.
  */
 export const ConversationModeEnum = z.enum(['DISCUSS', 'DRAFTING', 'ACT', 'FREE']);
 

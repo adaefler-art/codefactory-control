@@ -152,16 +152,15 @@ export async function POST(
     
     // I903: Classify message to determine trigger type
     const classification = classifyMessage(body.content);
-    let conversationMode = sessionResult.data.conversation_mode;
+    const rawMode = sessionResult.data.conversation_mode;
     
     // Normalize mode: handle legacy 'FREE' by mapping to 'DISCUSS'
-    if (conversationMode === 'FREE' as any) {
-      conversationMode = 'DISCUSS';
-    }
+    const conversationMode = rawMode === ('FREE' as any) ? 'DISCUSS' : rawMode;
     
     console.log('[API /api/intent/sessions/[id]/messages] Message classification', {
       requestId,
       sessionId: sessionId.substring(0, 20),
+      rawMode,
       conversationMode,
       isActionIntent: classification.isActionIntent,
       actionType: classification.actionType,

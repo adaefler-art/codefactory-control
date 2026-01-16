@@ -7,14 +7,14 @@
 -- - ACT: Validation and write operations (commits, publishes)
 --
 -- Backward compatibility:
--- - FREE is mapped to DISCUSS in application layer
--- - Existing FREE sessions will be migrated to DISCUSS
+-- - Database migrates FREE → DISCUSS (this migration)
+-- - Application layer normalizes FREE → DISCUSS before DB writes
+-- - API schema accepts FREE temporarily but normalizes it
+-- - Database constraint only allows DISCUSS/DRAFTING/ACT
 --
--- Changes:
---   - Drop old constraint (FREE, DRAFTING)
---   - Add new constraint (DISCUSS, DRAFTING, ACT, FREE for migration compatibility)
---   - Update existing FREE sessions to DISCUSS
---   - Update tool_execution_audit constraint
+-- This creates a clean separation:
+-- - API: Accepts FREE (for old clients) and normalizes
+-- - Database: Only stores DISCUSS/DRAFTING/ACT (canonical values)
 --
 -- Security:
 --   - No PII

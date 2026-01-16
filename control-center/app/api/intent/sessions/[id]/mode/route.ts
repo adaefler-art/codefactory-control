@@ -151,7 +151,9 @@ export async function PUT(
       });
     }
     
-    const { mode } = validation.data;
+    // I903: Normalize mode for backward compatibility (FREE → DISCUSS)
+    const rawMode = validation.data.mode;
+    const mode = rawMode === 'FREE' ? 'DISCUSS' : rawMode;
     
     // Get previous mode for audit
     const prevSession = await getIntentSession(pool, sessionId, userId);
