@@ -8,6 +8,7 @@ import { SourcesPanel, SourcesBadge } from "./components/SourcesPanel";
 import CrEditor from "./components/CrEditor";
 import IssueDraftPanel from "./components/IssueDraftPanel";
 import PublishHistoryPanel from "./components/PublishHistoryPanel";
+import WorkPlanPanel from "./components/WorkPlanPanel";
 import type { UsedSources } from "@/lib/schemas/usedSources";
 
 interface IntentSession {
@@ -60,6 +61,7 @@ export default function IntentPage() {
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [showCrDrawer, setShowCrDrawer] = useState(false);
   const [showIssueDraftDrawer, setShowIssueDraftDrawer] = useState(false);
+  const [showWorkPlanDrawer, setShowWorkPlanDrawer] = useState(false);
   const [showPublishHistoryDrawer, setShowPublishHistoryDrawer] = useState(false);
   const [issueDraftRefreshKey, setIssueDraftRefreshKey] = useState(0);
   const [conversationMode, setConversationMode] = useState<"FREE" | "DRAFTING">("FREE");
@@ -550,6 +552,14 @@ export default function IntentPage() {
                   {showIssueDraftDrawer ? "Hide Draft" : "Issue Draft"}
                 </button>
                 
+                {/* Work Plan Button */}
+                <button
+                  onClick={() => setShowWorkPlanDrawer(!showWorkPlanDrawer)}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium"
+                >
+                  {showWorkPlanDrawer ? "Hide Plan" : "Work Plan"}
+                </button>
+                
                 {/* CR Button */}
                 <button
                   onClick={() => setShowCrDrawer(!showCrDrawer)}
@@ -821,6 +831,13 @@ export default function IntentPage() {
       {/* Issue Draft Drawer */}
       {showIssueDraftDrawer && (
         <IssueDraftPanel sessionId={currentSessionId} refreshKey={issueDraftRefreshKey} />
+      )}
+      
+      {/* Work Plan Drawer */}
+      {showWorkPlanDrawer && (
+        <div className="w-[600px] border-l border-gray-800 bg-gray-900 flex flex-col">
+          <WorkPlanPanel sessionId={currentSessionId} />
+        </div>
       )}
       
       {/* Publish History Drawer */}
