@@ -2,12 +2,12 @@
  * E2E Tests for I902: Draft Access Reliability
  * 
  * Tests the complete flow of draft access for INTENT sessions:
- * - GET draft (deterministic empty states: NO_DRAFT, MIGRATION_REQUIRED)
- * - CREATE draft (from unstructured input)
- * - PATCH draft (multiple patches, idempotent)
- * - LIST versions (with hash/correlationId)
- * - COMMIT draft
- * - UI state consistency (no stale reads)
+ *  - GET draft (deterministic empty states: NO_DRAFT, MIGRATION_REQUIRED)
+ *  - CREATE draft (from unstructured input)
+ *  - PATCH draft (multiple patches, idempotent)
+ *  - LIST versions (with hash/correlationId)
+ *  - COMMIT draft
+ *  - UI state consistency (no stale reads)
  * 
  * @jest-environment node
  */
@@ -580,7 +580,9 @@ describe('I902: Draft Access Reliability E2E', () => {
         updated_at: '2026-01-16T10:01:00Z',
         issue_json: { ...initialDraft },
         issue_hash: 'hash-patched',
-        last_validation_status: 'valid' as const, // Must be valid to commit
+        // Validation status must be 'valid' for commit to succeed (fail-closed policy)
+        // Prevents committing invalid drafts as immutable versions
+        last_validation_status: 'valid' as const,
         last_validation_at: '2026-01-16T10:01:00Z',
         last_validation_result: null,
       };

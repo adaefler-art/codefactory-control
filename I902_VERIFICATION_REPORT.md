@@ -12,6 +12,8 @@ All draft-related API routes properly validate session ownership:
 
 #### GET /api/intent/sessions/[id]/issue-draft
 - ✓ Validates `x-afu9-sub` header (userId) - returns 401 if missing
+  - Header value is extracted and used directly (authentication middleware upstream validates JWT)
+  - Value represents authenticated user's subject ID from JWT token
 - ✓ Checks session ownership before returning draft data
 - ✓ Returns 404 if session not found or access denied
 - ✓ Location: `app/api/intent/sessions/[id]/issue-draft/route.ts:38-44`
