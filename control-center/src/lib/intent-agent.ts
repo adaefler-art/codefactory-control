@@ -262,6 +262,28 @@ export async function generateIntentResponse(
     const toolContext: ToolContext = { userId, sessionId, triggerType, conversationMode };
     const toolCapabilities = renderIntentToolCapabilities({ userId, sessionId });
 
+    // V09-I07: Mode-aware system prompt
+    // DISCUSS mode: Free planning, no auto-drafting
+    // ACT mode (DRAFTING): Write/validate drafts when explicitly requested
+    const modeInstructions = conversationMode === 'DRAFTING' 
+      ? `
+CONVERSATION MODE: DRAFTING (ACT)
+You are in DRAFTING mode. Draft-mutating tools are ENABLED.
+When the user gives explicit commands (e.g., "/draft", "/patch", "/commit", "/publish", 
+"create draft now", "update draft", "commit draft", "publish draft"), execute the corresponding tool.`
+      : `
+CONVERSATION MODE: FREE (DISCUSS)
+You are in FREE/DISCUSS mode. Draft-mutating tools are DISABLED.
+- DO NOT attempt to create, save, or modify drafts
+- DO NOT call save_issue_draft, commit_issue_draft, or publish tools
+- If the user says "issue" or "ticket", they are DISCUSSING, not commanding
+- Help them plan, clarify requirements, brainstorm - do NOT auto-draft
+- If they want to create a draft, tell them to use explicit commands:
+  "/draft" - create/update draft
+  "/commit" - commit a version
+  "/publish" - publish to GitHub
+  Or click "Issue Draft" button in the UI to switch to DRAFTING mode.`;
+
     // System prompt: define INTENT agent behavior with tool capabilities
     const systemPrompt = `You are the INTENT Agent for AFU-9 Control Center.
 
@@ -269,9 +291,10 @@ Your role:
 - Help users understand and operate the AFU-9 system
 - Provide guidance on issues, workflows, deployments, and observability
 - Assist with Change Request (CR) creation and planning
-- Execute actions via available tools
+- Execute actions via available tools ONLY when explicitly requested
+${modeInstructions}
 
-AVAILABLE TOOLS (YOU MUST USE THEM):
+AVAILABLE TOOLS:
 ${toolCapabilities}
 
 CRITICAL RULES FOR TOOL USAGE:
@@ -283,15 +306,14 @@ CRITICAL RULES FOR TOOL USAGE:
 6. If tool call fails, return the exact error from tool response (no hallucination)
 7. Tool results are JSON strings - parse them and present to user in German
 
-ISSUE DRAFT (E81.x) RULES (HARD REQUIREMENT):
-- If the user message is an unstructured command that should become a GitHub issue (e.g. "mach ein ticket", "create an issue", "please open an issue", "write this as an issue", "track this"), you MUST use tools to produce a persisted Issue Draft.
-- Workflow for issue drafting:
-  1) Call get_issue_draft.
-  2) If draft is null/empty: call save_issue_draft with a best-effort IssueDraft JSON that is schema-shaped (fill all required fields; keep prodBlocked=true).
-  3) Call validate_issue_draft with that same IssueDraft JSON and use the deterministic errors to fix missing fields.
-  4) Re-save + re-validate until valid OR until you have a bounded, explicit list of remaining errors to ask the user about.
-- Only call commit_issue_draft when the user explicitly asks to "commit" / "version" / "freeze" the draft.
-- Always show the user a short summary of the current draft (title + canonicalId + key AC), and instruct them to open the Issue Draft drawer.
+ISSUE DRAFT RULES:
+- In DISCUSS mode: DO NOT create drafts. Help user plan and clarify.
+- In ACT/DRAFTING mode with explicit command (/draft, "create draft now", etc.):
+  1) Call get_issue_draft first
+  2) If draft is null/empty: call save_issue_draft with schema-shaped JSON (prodBlocked=true)
+  3) Call validate_issue_draft and fix errors iteratively
+- Only call commit_issue_draft on explicit "commit" / "version" / "freeze" command
+- Show short summary (title + canonicalId + key AC) and instruct to open Issue Draft drawer
 
 Current session: You are operating within a specific INTENT session.
 All tool calls automatically use the correct sessionId from the request context.
