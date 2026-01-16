@@ -430,9 +430,9 @@ export default function IntentPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-950 overflow-hidden">
+    <div className="flex h-[calc(100dvh-4rem)] bg-gray-950 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
+      <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 min-h-0">
         <div className="p-4 border-b border-gray-800">
           <button
             onClick={createNewSession}
