@@ -127,13 +127,20 @@ export async function executeIntentTool(
       // Execute tool (existing switch statement follows)
       result = await executeToolInternal(toolName, args, { userId, sessionId, triggerType, conversationMode });
       
-      // Parse result to check for success
+      // Parse result to check for success (assume failure for non-JSON)
       try {
         const parsed = JSON.parse(result);
         executionSuccess = parsed.success !== false;
         executionErrorCode = parsed.code;
-      } catch {
-        // If result is not JSON, assume success
+      } catch (parseError) {
+        // Non-JSON result is unexpected - log and treat as failure
+        console.warn('[Tool Executor] Non-JSON result from tool', {
+          toolName,
+          sessionId: sessionId.substring(0, 20),
+          resultPreview: result.substring(0, 100),
+        });
+        executionSuccess = false;
+        executionErrorCode = 'NON_JSON_RESULT';
       }
     } catch (toolError) {
       executionSuccess = false;

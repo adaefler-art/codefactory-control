@@ -60,6 +60,10 @@ export async function logToolExecution(
       [sessionId, userId, toolName, triggerType, conversationMode, success, errorCode || null]
     );
     
+    if (!result.rows[0]) {
+      throw new Error('INSERT did not return a row');
+    }
+    
     return {
       success: true,
       data: {
@@ -133,7 +137,9 @@ export async function getToolExecutionAudit(
       success: true,
       data: result.rows.map(row => ({
         ...row,
-        executed_at: row.executed_at.toISOString(),
+        executed_at: typeof row.executed_at === 'string' 
+          ? row.executed_at 
+          : row.executed_at.toISOString(),
       })),
     };
   } catch (error) {

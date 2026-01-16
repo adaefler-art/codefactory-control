@@ -58,7 +58,7 @@ const ACTION_PATTERNS = {
     /\bchange\s+(the\s+)?(issue\s+)?draft\b/i,
     /\bpatch\s+(the\s+)?(issue\s+)?draft\b/i,
     /\bedit\s+(the\s+)?(issue\s+)?draft\b/i,
-    /\bapply\s+patch\b/i,
+    /\bapply\s+patch(\s+to)?\s+(the\s+)?draft\b/i,  // More specific: "apply patch to draft"
   ],
   draft_commit: [
     /\bcommit\s+(the\s+)?(issue\s+)?draft\b/i,

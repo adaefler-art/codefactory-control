@@ -190,10 +190,8 @@ export async function POST(
     
     // V09-I02: Determine trigger type for tool execution
     // - USER_EXPLICIT: Explicit action command detected by classifier
-    // - AUTO_ALLOWED: In DRAFTING mode or non-action intent in any mode
-    // Note: UI_ACTION is only set by UI-triggered endpoints (not chat)
-    const triggerType = classification.isActionIntent ? 'USER_EXPLICIT' : 
-                       (conversationMode === 'DRAFTING' ? 'AUTO_ALLOWED' : 'AUTO_ALLOWED');
+    // - AUTO_ALLOWED: Non-action intent (read-only operations allowed in any mode)
+    const triggerType = classification.isActionIntent ? 'USER_EXPLICIT' : 'AUTO_ALLOWED';
     
     // Generate INTENT agent response with rate limiting and trigger type
     let agentResponse;
