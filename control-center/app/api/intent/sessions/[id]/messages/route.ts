@@ -16,6 +16,7 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 import { UsedSourcesSchema, type UsedSources } from '@/lib/schemas/usedSources';
 import { generateIntentResponse, isIntentEnabled, type IntentMessage } from '@/lib/intent-agent';
 import { ISSUE_DRAFT_VERSION, type IssueDraft } from '@/lib/schemas/issueDraft';
+import { classifyMessage } from '@/lib/intent/message-classifier';
 import { ZodError } from 'zod';
 import { createHash } from 'crypto';
 
@@ -149,6 +150,19 @@ export async function POST(
       });
     }
     
+    // V09-I02: Classify message to determine trigger type
+    const classification = classifyMessage(body.content);
+    const conversationMode = sessionResult.data.conversation_mode;
+    
+    console.log('[API /api/intent/sessions/[id]/messages] Message classification', {
+      requestId,
+      sessionId: sessionId.substring(0, 20),
+      conversationMode,
+      isActionIntent: classification.isActionIntent,
+      actionType: classification.actionType,
+      confidence: classification.confidence,
+    });
+    
     // Append user message
     const userMessageResult = await appendIntentMessage(
       pool,
@@ -174,14 +188,21 @@ export async function POST(
         content: msg.content,
       }));
     
-    // Generate INTENT agent response with rate limiting
+    // V09-I02: Determine trigger type for tool execution
+    // - USER_EXPLICIT: Explicit action command detected by classifier
+    // - AUTO_ALLOWED: Non-action intent (read-only operations allowed in any mode)
+    const triggerType = classification.isActionIntent ? 'USER_EXPLICIT' : 'AUTO_ALLOWED';
+    
+    // Generate INTENT agent response with rate limiting and trigger type
     let agentResponse;
     try {
       agentResponse = await generateIntentResponse(
         body.content,
         conversationHistory,
         userId,
-        sessionId  // Pass sessionId to agent
+        sessionId,
+        triggerType,  // V09-I02: Pass trigger type to agent
+        conversationMode  // V09-I02: Pass conversation mode to agent
       );
     } catch (error) {
       console.error('[API /api/intent/sessions/[id]/messages] INTENT agent error:', error);

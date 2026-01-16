@@ -28,6 +28,7 @@ export interface IntentToolSpec {
   description: string;
   parameters: Record<string, unknown>;
   gate?: (context: IntentToolContext) => ToolGateStatus;
+  isDraftMutating?: boolean; // V09-I02: Mark tools that mutate draft state
 }
 
 function gateProdWriteDisabled(_context: IntentToolContext): ToolGateStatus {
@@ -79,6 +80,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         },
         required: ['crJson'],
       },
+      isDraftMutating: true, // V09-I02: Mutates CR draft state
     },
     {
       name: 'validate_change_request',
@@ -94,6 +96,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         },
         required: ['crJson'],
       },
+      isDraftMutating: true, // V09-I02: Mutates CR draft state (saves validated version)
     },
     {
       name: 'publish_to_github',
@@ -138,6 +141,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         },
         required: ['issueJson'],
       },
+      isDraftMutating: true, // V09-I02: Mutates issue draft state
     },
     {
       name: 'apply_issue_draft_patch',
@@ -158,6 +162,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         },
         required: ['patch'],
       },
+      isDraftMutating: true, // V09-I02: Mutates issue draft state
     },
     {
       name: 'validate_issue_draft',
@@ -173,6 +178,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         },
         required: ['issueJson'],
       },
+      isDraftMutating: true, // V09-I02: Mutates issue draft state (saves validated version)
     },
     {
       name: 'commit_issue_draft',
@@ -183,6 +189,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         properties: {},
         required: [],
       },
+      isDraftMutating: true, // V09-I02: Mutates issue draft state (creates version)
     },
     {
       name: 'get_issue_set',
@@ -214,6 +221,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         },
         required: ['briefingText', 'issueDrafts'],
       },
+      isDraftMutating: true, // V09-I02: Mutates issue set state
     },
     {
       name: 'commit_issue_set',
@@ -224,6 +232,7 @@ export function listIntentToolSpecs(): IntentToolSpec[] {
         properties: {},
         required: [],
       },
+      isDraftMutating: true, // V09-I02: Mutates issue set state (makes immutable)
     },
     {
       name: 'export_issue_set_markdown',
@@ -331,6 +340,15 @@ export function getToolGateStatus(toolName: string, context: IntentToolContext):
   if (!spec) return { enabled: true };
   if (!spec.gate) return { enabled: true };
   return spec.gate(context);
+}
+
+/**
+ * Check if a tool is draft-mutating
+ * V09-I02: Used for tool gating in FREE mode
+ */
+export function isDraftMutatingTool(toolName: string): boolean {
+  const spec = listIntentToolSpecs().find(t => t.name === toolName);
+  return spec?.isDraftMutating === true;
 }
 
 export function buildOpenAITools(): OpenAI.Chat.ChatCompletionTool[] {
