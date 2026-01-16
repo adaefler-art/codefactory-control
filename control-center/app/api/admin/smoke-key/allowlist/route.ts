@@ -14,7 +14,7 @@
  * - Hard limits enforced
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import {
   getActiveAllowlist,
