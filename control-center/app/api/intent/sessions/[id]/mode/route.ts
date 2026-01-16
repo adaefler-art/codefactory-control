@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getIntentSession, updateSessionMode } from '@/lib/db/intentSessions';
+import { logToolExecution } from '@/lib/db/toolExecutionAudit';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import {
   ConversationModeResponseV1Schema,
@@ -152,6 +153,10 @@ export async function PUT(
     
     const { mode } = validation.data;
     
+    // Get previous mode for audit
+    const prevSession = await getIntentSession(pool, sessionId, userId);
+    const previousMode = prevSession.success ? prevSession.data.conversation_mode : null;
+    
     // Update session mode
     const result = await updateSessionMode(pool, sessionId, userId, mode);
     
@@ -169,6 +174,16 @@ export async function PUT(
         details: result.error,
       });
     }
+    
+    // I903: Audit mode transition
+    await logToolExecution(pool, {
+      sessionId,
+      userId,
+      toolName: `mode_transition:${previousMode || 'unknown'}_to_${mode}`,
+      triggerType: 'UI_ACTION',
+      conversationMode: mode as 'DISCUSS' | 'DRAFTING' | 'ACT',
+      success: true,
+    });
     
     // Build deterministic response with versioned schema
     const response: typeof ConversationModeResponseV1Schema._type = {
