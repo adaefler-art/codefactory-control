@@ -329,6 +329,27 @@ export async function removeRouteFromAllowlist(
 // Route Matching
 // ========================================
 
+// Cache for compiled regex patterns to avoid recompilation
+const regexCache = new Map<string, RegExp>();
+
+/**
+ * Get or compile a regex pattern with caching
+ */
+function getOrCompileRegex(pattern: string): RegExp | null {
+  try {
+    if (regexCache.has(pattern)) {
+      return regexCache.get(pattern)!;
+    }
+    
+    const regex = new RegExp(pattern);
+    regexCache.set(pattern, regex);
+    return regex;
+  } catch (err) {
+    console.error('[ALLOWLIST] Invalid regex pattern:', pattern, err);
+    return null;
+  }
+}
+
 /**
  * Check if a route matches any pattern in the allowlist
  * 
@@ -351,14 +372,9 @@ export function isRouteAllowed(
 
       // Check route match
       if (entry.is_regex) {
-        try {
-          const regex = new RegExp(entry.route_pattern);
-          if (regex.test(pathname)) {
-            return true;
-          }
-        } catch (err) {
-          console.error('[ALLOWLIST] Invalid regex pattern:', entry.route_pattern, err);
-          continue;
+        const regex = getOrCompileRegex(entry.route_pattern);
+        if (regex && regex.test(pathname)) {
+          return true;
         }
       } else {
         // Exact match
