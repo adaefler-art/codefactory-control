@@ -81,6 +81,21 @@ export const AFU9ArtifactSourceSchema = z.object({
 export type AFU9ArtifactSource = z.infer<typeof AFU9ArtifactSourceSchema>;
 
 // ========================================
+// SourceRef Type: upload
+// ========================================
+export const UploadSourceSchema = z.object({
+  kind: z.literal('upload'),
+  uploadId: z.string().uuid(),
+  filename: z.string().min(1),
+  contentType: z.string().min(1),
+  sizeBytes: z.number().int().positive(),
+  contentSha256: z.string().min(1),
+  uploadedAt: z.string().optional(), // ISO 8601 timestamp
+});
+
+export type UploadSource = z.infer<typeof UploadSourceSchema>;
+
+// ========================================
 // Discriminated Union: SourceRef
 // ========================================
 export const SourceRefSchema = z.discriminatedUnion('kind', [
@@ -88,6 +103,7 @@ export const SourceRefSchema = z.discriminatedUnion('kind', [
   GitHubIssueSourceSchema,
   GitHubPRSourceSchema,
   AFU9ArtifactSourceSchema,
+  UploadSourceSchema,
 ]);
 
 export type SourceRef = z.infer<typeof SourceRefSchema>;
@@ -134,5 +150,14 @@ export const EXAMPLE_USED_SOURCES: UsedSources = [
     artifactId: 'verdict-20251231-001',
     sha256: 'abc123def456',
     ref: { executionId: 'exec-123', workflowId: 'wf-456' },
+  },
+  {
+    kind: 'upload',
+    uploadId: '123e4567-e89b-12d3-a456-426614174000',
+    filename: 'requirements.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 1024000,
+    contentSha256: 'd2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2',
+    uploadedAt: '2026-01-16T10:00:00.000Z',
   },
 ];
