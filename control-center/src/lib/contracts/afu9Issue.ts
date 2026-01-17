@@ -9,11 +9,16 @@
 
 /**
  * AFU9 Issue Status enum
- * Updated for E61.1: Canonical Issue State Machine
+ * Updated for AFU-9 Issue Lifecycle (Issue → CR → Publish → GH Mirror → CP Assign)
  */
 export enum Afu9IssueStatus {
   CREATED = 'CREATED',
+  DRAFT_READY = 'DRAFT_READY',
+  VERSION_COMMITTED = 'VERSION_COMMITTED',
+  CR_BOUND = 'CR_BOUND',
   SPEC_READY = 'SPEC_READY',
+  PUBLISHING = 'PUBLISHING',
+  PUBLISHED = 'PUBLISHED',
   IMPLEMENTING = 'IMPLEMENTING',
   VERIFIED = 'VERIFIED',
   MERGE_READY = 'MERGE_READY',
@@ -87,7 +92,7 @@ export enum Afu9GithubMirrorStatus {
 /**
  * AFU9 Issue Input Contract
  * Represents the required and optional fields for creating/updating an issue
- * Updated for E61.3: GitHub Handoff Metadata + Idempotence
+ * Updated for AFU-9 Issue Lifecycle
  */
 export interface Afu9IssueInput {
   title: string;
@@ -120,12 +125,20 @@ export interface Afu9IssueInput {
   // I2: State Model v1 fields
   github_mirror_status?: Afu9GithubMirrorStatus | null;
   github_sync_error?: string | null;
+  // AFU-9 Issue Lifecycle fields
+  source_session_id?: string | null;
+  current_draft_id?: string | null;
+  active_cr_id?: string | null;
+  github_synced_at?: string | null;
+  kpi_context?: Record<string, unknown> | null;
+  publish_batch_id?: string | null;
+  publish_request_id?: string | null;
 }
 
 /**
  * AFU9 Issue Row Contract
  * Represents a row from the afu9_issues table
- * Updated for E61.3: GitHub Handoff Metadata + Idempotence
+ * Updated for AFU-9 Issue Lifecycle
  */
 export interface Afu9IssueRow {
   id: string;
@@ -161,6 +174,14 @@ export interface Afu9IssueRow {
   // I2: State Model v1 fields
   github_mirror_status: Afu9GithubMirrorStatus | null;
   github_sync_error: string | null;
+  // AFU-9 Issue Lifecycle fields
+  source_session_id: string | null;
+  current_draft_id: string | null;
+  active_cr_id: string | null;
+  github_synced_at: string | null;
+  kpi_context: Record<string, unknown> | null;
+  publish_batch_id: string | null;
+  publish_request_id: string | null;
 }
 
 /**
@@ -482,5 +503,13 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     // I2: State Model v1 fields
     github_mirror_status: input.github_mirror_status || Afu9GithubMirrorStatus.UNKNOWN,
     github_sync_error: input.github_sync_error === undefined || input.github_sync_error === null ? null : input.github_sync_error.trim(),
+    // AFU-9 Issue Lifecycle fields
+    source_session_id: input.source_session_id === undefined ? null : input.source_session_id,
+    current_draft_id: input.current_draft_id === undefined ? null : input.current_draft_id,
+    active_cr_id: input.active_cr_id === undefined ? null : input.active_cr_id,
+    github_synced_at: input.github_synced_at === undefined ? null : input.github_synced_at,
+    kpi_context: input.kpi_context === undefined ? null : input.kpi_context,
+    publish_batch_id: input.publish_batch_id === undefined ? null : input.publish_batch_id,
+    publish_request_id: input.publish_request_id === undefined ? null : input.publish_request_id,
   };
 }
