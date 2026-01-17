@@ -176,9 +176,14 @@ export default function IntentPage() {
         cache: "no-store",
       });
       const data = await safeFetch(response);
-      setMessages(data.messages || []);
-      // Update conversation mode when fetching session data
-      setConversationMode(data.conversation_mode || "DISCUSS");
+        if (typeof data === 'object' && data !== null && 'messages' in data) {
+          setMessages((data as { messages: IntentMessage[] }).messages || []);
+          setConversationMode((data as { conversation_mode: "DISCUSS" | "DRAFTING" | "ACT" }).conversation_mode || "DISCUSS");
+        } else {
+          setMessages([]);
+          setConversationMode("DISCUSS");
+          setError('Invalid response from server');
+        }
     } catch (err) {
       console.error("Failed to fetch messages:", err);
       setError(formatErrorMessage(err));
@@ -230,11 +235,15 @@ export default function IntentPage() {
         body: JSON.stringify({}),
       });
       const newSession = await safeFetch(response);
-      setSessions((prev) => [newSession, ...prev]);
-      setCurrentSessionId(newSession.id);
-      setMessages([]);
-      setInputValue("");
-      setConversationMode(newSession.conversation_mode || "DISCUSS");
+        if (typeof newSession === 'object' && newSession !== null && 'id' in newSession) {
+          setSessions((prev) => [newSession as IntentSession, ...prev]);
+          setCurrentSessionId((newSession as { id: string }).id);
+          setMessages([]);
+          setInputValue("");
+          setConversationMode((newSession as { conversation_mode: "DISCUSS" | "DRAFTING" | "ACT" }).conversation_mode || "DISCUSS");
+        } else {
+          setError('Invalid response from server');
+        }
     } catch (err) {
       console.error("Failed to create session:", err);
       setError(formatErrorMessage(err));

@@ -68,10 +68,9 @@ export default function CrEditor({ sessionId }: CrEditorProps) {
         cache: "no-store",
       });
       const data = await safeFetch(response);
-      
-      if (data.draft) {
-        setDraft(data.draft);
-        setCrText(JSON.stringify(data.draft.cr_json, null, 2));
+      if (typeof data === 'object' && data !== null && 'draft' in data && data.draft) {
+        setDraft((data as { draft: CrDraft }).draft);
+        setCrText(JSON.stringify((data as { draft: CrDraft }).draft.cr_json, null, 2));
         setHasUnsavedChanges(false);
       } else {
         // No draft yet - initialize with example
@@ -114,8 +113,12 @@ export default function CrEditor({ sessionId }: CrEditorProps) {
       });
 
       const savedDraft = await safeFetch(response);
-      setDraft(savedDraft);
-      setHasUnsavedChanges(false);
+      if (typeof savedDraft === 'object' && savedDraft !== null && 'id' in savedDraft) {
+        setDraft(savedDraft as CrDraft);
+        setHasUnsavedChanges(false);
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Failed to save CR draft:", err);
       setError(formatErrorMessage(err));
@@ -147,11 +150,14 @@ export default function CrEditor({ sessionId }: CrEditorProps) {
       });
 
       const data = await safeFetch(response);
-      setValidation(data.validation);
-      
-      if (data.draft) {
-        setDraft(data.draft);
-        setHasUnsavedChanges(false);
+      if (typeof data === 'object' && data !== null && 'validation' in data) {
+        setValidation((data as { validation: ValidationResult }).validation);
+        if ('draft' in data && (data as any).draft) {
+          setDraft((data as { draft: CrDraft }).draft);
+          setHasUnsavedChanges(false);
+        }
+      } else {
+        setError('Invalid response from server');
       }
     } catch (err) {
       console.error("Failed to validate CR draft:", err);

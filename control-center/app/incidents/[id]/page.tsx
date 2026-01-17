@@ -95,10 +95,16 @@ export default function IncidentDetailPage() {
       });
 
       const data = await safeFetch(response);
-      setIncident(data.incident);
-      setEvidence(data.evidence || []);
-      setEvents(data.events || []);
-      setLinks(data.links || []);
+      // Defensive: check if data is object and has expected properties
+      if (typeof data === 'object' && data !== null && 'incident' in data && 'evidence' in data && 'events' in data && 'links' in data) {
+        const d = data as { incident: Incident; evidence: Evidence[]; events: Event[]; links: TimelineNode[] };
+        setIncident(d.incident);
+        setEvidence(d.evidence || []);
+        setEvents(d.events || []);
+        setLinks(d.links || []);
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error fetching incident details:", err);
       setError(formatErrorMessage(err));
