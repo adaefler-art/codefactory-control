@@ -1027,7 +1027,7 @@ export async function unbindCrFromIssue(
     const result = await pool.query<Afu9IssueRow>(
       `UPDATE afu9_issues 
        SET active_cr_id = NULL, updated_at = NOW()
-       WHERE id = $2
+       WHERE id = $1
        RETURNING *`,
       [issueId]
     );

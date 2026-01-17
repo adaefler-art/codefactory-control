@@ -78,7 +78,7 @@ export async function POST(
     // GUARD 2: Publishing enabled check (409)
     const deploymentEnv = getDeploymentEnv();
     if (deploymentEnv === 'production' && !isPublishingEnabled()) {
-      console.log(\`[PUBLISH-GUARD] Blocked AFU-9 publish in production: \${request.method} \${request.url}\`);
+      console.log(`[PUBLISH-GUARD] Blocked AFU-9 publish in production: ${request.method} ${request.url}`);
       
       return jsonResponse(
         {
@@ -219,7 +219,7 @@ export async function POST(
         evidence_records: result.evidence_records,
         cp_assignments: result.cp_assignments,
       },
-      message: \`Issue \${result.action} successfully on GitHub\`,
+      message: `Issue ${result.action} successfully on GitHub`,
     }, {
       status: 200,
       requestId,
