@@ -11,7 +11,7 @@
  * Issue: I905 - Runbooks UX
  */
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_ROUTES } from "@/lib/api-routes";
@@ -251,7 +251,7 @@ export default function RunbookDetailPage() {
         {!loading && runbook && (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white">
+            <div className="bg-linear-to-r from-blue-600 to-blue-700 px-8 py-6 text-white">
               <h1 className="text-3xl font-bold mb-2">{runbook.title}</h1>
               {runbook.purpose && (
                 <p className="text-blue-100">{runbook.purpose}</p>
