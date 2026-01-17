@@ -53,11 +53,11 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
  * Only supports safe markdown features, no raw HTML
  */
 function MarkdownRenderer({ content }: { content: string }) {
-  const [renderedContent, setRenderedContent] = useState<JSX.Element[]>([]);
+  const [renderedContent, setRenderedContent] = useState<React.ReactElement[]>([]);
 
   useEffect(() => {
     const lines = content.split('\n');
-    const elements: JSX.Element[] = [];
+    const elements: React.ReactElement[] = [];
     let i = 0;
     let inCodeBlock = false;
     let codeBlockContent: string[] = [];
