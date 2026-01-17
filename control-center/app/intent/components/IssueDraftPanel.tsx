@@ -1,4 +1,6 @@
+
 "use client";
+import * as React from "react";
 
 /**
  * Issue Draft Panel Component
@@ -17,7 +19,7 @@
 
 import { useEffect, useState } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
-import { API_ROUTES } from "@/lib/api-routes";
+import { API_ROUTES } from "@/../src/lib/api-routes";
 import type { IssueDraft } from "@/lib/schemas/issueDraft";
 
 // Configuration constants
@@ -108,6 +110,37 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
+
+  // --- AFU-9 Issue Creation ---
+  const [isCreatingAfu9Issue, setIsCreatingAfu9Issue] = useState(false);
+  const [afu9IssueResult, setAfu9IssueResult] = useState<any>(null);
+  const handleCreateAfu9Issue = async () => {
+    if (!sessionId || !draft) return;
+    setIsCreatingAfu9Issue(true);
+    setError(null);
+    setRequestId(null);
+    setAfu9IssueResult(null);
+    try {
+      // Use canonical route if available in API_ROUTES
+      // TODO: Add to API_ROUTES.intent.sessions.issues.create if not present
+      const route = `/api/intent/sessions/${sessionId}/issues/create`;
+      const response = await fetch(route, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await safeFetch(response);
+      setAfu9IssueResult(data);
+      setError(null);
+      // Optionally: show toast or navigate to /issues
+    } catch (err) {
+      setError(formatErrorMessage(err));
+      if (typeof err === "object" && err !== null && "requestId" in err) {
+        setRequestId(String(err.requestId));
+      }
+    } finally {
+      setIsCreatingAfu9Issue(false);
+    }
+  };
 
   // Auto-load draft when session changes or refreshKey changes
   useEffect(() => {
@@ -492,16 +525,61 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
             </button>
           </div>
 
-          {/* Row 2: Publish to GitHub */}
-          <button
-            onClick={handlePublish}
-            disabled={!canPublish}
-            className="w-full px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-            title="Publish committed version(s) to GitHub"
-          >
-            {isPublishing ? "Publishing to GitHub..." : "📤 Publish to GitHub"}
-          </button>
-        </div>
+          {/* Row 2: AFU-9 Issue + Publish to GitHub */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCreateAfu9Issue}
+              disabled={!canPublish || isCreatingAfu9Issue}
+              className="flex-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+              title="Create AFU-9 Issue from committed draft"
+            >
+              {isCreatingAfu9Issue ? "Creating AFU-9 Issue..." : "🗂 Create AFU-9 Issue"}
+            </button>
+            <button
+              onClick={handlePublish}
+              disabled={!canPublish}
+              className="flex-1 px-3 py-1.5 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+              title="Publish committed version(s) to GitHub"
+            >
+              {isPublishing ? "Publishing to GitHub..." : "📤 Publish to GitHub"}
+            </button>
+          </div>
+
+        {/* AFU-9 Issue Creation Result Display */}
+        {afu9IssueResult && (
+          <div className="mt-3 p-3 bg-blue-900/20 border border-blue-700 rounded">
+            <div className="flex items-start justify-between mb-2">
+              <h4 className="text-sm font-semibold text-blue-300">AFU-9 Issue Created!</h4>
+              <button
+                onClick={() => setAfu9IssueResult(null)}
+                className="text-blue-400 hover:text-blue-300 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div>
+                <span className="text-gray-400">Issue ID:</span>
+                <span className="ml-2 font-mono text-blue-300">{afu9IssueResult.issueId}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">Public ID:</span>
+                <span className="ml-2 font-mono text-blue-300">{afu9IssueResult.publicId}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">Canonical ID:</span>
+                <span className="ml-2 font-mono text-purple-300">{afu9IssueResult.canonicalId}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">State:</span>
+                <span className="ml-2 text-blue-200">{afu9IssueResult.state}</span>
+              </div>
+              <div className="mt-2">
+                <a href="/issues" className="text-blue-400 hover:underline">Open Issues Page →</a>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Publish Result Display */}
         {showPublishResult && publishResult && (
@@ -835,9 +913,10 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 </div>
               </div>
             </div>
+
           </>
         )}
-      </div>
-    </div>
+      </div> {/* End scrollable content */}
+    </div> {/* End main panel */}
   );
 }
