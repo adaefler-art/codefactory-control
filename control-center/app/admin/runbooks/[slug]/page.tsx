@@ -11,7 +11,8 @@
  * Issue: I905 - Runbooks UX
  */
 
-import React, { useEffect, useState } from "react";
+import * as React from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_ROUTES } from "@/lib/api-routes";
