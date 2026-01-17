@@ -60,6 +60,24 @@ interface DashboardData {
   };
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isReadinessData = (value: unknown): value is ReadinessData =>
+  isRecord(value) &&
+  (value.status === "PASS" || value.status === "FAIL") &&
+  Array.isArray(value.checks) &&
+  typeof value.timestamp === "string";
+
+const isDashboardData = (value: unknown): value is DashboardData =>
+  isRecord(value) &&
+  Array.isArray(value.kpis) &&
+  Array.isArray(value.topCategories) &&
+  Array.isArray(value.playbooks) &&
+  Array.isArray(value.recentIncidents) &&
+  isRecord(value.filters) &&
+  typeof value.filters.window === "string";
+
 export default function OpsPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [readiness, setReadiness] = useState<ReadinessData | null>(null);
@@ -82,7 +100,12 @@ export default function OpsPage() {
       });
 
       const result = await safeFetch(response);
-      setReadiness(result);
+      if (isReadinessData(result)) {
+        setReadiness(result);
+      } else {
+        setReadiness(null);
+        setReadinessError("Invalid response from server");
+      }
     } catch (err) {
       console.error("Error fetching readiness:", err);
       setReadinessError(formatErrorMessage(err));
@@ -107,7 +130,12 @@ export default function OpsPage() {
       });
 
       const result = await safeFetch(response);
-      setData(result);
+      if (isDashboardData(result)) {
+        setData(result);
+      } else {
+        setData(null);
+        setError("Invalid response from server");
+      }
     } catch (err) {
       console.error("Error fetching ops dashboard:", err);
       setError(formatErrorMessage(err));

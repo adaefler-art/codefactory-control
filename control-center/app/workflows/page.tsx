@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface Workflow {
   id: string;
@@ -21,6 +22,28 @@ interface Workflow {
   updatedAt: string;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isWorkflow = (value: unknown): value is Workflow =>
+  isRecord(value) &&
+  typeof value.id === "string" &&
+  typeof value.name === "string" &&
+  typeof value.description === "string" &&
+  typeof value.version === "number" &&
+  typeof value.enabled === "boolean" &&
+  typeof value.createdAt === "string" &&
+  typeof value.updatedAt === "string" &&
+  isRecord(value.definition);
+
+const isWorkflowListResponse = (value: unknown): value is { workflows: Workflow[] } =>
+  isRecord(value) &&
+  Array.isArray(value.workflows) &&
+  value.workflows.every(isWorkflow);
+
+const isExecutionResponse = (value: unknown): value is { executionId: string } =>
+  isRecord(value) && typeof value.executionId === "string";
+
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,9 +55,14 @@ export default function WorkflowsPage() {
   useEffect(() => {
     async function fetchWorkflows() {
       try {
-        const response = await fetch("/api/workflows", { credentials: "include" });
+        const response = await fetch(API_ROUTES.workflows.list, { credentials: "include" });
         const data = await safeFetch(response);
-        setWorkflows(data.workflows || []);
+        if (isWorkflowListResponse(data)) {
+          setWorkflows(data.workflows);
+        } else {
+          setWorkflows([]);
+          setError("Invalid response from server");
+        }
       } catch (err) {
         console.error("Error fetching workflows:", err);
         setError(formatErrorMessage(err));
@@ -60,7 +88,7 @@ export default function WorkflowsPage() {
         }
       }
 
-      const response = await fetch("/api/workflow/execute", {
+      const response = await fetch(API_ROUTES.workflow.execute, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -80,6 +108,9 @@ export default function WorkflowsPage() {
       });
 
       const result = await safeFetch(response);
+      if (!isExecutionResponse(result)) {
+        throw new Error("Invalid response from server");
+      }
       alert(`Workflow executed successfully!\nExecution ID: ${result.executionId}`);
       setSelectedWorkflow(null);
       setExecutionInput("");

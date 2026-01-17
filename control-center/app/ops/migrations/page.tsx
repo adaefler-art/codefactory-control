@@ -56,6 +56,19 @@ interface ErrorInfo {
   details?: string;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isMigrationParityData = (value: unknown): value is MigrationParityData =>
+  isRecord(value) &&
+  typeof value.version === "string" &&
+  typeof value.generatedAt === "string" &&
+  typeof value.lawbookVersion === "string" &&
+  isRecord(value.db) &&
+  isRecord(value.repo) &&
+  isRecord(value.ledger) &&
+  isRecord(value.parity);
+
 export default function MigrationsOpsPage() {
   const [data, setData] = useState<MigrationParityData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -118,7 +131,12 @@ export default function MigrationsOpsPage() {
       }
 
       const result = await safeFetch(response);
-      setData(result);
+      if (isMigrationParityData(result)) {
+        setData(result);
+      } else {
+        setData(null);
+        setError("Invalid response from server");
+      }
     } catch (err) {
       console.error("Error fetching migration parity:", err);
       setError(formatErrorMessage(err));

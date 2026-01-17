@@ -52,6 +52,12 @@ interface Issue {
   github_last_synced_at?: string | null;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isIssue = (value: unknown): value is Issue =>
+  isRecord(value) && typeof value.id === "string" && typeof value.title === "string";
+
 function toGithubMirrorDisplayStatus(
   githubMirrorStatus: string | null | undefined,
   githubStatusRaw: string | null | undefined
@@ -302,7 +308,11 @@ export default function IssueDetailPage({
       });
 
       const updatedIssue = await safeFetch(response);
-      setIssue(updatedIssue);
+      if (isIssue(updatedIssue)) {
+        setIssue(updatedIssue);
+      } else {
+        throw new Error("Invalid response from server");
+      }
       setIsEditingTitle(false);
       setActionMessage('Issue updated successfully');
 
@@ -981,7 +991,7 @@ export default function IssueDetailPage({
                 <label className="block text-sm font-medium text-red-300 mb-2">
                   Handoff Error
                 </label>
-                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3 break-words">
+                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3 wrap-break-word">
                   {truncateErrorMessage(issue.last_error)}
                 </div>
                 <button
@@ -1160,7 +1170,7 @@ export default function IssueDetailPage({
                       key={event.id}
                       className="flex items-start gap-4 p-4 bg-gray-800/30 border border-gray-700 rounded-lg"
                     >
-                      <div className="flex-shrink-0 pt-1">
+                      <div className="shrink-0 pt-1">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-md ${getEventTypeBadgeColor(
                             event.event_type

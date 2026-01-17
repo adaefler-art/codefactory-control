@@ -439,21 +439,19 @@ export default function IntentPage() {
         if (!downloadResponse.ok) {
           throw new Error("Failed to download context pack");
         }
-        // ...existing code...
+        // Create blob and download
+        const blob = await downloadResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `context-pack-${currentSessionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
       } else {
         setError('Invalid response from server');
       }
-      
-      // Create blob and download
-      const blob = await downloadResponse.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `context-pack-${currentSessionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
     } catch (err) {
       console.error("Failed to export context pack:", err);
       setError(formatErrorMessage(err));

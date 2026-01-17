@@ -2,9 +2,7 @@
 
 "use client";
 
-import * as React from "react";
-// Ensure React is in scope for JSX
-// For Next.js/TypeScript, this import is required for JSX to work in .tsx files
+
 
 /**
  * Issue Draft Panel Component
@@ -21,9 +19,9 @@ import * as React from "react";
  * - Show requestId on failure
  */
 
-import { useEffect, useState } from "react";
-import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
-import { API_ROUTES } from "@/lib/api-routes";
+import React, { useEffect, useState } from "react";
+import { safeFetch, formatErrorMessage } from "../../../src/lib/api/safe-fetch";
+import { API_ROUTES } from "../../../src/lib/api-routes";
 import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
 
 // Configuration constants

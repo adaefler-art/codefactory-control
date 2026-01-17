@@ -23,7 +23,7 @@ export default function LoginPage() {
 
   // Fetch build metadata on component mount
   useEffect(() => {
-    fetch(API_ROUTES.buildMetadata, { credentials: 'include', cache: 'no-store' })
+    fetch(API_ROUTES.system.buildMetadata, { credentials: 'include', cache: 'no-store' })
       .then(res => safeFetch(res))
       .then(data => {
         if (typeof data === 'object' && data !== null && 'version' in data && 'timestamp' in data && 'commitHash' in data && 'environment' in data) {
