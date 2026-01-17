@@ -72,9 +72,10 @@ export async function createAfu9Issue(
         handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
         execution_state, execution_started_at, execution_completed_at, execution_output,
         handoff_at, handoff_error, github_repo, github_issue_last_sync_at,
-        github_status_raw, github_status_updated_at, status_source, github_mirror_status, github_sync_error
+        github_status_raw, github_status_updated_at, status_source, github_mirror_status, github_sync_error,
+        source_session_id, current_draft_id, active_cr_id, github_synced_at, kpi_context, publish_batch_id, publish_request_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
       RETURNING *`,
       [
         sanitized.title,
@@ -103,6 +104,13 @@ export async function createAfu9Issue(
         sanitized.status_source,
         sanitized.github_mirror_status,
         sanitized.github_sync_error,
+        sanitized.source_session_id,
+        sanitized.current_draft_id,
+        sanitized.active_cr_id,
+        sanitized.github_synced_at,
+        sanitized.kpi_context ? JSON.stringify(sanitized.kpi_context) : null,
+        sanitized.publish_batch_id,
+        sanitized.publish_request_id,
       ]
     );
 
@@ -497,6 +505,49 @@ export async function updateAfu9Issue(
     if (updates.github_sync_error !== undefined) {
       fields.push(`github_sync_error = $${paramIndex}`);
       values.push(updates.github_sync_error);
+      paramIndex++;
+    }
+
+    // AFU-9 Issue Lifecycle fields
+    if (updates.source_session_id !== undefined) {
+      fields.push(`source_session_id = $${paramIndex}`);
+      values.push(updates.source_session_id);
+      paramIndex++;
+    }
+
+    if (updates.current_draft_id !== undefined) {
+      fields.push(`current_draft_id = $${paramIndex}`);
+      values.push(updates.current_draft_id);
+      paramIndex++;
+    }
+
+    if (updates.active_cr_id !== undefined) {
+      fields.push(`active_cr_id = $${paramIndex}`);
+      values.push(updates.active_cr_id);
+      paramIndex++;
+    }
+
+    if (updates.github_synced_at !== undefined) {
+      fields.push(`github_synced_at = $${paramIndex}`);
+      values.push(updates.github_synced_at);
+      paramIndex++;
+    }
+
+    if (updates.kpi_context !== undefined) {
+      fields.push(`kpi_context = $${paramIndex}`);
+      values.push(updates.kpi_context ? JSON.stringify(updates.kpi_context) : null);
+      paramIndex++;
+    }
+
+    if (updates.publish_batch_id !== undefined) {
+      fields.push(`publish_batch_id = $${paramIndex}`);
+      values.push(updates.publish_batch_id);
+      paramIndex++;
+    }
+
+    if (updates.publish_request_id !== undefined) {
+      fields.push(`publish_request_id = $${paramIndex}`);
+      values.push(updates.publish_request_id);
       paramIndex++;
     }
 
@@ -910,5 +961,161 @@ export async function transitionIssue(
     };
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Bind a Change Request to an AFU-9 Issue
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param issueId - Issue UUID
+ * @param crId - CR version UUID
+ * @returns Operation result with updated issue or error
+ */
+export async function bindCrToIssue(
+  pool: Pool,
+  issueId: string,
+  crId: string
+): Promise<OperationResult> {
+  try {
+    const result = await pool.query<Afu9IssueRow>(
+      `UPDATE afu9_issues 
+       SET active_cr_id = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [crId, issueId]
+    );
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: `Issue not found: ${issueId}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Bind CR failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      issueId,
+      crId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
+ * Unbind a Change Request from an AFU-9 Issue
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param issueId - Issue UUID
+ * @returns Operation result with updated issue or error
+ */
+export async function unbindCrFromIssue(
+  pool: Pool,
+  issueId: string
+): Promise<OperationResult> {
+  try {
+    const result = await pool.query<Afu9IssueRow>(
+      `UPDATE afu9_issues 
+       SET active_cr_id = NULL, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [issueId]
+    );
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: `Issue not found: ${issueId}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Unbind CR failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      issueId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
+ * Get public ID from issue UUID (first 8 characters)
+ * 
+ * @param issueId - Issue UUID
+ * @returns 8-character public ID
+ */
+export function getPublicId(issueId: string): string {
+  return issueId.substring(0, 8).toLowerCase();
+}
+
+/**
+ * Get an AFU9 issue by GitHub issue number
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param githubIssueNumber - GitHub issue number
+ * @param owner - Repository owner (optional, for uniqueness)
+ * @param repo - Repository name (optional, for uniqueness)
+ * @returns Operation result with issue or error
+ */
+export async function getAfu9IssueByGithubNumber(
+  pool: Pool,
+  githubIssueNumber: number,
+  owner?: string,
+  repo?: string
+): Promise<OperationResult> {
+  try {
+    let query = 'SELECT * FROM afu9_issues WHERE github_issue_number = $1';
+    const params: (number | string)[] = [githubIssueNumber];
+
+    if (owner && repo) {
+      query += ' AND github_repo = $2';
+      params.push(`${owner}/${repo}`);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT 1';
+
+    const result = await pool.query<Afu9IssueRow>(query, params);
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: `Issue not found with GitHub issue number: ${githubIssueNumber}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Get by GitHub number failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      githubIssueNumber,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
   }
 }
