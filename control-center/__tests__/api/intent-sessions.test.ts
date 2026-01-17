@@ -201,6 +201,44 @@ describe('POST /api/intent/sessions', () => {
     );
   });
 
+  test('normalizes FREE to DISCUSS for backward compatibility', async () => {
+    const { createIntentSession } = require('../../src/lib/db/intentSessions');
+
+    createIntentSession.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'session-free-normalized',
+        user_id: TEST_USER_ID,
+        title: null,
+        created_at: '2025-01-01T00:00:00.000Z',
+        updated_at: '2025-01-01T00:00:00.000Z',
+        status: 'active',
+        conversation_mode: 'DISCUSS',
+      },
+    });
+
+    const request = new NextRequest('http://localhost/api/intent/sessions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'test-req-sessions-mode-free-normalized',
+        'x-afu9-sub': TEST_USER_ID,
+      },
+      body: JSON.stringify({ conversationMode: 'FREE' }),
+    });
+
+    const response = await createSession(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    // FREE should be normalized to DISCUSS
+    expect(createIntentSession).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_USER_ID,
+      expect.objectContaining({ conversationMode: 'DISCUSS' })
+    );
+  });
+
   test('returns 400 with VALIDATION_FAILED for invalid conversationMode', async () => {
     const request = new NextRequest('http://localhost/api/intent/sessions', {
       method: 'POST',
@@ -218,11 +256,11 @@ describe('POST /api/intent/sessions', () => {
     expect(response.status).toBe(400);
     expect(body.error).toBe('Invalid conversationMode');
     expect(body.code).toBe('VALIDATION_FAILED');
-    expect(body.details).toContain('FREE');
+    expect(body.details).toContain('DISCUSS');
     expect(body.details).toContain('DRAFTING');
   });
 
-  test('defaults to FREE conversationMode when not provided', async () => {
+  test('defaults to DISCUSS conversationMode when not provided', async () => {
     const { createIntentSession } = require('../../src/lib/db/intentSessions');
 
     createIntentSession.mockResolvedValue({
@@ -234,7 +272,7 @@ describe('POST /api/intent/sessions', () => {
         created_at: '2025-01-01T00:00:00.000Z',
         updated_at: '2025-01-01T00:00:00.000Z',
         status: 'active',
-        conversation_mode: 'FREE',
+        conversation_mode: 'DISCUSS',
       },
     });
 
@@ -252,11 +290,11 @@ describe('POST /api/intent/sessions', () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
-    expect(body.conversation_mode).toBe('FREE');
+    expect(body.conversation_mode).toBe('DISCUSS');
     expect(createIntentSession).toHaveBeenCalledWith(
       expect.anything(),
       TEST_USER_ID,
-      expect.objectContaining({ conversationMode: 'FREE' })
+      expect.objectContaining({ conversationMode: 'DISCUSS' })
     );
   });
 });

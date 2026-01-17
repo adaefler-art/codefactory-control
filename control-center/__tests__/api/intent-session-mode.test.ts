@@ -35,7 +35,7 @@ describe('GET /api/intent/sessions/[id]/mode', () => {
     jest.clearAllMocks();
   });
 
-  test('returns 200 and current mode with deterministic schema', async () => {
+  test('returns 200 and current mode with deterministic schema (DISCUSS)', async () => {
     const { getIntentSession } = require('../../src/lib/db/intentSessions');
 
     getIntentSession.mockResolvedValue({
@@ -47,7 +47,7 @@ describe('GET /api/intent/sessions/[id]/mode', () => {
         created_at: '2025-01-01T00:00:00.000Z',
         updated_at: '2025-01-01T00:00:00.000Z',
         status: 'active',
-        conversation_mode: 'FREE',
+        conversation_mode: 'DISCUSS',
         messages: [],
       },
     });
@@ -65,7 +65,7 @@ describe('GET /api/intent/sessions/[id]/mode', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-request-id')).toBe('test-req-get-mode-1');
     expect(body.version).toBe(CONVERSATION_MODE_VERSION);
-    expect(body.mode).toBe('FREE');
+    expect(body.mode).toBe('DISCUSS');
     expect(body.updatedAt).toBe('2025-01-01T00:00:00.000Z');
     expect(getIntentSession).toHaveBeenCalledWith(
       expect.anything(),
@@ -104,6 +104,38 @@ describe('GET /api/intent/sessions/[id]/mode', () => {
     expect(response.status).toBe(200);
     expect(body.mode).toBe('DRAFTING');
     expect(body.updatedAt).toBe('2025-01-01T01:00:00.000Z');
+  });
+
+  test('returns 200 for ACT mode', async () => {
+    const { getIntentSession } = require('../../src/lib/db/intentSessions');
+
+    getIntentSession.mockResolvedValue({
+      success: true,
+      data: {
+        id: TEST_SESSION_ID,
+        user_id: TEST_USER_ID,
+        title: 'Test Session',
+        created_at: '2025-01-01T00:00:00.000Z',
+        updated_at: '2025-01-01T02:00:00.000Z',
+        status: 'active',
+        conversation_mode: 'ACT',
+        messages: [],
+      },
+    });
+
+    const request = new NextRequest(`http://localhost/api/intent/sessions/${TEST_SESSION_ID}/mode`, {
+      headers: {
+        'x-request-id': 'test-req-get-mode-act',
+        'x-afu9-sub': TEST_USER_ID,
+      },
+    });
+
+    const response = await getMode(request, { params: Promise.resolve({ id: TEST_SESSION_ID }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.mode).toBe('ACT');
+    expect(body.updatedAt).toBe('2025-01-01T02:00:00.000Z');
   });
 
   test('returns 401 when user is not authenticated', async () => {
@@ -226,13 +258,13 @@ describe('PUT /api/intent/sessions/[id]/mode', () => {
     );
   });
 
-  test('updates mode to FREE and returns deterministic schema', async () => {
+  test('updates mode to DISCUSS and returns deterministic schema', async () => {
     const { updateSessionMode } = require('../../src/lib/db/intentSessions');
 
     updateSessionMode.mockResolvedValue({
       success: true,
       data: {
-        mode: 'FREE',
+        mode: 'DISCUSS',
         updated_at: '2025-01-01T03:00:00.000Z',
       },
     });
@@ -241,18 +273,63 @@ describe('PUT /api/intent/sessions/[id]/mode', () => {
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
-        'x-request-id': 'test-req-update-mode-free',
+        'x-request-id': 'test-req-update-mode-discuss',
         'x-afu9-sub': TEST_USER_ID,
       },
-      body: JSON.stringify({ mode: 'FREE' }),
+      body: JSON.stringify({ mode: 'DISCUSS' }),
     });
 
     const response = await updateMode(request, { params: Promise.resolve({ id: TEST_SESSION_ID }) });
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.mode).toBe('FREE');
+    expect(response.headers.get('x-request-id')).toBe('test-req-update-mode-discuss');
+    expect(body.version).toBe(CONVERSATION_MODE_VERSION);
+    expect(body.mode).toBe('DISCUSS');
     expect(body.updatedAt).toBe('2025-01-01T03:00:00.000Z');
+    expect(updateSessionMode).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_SESSION_ID,
+      TEST_USER_ID,
+      'DISCUSS'
+    );
+  });
+
+  test('updates mode to ACT and returns deterministic schema', async () => {
+    const { updateSessionMode } = require('../../src/lib/db/intentSessions');
+
+    updateSessionMode.mockResolvedValue({
+      success: true,
+      data: {
+        mode: 'ACT',
+        updated_at: '2025-01-01T04:00:00.000Z',
+      },
+    });
+
+    const request = new NextRequest(`http://localhost/api/intent/sessions/${TEST_SESSION_ID}/mode`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'test-req-update-mode-act',
+        'x-afu9-sub': TEST_USER_ID,
+      },
+      body: JSON.stringify({ mode: 'ACT' }),
+    });
+
+    const response = await updateMode(request, { params: Promise.resolve({ id: TEST_SESSION_ID }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-request-id')).toBe('test-req-update-mode-act');
+    expect(body.version).toBe(CONVERSATION_MODE_VERSION);
+    expect(body.mode).toBe('ACT');
+    expect(body.updatedAt).toBe('2025-01-01T04:00:00.000Z');
+    expect(updateSessionMode).toHaveBeenCalledWith(
+      expect.anything(),
+      TEST_SESSION_ID,
+      TEST_USER_ID,
+      'ACT'
+    );
   });
 
   test('returns 401 when user is not authenticated', async () => {
@@ -262,7 +339,7 @@ describe('PUT /api/intent/sessions/[id]/mode', () => {
         'content-type': 'application/json',
         'x-request-id': 'test-req-update-mode-unauth',
       },
-      body: JSON.stringify({ mode: 'FREE' }),
+      body: JSON.stringify({ mode: 'DISCUSS' }),
     });
 
     const response = await updateMode(request, { params: Promise.resolve({ id: TEST_SESSION_ID }) });
@@ -341,7 +418,7 @@ describe('PUT /api/intent/sessions/[id]/mode', () => {
         'x-request-id': 'test-req-update-mode-not-found',
         'x-afu9-sub': TEST_USER_ID,
       },
-      body: JSON.stringify({ mode: 'FREE' }),
+      body: JSON.stringify({ mode: 'DISCUSS' }),
     });
 
     const response = await updateMode(request, { params: Promise.resolve({ id: 'nonexistent' }) });
@@ -389,7 +466,7 @@ describe('PUT /api/intent/sessions/[id]/mode', () => {
         'x-request-id': 'test-req-update-mode-no-id',
         'x-afu9-sub': TEST_USER_ID,
       },
-      body: JSON.stringify({ mode: 'FREE' }),
+      body: JSON.stringify({ mode: 'DISCUSS' }),
     });
 
     const response = await updateMode(request, { params: Promise.resolve({ id: '' }) });

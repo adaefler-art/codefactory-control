@@ -140,6 +140,11 @@ export const API_ROUTES = {
     tools: {
       catalog: '/api/admin/tools/catalog',
     },
+    runbooks: {
+      list: '/api/admin/runbooks',
+      get: (slug: string) => `/api/admin/runbooks/${slug}`,
+    },
+    activity: '/api/admin/activity',
   },
 
   // Playbooks
@@ -328,13 +333,14 @@ export const API_ROUTES = {
       save: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
       validate: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr/validate`,
     },
-    // Issue Draft routes (E81.2, E81.3)
+    // Issue Draft routes (E81.2, E81.3, I907)
     issueDraft: {
       get: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft`,
       save: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft`,
       validate: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/validate`,
       commit: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/commit`,
       versions: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions`,
+      publish: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions/publish`, // I907
     },
   },
 } as const;

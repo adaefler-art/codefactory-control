@@ -12,6 +12,7 @@ import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-he
 import {
   INTENT_CONVERSATION_MODES,
   DEFAULT_CONVERSATION_MODE,
+  normalizeConversationMode,
   type ConversationMode,
 } from '@/lib/schemas/conversationMode';
 
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Validate conversationMode: if provided must be valid, if missing defaults to FREE
+    // Validate conversationMode: if provided must be valid, if missing defaults to DISCUSS
     let conversationMode: ConversationMode = DEFAULT_CONVERSATION_MODE;
     if (body.conversationMode !== undefined) {
       if (!INTENT_CONVERSATION_MODES.includes(body.conversationMode)) {
@@ -139,7 +140,8 @@ export async function POST(request: NextRequest) {
           details: `conversationMode must be one of: ${INTENT_CONVERSATION_MODES.join(', ')}`,
         });
       }
-      conversationMode = body.conversationMode;
+      // Normalize FREE -> DISCUSS for backward compatibility
+      conversationMode = normalizeConversationMode(body.conversationMode);
     }
 
     const result = await createIntentSession(pool, userId, {

@@ -26,16 +26,20 @@ type AllowedConversationModeVersion = typeof ACTIVE_CONVERSATION_MODE_VERSIONS[n
 export const CONVERSATION_MODE_VERSION: AllowedConversationModeVersion = '1.0.0';
 
 /**
- * Conversation Mode Values (Single Source of Truth)
- * - FREE: Default mode, unrestricted conversation
- * - DRAFTING: Focused mode for issue/CR drafting with tool restrictions
+ * Conversation Mode Values (I903: DISCUSS/DRAFTING/ACT)
+ * - DISCUSS: Free planning and discussion, no auto-drafting, draft-mutating tools blocked
+ * - DRAFTING: Structured drafting mode, schema-guided but not validated yet
+ * - ACT: Validation and write operations, commits, publishes
+ * 
+ * Note: 'FREE' is accepted for backward compatibility but is not a first-class mode.
+ * It will be normalized to 'DISCUSS' by the application layer.
  * 
  * This array is the canonical list used by:
  * - Zod schema (server validation)
  * - DB constraint (chk_intent_session_conversation_mode)
  * - Client typing/validation
  */
-export const INTENT_CONVERSATION_MODES = ['FREE', 'DRAFTING'] as const;
+export const INTENT_CONVERSATION_MODES = ['DISCUSS', 'DRAFTING', 'ACT', 'FREE'] as const;
 
 /**
  * Zod enum derived from INTENT_CONVERSATION_MODES
@@ -43,6 +47,15 @@ export const INTENT_CONVERSATION_MODES = ['FREE', 'DRAFTING'] as const;
 export const ConversationModeEnum = z.enum(INTENT_CONVERSATION_MODES);
 
 export type ConversationMode = z.infer<typeof ConversationModeEnum>;
+
+/**
+ * Normalize mode values for backward compatibility
+ * FREE → DISCUSS
+ */
+export function normalizeConversationMode(mode: string): ConversationMode {
+  if (mode === 'FREE') return 'DISCUSS';
+  return mode as ConversationMode;
+}
 
 /**
  * Conversation Mode Response Schema V1
@@ -69,4 +82,4 @@ export type ConversationModeUpdateRequest = z.infer<typeof ConversationModeUpdat
 /**
  * Default conversation mode for new sessions
  */
-export const DEFAULT_CONVERSATION_MODE: ConversationMode = 'FREE';
+export const DEFAULT_CONVERSATION_MODE: ConversationMode = 'DISCUSS';

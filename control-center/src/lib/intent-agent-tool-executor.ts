@@ -26,21 +26,22 @@ import { logToolExecution, type TriggerType } from '@/lib/db/toolExecutionAudit'
 
 /**
  * Tool execution context
- * V09-I02: Added triggerType and conversationMode for tool gating
+ * I903: Added DISCUSS/DRAFTING/ACT modes for three-stage steering
  */
 export interface ToolContext {
   userId: string;
   sessionId: string;
   triggerType: TriggerType;
-  conversationMode: 'FREE' | 'DRAFTING';
+  conversationMode: 'DISCUSS' | 'DRAFTING' | 'ACT';
 }
 
 /**
  * Execute an INTENT tool call
  * 
- * V09-I02: Implements tool gating based on conversation mode and trigger type
- * - In FREE mode: draft-mutating tools blocked unless triggerType is USER_EXPLICIT or UI_ACTION
- * - In DRAFTING mode: all tools allowed (existing behavior)
+ * I903: Implements three-stage tool gating based on conversation mode and trigger type
+ * - In DISCUSS mode: draft-mutating tools blocked unless triggerType is USER_EXPLICIT or UI_ACTION
+ * - In DRAFTING mode: draft-mutating tools allowed, but validation not enforced
+ * - In ACT mode: all tools allowed with full validation (existing behavior)
  * - All executions logged to audit trail
  * 
  * @param toolName - The tool to execute
@@ -65,12 +66,12 @@ export async function executeIntentTool(
   });
   
   try {
-    // V09-I02: Tool gating enforcement
+    // I903: Tool gating enforcement for three-stage steering
     // 1. Check if tool is draft-mutating
     const isDraftMutating = isDraftMutatingTool(toolName);
     
-    // 2. In FREE mode, block draft-mutating tools unless explicitly triggered
-    if (conversationMode === 'FREE' && isDraftMutating) {
+    // 2. In DISCUSS mode, block draft-mutating tools unless explicitly triggered
+    if (conversationMode === 'DISCUSS' && isDraftMutating) {
       if (triggerType !== 'USER_EXPLICIT' && triggerType !== 'UI_ACTION') {
         // Log blocked execution
         await logToolExecution(pool, {
@@ -80,15 +81,15 @@ export async function executeIntentTool(
           triggerType,
           conversationMode,
           success: false,
-          errorCode: 'DRAFT_TOOL_BLOCKED_IN_FREE_MODE',
+          errorCode: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
         });
         
         return JSON.stringify({
           success: false,
-          error: 'Draft-mutating tools are not allowed in FREE mode without explicit user command',
-          code: 'DRAFT_TOOL_BLOCKED_IN_FREE_MODE',
+          error: 'Draft-mutating tools are not allowed in DISCUSS mode without explicit user command',
+          code: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
           tool: toolName,
-          suggestion: 'Switch to DRAFTING mode or use explicit commands like "create draft now", "update draft", "commit draft"',
+          suggestion: 'Switch to DRAFTING mode or use explicit commands like "/draft", "create draft now", "update draft", "commit draft"',
           triggerType,
           conversationMode,
         });
