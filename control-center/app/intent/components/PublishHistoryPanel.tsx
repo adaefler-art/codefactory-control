@@ -84,8 +84,8 @@ export default function PublishHistoryPanel({
         }
       );
 
-      if (response.success && response.batches) {
-        setBatches(response.batches);
+      if (typeof response === 'object' && response !== null && 'success' in response && 'batches' in response && (response as any).success) {
+        setBatches((response as { batches: PublishBatch[] }).batches);
       } else {
         setError("Failed to load publish batches");
       }
@@ -118,10 +118,10 @@ export default function PublishHistoryPanel({
             }
           );
 
-          if (response.success && response.batches?.[0]?.items) {
+          if (typeof response === 'object' && response !== null && 'success' in response && 'batches' in response && (response as any).success && Array.isArray((response as any).batches) && (response as any).batches[0]?.items) {
             const updatedBatches = batches.map(b =>
               b.batch_id === batchId
-                ? { ...b, items: response.batches[0].items }
+                ? { ...b, items: (response as any).batches[0].items }
                 : b
             );
             setBatches(updatedBatches);

@@ -11,6 +11,7 @@
  * Issue: I905 - Runbooks UX
  */
 
+import * as React from "react";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -52,11 +53,11 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
  * Only supports safe markdown features, no raw HTML
  */
 function MarkdownRenderer({ content }: { content: string }) {
-  const [renderedContent, setRenderedContent] = useState<JSX.Element[]>([]);
+  const [renderedContent, setRenderedContent] = useState<React.ReactElement[]>([]);
 
   useEffect(() => {
     const lines = content.split('\n');
-    const elements: JSX.Element[] = [];
+    const elements: React.ReactElement[] = [];
     let i = 0;
     let inCodeBlock = false;
     let codeBlockContent: string[] = [];
@@ -251,7 +252,7 @@ export default function RunbookDetailPage() {
         {!loading && runbook && (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white">
+            <div className="bg-linear-to-r from-blue-600 to-blue-700 px-8 py-6 text-white">
               <h1 className="text-3xl font-bold mb-2">{runbook.title}</h1>
               {runbook.purpose && (
                 <p className="text-blue-100">{runbook.purpose}</p>

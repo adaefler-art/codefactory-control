@@ -160,7 +160,12 @@ export default function IntentPage() {
         cache: "no-store",
       });
       const data = await safeFetch(response);
-      setSessions(data.sessions || []);
+      if (typeof data === 'object' && data !== null && 'sessions' in data && Array.isArray((data as any).sessions)) {
+        setSessions((data as { sessions: IntentSession[] }).sessions);
+      } else {
+        setSessions([]);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Failed to fetch sessions:", err);
       setError(formatErrorMessage(err));
@@ -176,9 +181,24 @@ export default function IntentPage() {
         cache: "no-store",
       });
       const data = await safeFetch(response);
-      setMessages(data.messages || []);
-      // Update conversation mode when fetching session data
-      setConversationMode(data.conversation_mode || "DISCUSS");
+      if (
+        typeof data === 'object' &&
+        data !== null &&
+        'messages' in data &&
+        Array.isArray((data as any).messages)
+      ) {
+        setMessages((data as { messages: IntentMessage[] }).messages);
+        if ('conversation_mode' in data &&
+            ((data as any).conversation_mode === 'DISCUSS' || (data as any).conversation_mode === 'DRAFTING' || (data as any).conversation_mode === 'ACT')) {
+          setConversationMode((data as { conversation_mode: "DISCUSS" | "DRAFTING" | "ACT" }).conversation_mode);
+        } else {
+          setConversationMode("DISCUSS");
+        }
+      } else {
+        setMessages([]);
+        setConversationMode("DISCUSS");
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Failed to fetch messages:", err);
       setError(formatErrorMessage(err));
@@ -212,7 +232,16 @@ export default function IntentPage() {
       });
 
       const data = await safeFetch(response);
-      setConversationMode(data.mode);
+      if (
+        typeof data === 'object' &&
+        data !== null &&
+        'mode' in data &&
+        ((data as any).mode === 'DISCUSS' || (data as any).mode === 'DRAFTING' || (data as any).mode === 'ACT')
+      ) {
+        setConversationMode((data as { mode: "DISCUSS" | "DRAFTING" | "ACT" }).mode);
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Failed to toggle conversation mode:", err);
       setError(formatErrorMessage(err));
@@ -230,11 +259,23 @@ export default function IntentPage() {
         body: JSON.stringify({}),
       });
       const newSession = await safeFetch(response);
-      setSessions((prev) => [newSession, ...prev]);
-      setCurrentSessionId(newSession.id);
-      setMessages([]);
-      setInputValue("");
-      setConversationMode(newSession.conversation_mode || "DISCUSS");
+      if (
+        typeof newSession === 'object' &&
+        newSession !== null &&
+        'id' in newSession && typeof (newSession as any).id === 'string'
+      ) {
+        setSessions((prev) => [newSession as IntentSession, ...prev]);
+        setCurrentSessionId((newSession as { id: string }).id);
+        setMessages([]);
+        setInputValue("");
+        if ('conversation_mode' in newSession && ((newSession as any).conversation_mode === 'DISCUSS' || (newSession as any).conversation_mode === 'DRAFTING' || (newSession as any).conversation_mode === 'ACT')) {
+          setConversationMode((newSession as { conversation_mode: "DISCUSS" | "DRAFTING" | "ACT" }).conversation_mode);
+        } else {
+          setConversationMode("DISCUSS");
+        }
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Failed to create session:", err);
       setError(formatErrorMessage(err));
@@ -275,34 +316,42 @@ export default function IntentPage() {
           body: JSON.stringify({}),
         });
         const newSession = await safeFetch(createResponse);
-        
-        console.log('[INTENT] Created new session:', newSession.id.substring(0, 20));
-        
-        setSessions((prev) => [newSession, ...prev]);
-        setCurrentSessionId(newSession.id);
+        if (
+          typeof newSession === 'object' &&
+          newSession !== null &&
+          'id' in newSession && typeof (newSession as any).id === 'string'
+        ) {
+          console.log('[INTENT] Created new session:', (newSession as any).id.substring(0, 20));
+          setSessions((prev) => [newSession as IntentSession, ...prev]);
+          setCurrentSessionId((newSession as { id: string }).id);
 
-        // Now send the message to the new session
-        console.log('[INTENT] Sending message to new session:', newSession.id.substring(0, 20));
-        
-        const sendResponse = await fetch(
-          API_ROUTES.intent.messages.create(newSession.id),
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ content: messageContent }),
+          // Now send the message to the new session
+          console.log('[INTENT] Sending message to new session:', (newSession as any).id.substring(0, 20));
+          const sendResponse = await fetch(
+            API_ROUTES.intent.messages.create((newSession as { id: string }).id),
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ content: messageContent }),
+            }
+          );
+          const data = await safeFetch(sendResponse);
+          if (
+            typeof data === 'object' &&
+            data !== null &&
+            'userMessage' in data && 'assistantMessage' in data
+          ) {
+            setMessages([(data as any).userMessage, (data as any).assistantMessage]);
+          } else {
+            setMessages([]);
+            setError('Invalid response from server');
           }
-        );
-        const data = await safeFetch(sendResponse);
-        
-        // Append both user and assistant messages
-        setMessages([data.userMessage, data.assistantMessage]);
-
-        // Ensure Issue Draft drawer refreshes after first message
-        setIssueDraftRefreshKey((prev) => prev + 1);
-
-        // Refresh sessions list to update the title
-        await fetchSessions();
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          await fetchSessions();
+        } else {
+          setError('Invalid response from server');
+        }
       } catch (err) {
         console.error("Failed to auto-create session and send message:", err);
         setError(formatErrorMessage(err));
@@ -333,16 +382,16 @@ export default function IntentPage() {
         }
       );
       const data = await safeFetch(response);
-      
-      console.log('[INTENT] Message sent successfully, received response');
-      
-      // Append both user and assistant messages
-      setMessages((prev) => [...prev, data.userMessage, data.assistantMessage]);
-
-      // Refresh Issue Draft panel (if open) after message send
+      if (
+        typeof data === 'object' &&
+        data !== null &&
+        'userMessage' in data && 'assistantMessage' in data
+      ) {
+        setMessages((prev) => [...prev, (data as any).userMessage, (data as any).assistantMessage]);
+      } else {
+        setError('Invalid response from server');
+      }
       setIssueDraftRefreshKey((prev) => prev + 1);
-
-      // Refresh sessions list to update the title
       await fetchSessions();
     } catch (err) {
       console.error("[INTENT] Failed to send message:", {
@@ -373,32 +422,36 @@ export default function IntentPage() {
       );
       
       const packData = await safeFetch(response);
-      
-      // Store pack metadata for display
-      setExportedPackId(packData.id);
-      setExportedPackHash(packData.pack_hash);
-      setExportedPackCreatedAt(packData.created_at);
-      
-      // Trigger download
-      const downloadUrl = API_ROUTES.intent.contextPacks.get(packData.id);
-      const downloadResponse = await fetch(downloadUrl, {
-        credentials: "include",
-      });
-      
-      if (!downloadResponse.ok) {
-        throw new Error("Failed to download context pack");
+      if (
+        typeof packData === 'object' &&
+        packData !== null &&
+        'id' in packData && typeof (packData as any).id === 'string' &&
+        'pack_hash' in packData && typeof (packData as any).pack_hash === 'string' &&
+        'created_at' in packData && typeof (packData as any).created_at === 'string'
+      ) {
+        setExportedPackId((packData as any).id);
+        setExportedPackHash((packData as any).pack_hash);
+        setExportedPackCreatedAt((packData as any).created_at);
+        const downloadUrl = API_ROUTES.intent.contextPacks.get((packData as any).id);
+        const downloadResponse = await fetch(downloadUrl, {
+          credentials: "include",
+        });
+        if (!downloadResponse.ok) {
+          throw new Error("Failed to download context pack");
+        }
+        // Create blob and download
+        const blob = await downloadResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `context-pack-${currentSessionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        setError('Invalid response from server');
       }
-      
-      // Create blob and download
-      const blob = await downloadResponse.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `context-pack-${currentSessionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
     } catch (err) {
       console.error("Failed to export context pack:", err);
       setError(formatErrorMessage(err));
@@ -420,7 +473,12 @@ export default function IntentPage() {
         }
       );
       const data = await safeFetch(response);
-      setContextPacks(data.packs || []);
+      if (typeof data === 'object' && data !== null && 'packs' in data && Array.isArray((data as any).packs)) {
+        setContextPacks((data as { packs: any[] }).packs);
+      } else {
+        setContextPacks([]);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Failed to fetch context packs:", err);
       setError(formatErrorMessage(err));

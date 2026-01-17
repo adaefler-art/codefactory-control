@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface DashboardStats {
   executions: {
@@ -110,28 +111,41 @@ export default function DashboardPage() {
       try {
         setDeployEventStatus("loading");
 
+
         // Fetch executions
-        const executionsRes = await fetch("/api/workflow/executions?limit=10", { credentials: "include" });
-        const executionsData = await safeFetch(executionsRes);
-        
+        const executionsRes = await fetch(`${API_ROUTES.workflow.executions}?limit=10`, { credentials: "include" });
+        const executionsDataRaw = await safeFetch(executionsRes);
+        const executionsData = (typeof executionsDataRaw === 'object' && executionsDataRaw !== null && 'executions' in executionsDataRaw)
+          ? executionsDataRaw as { executions: any[] }
+          : { executions: [] };
+
         // Fetch workflows
-        const workflowsRes = await fetch("/api/workflows", { credentials: "include" });
-        const workflowsData = await safeFetch(workflowsRes);
-        
+        const workflowsRes = await fetch(API_ROUTES.workflows.list, { credentials: "include" });
+        const workflowsDataRaw = await safeFetch(workflowsRes);
+        const workflowsData = (typeof workflowsDataRaw === 'object' && workflowsDataRaw !== null && 'workflows' in workflowsDataRaw)
+          ? workflowsDataRaw as { workflows: any[] }
+          : { workflows: [] };
+
         // Fetch agents
-        const agentsRes = await fetch("/api/agents?limit=100", { credentials: "include" });
-        const agentsData = await safeFetch(agentsRes);
-        
+        const agentsRes = await fetch(`${API_ROUTES.agents.list}?limit=100`, { credentials: "include" });
+        const agentsDataRaw = await safeFetch(agentsRes);
+        const agentsData = (typeof agentsDataRaw === 'object' && agentsDataRaw !== null && 'agents' in agentsDataRaw)
+          ? agentsDataRaw as { agents: any[] }
+          : { agents: [] };
+
         // Fetch repositories
-        const reposRes = await fetch("/api/repositories", { credentials: "include" });
-        const reposData = await safeFetch(reposRes);
+        const reposRes = await fetch(API_ROUTES.repositories.list, { credentials: "include" });
+        const reposDataRaw = await safeFetch(reposRes);
+        const reposData = (typeof reposDataRaw === 'object' && reposDataRaw !== null && 'repositories' in reposDataRaw)
+          ? reposDataRaw as { repositories: any[] }
+          : { repositories: [] };
 
         // Fetch infrastructure health
-        const healthRes = await fetch("/api/infrastructure/health", { credentials: "include" });
+        const healthRes = await fetch(API_ROUTES.health.infrastructure, { credentials: "include" });
         const healthData = await safeFetch(healthRes);
 
         // Fetch alarm status
-        const alarmsRes = await fetch("/api/observability/alarms", { credentials: "include" });
+        const alarmsRes = await fetch(API_ROUTES.observability.alarms, { credentials: "include" });
         const alarmsData = await safeFetch(alarmsRes);
 
         // Fetch latest deploy event (AFU9-TL-001)
@@ -142,7 +156,7 @@ export default function DashboardPage() {
           const service = 'control-center';
           const query = new URLSearchParams({ env, service, limit: '1' }).toString();
 
-          const deployEventsRes = await fetch(`/api/deploy-events?${query}`, { credentials: 'include' });
+          const deployEventsRes = await fetch(`${API_ROUTES.deployEvents.list}?${query}`, { credentials: 'include' });
 
           if (!deployEventsRes.ok) {
             setLatestDeployEvent(null);
@@ -165,8 +179,11 @@ export default function DashboardPage() {
               setDeployEventErrorDetails(null);
             }
           } else {
-            const deployEventsData = await safeFetch(deployEventsRes);
-            const maybeEvent = Array.isArray(deployEventsData?.events)
+            const deployEventsDataRaw = await safeFetch(deployEventsRes);
+            const deployEventsData = (typeof deployEventsDataRaw === 'object' && deployEventsDataRaw !== null && 'events' in deployEventsDataRaw)
+              ? deployEventsDataRaw as { events: any[] }
+              : { events: [] };
+            const maybeEvent = Array.isArray(deployEventsData.events)
               ? (deployEventsData.events[0] as DeployEvent | undefined)
               : undefined;
 
@@ -181,10 +198,10 @@ export default function DashboardPage() {
         }
 
         // Calculate stats
-        const executions = executionsData.executions || [];
-        const workflows = workflowsData.workflows || [];
-        const agents = agentsData.agents || [];
-        const repositories = reposData.repositories || [];
+        const executions = Array.isArray(executionsData.executions) ? executionsData.executions : [];
+        const workflows = Array.isArray(workflowsData.workflows) ? workflowsData.workflows : [];
+        const agents = Array.isArray(agentsData.agents) ? agentsData.agents : [];
+        const repositories = Array.isArray(reposData.repositories) ? reposData.repositories : [];
 
         const executionStats = {
           total: executions.length,
@@ -226,8 +243,8 @@ export default function DashboardPage() {
 
         setRecentExecutions(executions.slice(0, 5));
         setRecentAgents(agents.slice(0, 5));
-        setInfrastructureHealth(healthData);
-        setAlarmStatus(alarmsData);
+        setInfrastructureHealth(healthData as InfrastructureHealth);
+        setAlarmStatus(alarmsData as AlarmStatus);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
         setError(formatErrorMessage(err));
@@ -285,7 +302,7 @@ export default function DashboardPage() {
 
   const getOverallHealthStatus = (): HealthStatus => {
     // Determine overall health based on alarms and infrastructure
-    if (!alarmStatus || !infrastructureHealth) {
+    if (!alarmStatus || !infrastructureHealth || !alarmStatus.data || !alarmStatus.data.summary) {
       return 'unknown';
     }
 
@@ -295,7 +312,7 @@ export default function DashboardPage() {
     }
 
     // Warning if infrastructure is unavailable or has issues
-    if (infrastructureHealth.status === 'unavailable' || infrastructureHealth.status === 'error') {
+    if (infrastructureHealth.status === 'unavailable' || infrastructureHealth.status === 'error' || typeof alarmStatus.data.summary.insufficientData === 'undefined') {
       return 'warning';
     }
 

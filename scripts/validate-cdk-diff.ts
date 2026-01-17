@@ -166,6 +166,7 @@ function runCdkDiff(stackName: string, cdkArgs: string[]): string {
     const safeEnv = {
       PATH: process.env.PATH || '',
       HOME: process.env.HOME || '',
+      NODE_ENV: process.env.NODE_ENV || 'development',
       AWS_REGION: process.env.AWS_REGION || 'eu-central-1',
       AWS_DEFAULT_REGION: process.env.AWS_DEFAULT_REGION || process.env.AWS_REGION || 'eu-central-1',
       AWS_PROFILE: process.env.AWS_PROFILE || '',

@@ -53,6 +53,20 @@ interface AuditAction {
   error_message: string | null;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isPRStatus = (value: unknown): value is PRStatus =>
+  isRecord(value) &&
+  typeof value.pr_state === "string" &&
+  typeof value.pr_mergeable_state === "string" &&
+  typeof value.pr_draft === "boolean" &&
+  typeof value.checks_total === "number" &&
+  typeof value.checks_passed === "number" &&
+  typeof value.checks_failed === "number" &&
+  typeof value.checks_pending === "number" &&
+  typeof value.last_synced_at === "string";
+
 export default function WorkflowRunnerPage() {
   const [items, setItems] = useState<WorkflowItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<WorkflowItem | null>(null);
@@ -114,7 +128,13 @@ export default function WorkflowRunnerPage() {
       });
 
       const data = await safeFetch(response);
-      setPRStatus(data.data);
+      const status = isRecord(data) ? data.data : null;
+      if (isPRStatus(status)) {
+        setPRStatus(status);
+      } else {
+        setPRStatus(null);
+        setError("Invalid response from server");
+      }
     } catch (err) {
       console.error("Error syncing PR status:", err);
       setError(formatErrorMessage(err));

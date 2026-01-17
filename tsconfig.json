@@ -10,13 +10,22 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": ".",
-    "types": ["node", "jest"]
+    "jsx": "react-jsx",
+    "types": ["react", "node", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "control-center/app/*",
+        "control-center/src/*"
+      ]
+    }
   },
   "include": [
     "bin/**/*.ts",
     "lib/**/*.ts",
     "infra/lambdas/**/*.ts",
     "packages/deploy-memory/src/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "control-center/app/**/*.tsx"
   ]
 }

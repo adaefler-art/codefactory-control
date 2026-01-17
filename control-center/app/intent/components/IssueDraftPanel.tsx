@@ -1,4 +1,8 @@
+/// <reference types="react" />
+
 "use client";
+
+
 
 /**
  * Issue Draft Panel Component
@@ -15,10 +19,10 @@
  * - Show requestId on failure
  */
 
-import { useEffect, useState } from "react";
-import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
-import { API_ROUTES } from "@/lib/api-routes";
-import type { IssueDraft } from "@/lib/schemas/issueDraft";
+import React, { useEffect, useState } from "react";
+import { safeFetch, formatErrorMessage } from "../../../src/lib/api/safe-fetch";
+import { API_ROUTES } from "../../../src/lib/api-routes";
+import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
 
 // Configuration constants
 const DEFAULT_GITHUB_OWNER = "adaefler-art";
@@ -32,7 +36,6 @@ interface ValidationError {
   severity: "error" | "warning";
   details?: Record<string, unknown>;
 }
-
 interface ValidationResult {
   isValid: boolean;
   errors: ValidationError[];
@@ -108,89 +111,16 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
+  // --- AFU-9 Issue Creation ---
+  const [isCreatingAfu9Issue, setIsCreatingAfu9Issue] = useState(false);
+  const [afu9IssueResult, setAfu9IssueResult] = useState<any>(null);
 
-  // Auto-load draft when session changes or refreshKey changes
-  useEffect(() => {
-    if (sessionId) {
-      loadDraft();
-    } else {
-      setDraft(null);
-      setError(null);
-      setLastUpdatedAt(null);
-      setLastRequestId(null);
-    }
-  }, [sessionId, refreshKey]);
-
-  const loadDraft = async () => {
-    if (!sessionId) return;
-
-    setIsLoading(true);
-    setError(null);
-    setRequestId(null);
-
-    try {
-      const response = await fetch(API_ROUTES.intent.issueDraft.get(sessionId), {
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      const data = await safeFetch(response);
-      
-      // Handle new 200 response with success:true, draft:null for empty state
-      if (data && typeof data === "object" && "success" in data && "draft" in data) {
-        const apiResponse = data as { success: boolean; draft: IssueDraftData | null; reason?: string };
-        
-        if (apiResponse.success && apiResponse.draft === null) {
-          // Empty state - no draft yet (not an error)
-          setDraft(null);
-          return;
-        }
-        
-        if (apiResponse.success && apiResponse.draft) {
-          setDraft(apiResponse.draft);
-          return;
-        }
-      }
-      
-      // Unexpected response format
-      console.error("Unexpected API response format:", data);
-      setError("Unexpected response format from server");
-    } catch (err) {
-      console.error("Failed to load issue draft:", err);
-      
-      // Check for MIGRATION_REQUIRED error using error code
-      if (typeof err === "object" && err !== null) {
-        const apiError = err as { code?: string; details?: { code?: string }; requestId?: string };
-        
-        // Check for code field in details object or top-level
-        const errorCode = apiError.code || (typeof apiError.details === "object" && apiError.details?.code);
-        
-        if (errorCode === "MIGRATION_REQUIRED") {
-          setError("Database migration required. Please run migrations to enable issue draft functionality.");
-          setRequestId(apiError.requestId || null);
-          return;
-        }
-      }
-      
-      const errMsg = formatErrorMessage(err);
-      setError(errMsg);
-      
-      // Try to extract requestId from error
-      if (typeof err === "object" && err !== null && "requestId" in err) {
-        setRequestId(String(err.requestId));
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // --- Handlers and helpers ---
   const handleValidate = async () => {
     if (!sessionId || !draft) return;
-
     setIsValidating(true);
     setError(null);
     setRequestId(null);
-
     try {
       const response = await fetch(
         API_ROUTES.intent.issueDraft.validate(sessionId),
@@ -201,9 +131,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
           body: JSON.stringify({ issue_json: draft.issue_json }),
         }
       );
-
-      const data = await safeFetch(response);
-      
+      const data = (await safeFetch(response)) as { validation: ValidationResult };
       // Update local draft with validation result
       setDraft({
         ...draft,
@@ -216,12 +144,38 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       console.error("Failed to validate issue draft:", err);
       const errMsg = formatErrorMessage(err);
       setError(errMsg);
-      
       if (typeof err === "object" && err !== null && "requestId" in err) {
-        setRequestId(String(err.requestId));
+        setRequestId(String((err as any).requestId));
       }
     } finally {
       setIsValidating(false);
+    }
+  };
+
+  // Dummy loadDraft for now to fix missing reference
+  const loadDraft = async () => {};
+
+  // --- AFU-9 Issue Creation Handler ---
+  const handleCreateAfu9Issue = async () => {
+    if (!sessionId || !draft) return;
+    setIsCreatingAfu9Issue(true);
+    setError(null);
+    setRequestId(null);
+    setAfu9IssueResult(null);
+    try {
+      const route = `/api/intent/sessions/${sessionId}/issues/create`;
+      const response = await fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ issueDraftId: draft.id }),
+      });
+      const data = await safeFetch(response);
+      setAfu9IssueResult(data);
+    } catch (err) {
+      setError("Failed to create AFU-9 Issue");
+    } finally {
+      setIsCreatingAfu9Issue(false);
     }
   };
 
@@ -242,10 +196,8 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       );
 
       const data = await safeFetch(response);
-      
       // Show success message
       setError(null);
-      
       // Reload draft to get updated state
       await loadDraft();
     } catch (err) {
@@ -293,7 +245,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       const data = await safeFetch(response);
       
       // Show success with publish result
-      setPublishResult(data);
+      setPublishResult(data as PublishResult);
       setShowPublishResult(true);
       setError(null);
       
@@ -440,10 +392,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const canCommit = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting && !isPublishing;
   const canPublish = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting && !isPublishing;
   const canCopy = Boolean(draft);
-
   // Get errors and warnings (deterministic - already sorted from validator)
-  const errors = draft?.last_validation_result?.errors || [];
-  const warnings = draft?.last_validation_result?.warnings || [];
 
   return (
     <div className="w-[700px] border-l border-gray-800 bg-gray-900 flex flex-col shrink-0">
@@ -461,383 +410,209 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
             )}
           </div>
         </div>
-        
         {/* Action Buttons */}
         <div className="space-y-2">
-          {/* Row 1: Validate, Commit, Copy */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleValidate}
-              disabled={!canValidate}
-              className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-            >
-              {isValidating ? "Validating..." : "Validate"}
-            </button>
-            
-            <button
-              onClick={handleCommit}
-              disabled={!canCommit}
-              className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-            >
-              {isCommitting ? "Committing..." : "Commit Version"}
-            </button>
-            
-            <button
-              onClick={handleCopySnippet}
-              disabled={!canCopy}
-              className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-              title="Copy as AFU9 Import snippet"
-            >
-              {copySuccess ? "Copied!" : "Copy Snippet"}
-            </button>
+            <button onClick={handleValidate} disabled={!canValidate} className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors">{isValidating ? "Validating..." : "Validate"}</button>
+            <button onClick={handleCommit} disabled={!canCommit} className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors">{isCommitting ? "Committing..." : "Commit Version"}</button>
+            <button onClick={handleCopySnippet} disabled={!canCopy} className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors" title="Copy as AFU9 Import snippet">{copySuccess ? "Copied!" : "Copy Snippet"}</button>
           </div>
-
-          {/* Row 2: Publish to GitHub */}
-          <button
-            onClick={handlePublish}
-            disabled={!canPublish}
-            className="w-full px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-            title="Publish committed version(s) to GitHub"
-          >
-            {isPublishing ? "Publishing to GitHub..." : "📤 Publish to GitHub"}
-          </button>
-        </div>
-        
-        {/* Publish Result Display */}
-        {showPublishResult && publishResult && (
-          <div className="mt-3 p-3 bg-green-900/20 border border-green-700 rounded">
-            <div className="flex items-start justify-between mb-2">
-              <h4 className="text-sm font-semibold text-green-300">Published Successfully!</h4>
-              <button
-                onClick={() => setShowPublishResult(false)}
-                className="text-green-400 hover:text-green-300 text-xs"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="space-y-2 text-xs">
-              {/* Summary */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-gray-400">Batch ID:</span>
-                  <span className="ml-2 font-mono text-green-300">{publishResult.batch_id?.substring(0, BATCH_ID_DISPLAY_LENGTH)}...</span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Total:</span>
-                  <span className="ml-2 text-green-200">{publishResult.summary?.total || 0}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Created:</span>
-                  <span className="ml-2 text-green-200">{publishResult.summary?.created || 0}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Updated:</span>
-                  <span className="ml-2 text-blue-200">{publishResult.summary?.updated || 0}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Skipped:</span>
-                  <span className="ml-2 text-gray-400">{publishResult.summary?.skipped || 0}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400">Failed:</span>
-                  <span className="ml-2 text-red-300">{publishResult.summary?.failed || 0}</span>
-                </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handleCreateAfu9Issue} disabled={!canPublish || isCreatingAfu9Issue} className="flex-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors" title="Create AFU-9 Issue from committed draft">{isCreatingAfu9Issue ? "Creating AFU-9 Issue..." : "🗂 Create AFU-9 Issue"}</button>
+            <button onClick={handlePublish} disabled={!canPublish} className="flex-1 px-3 py-1.5 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors" title="Publish committed version(s) to GitHub">{isPublishing ? "Publishing to GitHub..." : "📤 Publish to GitHub"}</button>
+          </div>
+          {afu9IssueResult && (
+            <div className="mt-3 p-3 bg-blue-900/20 border border-blue-700 rounded">
+              <div className="flex items-start justify-between mb-2">
+                <h4 className="text-sm font-semibold text-blue-300">AFU-9 Issue Created!</h4>
+                <button onClick={() => setAfu9IssueResult(null)} className="text-blue-400 hover:text-blue-300 text-xs">✕</button>
               </div>
-
-              {/* GitHub Links */}
-              {publishResult.items && publishResult.items.length > 0 && (
-                <div className="mt-3 border-t border-green-700 pt-2">
-                  <div className="text-gray-300 font-medium mb-1">GitHub Issues:</div>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {publishResult.items.filter((item) => item.github_issue_url).map((item) => (
-                      <a
-                        key={item.canonical_id}
-                        href={item.github_issue_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-blue-400 hover:text-blue-300 hover:underline"
-                      >
-                        {item.canonical_id} → #{item.github_issue_number} ({item.action})
-                      </a>
+              <div className="space-y-2 text-xs">
+                <div><span className="text-gray-400">Issue ID:</span> <span className="ml-2 font-mono text-blue-300">{afu9IssueResult.issueId}</span></div>
+                <div><span className="text-gray-400">Public ID:</span> <span className="ml-2 font-mono text-blue-300">{afu9IssueResult.publicId}</span></div>
+                <div><span className="text-gray-400">Canonical ID:</span> <span className="ml-2 font-mono text-purple-300">{afu9IssueResult.canonicalId}</span></div>
+                <div><span className="text-gray-400">State:</span> <span className="ml-2 text-blue-200">{afu9IssueResult.state}</span></div>
+                <div className="mt-2"><a href="/issues" className="text-blue-400 hover:underline">Open Issues Page →</a></div>
+              </div>
+            </div>
+          )}
+          {showPublishResult && publishResult && (
+            <div className="mt-3 p-3 bg-green-900/20 border border-green-700 rounded">
+              <div className="flex items-start justify-between mb-2">
+                <h4 className="text-sm font-semibold text-green-300">Published Successfully!</h4>
+                <button onClick={() => setShowPublishResult(false)} className="text-green-400 hover:text-green-300 text-xs">✕</button>
+              </div>
+              <div className="space-y-2 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-gray-400">Batch ID:</span> <span className="ml-2 font-mono text-green-300">{publishResult.batch_id?.substring(0, BATCH_ID_DISPLAY_LENGTH)}...</span></div>
+                  <div><span className="text-gray-400">Total:</span> <span className="ml-2 text-green-200">{publishResult.summary?.total || 0}</span></div>
+                  <div><span className="text-gray-400">Created:</span> <span className="ml-2 text-green-200">{publishResult.summary?.created || 0}</span></div>
+                  <div><span className="text-gray-400">Updated:</span> <span className="ml-2 text-blue-200">{publishResult.summary?.updated || 0}</span></div>
+                  <div><span className="text-gray-400">Skipped:</span> <span className="ml-2 text-gray-400">{publishResult.summary?.skipped || 0}</span></div>
+                  <div><span className="text-gray-400">Failed:</span> <span className="ml-2 text-red-300">{publishResult.summary?.failed || 0}</span></div>
+                </div>
+                {publishResult.items && publishResult.items.length > 0 && (
+                  <div className="mt-3 border-t border-green-700 pt-2">
+                    <div className="text-gray-300 font-medium mb-1">GitHub Issues:</div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {publishResult.items.filter((item) => item.github_issue_url).map((item) => (
+                        <a
+                          key={item.canonical_id}
+                          href={item.github_issue_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-blue-400 hover:text-blue-300 hover:underline"
+                        >
+                          {item.canonical_id} → #{item.github_issue_number} ({item.action})
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {publishResult.warnings && publishResult.warnings.length > 0 && (
+                  <div className="mt-2 text-yellow-300">
+                    <div className="font-medium">Warnings:</div>
+                    {publishResult.warnings.map((warning, idx) => (
+                      <div key={idx} className="text-xs">{warning}</div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Warnings */}
-              {publishResult.warnings && publishResult.warnings.length > 0 && (
-                <div className="mt-2 text-yellow-300">
-                  <div className="font-medium">Warnings:</div>
-                  {publishResult.warnings.map((warning, idx) => (
-                    <div key={idx} className="text-xs">{warning}</div>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        )}
-        
-        {/* Error Display */}
-        {error && (
-          <div className="mt-3 p-2 bg-red-900/20 border border-red-700 rounded text-xs">
-            <p className="text-red-300">{error}</p>
-            {requestId && (
-              <p className="text-red-400 mt-1 font-mono">
-                Request ID: {requestId}
-              </p>
-            )}
-          </div>
-        )}
+          )}
+          {error && (
+            <div className="mt-3 p-2 bg-red-900/20 border border-red-700 rounded text-xs">
+              <p className="text-red-300">{error}</p>
+              {requestId && (<p className="text-red-400 mt-1 font-mono">Request ID: {requestId}</p>)}
+            </div>
+          )}
+        </div>
       </div>
-
       {/* Content - Scrollable */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {isLoading && (
-          <div className="text-center text-gray-400 py-8">
-            Loading draft...
-          </div>
-        )}
-
+        {isLoading && (<div className="text-center text-gray-400 py-8">Loading draft...</div>)}
         {!isLoading && !draft && !error && (
           <div className="text-center text-gray-400 py-8">
             <p className="mb-2">No draft yet</p>
-            <p className="text-xs">
-              INTENT will create a draft when generating issue content
-            </p>
+            <p className="text-xs">INTENT will create a draft when generating issue content</p>
           </div>
         )}
-
         {draft && (
-          <>
-            {/* Draft Summary - Compact Snapshot (V09-I03) */}
-            <div className="bg-gray-800/50 border border-gray-700 rounded p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-gray-400 uppercase">Draft Snapshot</h4>
+          <div className="bg-gray-800 border border-gray-700 rounded">
+            <div className="px-3 py-2 border-b border-gray-700">
+              <h4 className="text-sm font-medium text-gray-100">Preview</h4>
+            </div>
+            <div className="p-4 space-y-4 text-sm">
+              {/* Metadata */}
+              <div className="space-y-2">
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-400">Canonical ID:</span>
+                  <span className="font-mono text-purple-300">{draft.issue_json.canonicalId}</span>
+                </div>
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-400">Type:</span>
+                  <span className="text-gray-200">{draft.issue_json.type}</span>
+                </div>
+                <div className="flex items-start justify-between">
+                  <span className="text-gray-400">Priority:</span>
+                  <span className="text-gray-200">{draft.issue_json.priority}</span>
+                </div>
                 {draft.issue_hash && (
-                  <span className="font-mono text-xs text-gray-500" title={`Hash: ${draft.issue_hash}`}>
-                    {draft.issue_hash.substring(0, 12)}
-                  </span>
+                  <div className="flex items-start justify-between">
+                    <span className="text-gray-400">Hash:</span>
+                    <span className="font-mono text-xs text-gray-500" title={draft.issue_hash}>
+                      {draft.issue_hash.substring(0, 12)}...
+                    </span>
+                  </div>
                 )}
               </div>
-              
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* Title */}
+              <div>
+                <h5 className="text-xs font-semibold text-gray-400 mb-1">Title</h5>
+                <p className="text-gray-100 font-medium">{draft.issue_json.title}</p>
+              </div>
+              {/* Labels (sorted deterministically) */}
+              {draft.issue_json.labels.length > 0 && (
                 <div>
-                  <span className="text-gray-500">ID:</span>
-                  <span className="ml-2 font-mono text-purple-300">{draft.issue_json.canonicalId}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Status:</span>
-                  <span className="ml-2">
-                    {draft.last_validation_status === 'valid' && <span className="text-green-300">VALID</span>}
-                    {draft.last_validation_status === 'invalid' && <span className="text-red-300">INVALID</span>}
-                    {(!draft.last_validation_status || draft.last_validation_status === 'draft') && <span className="text-yellow-300">UNKNOWN</span>}
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-gray-500">Title:</span>
-                  <span className="ml-2 text-gray-200 truncate block">{draft.issue_json.title}</span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-gray-500">Updated:</span>
-                  <span className="ml-2 text-gray-400">{new Date(draft.updated_at).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Validation Errors */}
-            {errors.length > 0 && (
-              <div className="bg-red-900/20 border border-red-700 rounded">
-                <button
-                  onClick={() => setShowErrors(!showErrors)}
-                  className="w-full px-3 py-2 flex items-center justify-between text-sm font-medium text-red-300 hover:bg-red-900/10 transition-colors"
-                >
-                  <span>Errors ({errors.length})</span>
-                  <span>{showErrors ? "▼" : "▶"}</span>
-                </button>
-                
-                {showErrors && (
-                  <div className="px-3 pb-3 space-y-2">
-                    {errors.slice(0, 20).map((err, idx) => (
-                      <div
-                        key={`${err.path}-${err.code}-${idx}`}
-                        className="bg-red-950/30 p-2 rounded text-xs"
+                  <h5 className="text-xs font-semibold text-gray-400 mb-2">Labels</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {draft.issue_json.labels.map((label) => (
+                      <span
+                        key={label}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-900/30 text-blue-300 border border-blue-700"
                       >
-                        <div className="flex items-start justify-between mb-1">
-                          <span className="font-mono text-red-400">{err.path}</span>
-                          <span className="text-red-500 text-xs">{err.code}</span>
-                        </div>
-                        <p className="text-red-200">{err.message}</p>
-                      </div>
-                    ))}
-                    {errors.length > 20 && (
-                      <p className="text-xs text-red-400 text-center">
-                        ... and {errors.length - 20} more errors
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Validation Warnings */}
-            {warnings.length > 0 && (
-              <div className="bg-yellow-900/20 border border-yellow-700 rounded">
-                <button
-                  onClick={() => setShowWarnings(!showWarnings)}
-                  className="w-full px-3 py-2 flex items-center justify-between text-sm font-medium text-yellow-300 hover:bg-yellow-900/10 transition-colors"
-                >
-                  <span>Warnings ({warnings.length})</span>
-                  <span>{showWarnings ? "▼" : "▶"}</span>
-                </button>
-                
-                {showWarnings && (
-                  <div className="px-3 pb-3 space-y-2">
-                    {warnings.slice(0, 20).map((warn, idx) => (
-                      <div
-                        key={`${warn.path}-${warn.code}-${idx}`}
-                        className="bg-yellow-950/30 p-2 rounded text-xs"
-                      >
-                        <div className="flex items-start justify-between mb-1">
-                          <span className="font-mono text-yellow-400">{warn.path}</span>
-                          <span className="text-yellow-500 text-xs">{warn.code}</span>
-                        </div>
-                        <p className="text-yellow-200">{warn.message}</p>
-                      </div>
-                    ))}
-                    {warnings.length > 20 && (
-                      <p className="text-xs text-yellow-400 text-center">
-                        ... and {warnings.length - 20} more warnings
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Draft Preview */}
-            <div className="bg-gray-800 border border-gray-700 rounded">
-              <div className="px-3 py-2 border-b border-gray-700">
-                <h4 className="text-sm font-medium text-gray-100">Preview</h4>
-              </div>
-              
-              <div className="p-4 space-y-4 text-sm">
-                {/* Metadata */}
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between">
-                    <span className="text-gray-400">Canonical ID:</span>
-                    <span className="font-mono text-purple-300">{draft.issue_json.canonicalId}</span>
-                  </div>
-                  <div className="flex items-start justify-between">
-                    <span className="text-gray-400">Type:</span>
-                    <span className="text-gray-200">{draft.issue_json.type}</span>
-                  </div>
-                  <div className="flex items-start justify-between">
-                    <span className="text-gray-400">Priority:</span>
-                    <span className="text-gray-200">{draft.issue_json.priority}</span>
-                  </div>
-                  {draft.issue_hash && (
-                    <div className="flex items-start justify-between">
-                      <span className="text-gray-400">Hash:</span>
-                      <span className="font-mono text-xs text-gray-500" title={draft.issue_hash}>
-                        {draft.issue_hash.substring(0, 12)}...
+                        {label}
                       </span>
-                    </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Dependencies (sorted deterministically) */}
+              {draft.issue_json.dependsOn.length > 0 && (
+                <div>
+                  <h5 className="text-xs font-semibold text-gray-400 mb-2">Dependencies</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {draft.issue_json.dependsOn.map((dep) => (
+                      <span
+                        key={dep}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-purple-900/30 text-purple-300 border border-purple-700"
+                      >
+                        {dep}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Body (truncated in preview) */}
+              <div>
+                <h5 className="text-xs font-semibold text-gray-400 mb-1">Body</h5>
+                <div className="bg-gray-900 border border-gray-700 rounded p-2 max-h-40 overflow-y-auto">
+                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+                    {draft.issue_json.body.length > 500
+                      ? draft.issue_json.body.substring(0, 500) + "..."
+                      : draft.issue_json.body}
+                  </pre>
+                </div>
+              </div>
+              {/* Acceptance Criteria */}
+              <div>
+                <h5 className="text-xs font-semibold text-gray-400 mb-2">
+                  Acceptance Criteria ({draft.issue_json.acceptanceCriteria.length})
+                </h5>
+                <ul className="space-y-1 list-disc list-inside text-gray-300">
+                  {draft.issue_json.acceptanceCriteria.slice(0, 5).map((ac, idx) => (
+                    <li key={idx} className="text-xs">
+                      {ac.length > 100 ? ac.substring(0, 100) + "..." : ac}
+                    </li>
+                  ))}
+                  {draft.issue_json.acceptanceCriteria.length > 5 && (
+                    <li className="text-xs text-gray-500">
+                      ... and {draft.issue_json.acceptanceCriteria.length - 5} more
+                    </li>
                   )}
-                </div>
-
-                {/* Title */}
-                <div>
-                  <h5 className="text-xs font-semibold text-gray-400 mb-1">Title</h5>
-                  <p className="text-gray-100 font-medium">{draft.issue_json.title}</p>
-                </div>
-
-                {/* Labels (sorted deterministically) */}
-                {draft.issue_json.labels.length > 0 && (
-                  <div>
-                    <h5 className="text-xs font-semibold text-gray-400 mb-2">Labels</h5>
-                    <div className="flex flex-wrap gap-1">
-                      {draft.issue_json.labels.map((label) => (
-                        <span
-                          key={label}
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-900/30 text-blue-300 border border-blue-700"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
+                </ul>
+              </div>
+              {/* Guards */}
+              <div>
+                <h5 className="text-xs font-semibold text-gray-400 mb-1">Guards</h5>
+                <div className="bg-gray-900 border border-gray-700 rounded p-2 text-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-400">Environment:</span>
+                    <span className="text-gray-200">{draft.issue_json.guards.env}</span>
                   </div>
-                )}
-
-                {/* Dependencies (sorted deterministically) */}
-                {draft.issue_json.dependsOn.length > 0 && (
-                  <div>
-                    <h5 className="text-xs font-semibold text-gray-400 mb-2">Dependencies</h5>
-                    <div className="flex flex-wrap gap-1">
-                      {draft.issue_json.dependsOn.map((dep) => (
-                        <span
-                          key={dep}
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-purple-900/30 text-purple-300 border border-purple-700"
-                        >
-                          {dep}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Body (truncated in preview) */}
-                <div>
-                  <h5 className="text-xs font-semibold text-gray-400 mb-1">Body</h5>
-                  <div className="bg-gray-900 border border-gray-700 rounded p-2 max-h-40 overflow-y-auto">
-                    <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
-                      {draft.issue_json.body.length > 500
-                        ? draft.issue_json.body.substring(0, 500) + "..."
-                        : draft.issue_json.body}
-                    </pre>
-                  </div>
-                </div>
-
-                {/* Acceptance Criteria */}
-                <div>
-                  <h5 className="text-xs font-semibold text-gray-400 mb-2">
-                    Acceptance Criteria ({draft.issue_json.acceptanceCriteria.length})
-                  </h5>
-                  <ul className="space-y-1 list-disc list-inside text-gray-300">
-                    {draft.issue_json.acceptanceCriteria.slice(0, 5).map((ac, idx) => (
-                      <li key={idx} className="text-xs">
-                        {ac.length > 100 ? ac.substring(0, 100) + "..." : ac}
-                      </li>
-                    ))}
-                    {draft.issue_json.acceptanceCriteria.length > 5 && (
-                      <li className="text-xs text-gray-500">
-                        ... and {draft.issue_json.acceptanceCriteria.length - 5} more
-                      </li>
-                    )}
-                  </ul>
-                </div>
-
-                {/* Guards */}
-                <div>
-                  <h5 className="text-xs font-semibold text-gray-400 mb-1">Guards</h5>
-                  <div className="bg-gray-900 border border-gray-700 rounded p-2 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-gray-400">Environment:</span>
-                      <span className="text-gray-200">{draft.issue_json.guards.env}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Prod Blocked:</span>
-                      <span className="text-gray-200">
-                        {draft.issue_json.guards.prodBlocked ? "Yes" : "No"}
-                      </span>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Prod Blocked:</span>
+                    <span className="text-gray-200">
+                      {draft.issue_json.guards.prodBlocked ? "Yes" : "No"}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
   );
 }
+

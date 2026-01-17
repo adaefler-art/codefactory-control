@@ -49,7 +49,12 @@ export default function IncidentsPage() {
       });
 
       const data = await safeFetch(response);
-      setIncidents(data.incidents || []);
+      if (typeof data === 'object' && data !== null && 'incidents' in data) {
+        setIncidents((data as { incidents: Incident[] }).incidents || []);
+      } else {
+        setIncidents([]);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error fetching incidents:", err);
       setError(formatErrorMessage(err));

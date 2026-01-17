@@ -47,3 +47,4 @@ next-env.d.ts
 
 # build metadata (auto-generated)
 /public/build-metadata.json
+.next/

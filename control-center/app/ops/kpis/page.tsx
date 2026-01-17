@@ -42,6 +42,39 @@ interface KpiDashboardData {
   };
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isKpiMetric = (value: unknown): value is KpiMetric =>
+  isRecord(value) &&
+  typeof value.name === "string" &&
+  (value.value === null || typeof value.value === "number") &&
+  typeof value.unit === "string";
+
+const isTouchpointBreakdown = (value: unknown): value is TouchpointBreakdown =>
+  isRecord(value) &&
+  typeof value.type === "string" &&
+  typeof value.count === "number" &&
+  typeof value.percentage === "number";
+
+const isKpiDashboardData = (value: unknown): value is KpiDashboardData => {
+  if (!isRecord(value) || !isRecord(value.summary) || !isRecord(value.metadata)) {
+    return false;
+  }
+
+  return (
+    isKpiMetric(value.summary.d2d) &&
+    isKpiMetric(value.summary.hsh) &&
+    isKpiMetric(value.summary.dcu) &&
+    isKpiMetric(value.summary.automationCoverage) &&
+    Array.isArray(value.touchpointBreakdown) &&
+    value.touchpointBreakdown.every(isTouchpointBreakdown) &&
+    isRecord(value.filters) &&
+    typeof value.metadata.calculatedAt === "string" &&
+    typeof value.metadata.dataVersion === "string"
+  );
+};
+
 export default function AutomationKpiPage() {
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,7 +97,12 @@ export default function AutomationKpiPage() {
         credentials: "include",
         cache: "no-store",
       });
-      setData(result);
+      if (isKpiDashboardData(result)) {
+        setData(result);
+      } else {
+        setData(null);
+        setError("Invalid response from server");
+      }
     } catch (err) {
       console.error("Error fetching automation KPIs:", err);
       setError(formatErrorMessage(err));

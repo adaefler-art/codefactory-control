@@ -52,6 +52,12 @@ interface Issue {
   github_last_synced_at?: string | null;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isIssue = (value: unknown): value is Issue =>
+  isRecord(value) && typeof value.id === "string" && typeof value.title === "string";
+
 function toGithubMirrorDisplayStatus(
   githubMirrorStatus: string | null | undefined,
   githubStatusRaw: string | null | undefined
@@ -177,8 +183,13 @@ export default function IssueDetailPage({
         cache: "no-store",
       });
 
-      const data = await safeFetch<Issue>(response);
-      setIssue(data);
+      const data = await safeFetch(response);
+      if (typeof data === 'object' && data !== null && 'id' in data) {
+        setIssue(data as Issue);
+      } else {
+        setIssue(null);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error fetching issue:", err);
 
@@ -205,7 +216,11 @@ export default function IssueDetailPage({
       });
 
       const data = await safeFetch(response);
-      setActivityEvents(data.events || []);
+      if (typeof data === 'object' && data !== null && 'events' in data && Array.isArray((data as any).events)) {
+        setActivityEvents((data as { events: ActivityEvent[] }).events);
+      } else {
+        setActivityEvents([]);
+      }
     } catch (err) {
       console.error("Error fetching activity events:", err);
     } finally {
@@ -221,10 +236,16 @@ export default function IssueDetailPage({
       });
 
       const data = await safeFetch(response);
-      if (data.hasActive && data.activeIssue && data.activeIssue.publicId !== id) {
+      if (
+        typeof data === 'object' && data !== null &&
+        'hasActive' in data && (data as any).hasActive &&
+        'activeIssue' in data && (data as any).activeIssue &&
+        typeof (data as any).activeIssue.publicId === 'string' &&
+        (data as any).activeIssue.publicId !== id
+      ) {
         return {
-          publicId: data.activeIssue.publicId,
-          title: data.activeIssue.title,
+          publicId: (data as any).activeIssue.publicId,
+          title: (data as any).activeIssue.title,
         };
       }
       return null;
@@ -287,7 +308,11 @@ export default function IssueDetailPage({
       });
 
       const updatedIssue = await safeFetch(response);
-      setIssue(updatedIssue);
+      if (isIssue(updatedIssue)) {
+        setIssue(updatedIssue);
+      } else {
+        throw new Error("Invalid response from server");
+      }
       setIsEditingTitle(false);
       setActionMessage('Issue updated successfully');
 
@@ -350,11 +375,13 @@ export default function IssueDetailPage({
       }
 
       const data = await safeFetch(response);
-      setIssue(data.issue);
-      setActionMessage("Issue activated successfully");
-      
-      // Refresh activity log
-      refreshActivityLogIfVisible();
+      if (typeof data === 'object' && data !== null && 'issue' in data) {
+        setIssue((data as any).issue as Issue);
+        setActionMessage("Issue activated successfully");
+        refreshActivityLogIfVisible();
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error activating issue:", err);
       setSaveError(formatErrorMessage(err));
@@ -383,13 +410,17 @@ export default function IssueDetailPage({
       });
 
       const data = await safeFetch(response);
-      setIssue(data.issue);
-      setActionMessage(
-        `Issue handed off to GitHub successfully! GitHub Issue #${data.github_issue_number}`
-      );
-      
-      // Refresh activity log if visible
-      refreshActivityLogIfVisible();
+      if (
+        typeof data === 'object' && data !== null && 'issue' in data && 'github_issue_number' in data
+      ) {
+        setIssue((data as any).issue as Issue);
+        setActionMessage(
+          `Issue handed off to GitHub successfully! GitHub Issue #${(data as any).github_issue_number}`
+        );
+        refreshActivityLogIfVisible();
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error handing off issue:", err);
       setSaveError(formatErrorMessage(err));
@@ -960,7 +991,7 @@ export default function IssueDetailPage({
                 <label className="block text-sm font-medium text-red-300 mb-2">
                   Handoff Error
                 </label>
-                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3 break-words">
+                <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-md text-red-200 text-sm mb-3 wrap-break-word">
                   {truncateErrorMessage(issue.last_error)}
                 </div>
                 <button
@@ -1139,7 +1170,7 @@ export default function IssueDetailPage({
                       key={event.id}
                       className="flex items-start gap-4 p-4 bg-gray-800/30 border border-gray-700 rounded-lg"
                     >
-                      <div className="flex-shrink-0 pt-1">
+                      <div className="shrink-0 pt-1">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-md ${getEventTypeBadgeColor(
                             event.event_type

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface BuildMetadata {
   version: string;
@@ -22,9 +23,15 @@ export default function LoginPage() {
 
   // Fetch build metadata on component mount
   useEffect(() => {
-    fetch('/api/build-metadata', { credentials: 'include', cache: 'no-store' })
+    fetch(API_ROUTES.system.buildMetadata, { credentials: 'include', cache: 'no-store' })
       .then(res => safeFetch(res))
-      .then(data => setBuildMetadata(data))
+      .then(data => {
+        if (typeof data === 'object' && data !== null && 'version' in data && 'timestamp' in data && 'commitHash' in data && 'environment' in data) {
+          setBuildMetadata(data as BuildMetadata);
+        } else {
+          setBuildMetadata(null);
+        }
+      })
       .catch(err => console.error('Failed to load build metadata:', err));
   }, []);
 
@@ -33,7 +40,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(API_ROUTES.auth.login, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },

@@ -87,13 +87,11 @@ export function getCanonicalStatuses(): Afu9IssueStatus[] {
 export function getAllowedNextStates(currentStatus: string): Afu9IssueStatus[] {
   // First, map the current status to canonical if it's legacy
   const canonicalCurrent = mapToCanonicalStatus(currentStatus);
-  
   // Get allowed transitions from the state machine
-  // Note: IssueState and Afu9IssueStatus have the same values
-  const allowed = ISSUE_STATE_TRANSITIONS[canonicalCurrent as IssueState] || [];
-  
-  // Return as Afu9IssueStatus array
-  return allowed as Afu9IssueStatus[];
+  // Note: IssueState and Afu9IssueStatus have the same values, but TS requires 'unknown' cast
+  const allowed = ISSUE_STATE_TRANSITIONS[canonicalCurrent as unknown as IssueState] || [];
+  // Return as Afu9IssueStatus array (cast via unknown)
+  return allowed as unknown as Afu9IssueStatus[];
 }
 
 /**
