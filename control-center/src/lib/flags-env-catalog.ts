@@ -353,6 +353,17 @@ export const FLAGS_CATALOG: FlagsCatalog = {
       source: 'runtime',
       tags: ['feature-flag', 'intent', 'llm'],
     },
+    {
+      key: 'AFU9_INTENT_DEV_MODE',
+      type: ConfigType.BOOLEAN,
+      description: 'Enable INTENT dev mode for staging. Relaxes DISCUSS mode guardrails for allowlisted tools (save/validate/commit draft). Requires admin user. No effect in production.',
+      riskClass: RiskClass.MEDIUM,
+      defaultValue: false,
+      allowedEnvironments: [AllowedEnvironment.STAGING, AllowedEnvironment.DEVELOPMENT],
+      required: false,
+      source: 'runtime',
+      tags: ['feature-flag', 'intent', 'dev-mode'],
+    },
 
     // === MCP Server Endpoints ===
     {
