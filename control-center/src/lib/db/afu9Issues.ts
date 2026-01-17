@@ -771,7 +771,12 @@ export async function countIssuesByStatus(
 
     const counts: Record<Afu9IssueStatus, number> = {
       [Afu9IssueStatus.CREATED]: 0,
+      [Afu9IssueStatus.DRAFT_READY]: 0,
+      [Afu9IssueStatus.VERSION_COMMITTED]: 0,
+      [Afu9IssueStatus.CR_BOUND]: 0,
       [Afu9IssueStatus.SPEC_READY]: 0,
+      [Afu9IssueStatus.PUBLISHING]: 0,
+      [Afu9IssueStatus.PUBLISHED]: 0,
       [Afu9IssueStatus.IMPLEMENTING]: 0,
       [Afu9IssueStatus.VERIFIED]: 0,
       [Afu9IssueStatus.MERGE_READY]: 0,
