@@ -170,9 +170,10 @@ export async function publishIssueDraftVersionBatch(
       versionIds = [version_id];
     } else if (issue_set_id) {
       // Multiple versions from issue set
-      // Query all versions for this issue set
+      // Query all versions for this issue set, ordered by created_at DESC
+      // No DISTINCT needed since v.id is a primary key
       const result = await pool.query(
-        `SELECT DISTINCT v.id
+        `SELECT v.id
          FROM intent_issue_draft_versions v
          JOIN intent_sessions s ON s.id = v.session_id
          WHERE v.session_id = $1 AND s.user_id = $2
