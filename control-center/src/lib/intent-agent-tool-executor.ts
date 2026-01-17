@@ -23,6 +23,7 @@ import { publishIssueDraftBatch } from '@/lib/github/issue-draft-publisher';
 import type { IssueDraft } from '@/lib/schemas/issueDraft';
 import { getToolGateStatus, isDraftMutatingTool } from './intent-tool-registry';
 import { logToolExecution, type TriggerType } from '@/lib/db/toolExecutionAudit';
+import { checkDevModeActionAllowed, getDevModeActionForTool } from '@/lib/guards/intent-dev-mode';
 
 /**
  * Tool execution context
@@ -71,28 +72,41 @@ export async function executeIntentTool(
     const isDraftMutating = isDraftMutatingTool(toolName);
     
     // 2. In DISCUSS mode, block draft-mutating tools unless explicitly triggered
+    //    OR DEV MODE is active and action is in allowlist
     if (conversationMode === 'DISCUSS' && isDraftMutating) {
       if (triggerType !== 'USER_EXPLICIT' && triggerType !== 'UI_ACTION') {
-        // Log blocked execution
-        await logToolExecution(pool, {
-          sessionId,
-          userId,
-          toolName,
-          triggerType,
-          conversationMode,
-          success: false,
-          errorCode: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
-        });
+        // Check DEV MODE allowlist before blocking
+        const devModeAction = getDevModeActionForTool(toolName);
+        const devModeCheck = devModeAction
+          ? checkDevModeActionAllowed(userId, devModeAction, { sessionId, toolName })
+          : { allowed: false, devMode: false };
         
-        return JSON.stringify({
-          success: false,
-          error: 'Draft-mutating tools are not allowed in DISCUSS mode without explicit user command',
-          code: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
-          tool: toolName,
-          suggestion: 'Switch to DRAFTING mode or use explicit commands like "/draft", "create draft now", "update draft", "commit draft"',
-          triggerType,
-          conversationMode,
-        });
+        if (!devModeCheck.allowed) {
+          // Log blocked execution
+          await logToolExecution(pool, {
+            sessionId,
+            userId,
+            toolName,
+            triggerType,
+            conversationMode,
+            success: false,
+            errorCode: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
+          });
+          
+          return JSON.stringify({
+            success: false,
+            error: 'Draft-mutating tools are not allowed in DISCUSS mode without explicit user command',
+            code: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
+            tool: toolName,
+            suggestion: 'Switch to DRAFTING mode or use explicit commands like "/draft", "create draft now", "update draft", "commit draft"',
+            triggerType,
+            conversationMode,
+            devModeAvailable: devModeCheck.devMode,
+          });
+        }
+        
+        // DEV MODE allowed this action - log and continue
+        console.log(`[Tool Executor] DEV MODE bypass for ${toolName} in DISCUSS mode`);
       }
     }
     
