@@ -3,12 +3,13 @@
 /**
  * Issue Draft Panel Component
  * Issue E81.3: INTENT UI Issue Draft Panel (Preview + Validate + Commit)
+ * Issue I907: In-App Flow for Issue Creation and Publishing
  * 
  * Features:
  * - Draft preview with rendered markdown
  * - Validation status badge (VALID / INVALID / DRAFT)
  * - Errors/warnings list (bounded, collapsible)
- * - Actions: Validate, Commit, Copy AFU9 snippet
+ * - Actions: Validate, Commit, Copy AFU9 snippet, Publish to GitHub
  * - Auto-load draft per session
  * - Disable actions while pending
  * - Show requestId on failure
@@ -18,6 +19,11 @@ import { useEffect, useState } from "react";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 import { API_ROUTES } from "@/lib/api-routes";
 import type { IssueDraft } from "@/lib/schemas/issueDraft";
+
+// Configuration constants
+const DEFAULT_GITHUB_OWNER = "adaefler-art";
+const DEFAULT_GITHUB_REPO = "codefactory-control";
+const BATCH_ID_DISPLAY_LENGTH = 12;
 
 interface ValidationError {
   code: string;
@@ -259,8 +265,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     if (!sessionId || !draft) return;
 
     // Get owner/repo from environment or use default
-    const owner = process.env.NEXT_PUBLIC_GITHUB_OWNER || 'adaefler-art';
-    const repo = process.env.NEXT_PUBLIC_GITHUB_REPO || 'codefactory-control';
+    // Note: NEXT_PUBLIC_* env vars are inlined at build time
+    const owner = process.env.NEXT_PUBLIC_GITHUB_OWNER || DEFAULT_GITHUB_OWNER;
+    const repo = process.env.NEXT_PUBLIC_GITHUB_REPO || DEFAULT_GITHUB_REPO;
 
     setIsPublishing(true);
     setError(null);
@@ -514,7 +521,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-gray-400">Batch ID:</span>
-                  <span className="ml-2 font-mono text-green-300">{publishResult.batch_id?.substring(0, 12)}...</span>
+                  <span className="ml-2 font-mono text-green-300">{publishResult.batch_id?.substring(0, BATCH_ID_DISPLAY_LENGTH)}...</span>
                 </div>
                 <div>
                   <span className="text-gray-400">Total:</span>
@@ -543,9 +550,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 <div className="mt-3 border-t border-green-700 pt-2">
                   <div className="text-gray-300 font-medium mb-1">GitHub Issues:</div>
                   <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {publishResult.items.filter((item) => item.github_issue_url).map((item, idx) => (
+                    {publishResult.items.filter((item) => item.github_issue_url).map((item) => (
                       <a
-                        key={idx}
+                        key={item.canonical_id}
                         href={item.github_issue_url}
                         target="_blank"
                         rel="noopener noreferrer"
