@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 import { parseLabelsInput } from "@/lib/label-utils";
 
 interface Issue {
@@ -60,13 +61,18 @@ export default function NewIssuePage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/issues/new`, {
+      const response = await fetch(API_ROUTES.issues.new, {
         credentials: "include",
         cache: "no-store",
       });
 
       const data = await safeFetch(response);
-      setIssue(data);
+      if (typeof data === 'object' && data !== null && 'id' in data) {
+        setIssue(data as Issue);
+      } else {
+        setIssue(null);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error fetching draft issue:", err);
       setError(formatErrorMessage(err));
@@ -92,7 +98,7 @@ export default function NewIssuePage() {
         labels: editedLabels,
       };
 
-      const response = await fetch(`/api/issues/new`, {
+      const response = await fetch(API_ROUTES.issues.new, {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -102,10 +108,8 @@ export default function NewIssuePage() {
       });
 
       const createdIssue = await safeFetch(response);
-      
-      // Navigate to the created issue using UUID (detail page requires UUID)
-      if (createdIssue?.id) {
-        router.push(`/issues/${createdIssue.id}`);
+      if (typeof createdIssue === 'object' && createdIssue !== null && 'id' in createdIssue && typeof (createdIssue as any).id === 'string') {
+        router.push(`/issues/${(createdIssue as any).id}`);
       } else {
         router.push('/issues');
       }

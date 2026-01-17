@@ -126,7 +126,12 @@ export default function IssuesPage() {
       });
       
       const data = await safeFetch(response);
-      setIssues(data.issues || []);
+      if (typeof data === 'object' && data !== null && 'issues' in data && Array.isArray((data as any).issues)) {
+        setIssues((data as { issues: Issue[] }).issues);
+      } else {
+        setIssues([]);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error fetching issues:", err);
       setError(formatErrorMessage(err));
@@ -161,21 +166,20 @@ export default function IssuesPage() {
         });
 
         const data = await safeFetch(response);
-        
-        if (data.success) {
-          setImportSuccess(`Successfully imported ${data.imported} of ${data.total} issues`);
+        if (
+          typeof data === 'object' && data !== null && 'success' in data && (data as any).success === true
+        ) {
+          setImportSuccess(`Successfully imported ${(data as any).imported} of ${(data as any).total} issues`);
           setImportContent("");
-          
-          // Refresh issues list
           await fetchIssues();
-          
-          // Close modal after 2 seconds
           setTimeout(() => {
             setShowImportModal(false);
             setImportSuccess(null);
           }, 2000);
+        } else if (typeof data === 'object' && data !== null && 'error' in data) {
+          setImportError((data as any).error || "Failed to import issues");
         } else {
-          setImportError(data.error || "Failed to import issues");
+          setImportError("Failed to import issues");
         }
       } else {
         // Repo file import
