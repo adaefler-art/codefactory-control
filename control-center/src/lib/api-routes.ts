@@ -342,6 +342,13 @@ export const API_ROUTES = {
       versions: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions`,
       publish: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions/publish`, // I907
     },
+    // AFU-9 Issue lifecycle routes (canonical orchestrator)
+    issues: {
+      publish: (issueId: string) => `/api/intent/issues/${issueId}/publish`,
+      bindCr: (issueId: string) => `/api/intent/issues/${issueId}/bind-cr`,
+      timeline: (issueId: string) => `/api/intent/issues/${issueId}/timeline`,
+      evidence: (issueId: string) => `/api/intent/issues/${issueId}/evidence`,
+    },
   },
 } as const;
 

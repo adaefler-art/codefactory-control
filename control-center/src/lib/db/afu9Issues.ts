@@ -1124,3 +1124,52 @@ export async function getAfu9IssueByGithubNumber(
     };
   }
 }
+
+/**
+ * Get an AFU9 issue by source session ID
+ * 
+ * Resolves an issue that was created from an INTENT session.
+ * Uses the source_session_id column to find the associated issue.
+ * 
+ * @param pool - PostgreSQL connection pool
+ * @param sessionId - The INTENT session UUID
+ * @returns Operation result with issue or error
+ */
+export async function getAfu9IssueBySourceSessionId(
+  pool: Pool,
+  sessionId: string
+): Promise<OperationResult> {
+  try {
+    const result = await pool.query<Afu9IssueRow>(
+      `SELECT * FROM afu9_issues 
+       WHERE source_session_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [sessionId]
+    );
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: `No AFU-9 issue found for session: ${sessionId}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Get by source session ID failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId: sessionId.substring(0, 20),
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+

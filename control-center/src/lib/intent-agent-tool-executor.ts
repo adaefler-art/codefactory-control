@@ -9,6 +9,10 @@
  * - Fail-safe: returns JSON error objects (no exceptions to LLM)
  * - Audit trail: uses existing DB functions (context packs, CR drafts)
  * - Idempotent: GitHub publishing uses canonical ID resolver
+ * 
+ * DEV MODE:
+ * - In staging with INTENT_DEV_MODE=true and admin user, allowlisted actions
+ *   can bypass DISCUSS mode restrictions for faster iteration.
  */
 
 import { getPool } from '@/lib/db';
@@ -21,8 +25,9 @@ import { exportIssueSetToAFU9Markdown, generateIssueSetSummary } from '@/lib/uti
 import { createOrUpdateFromCR } from '@/lib/github/issue-creator';
 import { publishIssueDraftBatch } from '@/lib/github/issue-draft-publisher';
 import type { IssueDraft } from '@/lib/schemas/issueDraft';
-import { getToolGateStatus, isDraftMutatingTool } from './intent-tool-registry';
+import { getToolGateStatus, isDraftMutatingTool, getDevModeActionForTool } from './intent-tool-registry';
 import { logToolExecution, type TriggerType } from '@/lib/db/toolExecutionAudit';
+import { checkDevModeActionAllowed } from '@/lib/guards/intent-dev-mode';
 
 /**
  * Tool execution context
@@ -71,28 +76,41 @@ export async function executeIntentTool(
     const isDraftMutating = isDraftMutatingTool(toolName);
     
     // 2. In DISCUSS mode, block draft-mutating tools unless explicitly triggered
+    //    OR DEV MODE is active and action is in allowlist
     if (conversationMode === 'DISCUSS' && isDraftMutating) {
       if (triggerType !== 'USER_EXPLICIT' && triggerType !== 'UI_ACTION') {
-        // Log blocked execution
-        await logToolExecution(pool, {
-          sessionId,
-          userId,
-          toolName,
-          triggerType,
-          conversationMode,
-          success: false,
-          errorCode: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
-        });
+        // Check DEV MODE allowlist before blocking
+        const devModeAction = getDevModeActionForTool(toolName);
+        const devModeCheck = devModeAction
+          ? checkDevModeActionAllowed(userId, devModeAction, { sessionId })
+          : { allowed: false, devMode: false };
         
-        return JSON.stringify({
-          success: false,
-          error: 'Draft-mutating tools are not allowed in DISCUSS mode without explicit user command',
-          code: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
-          tool: toolName,
-          suggestion: 'Switch to DRAFTING mode or use explicit commands like "/draft", "create draft now", "update draft", "commit draft"',
-          triggerType,
-          conversationMode,
-        });
+        if (!devModeCheck.allowed) {
+          // Log blocked execution
+          await logToolExecution(pool, {
+            sessionId,
+            userId,
+            toolName,
+            triggerType,
+            conversationMode,
+            success: false,
+            errorCode: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
+          });
+          
+          return JSON.stringify({
+            success: false,
+            error: 'Draft-mutating tools are not allowed in DISCUSS mode without explicit user command',
+            code: 'DRAFT_TOOL_BLOCKED_IN_DISCUSS_MODE',
+            tool: toolName,
+            suggestion: 'Switch to DRAFTING mode or use explicit commands like "/draft", "create draft now", "update draft", "commit draft"',
+            triggerType,
+            conversationMode,
+            devModeAvailable: devModeCheck.devMode,
+          });
+        }
+        
+        // DEV MODE allowed this action - log and continue
+        console.log(`[Tool Executor] DEV MODE bypass for ${toolName} in DISCUSS mode`);
       }
     }
     

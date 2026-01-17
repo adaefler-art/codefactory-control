@@ -4,14 +4,22 @@
  * Publish IssueDraft version(s) to GitHub (idempotent batch operation)
  * Issue E89.6: IssueDraft Version → GitHub Issues Batch Publish
  * 
+ * UPDATED: Now acts as compatibility layer for the new AFU-9 Issue orchestrator.
+ * - First tries to resolve AFU-9 issue by source_session_id
+ * - If found, routes to the canonical orchestrator (publishAfu9Issue)
+ * - Falls back to legacy batch publisher if no issue found
+ * 
  * Guard order: 401 → 409 (prod-block) → 403 → GH/DB
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { publishIssueDraftVersionBatch } from '@/lib/github/issue-draft-version-publisher';
+import { publishAfu9Issue } from '@/lib/afu9-publish-orchestrator';
+import { getAfu9IssueBySourceSessionId } from '@/lib/db/afu9Issues';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { getDeploymentEnv } from '@/lib/utils/deployment-env';
+import { logDevModeException } from '@/lib/guards/intent-dev-mode';
 
 // Check if publishing is enabled
 function isPublishingEnabled(): boolean {
@@ -170,6 +178,103 @@ export async function POST(
     }
     
     const pool = getPool();
+    
+    // NEW ORCHESTRATOR PATH: Try to resolve AFU-9 issue by source_session_id
+    // If found, use the canonical orchestrator instead of legacy batch publisher
+    const issueResult = await getAfu9IssueBySourceSessionId(pool, sessionId);
+    
+    if (issueResult.success && issueResult.data) {
+      // Found an AFU-9 issue linked to this session - use orchestrator
+      const issue = issueResult.data;
+      console.log(`[PUBLISH-COMPAT] Routing to AFU-9 orchestrator for issue ${issue.id.substring(0, 8)}`);
+      
+      // Log dev mode usage if applicable
+      logDevModeException({
+        userId,
+        action: 'issue_publish',
+        sessionId,
+        issueId: issue.id,
+        requestId,
+      });
+      
+      const orchestratorResult = await publishAfu9Issue(pool, issue.id, {
+        owner,
+        repo,
+        request_id: requestId,
+        user_id: userId,
+        labels: body.labels || [],
+      });
+      
+      if (!orchestratorResult.success) {
+        // Map specific errors to appropriate status codes
+        if (orchestratorResult.error?.includes('not found')) {
+          return errorResponse('Issue not found', {
+            status: 404,
+            requestId,
+            details: orchestratorResult.error,
+          });
+        }
+        
+        if (orchestratorResult.error?.includes('No active CR bound')) {
+          return errorResponse('No active CR bound', {
+            status: 409,
+            requestId,
+            code: 'NO_ACTIVE_CR',
+            details: orchestratorResult.error,
+          });
+        }
+        
+        return errorResponse('Failed to publish issue', {
+          status: 500,
+          requestId,
+          details: orchestratorResult.error,
+        });
+      }
+      
+      // Return orchestrator response in compatible format
+      return jsonResponse({
+        success: true,
+        issue_id: orchestratorResult.issue_id,
+        public_id: orchestratorResult.public_id,
+        github_issue_number: orchestratorResult.github_issue_number,
+        github_url: orchestratorResult.github_url,
+        action: orchestratorResult.action,
+        orchestrator: 'afu9-publish-orchestrator',
+        audit_trail: {
+          timeline_events: orchestratorResult.timeline_events,
+          evidence_records: orchestratorResult.evidence_records,
+          cp_assignments: orchestratorResult.cp_assignments,
+        },
+        // Compatibility fields for legacy UI
+        summary: {
+          total: 1,
+          created: orchestratorResult.action === 'created' ? 1 : 0,
+          updated: orchestratorResult.action === 'updated' ? 1 : 0,
+          skipped: 0,
+          failed: 0,
+        },
+        items: [{
+          issue_id: orchestratorResult.issue_id,
+          github_issue_number: orchestratorResult.github_issue_number,
+          github_url: orchestratorResult.github_url,
+          action: orchestratorResult.action,
+        }],
+        links: orchestratorResult.github_url ? [{
+          url: orchestratorResult.github_url,
+          title: `GitHub Issue #${orchestratorResult.github_issue_number}`,
+        }] : [],
+        message: `Issue ${orchestratorResult.action} successfully on GitHub`,
+      }, {
+        status: 200,
+        requestId,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    
+    // LEGACY PATH: Fall back to draft version batch publisher
+    console.log(`[PUBLISH-COMPAT] No AFU-9 issue found for session, using legacy batch publisher`);
     
     // GUARD 4: Publish the draft version(s) (GH/DB operations)
     const result = await publishIssueDraftVersionBatch(pool, {

@@ -361,6 +361,27 @@ export function isDraftMutatingTool(toolName: string): boolean {
   return spec?.isDraftMutating === true;
 }
 
+/**
+ * Map tool names to DEV MODE action names
+ * Used to check if a tool can bypass DISCUSS mode restrictions in DEV MODE
+ */
+const TOOL_TO_DEV_MODE_ACTION: Record<string, string> = {
+  'commit_issue_draft': 'commit_issue_draft',
+  'publish_issue_draft': 'issue_publish',
+  'publish_issues': 'issue_publish',
+  'save_issue_draft': 'create_afu9_issue',
+  'update_issue_draft': 'update_afu9_issue',
+  'bind_change_request': 'bind_change_request',
+};
+
+/**
+ * Get the DEV MODE action name for a tool
+ * Returns undefined if tool is not in the DEV MODE allowlist
+ */
+export function getDevModeActionForTool(toolName: string): string | undefined {
+  return TOOL_TO_DEV_MODE_ACTION[toolName];
+}
+
 export function buildOpenAITools(): OpenAI.Chat.ChatCompletionTool[] {
   return listIntentToolSpecs().map(spec => ({
     type: 'function',

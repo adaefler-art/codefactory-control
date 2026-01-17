@@ -89,11 +89,12 @@ interface IssueDraftData {
 
 interface IssueDraftPanelProps {
   sessionId: string | null;
+  issueId?: string | null; // AFU-9 issue ID for direct orchestrator path
   refreshKey?: number;
   onDraftUpdated?: () => void; // Callback for when draft is updated (e.g., from PATCH)
 }
 
-export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated }: IssueDraftPanelProps) {
+export default function IssueDraftPanel({ sessionId, issueId, refreshKey, onDraftUpdated }: IssueDraftPanelProps) {
   const [draft, setDraft] = useState<IssueDraftData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -276,8 +277,14 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setShowPublishResult(false);
 
     try {
+      // Use canonical issue orchestrator if issueId is available
+      // Otherwise fall back to session-based compatibility route
+      const publishUrl = issueId
+        ? API_ROUTES.intent.issues.publish(issueId)
+        : API_ROUTES.intent.issueDraft.publish(sessionId);
+      
       const response = await fetch(
-        API_ROUTES.intent.issueDraft.publish(sessionId),
+        publishUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
