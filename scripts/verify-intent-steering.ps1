@@ -158,7 +158,9 @@ function Invoke-Afu9Api {
     }
   } catch {
     $ex = $_.Exception
-    if ($null -ne $ex -and $null -ne $ex.Response) {
+    
+    # Try to extract response from HTTP error
+    if ($null -ne $ex -and ($ex.PSObject.Properties.Name -contains 'Response') -and $null -ne $ex.Response) {
       try {
         $status = [int]$ex.Response.StatusCode
         $reader = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
@@ -171,9 +173,11 @@ function Invoke-Afu9Api {
           Headers = $null
         }
       } catch {
-        # fallthrough
+        # fallthrough to rethrow
       }
     }
+    
+    # If we can't extract a response, rethrow
     throw
   }
 }
