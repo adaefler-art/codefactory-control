@@ -39,6 +39,36 @@ interface ValidationResult {
   };
 }
 
+interface PublishResultItem {
+  canonical_id: string;
+  action: 'created' | 'updated' | 'skipped' | 'failed';
+  status: 'success' | 'failed';
+  github_issue_number?: number;
+  github_issue_url?: string;
+  error_message?: string;
+  rendered_issue_hash?: string;
+  labels_applied?: string[];
+}
+
+interface PublishResult {
+  success: boolean;
+  batch_id: string;
+  summary: {
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  };
+  items: PublishResultItem[];
+  links: {
+    batch_id: string;
+    request_id: string;
+  };
+  warnings?: string[];
+  message?: string;
+}
+
 interface IssueDraftData {
   id: string;
   session_id: string;
@@ -70,7 +100,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [copySuccess, setCopySuccess] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
-  const [publishResult, setPublishResult] = useState<any | null>(null);
+  const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
 
   // Auto-load draft when session changes or refreshKey changes
@@ -124,7 +154,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       
       // Check for MIGRATION_REQUIRED error using error code
       if (typeof err === "object" && err !== null) {
-        const apiError = err as any;
+        const apiError = err as { code?: string; details?: { code?: string }; requestId?: string };
         
         // Check for code field in details object or top-level
         const errorCode = apiError.code || (typeof apiError.details === "object" && apiError.details?.code);
@@ -513,7 +543,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 <div className="mt-3 border-t border-green-700 pt-2">
                   <div className="text-gray-300 font-medium mb-1">GitHub Issues:</div>
                   <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {publishResult.items.filter((item: any) => item.github_issue_url).map((item: any, idx: number) => (
+                    {publishResult.items.filter((item) => item.github_issue_url).map((item, idx) => (
                       <a
                         key={idx}
                         href={item.github_issue_url}
@@ -532,7 +562,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
               {publishResult.warnings && publishResult.warnings.length > 0 && (
                 <div className="mt-2 text-yellow-300">
                   <div className="font-medium">Warnings:</div>
-                  {publishResult.warnings.map((warning: string, idx: number) => (
+                  {publishResult.warnings.map((warning, idx) => (
                     <div key={idx} className="text-xs">{warning}</div>
                   ))}
                 </div>
