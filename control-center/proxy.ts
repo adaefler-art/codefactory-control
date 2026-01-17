@@ -5,6 +5,7 @@ import { isPublicRoute } from './lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/public-status-endpoints';
 import { getEffectiveHostname } from './src/lib/http/effective-hostname';
 import { extractSmokeKeyFromEnv, normalizeSmokeKeyCandidate, smokeKeysMatchConstantTime } from './src/lib/auth/smokeKey';
+import { getActiveAllowlist, isRouteAllowed, type SmokeKeyAllowlistEntry } from './src/lib/db/smokeKeyAllowlist';
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -21,6 +22,54 @@ const cookieSameSite: 'lax' | 'strict' | 'none' =
     : 'lax';
 
 const cookieSecure = process.env.NODE_ENV === 'production' || cookieSameSite === 'none';
+
+// ========================================
+// Smoke Key Allowlist Cache (I906)
+// ========================================
+
+interface AllowlistCache {
+  data: SmokeKeyAllowlistEntry[];
+  timestamp: number;
+}
+
+let allowlistCache: AllowlistCache | null = null;
+const ALLOWLIST_CACHE_TTL_MS = 30000; // 30 seconds
+
+/**
+ * Get smoke key allowlist with caching
+ * 
+ * Cache TTL: 30 seconds (meets requirement for changes to take effect within 30s)
+ * Fail-closed: on error, returns empty array (denies access)
+ */
+async function getCachedAllowlist(): Promise<SmokeKeyAllowlistEntry[]> {
+  const now = Date.now();
+  
+  // Check cache validity
+  if (allowlistCache && (now - allowlistCache.timestamp) < ALLOWLIST_CACHE_TTL_MS) {
+    return allowlistCache.data;
+  }
+  
+  // Fetch fresh data
+  try {
+    const result = await getActiveAllowlist();
+    
+    if (result.success && result.data) {
+      allowlistCache = {
+        data: result.data,
+        timestamp: now,
+      };
+      return result.data;
+    } else {
+      console.error('[MIDDLEWARE] Failed to fetch allowlist:', result.error);
+      // Fail-closed: return empty array
+      return [];
+    }
+  } catch (error) {
+    console.error('[MIDDLEWARE] Error fetching allowlist:', error);
+    // Fail-closed: return empty array
+    return [];
+  }
+}
 
 function getRequestId(): string {
   try {
@@ -127,40 +176,20 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
-  // Optional smoke-auth bypass for a small allowlist of API endpoints (staging only).
+  // Optional smoke-auth bypass for runtime-configurable allowlist of API endpoints (staging only).
+  // I906: Replaced hardcoded allowlist with database-backed runtime configuration.
   // Contract:
   // - Header: X-AFU9-SMOKE-KEY (case-insensitive)
   // - Env gate: AFU9_SMOKE_KEY must be set (otherwise bypass is disabled)
   // - Host gate: staging only (stage.afu-9.com)
+  // - Allowlist: Fetched from database (30s cache, fail-closed)
   const detectedStage = getStageFromHostname(hostname);
   const isStagingHost = detectedStage === 'staging' || hostname.toLowerCase().startsWith('stage.');
 
   if (isStagingHost && isSmokeBypass(request)) {
-    const allowlisted =
-      (request.method === 'GET' && pathname === '/api/timeline/chain') ||
-      (request.method === 'GET' && pathname === '/api/issues') ||
-      (request.method === 'POST' && pathname === '/api/issues/sync') ||
-      (request.method === 'POST' && pathname === '/api/issues/refresh') ||
-      (request.method === 'POST' && pathname === '/api/ops/issues/sync') ||
-      (request.method === 'GET' && pathname === '/api/ops/db/migrations') ||
-      (request.method === 'GET' && pathname === '/api/ops/db/migration-parity') ||
-      (request.method === 'POST' && pathname === '/api/integrations/github/ingest/issue') ||
-      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions$/.test(pathname)) ||
-      (request.method === 'GET' && /^\/api\/intent\/sessions\/[^/]+$/.test(pathname)) ||
-      (request.method === 'POST' && /^\/api\/intent\/sessions\/[^/]+\/messages$/.test(pathname)) ||
-      // INTENT issue-draft endpoints for smoke testing
-      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/intent\/sessions\/[^/]+\/issue-draft$/.test(pathname)) ||
-      // GitHub API endpoints for issue/PR automation (E83.2+)
-      (request.method === 'POST' && /^\/api\/github\/issues\/\d+\/assign-copilot$/.test(pathname)) ||
-      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/request-review-and-wait$/.test(pathname)) ||
-      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/collect-summary$/.test(pathname)) ||
-      (request.method === 'POST' && /^\/api\/github\/prs\/\d+\/merge$/.test(pathname)) ||
-      // PR checks endpoints for smoke testing
-      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/triage$/.test(pathname)) ||
-      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/stop-decision$/.test(pathname)) ||
-      ((request.method === 'GET' || request.method === 'POST') && /^\/api\/github\/prs\/\d+\/checks\/prompt$/.test(pathname)) ||
-      // Issues state-flow endpoint for smoke testing (E85.3)
-      (request.method === 'GET' && /^\/api\/issues\/[^/]+\/state-flow$/.test(pathname));
+    // Fetch allowlist from database (cached for 30s)
+    const allowlist = await getCachedAllowlist();
+    const allowlisted = isRouteAllowed(pathname, request.method, allowlist);
 
     if (allowlisted) {
       const smokeSubRaw = request.headers.get('x-afu9-sub');
