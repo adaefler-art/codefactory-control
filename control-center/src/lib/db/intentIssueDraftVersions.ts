@@ -298,3 +298,73 @@ export async function getIssueDraftVersion(
     };
   }
 }
+
+/**
+ * Get the latest committed version for a session (P1.2, P1.3)
+ * 
+ * Returns the most recent committed version (highest version_number).
+ * Used by publish flow to ensure commit-before-publish semantics.
+ * 
+ * @param pool Database pool
+ * @param sessionId Session ID
+ * @param userId User ID (for ownership check)
+ * @returns Latest version data or null if no versions exist
+ */
+export async function getLatestCommittedVersion(
+  pool: Pool,
+  sessionId: string,
+  userId: string
+): Promise<{ success: true; data: IntentIssueDraftVersion | null } | { success: false; error: string }> {
+  try {
+    // Verify session ownership first
+    const sessionCheck = await pool.query(
+      `SELECT id FROM intent_sessions WHERE id = $1 AND user_id = $2`,
+      [sessionId, userId]
+    );
+    
+    if (sessionCheck.rows.length === 0) {
+      return {
+        success: false,
+        error: 'Session not found or access denied',
+      };
+    }
+    
+    // Get latest committed version (highest version_number)
+    const result = await pool.query(
+      `SELECT id, session_id, created_at, created_by_sub, issue_json, issue_hash, version_number
+       FROM intent_issue_draft_versions
+       WHERE session_id = $1
+       ORDER BY version_number DESC
+       LIMIT 1`,
+      [sessionId]
+    );
+    
+    if (result.rows.length === 0) {
+      // No committed versions - this is a valid state, not an error
+      return {
+        success: true,
+        data: null,
+      };
+    }
+    
+    const row = result.rows[0];
+    return {
+      success: true,
+      data: {
+        id: row.id,
+        session_id: row.session_id,
+        created_at: row.created_at.toISOString(),
+        created_by_sub: row.created_by_sub,
+        issue_json: row.issue_json,
+        issue_hash: row.issue_hash,
+        version_number: row.version_number,
+      },
+    };
+  } catch (error) {
+    console.error('[DB] Error getting latest committed version:', error);
+    return {
+      success: false,
+      error: 'Database error',
+    };
+  }
+}

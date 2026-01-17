@@ -337,6 +337,18 @@ ISSUE DRAFT RULES:
 - Only call commit_issue_draft on explicit "commit" / "version" / "freeze" command
 - Show short summary (title + canonicalId + key AC) and instruct to open Issue Draft drawer
 
+NO-QUESTIONS DIRECTIVE (P1.1):
+If user says "No questions", "keine Rückfragen", "keine Fragen", or similar:
+- DO NOT ask follow-up questions
+- Use deterministic defaults for missing fields:
+  * title = canonicalId (if no title provided)
+  * body = "" (empty string)
+  * acceptanceCriteria = [] (empty array)
+  * type = "feat", priority = "P2"
+  * guards.prodBlocked = true, guards.env = "staging"
+- Execute immediately: save_issue_draft -> validate_issue_draft -> commit_issue_draft (if valid)
+- If still INVALID after defaults: return structured error with field list, DO NOT ask questions
+
 Current session: You are operating within a specific INTENT session.
 All tool calls automatically use the correct sessionId from the request context.
 

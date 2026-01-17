@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { publishIssueDraftVersionBatch } from '@/lib/github/issue-draft-version-publisher';
+import { getIssueDraft } from '@/lib/db/intentIssueDrafts';
+import { getLatestCommittedVersion } from '@/lib/db/intentIssueDraftVersions';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 
@@ -171,6 +173,105 @@ export async function POST(
     
     const pool = getPool();
     
+    // P1.3: Deterministic resolver - check for draft and committed version
+    // If no specific version_id provided, use auto-resolve mode
+    const autoResolve = !version_id;
+    
+    if (autoResolve) {
+      // Step 1: Check if draft exists for session
+      const draftResult = await getIssueDraft(pool, sessionId, userId);
+      
+      if (!draftResult.success) {
+        return errorResponse('Failed to check draft', {
+          status: 500,
+          requestId,
+          details: draftResult.error,
+        });
+      }
+      
+      if (!draftResult.data) {
+        // P1.3: NO_DRAFT error
+        return jsonResponse({
+          error: 'No draft exists',
+          message: 'No issue draft exists for this session. Create a draft first.',
+          code: 'NO_DRAFT',
+        }, { status: 404, requestId });
+      }
+      
+      // Step 2: Check for committed version (P1.2)
+      const versionResult = await getLatestCommittedVersion(pool, sessionId, userId);
+      
+      if (!versionResult.success) {
+        return errorResponse('Failed to check committed version', {
+          status: 500,
+          requestId,
+          details: versionResult.error,
+        });
+      }
+      
+      if (!versionResult.data) {
+        // P1.2: NO_COMMITTED_VERSION error (409)
+        return jsonResponse({
+          error: 'No committed version',
+          message: 'Commit a valid draft version first. Use the commit action or /commit command.',
+          code: 'NO_COMMITTED_VERSION',
+          suggestion: 'Call commit_issue_draft to create a version before publishing.',
+        }, { status: 409, requestId });
+      }
+      
+      // Use the latest committed version
+      const latestVersion = versionResult.data;
+      console.log(`[PUBLISH] Auto-resolved to version ${latestVersion.id.substring(0, 8)} (v${latestVersion.version_number})`);
+      
+      // Continue with the resolved version_id
+      const result = await publishIssueDraftVersionBatch(pool, {
+        session_id: sessionId,
+        version_id: latestVersion.id,
+        owner,
+        repo,
+        request_id: requestId,
+        user_id: userId,
+      });
+      
+      if (!result.success) {
+        // P1.2: Map specific errors to proper codes
+        if (result.error.includes('No versions') || result.error.includes('not found')) {
+          return jsonResponse({
+            error: 'No committed version',
+            message: 'Commit a valid draft version first.',
+            code: 'NO_COMMITTED_VERSION',
+          }, { status: 409, requestId });
+        }
+        
+        return errorResponse('Failed to publish draft version', {
+          status: 500,
+          requestId,
+          details: result.error,
+        });
+      }
+      
+      const { batch_id, summary, items, links, warnings } = result.data;
+      
+      return jsonResponse({
+        success: true,
+        batch_id,
+        summary,
+        items,
+        links,
+        warnings,
+        resolved_version_id: latestVersion.id,
+        resolved_version_number: latestVersion.version_number,
+        message: `Published ${summary.total} issue(s): ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.failed} failed`,
+      }, {
+        status: 200,
+        requestId,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    
+    // Explicit version_id provided - use legacy flow
     // GUARD 4: Publish the draft version(s) (GH/DB operations)
     const result = await publishIssueDraftVersionBatch(pool, {
       session_id: sessionId,
@@ -183,13 +284,14 @@ export async function POST(
     });
     
     if (!result.success) {
-      // Map specific errors to appropriate status codes
-      if (result.error.includes('not found') || result.error.includes('No versions')) {
-        return errorResponse('Versions not found', {
-          status: 404,
-          requestId,
-          details: result.error,
-        });
+      // P1.2: Map specific errors to appropriate status codes with proper error codes
+      if (result.error.includes('No versions') || result.error.includes('not found')) {
+        // This means no committed version exists
+        return jsonResponse({
+          error: 'No committed version',
+          message: 'Commit a valid draft version first. Use the commit action or /commit command.',
+          code: 'NO_COMMITTED_VERSION',
+        }, { status: 409, requestId });
       }
       
       if (result.error.includes('required')) {
