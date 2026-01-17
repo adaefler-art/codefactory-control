@@ -177,8 +177,13 @@ export default function IssueDetailPage({
         cache: "no-store",
       });
 
-      const data = await safeFetch<Issue>(response);
-      setIssue(data);
+      const data = await safeFetch(response);
+      if (typeof data === 'object' && data !== null && 'id' in data) {
+        setIssue(data as Issue);
+      } else {
+        setIssue(null);
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error fetching issue:", err);
 
@@ -205,7 +210,11 @@ export default function IssueDetailPage({
       });
 
       const data = await safeFetch(response);
-      setActivityEvents(data.events || []);
+      if (typeof data === 'object' && data !== null && 'events' in data && Array.isArray((data as any).events)) {
+        setActivityEvents((data as { events: ActivityEvent[] }).events);
+      } else {
+        setActivityEvents([]);
+      }
     } catch (err) {
       console.error("Error fetching activity events:", err);
     } finally {
@@ -221,10 +230,16 @@ export default function IssueDetailPage({
       });
 
       const data = await safeFetch(response);
-      if (data.hasActive && data.activeIssue && data.activeIssue.publicId !== id) {
+      if (
+        typeof data === 'object' && data !== null &&
+        'hasActive' in data && (data as any).hasActive &&
+        'activeIssue' in data && (data as any).activeIssue &&
+        typeof (data as any).activeIssue.publicId === 'string' &&
+        (data as any).activeIssue.publicId !== id
+      ) {
         return {
-          publicId: data.activeIssue.publicId,
-          title: data.activeIssue.title,
+          publicId: (data as any).activeIssue.publicId,
+          title: (data as any).activeIssue.title,
         };
       }
       return null;
@@ -350,11 +365,13 @@ export default function IssueDetailPage({
       }
 
       const data = await safeFetch(response);
-      setIssue(data.issue);
-      setActionMessage("Issue activated successfully");
-      
-      // Refresh activity log
-      refreshActivityLogIfVisible();
+      if (typeof data === 'object' && data !== null && 'issue' in data) {
+        setIssue((data as any).issue as Issue);
+        setActionMessage("Issue activated successfully");
+        refreshActivityLogIfVisible();
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error activating issue:", err);
       setSaveError(formatErrorMessage(err));
@@ -383,13 +400,17 @@ export default function IssueDetailPage({
       });
 
       const data = await safeFetch(response);
-      setIssue(data.issue);
-      setActionMessage(
-        `Issue handed off to GitHub successfully! GitHub Issue #${data.github_issue_number}`
-      );
-      
-      // Refresh activity log if visible
-      refreshActivityLogIfVisible();
+      if (
+        typeof data === 'object' && data !== null && 'issue' in data && 'github_issue_number' in data
+      ) {
+        setIssue((data as any).issue as Issue);
+        setActionMessage(
+          `Issue handed off to GitHub successfully! GitHub Issue #${(data as any).github_issue_number}`
+        );
+        refreshActivityLogIfVisible();
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
       console.error("Error handing off issue:", err);
       setSaveError(formatErrorMessage(err));
