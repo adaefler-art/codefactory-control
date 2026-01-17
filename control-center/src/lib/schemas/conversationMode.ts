@@ -33,8 +33,18 @@ export const CONVERSATION_MODE_VERSION: AllowedConversationModeVersion = '1.0.0'
  * 
  * Note: 'FREE' is accepted for backward compatibility but is not a first-class mode.
  * It will be normalized to 'DISCUSS' by the application layer.
+ * 
+ * This array is the canonical list used by:
+ * - Zod schema (server validation)
+ * - DB constraint (chk_intent_session_conversation_mode)
+ * - Client typing/validation
  */
-export const ConversationModeEnum = z.enum(['DISCUSS', 'DRAFTING', 'ACT', 'FREE']);
+export const INTENT_CONVERSATION_MODES = ['DISCUSS', 'DRAFTING', 'ACT', 'FREE'] as const;
+
+/**
+ * Zod enum derived from INTENT_CONVERSATION_MODES
+ */
+export const ConversationModeEnum = z.enum(INTENT_CONVERSATION_MODES);
 
 export type ConversationMode = z.infer<typeof ConversationModeEnum>;
 
