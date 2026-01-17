@@ -451,8 +451,9 @@ if ($SkipPublish) {
       $batchId = $publishResp.Json.batch_id ?? $publishResp.Json.batchId
       $summary = $publishResp.Json.summary
       
-      if ($null -ne $batchId) {
-        Write-Pass "Publish completed with batch ID: $($batchId.Substring(0, [Math]::Min(12, $batchId.Length)))..."
+      if ($null -ne $batchId -and $batchId.Length -gt 0) {
+        $batchIdDisplay = if ($batchId.Length -gt 12) { $batchId.Substring(0, 12) + "..." } else { $batchId }
+        Write-Pass "Publish completed with batch ID: $batchIdDisplay"
         
         if ($null -ne $summary) {
           Write-Info "Summary: Total=$($summary.total), Created=$($summary.created), Updated=$($summary.updated), Failed=$($summary.failed)"
