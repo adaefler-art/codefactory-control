@@ -38,6 +38,7 @@
     "@types/jest": "^29.5.14",
     "@types/minimist": "^1.2.5",
     "@types/node": "^22.19.3",
+    "@types/react": "^19.2.7",
     "ajv-cli": "^5.0.0",
     "ajv-formats": "^3.0.1",
     "aws-cdk-lib": "2.162.1",
