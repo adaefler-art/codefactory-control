@@ -62,6 +62,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [isLoading, setIsLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(true);
@@ -69,6 +70,8 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [copySuccess, setCopySuccess] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
+  const [publishResult, setPublishResult] = useState<any | null>(null);
+  const [showPublishResult, setShowPublishResult] = useState(false);
 
   // Auto-load draft when session changes or refreshKey changes
   useEffect(() => {
@@ -222,6 +225,54 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     }
   };
 
+  const handlePublish = async () => {
+    if (!sessionId || !draft) return;
+
+    // Get owner/repo from environment or use default
+    const owner = process.env.NEXT_PUBLIC_GITHUB_OWNER || 'adaefler-art';
+    const repo = process.env.NEXT_PUBLIC_GITHUB_REPO || 'codefactory-control';
+
+    setIsPublishing(true);
+    setError(null);
+    setRequestId(null);
+    setPublishResult(null);
+    setShowPublishResult(false);
+
+    try {
+      const response = await fetch(
+        API_ROUTES.intent.issueDraft.publish(sessionId),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            owner,
+            repo,
+            issue_set_id: sessionId, // Publish all versions from this session
+          }),
+        }
+      );
+
+      const data = await safeFetch(response);
+      
+      // Show success with publish result
+      setPublishResult(data);
+      setShowPublishResult(true);
+      setError(null);
+      
+    } catch (err) {
+      console.error("Failed to publish issue draft:", err);
+      const errMsg = formatErrorMessage(err);
+      setError(errMsg);
+      
+      if (typeof err === "object" && err !== null && "requestId" in err) {
+        setRequestId(String(err.requestId));
+      }
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleCopySnippet = async () => {
     if (!draft) return;
 
@@ -348,8 +399,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   };
 
   const hasActions = Boolean(sessionId);
-  const canValidate = hasActions && draft && !isValidating && !isCommitting;
-  const canCommit = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting;
+  const canValidate = hasActions && draft && !isValidating && !isCommitting && !isPublishing;
+  const canCommit = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting && !isPublishing;
+  const canPublish = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting && !isPublishing;
   const canCopy = Boolean(draft);
 
   // Get errors and warnings (deterministic - already sorted from validator)
@@ -374,32 +426,120 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
         </div>
         
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="space-y-2">
+          {/* Row 1: Validate, Commit, Copy */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleValidate}
+              disabled={!canValidate}
+              className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+            >
+              {isValidating ? "Validating..." : "Validate"}
+            </button>
+            
+            <button
+              onClick={handleCommit}
+              disabled={!canCommit}
+              className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+            >
+              {isCommitting ? "Committing..." : "Commit Version"}
+            </button>
+            
+            <button
+              onClick={handleCopySnippet}
+              disabled={!canCopy}
+              className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+              title="Copy as AFU9 Import snippet"
+            >
+              {copySuccess ? "Copied!" : "Copy Snippet"}
+            </button>
+          </div>
+
+          {/* Row 2: Publish to GitHub */}
           <button
-            onClick={handleValidate}
-            disabled={!canValidate}
-            className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+            onClick={handlePublish}
+            disabled={!canPublish}
+            className="w-full px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+            title="Publish committed version(s) to GitHub"
           >
-            {isValidating ? "Validating..." : "Validate"}
-          </button>
-          
-          <button
-            onClick={handleCommit}
-            disabled={!canCommit}
-            className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-          >
-            {isCommitting ? "Committing..." : "Commit Version"}
-          </button>
-          
-          <button
-            onClick={handleCopySnippet}
-            disabled={!canCopy}
-            className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-            title="Copy as AFU9 Import snippet"
-          >
-            {copySuccess ? "Copied!" : "Copy Snippet"}
+            {isPublishing ? "Publishing to GitHub..." : "📤 Publish to GitHub"}
           </button>
         </div>
+        
+        {/* Publish Result Display */}
+        {showPublishResult && publishResult && (
+          <div className="mt-3 p-3 bg-green-900/20 border border-green-700 rounded">
+            <div className="flex items-start justify-between mb-2">
+              <h4 className="text-sm font-semibold text-green-300">Published Successfully!</h4>
+              <button
+                onClick={() => setShowPublishResult(false)}
+                className="text-green-400 hover:text-green-300 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-2 text-xs">
+              {/* Summary */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-gray-400">Batch ID:</span>
+                  <span className="ml-2 font-mono text-green-300">{publishResult.batch_id?.substring(0, 12)}...</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Total:</span>
+                  <span className="ml-2 text-green-200">{publishResult.summary?.total || 0}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Created:</span>
+                  <span className="ml-2 text-green-200">{publishResult.summary?.created || 0}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Updated:</span>
+                  <span className="ml-2 text-blue-200">{publishResult.summary?.updated || 0}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Skipped:</span>
+                  <span className="ml-2 text-gray-400">{publishResult.summary?.skipped || 0}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">Failed:</span>
+                  <span className="ml-2 text-red-300">{publishResult.summary?.failed || 0}</span>
+                </div>
+              </div>
+
+              {/* GitHub Links */}
+              {publishResult.items && publishResult.items.length > 0 && (
+                <div className="mt-3 border-t border-green-700 pt-2">
+                  <div className="text-gray-300 font-medium mb-1">GitHub Issues:</div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {publishResult.items.filter((item: any) => item.github_issue_url).map((item: any, idx: number) => (
+                      <a
+                        key={idx}
+                        href={item.github_issue_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-blue-400 hover:text-blue-300 hover:underline"
+                      >
+                        {item.canonical_id} → #{item.github_issue_number} ({item.action})
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warnings */}
+              {publishResult.warnings && publishResult.warnings.length > 0 && (
+                <div className="mt-2 text-yellow-300">
+                  <div className="font-medium">Warnings:</div>
+                  {publishResult.warnings.map((warning: string, idx: number) => (
+                    <div key={idx} className="text-xs">{warning}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         
         {/* Error Display */}
         {error && (
