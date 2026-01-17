@@ -11,7 +11,7 @@
     "outDir": "dist",
     "rootDir": ".",
     "jsx": "react-jsx",
-    "types": ["node", "jest", "react"]
+    "types": ["react", "node", "jest"]
   },
   "include": [
     "bin/**/*.ts",
