@@ -9,6 +9,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { listIntentSessions, createIntentSession } from '@/lib/db/intentSessions';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import {
+  INTENT_CONVERSATION_MODES,
+  DEFAULT_CONVERSATION_MODE,
+  normalizeConversationMode,
+  type ConversationMode,
+} from '@/lib/schemas/conversationMode';
 
 /**
  * GET /api/intent/sessions
@@ -123,9 +129,25 @@ export async function POST(request: NextRequest) {
       });
     }
     
+    // Validate conversationMode: if provided must be valid, if missing defaults to DISCUSS
+    let conversationMode: ConversationMode = DEFAULT_CONVERSATION_MODE;
+    if (body.conversationMode !== undefined) {
+      if (!INTENT_CONVERSATION_MODES.includes(body.conversationMode)) {
+        return errorResponse('Invalid conversationMode', {
+          status: 400,
+          requestId,
+          code: 'VALIDATION_FAILED',
+          details: `conversationMode must be one of: ${INTENT_CONVERSATION_MODES.join(', ')}`,
+        });
+      }
+      // Normalize FREE -> DISCUSS for backward compatibility
+      conversationMode = normalizeConversationMode(body.conversationMode);
+    }
+
     const result = await createIntentSession(pool, userId, {
       title: body.title || undefined,
       status: body.status || 'active',
+      conversationMode,
     });
     
     if (!result.success) {

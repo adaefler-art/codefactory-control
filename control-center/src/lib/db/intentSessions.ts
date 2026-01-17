@@ -8,6 +8,7 @@
 
 import { Pool } from 'pg';
 import type { UsedSources } from '../schemas/usedSources';
+import type { ConversationMode } from '../schemas/conversationMode';
 import { prepareUsedSourcesForStorage } from '../utils/sourceCanonicalizer';
 
 export interface IntentSession {
@@ -98,14 +99,15 @@ export async function createIntentSession(
   data: {
     title?: string;
     status?: 'active' | 'archived';
+    conversationMode?: ConversationMode;
   }
 ): Promise<{ success: true; data: IntentSession } | { success: false; error: string }> {
   try {
     const result = await pool.query(
-      `INSERT INTO intent_sessions (user_id, title, status)
-       VALUES ($1, $2, $3)
+      `INSERT INTO intent_sessions (user_id, title, status, conversation_mode)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, user_id, title, created_at, updated_at, status, conversation_mode`,
-      [userId, data.title || null, data.status || 'active']
+      [userId, data.title || null, data.status || 'active', data.conversationMode || 'FREE']
     );
     
     const row = result.rows[0];
