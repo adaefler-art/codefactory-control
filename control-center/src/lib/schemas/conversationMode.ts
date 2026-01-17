@@ -26,11 +26,21 @@ type AllowedConversationModeVersion = typeof ACTIVE_CONVERSATION_MODE_VERSIONS[n
 export const CONVERSATION_MODE_VERSION: AllowedConversationModeVersion = '1.0.0';
 
 /**
- * Conversation Mode Values
+ * Conversation Mode Values (Single Source of Truth)
  * - FREE: Default mode, unrestricted conversation
  * - DRAFTING: Focused mode for issue/CR drafting with tool restrictions
+ * 
+ * This array is the canonical list used by:
+ * - Zod schema (server validation)
+ * - DB constraint (chk_intent_session_conversation_mode)
+ * - Client typing/validation
  */
-export const ConversationModeEnum = z.enum(['FREE', 'DRAFTING']);
+export const INTENT_CONVERSATION_MODES = ['FREE', 'DRAFTING'] as const;
+
+/**
+ * Zod enum derived from INTENT_CONVERSATION_MODES
+ */
+export const ConversationModeEnum = z.enum(INTENT_CONVERSATION_MODES);
 
 export type ConversationMode = z.infer<typeof ConversationModeEnum>;
 
