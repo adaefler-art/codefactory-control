@@ -195,29 +195,32 @@ export default function IssuesPage() {
           }),
         });
 
-        const data = await safeFetch(response);
-        
-        if (data.success) {
-          setImportResult(data);
-          setImportSuccess(
-            `Import completed! Epics: ${data.epics.created} created, ${data.epics.updated} updated, ${data.epics.skipped} skipped. ` +
-            `Issues: ${data.issues.created} created, ${data.issues.updated} updated, ${data.issues.skipped} skipped.`
-          );
-          
-          // Refresh issues list
-          await fetchIssues();
-          
-          // Close modal after 3 seconds
-          setTimeout(() => {
-            setShowImportModal(false);
-            setImportSuccess(null);
-            setImportResult(null);
-          }, 3000);
-        } else {
-          setImportError(data.error || data.errors?.[0]?.message || "Failed to import from repository file");
-          if (data.errors && data.errors.length > 0) {
-            setImportResult(data);
+        const data: unknown = await safeFetch(response);
+        // Defensive: check shape before using
+        if (typeof data === 'object' && data !== null && 'success' in data) {
+          const d = data as ImportResult & { error?: string; errors?: ImportError[] };
+          if (d.success) {
+            setImportResult(d);
+            setImportSuccess(
+              `Import completed! Epics: ${d.epics?.created ?? 0} created, ${d.epics?.updated ?? 0} updated, ${d.epics?.skipped ?? 0} skipped. ` +
+              `Issues: ${d.issues?.created ?? 0} created, ${d.issues?.updated ?? 0} updated, ${d.issues?.skipped ?? 0} skipped.`
+            );
+            // Refresh issues list
+            await fetchIssues();
+            // Close modal after 3 seconds
+            setTimeout(() => {
+              setShowImportModal(false);
+              setImportSuccess(null);
+              setImportResult(null);
+            }, 3000);
+          } else {
+            setImportError(d.error || d.errors?.[0]?.message || "Failed to import from repository file");
+            if (d.errors && d.errors.length > 0) {
+              setImportResult(d);
+            }
           }
+        } else {
+          setImportError("Failed to import from repository file (unexpected response)");
         }
       }
     } catch (err) {
@@ -903,15 +906,15 @@ Implement dark mode theme toggle"
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                       <div className="bg-green-900/20 p-2 rounded">
                         <p className="text-green-400 font-medium">Epics</p>
-                        <p className="text-green-300">Created: {importResult.epics.created}</p>
-                        <p className="text-green-300">Updated: {importResult.epics.updated}</p>
-                        <p className="text-green-300">Skipped: {importResult.epics.skipped}</p>
+                        <p className="text-green-300">Created: {importResult.epics?.created ?? 0}</p>
+                        <p className="text-green-300">Updated: {importResult.epics?.updated ?? 0}</p>
+                        <p className="text-green-300">Skipped: {importResult.epics?.skipped ?? 0}</p>
                       </div>
                       <div className="bg-green-900/20 p-2 rounded">
                         <p className="text-green-400 font-medium">Issues</p>
-                        <p className="text-green-300">Created: {importResult.issues.created}</p>
-                        <p className="text-green-300">Updated: {importResult.issues.updated}</p>
-                        <p className="text-green-300">Skipped: {importResult.issues.skipped}</p>
+                        <p className="text-green-300">Created: {importResult.issues?.created ?? 0}</p>
+                        <p className="text-green-300">Updated: {importResult.issues?.updated ?? 0}</p>
+                        <p className="text-green-300">Skipped: {importResult.issues?.skipped ?? 0}</p>
                       </div>
                     </div>
                   )}
