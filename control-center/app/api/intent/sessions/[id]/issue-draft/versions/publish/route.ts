@@ -62,7 +62,26 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  // Log-first: Extract requestId BEFORE any other logic to ensure traceability
   const requestId = getRequestId(request);
+  
+  // Extract sessionId early for logging (best-effort, context.params may fail)
+  let sessionId = 'unknown';
+  try {
+    const params = await context.params;
+    sessionId = params?.id ?? 'unknown';
+  } catch {
+    // If params extraction fails, continue with 'unknown' - will be caught in main try
+  }
+  
+  // Log start immediately - ensures every request has at least one log entry
+  console.log('[intent.publish.start]', JSON.stringify({
+    requestId,
+    sessionId,
+    method: 'POST',
+    path: '/api/intent/sessions/[id]/issue-draft/versions/publish',
+    timestamp: new Date().toISOString(),
+  }));
   
   try {
     // GUARD 1: Authentication (401-first)
@@ -113,8 +132,10 @@ export async function POST(
       });
     }
     
-    // Await params (Next.js 13.4+)
-    const { id: sessionId } = await context.params;
+    // Await params (Next.js 13.4+) - use already-resolved sessionId from log-first block
+    // Re-resolve to ensure we have the actual value (not 'unknown' fallback)
+    const resolvedParams = await context.params;
+    sessionId = resolvedParams.id;
     
     if (!sessionId) {
       return errorResponse('Session ID required', {
@@ -327,11 +348,29 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error('[API /api/intent/sessions/[id]/issue-draft/versions/publish] Error publishing draft versions:', error);
-    return errorResponse('Failed to publish draft versions', {
+    // Crash-safe: Log structured error with stack trace for debugging
+    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('[intent.publish.crash]', JSON.stringify({
+      requestId,
+      sessionId,
+      errorName,
+      errorMessage,
+      errorStack,
+      timestamp: new Date().toISOString(),
+    }));
+    
+    // Return structured JSON error (never throw/abort connection)
+    return jsonResponse({
+      error: 'Failed to publish draft version',
+      timestamp: new Date().toISOString(),
+      details: errorMessage || 'Unhandled error',
+      requestId,
+    }, {
       status: 500,
       requestId,
-      details: 'INTERNAL_ERROR',
     });
   }
 }
