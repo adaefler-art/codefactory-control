@@ -22,8 +22,8 @@ import * as React from "react";
  */
 
 import { useEffect, useState } from "react";
-import { safeFetch, formatErrorMessage } from "../../../src/lib/api/safe-fetch.ts";
-import { API_ROUTES } from "../../../src/lib/api-routes.ts";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+import { API_ROUTES } from "@/lib/api-routes";
 import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
 
 // Configuration constants

@@ -11,7 +11,14 @@
     "outDir": "dist",
     "rootDir": ".",
     "jsx": "react-jsx",
-    "types": ["react", "node", "jest"]
+    "types": ["react", "node", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "control-center/app/*",
+        "control-center/src/*"
+      ]
+    }
   },
   "include": [
     "bin/**/*.ts",
