@@ -185,11 +185,12 @@ function proofPostSuccess(pack: IncidentEvidencePack): ProofResult {
  */
 function proofAuthError(pack: IncidentEvidencePack): ProofResult {
   const logs = pack.serverLogRefs || [];
-  const authErrorLogs = logs.filter(log =>
-    log.message.toLowerCase().includes('auth') ||
-    log.message.toLowerCase().includes('unauthorized') ||
-    log.message.toLowerCase().includes('forbidden')
-  );
+  const authErrorLogs = logs.filter(log => {
+    const lowerMessage = log.message.toLowerCase();
+    return lowerMessage.includes('auth') ||
+      lowerMessage.includes('unauthorized') ||
+      lowerMessage.includes('forbidden');
+  });
   
   if (authErrorLogs.length > 0) {
     return {
@@ -242,12 +243,13 @@ function proof401Or403(pack: IncidentEvidencePack): ProofResult {
 function proofToolCallMissing(pack: IncidentEvidencePack): ProofResult {
   const logs = pack.serverLogRefs || [];
   const notes = pack.notes || '';
+  const lowerNotes = notes.toLowerCase();
   
   const hasNoToolCallsLog = logs.some(log =>
     log.message.toLowerCase().includes('no tool')
   );
   
-  const hasNoToolCallsNote = notes.toLowerCase().includes('no tool');
+  const hasNoToolCallsNote = lowerNotes.includes('no tool');
   
   if (hasNoToolCallsLog || hasNoToolCallsNote) {
     return {
@@ -273,8 +275,9 @@ function proofToolCallMissing(pack: IncidentEvidencePack): ProofResult {
  */
 function proofTextResponse(pack: IncidentEvidencePack): ProofResult {
   const notes = pack.notes || '';
+  const lowerNotes = notes.toLowerCase();
   
-  if (notes.toLowerCase().includes('text only') || notes.toLowerCase().includes('text response')) {
+  if (lowerNotes.includes('text only') || lowerNotes.includes('text response')) {
     return {
       id: 'PROOF_TEXT_RESPONSE',
       name: 'Text-only response',
@@ -360,8 +363,9 @@ function proofValidationError(pack: IncidentEvidencePack): ProofResult {
  */
 function proofStaleData(pack: IncidentEvidencePack): ProofResult {
   const notes = pack.notes || '';
+  const lowerNotes = notes.toLowerCase();
   
-  if (notes.toLowerCase().includes('stale')) {
+  if (lowerNotes.includes('stale')) {
     return {
       id: 'PROOF_STALE_DATA',
       name: 'Stale data detected',
@@ -385,8 +389,9 @@ function proofStaleData(pack: IncidentEvidencePack): ProofResult {
  */
 function proofNoRefresh(pack: IncidentEvidencePack): ProofResult {
   const notes = pack.notes || '';
+  const lowerNotes = notes.toLowerCase();
   
-  if (notes.toLowerCase().includes('no refresh') || notes.toLowerCase().includes('not refresh')) {
+  if (lowerNotes.includes('no refresh') || lowerNotes.includes('not refresh')) {
     return {
       id: 'PROOF_NO_REFRESH',
       name: 'No refresh mechanism',

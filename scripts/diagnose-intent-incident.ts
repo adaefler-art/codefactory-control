@@ -139,7 +139,7 @@ async function main() {
   // Run diagnosis
   try {
     const result = diagnoseIncident(evidencePack, {
-      skipValidation: false, // Already validated above
+      skipValidation: true,  // Already validated above
       skipRedaction: false,  // Always redact for security
     });
     

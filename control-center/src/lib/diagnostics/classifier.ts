@@ -267,17 +267,19 @@ function checkC3AuthMismatch(pack: IncidentEvidencePack): boolean {
 function checkC4AgentTextOnly(pack: IncidentEvidencePack): boolean {
   const logs = pack.serverLogRefs || [];
   const notes = pack.notes || '';
+  const lowerNotes = notes.toLowerCase();
   
   // Check logs for "no tool calls" indicators
-  const hasNoToolCallsLog = logs.some(log =>
-    log.message.toLowerCase().includes('no tool') ||
-    log.message.toLowerCase().includes('text only') ||
-    log.message.toLowerCase().includes('agent did not call')
-  );
+  const hasNoToolCallsLog = logs.some(log => {
+    const lowerMessage = log.message.toLowerCase();
+    return lowerMessage.includes('no tool') ||
+      lowerMessage.includes('text only') ||
+      lowerMessage.includes('agent did not call');
+  });
   
   // Check notes
-  const hasNoToolCallsNote = notes.toLowerCase().includes('no tool') ||
-    notes.toLowerCase().includes('text only');
+  const hasNoToolCallsNote = lowerNotes.includes('no tool') ||
+    lowerNotes.includes('text only');
   
   return hasNoToolCallsLog || hasNoToolCallsNote;
 }
@@ -317,8 +319,9 @@ function checkC6SchemaMismatch(pack: IncidentEvidencePack): boolean {
  */
 function checkC7RefreshWiringMissing(pack: IncidentEvidencePack): boolean {
   const notes = pack.notes || '';
+  const lowerNotes = notes.toLowerCase();
   
-  return notes.toLowerCase().includes('stale') ||
-    notes.toLowerCase().includes('not refresh') ||
-    notes.toLowerCase().includes('no refresh');
+  return lowerNotes.includes('stale') ||
+    lowerNotes.includes('not refresh') ||
+    lowerNotes.includes('no refresh');
 }
