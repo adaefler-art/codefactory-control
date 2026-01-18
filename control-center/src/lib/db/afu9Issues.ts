@@ -24,6 +24,9 @@ import { IssueState, isValidTransition } from '../types/issue-state';
  * Helper function to build parameter array for INSERT queries
  * Reduces duplication and potential parameter misalignment errors
  * 
+ * Note: execution_output and kpi_context are already objects (not stringified)
+ * in the sanitized input. This function handles JSON.stringify for DB storage.
+ * 
  * @param sanitized - Sanitized AFU9 issue input
  * @returns Array of parameters in the correct order for INSERT query
  */
@@ -45,6 +48,7 @@ function buildIssueInsertParams(sanitized: Afu9IssueInput): unknown[] {
     sanitized.execution_state,
     sanitized.execution_started_at,
     sanitized.execution_completed_at,
+    // execution_output is an object in sanitized input, stringify for DB
     sanitized.execution_output ? JSON.stringify(sanitized.execution_output) : null,
     sanitized.handoff_at,
     sanitized.handoff_error,
@@ -59,6 +63,7 @@ function buildIssueInsertParams(sanitized: Afu9IssueInput): unknown[] {
     sanitized.current_draft_id,
     sanitized.active_cr_id,
     sanitized.github_synced_at,
+    // kpi_context is an object in sanitized input, stringify for DB
     sanitized.kpi_context ? JSON.stringify(sanitized.kpi_context) : null,
     sanitized.publish_batch_id,
     sanitized.publish_request_id,
@@ -1088,7 +1093,8 @@ export async function unbindCrFromIssue(
  * @returns 8-character public ID
  */
 export function getPublicId(issueId: string): string {
-  return issueId.substring(0, 8).toLowerCase();
+  const PUBLIC_ID_LENGTH = 8;
+  return issueId.substring(0, PUBLIC_ID_LENGTH).toLowerCase();
 }
 
 /**
@@ -1271,10 +1277,12 @@ export async function ensureIssueForCommittedDraft(
     }
 
     // Issue doesn't exist - create it
+    // Note: source is always 'afu9' for database constraint compliance
+    // The origin is tracked via source_session_id and timeline event
     const sanitized = sanitizeAfu9IssueInput({
       ...input,
       status: Afu9IssueStatus.CREATED,
-      source: 'afu9', // Always afu9 source, not INTENT_COMMIT
+      source: 'afu9',
       source_session_id: sessionId,
       current_draft_id: draftVersionId || null,
       canonical_id: canonicalId,
@@ -1305,6 +1313,7 @@ export async function ensureIssueForCommittedDraft(
     const newIssue = insertResult.rows[0];
 
     // Log ISSUE_CREATED timeline event (exactly once)
+    // Timeline event uses INTENT_COMMIT source to track the creation context
     await client.query(
       `INSERT INTO issue_timeline (
         issue_id,
@@ -1320,7 +1329,7 @@ export async function ensureIssueForCommittedDraft(
           canonical_id: canonicalId,
           session_id: sessionId,
           draft_version_id: draftVersionId || null,
-          source: 'INTENT_COMMIT',
+          source: 'INTENT_COMMIT', // Event source, not issue source
         }),
         'system',
         'system',

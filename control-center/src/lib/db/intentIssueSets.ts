@@ -10,7 +10,7 @@ import { validateIssueDraft } from '../validators/issueDraftValidator';
 import type { IssueDraft } from '../schemas/issueDraft';
 import type { IssueSet, IssueSetItem } from '../schemas/issueSet';
 import { generateBriefingHash } from '../schemas/issueSet';
-import { ensureIssueForCommittedDraft } from './afu9Issues';
+import { ensureIssueForCommittedDraft, getPublicId } from './afu9Issues';
 import type { Afu9IssueRow } from '../contracts/afu9Issue';
 
 export interface IntentIssueSet {
@@ -393,6 +393,7 @@ export async function commitIssueSet(
       const issueDraft = item.issue_json as IssueDraft;
       
       // Map IssueDraft to AFU-9 Issue input
+      // Note: source field is always 'afu9' and is set by ensureIssueForCommittedDraft
       const issueInput = {
         title: issueDraft.title,
         body: issueDraft.body,
@@ -403,7 +404,6 @@ export async function commitIssueSet(
           dcu: issueDraft.kpi.dcu,
           intent: issueDraft.kpi.intent,
         } : null,
-        // Note: source field is set to 'afu9' in ensureIssueForCommittedDraft
       };
 
       // Ensure AFU-9 Issue exists (idempotent)
@@ -420,7 +420,7 @@ export async function commitIssueSet(
           itemId: item.id,
           canonicalId: item.canonical_id,
           issueId: issue.id,
-          publicId: issue.id.substring(0, 8).toLowerCase(),
+          publicId: getPublicId(issue.id),
           state: issue.status,
           isNew,
         });
