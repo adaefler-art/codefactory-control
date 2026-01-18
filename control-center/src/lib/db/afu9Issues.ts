@@ -1303,14 +1303,6 @@ export async function ensureIssueForCommittedDraft(
     }
 
     const newIssue = insertResult.rows[0];
-      await client.query('ROLLBACK');
-      return {
-        success: false,
-        error: 'Failed to create issue',
-      };
-    }
-
-    const newIssue = insertResult.rows[0];
 
     // Log ISSUE_CREATED timeline event (exactly once)
     await client.query(
