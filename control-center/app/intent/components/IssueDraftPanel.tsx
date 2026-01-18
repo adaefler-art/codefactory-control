@@ -19,7 +19,7 @@
  * - Show requestId on failure
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { safeFetch, formatErrorMessage } from "../../../src/lib/api/safe-fetch";
 import { API_ROUTES } from "../../../src/lib/api-routes";
 import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
@@ -111,6 +111,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   // --- AFU-9 Issue Creation ---
   const [isCreatingAfu9Issue, setIsCreatingAfu9Issue] = useState(false);
   const [afu9IssueResult, setAfu9IssueResult] = useState<any>(null);
@@ -152,8 +153,58 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     }
   };
 
-  // Dummy loadDraft for now to fix missing reference
-  const loadDraft = async () => {};
+  const loadDraft = async () => {
+    if (!sessionId) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setIsLoading(true);
+    setError(null);
+    setRequestId(null);
+
+    try {
+      const response = await fetch(API_ROUTES.intent.issueDraft.get(sessionId), {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+
+      const data = await safeFetch(response);
+
+      if (typeof data === "object" && data !== null && "success" in data) {
+        const success = (data as { success: boolean }).success;
+        if (success && "draft" in data) {
+          const draftData = (data as { draft: IssueDraftData | null }).draft;
+          setDraft(draftData ?? null);
+          setLastUpdatedAt(draftData?.updated_at ?? null);
+          return;
+        }
+      }
+
+      setError("Invalid response from server");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      console.error("Failed to load issue draft:", err);
+      setError(formatErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, refreshKey]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   // --- AFU-9 Issue Creation Handler ---
   const handleCreateAfu9Issue = async () => {
