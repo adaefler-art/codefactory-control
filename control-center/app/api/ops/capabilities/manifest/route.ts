@@ -25,7 +25,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { buildCapabilityManifest } from '@/lib/capability-manifest-service';
 import { getLatestProbeResults } from '@/lib/capability-probe-service';
-import { getDbPool } from '@/lib/db';
+import { getPool } from '@/lib/db';
 import * as crypto from 'crypto';
 
 export const runtime = 'nodejs';
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get latest probe results from database
-    const pool = getDbPool();
+    const pool = getPool();
     let probeResults: Awaited<ReturnType<typeof getLatestProbeResults>> = [];
     
     try {

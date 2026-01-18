@@ -10,6 +10,8 @@ import { validateIssueDraft } from '../validators/issueDraftValidator';
 import type { IssueDraft } from '../schemas/issueDraft';
 import type { IssueSet, IssueSetItem } from '../schemas/issueSet';
 import { generateBriefingHash } from '../schemas/issueSet';
+import { ensureIssueForCommittedDraft, getPublicId } from './afu9Issues';
+import type { Afu9IssueRow } from '../contracts/afu9Issue';
 
 export interface IntentIssueSet {
   id: string;
@@ -35,6 +37,21 @@ export interface IntentIssueSetItem {
   last_validation_at: string | null;
   last_validation_result: any;
   position: number;
+}
+
+/**
+ * Extended commit result with created AFU-9 Issues
+ */
+export interface CommitResult {
+  issueSet: IntentIssueSet;
+  createdIssues: Array<{
+    itemId: string;
+    canonicalId: string;
+    issueId: string;
+    publicId: string;
+    state: string;
+    isNew: boolean;
+  }>;
 }
 
 /**
@@ -284,12 +301,13 @@ export async function generateIssueSet(
 /**
  * Commit an issue set (mark as immutable)
  * Only commits if all items are valid
+ * AFU9-I-P1.4: Creates canonical AFU-9 Issues for each item on commit
  */
 export async function commitIssueSet(
   pool: Pool,
   sessionId: string,
   userId: string
-): Promise<{ success: true; data: IntentIssueSet } | { success: false; error: string }> {
+): Promise<{ success: true; data: CommitResult } | { success: false; error: string }> {
   const client = await pool.connect();
   
   try {
@@ -362,22 +380,79 @@ export async function commitIssueSet(
       [setRow.id]
     );
 
+    // Get all items to create AFU-9 Issues
+    const itemsToCommitResult = await client.query(
+      `SELECT id, issue_json, canonical_id FROM intent_issue_set_items WHERE issue_set_id = $1 ORDER BY position ASC`,
+      [setRow.id]
+    );
+
+    const createdIssues: CommitResult['createdIssues'] = [];
+
+    // Create AFU-9 Issue for each item (idempotent)
+    for (const item of itemsToCommitResult.rows) {
+      const issueDraft = item.issue_json as IssueDraft;
+      
+      // Map IssueDraft to AFU-9 Issue input
+      // Note: source field is always 'afu9' and is set by ensureIssueForCommittedDraft
+      const issueInput = {
+        title: issueDraft.title,
+        body: issueDraft.body,
+        labels: issueDraft.labels || [],
+        priority: issueDraft.priority,
+        canonical_id: item.canonical_id,
+        kpi_context: issueDraft.kpi ? {
+          dcu: issueDraft.kpi.dcu,
+          intent: issueDraft.kpi.intent,
+        } : null,
+      };
+
+      // Ensure AFU-9 Issue exists (idempotent)
+      const ensureResult = await ensureIssueForCommittedDraft(
+        pool,
+        issueInput,
+        sessionId,
+        item.id // Use item ID as draft version reference
+      );
+
+      if (ensureResult.success && ensureResult.data) {
+        const { issue, isNew } = ensureResult.data;
+        createdIssues.push({
+          itemId: item.id,
+          canonicalId: item.canonical_id,
+          issueId: issue.id,
+          publicId: getPublicId(issue.id),
+          state: issue.status,
+          isNew,
+        });
+      } else {
+        // Log error but continue (fail-soft for individual items)
+        console.error('[DB] Failed to create AFU-9 Issue for item:', {
+          itemId: item.id,
+          canonicalId: item.canonical_id,
+          error: ensureResult.error,
+        });
+      }
+    }
+
     await client.query('COMMIT');
 
     const updated = updateResult.rows[0];
     return {
       success: true,
       data: {
-        id: updated.id,
-        session_id: updated.session_id,
-        created_at: updated.created_at.toISOString(),
-        updated_at: updated.updated_at.toISOString(),
-        source_hash: updated.source_hash,
-        briefing_text: updated.briefing_text,
-        constraints_json: updated.constraints_json,
-        generated_at: updated.generated_at.toISOString(),
-        is_committed: updated.is_committed,
-        committed_at: updated.committed_at?.toISOString() || null,
+        issueSet: {
+          id: updated.id,
+          session_id: updated.session_id,
+          created_at: updated.created_at.toISOString(),
+          updated_at: updated.updated_at.toISOString(),
+          source_hash: updated.source_hash,
+          briefing_text: updated.briefing_text,
+          constraints_json: updated.constraints_json,
+          generated_at: updated.generated_at.toISOString(),
+          is_committed: updated.is_committed,
+          committed_at: updated.committed_at?.toISOString() || null,
+        },
+        createdIssues,
       },
     };
   } catch (error) {

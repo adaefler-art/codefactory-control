@@ -133,6 +133,7 @@ export interface Afu9IssueInput {
   kpi_context?: Record<string, unknown> | null;
   publish_batch_id?: string | null;
   publish_request_id?: string | null;
+  canonical_id?: string | null;
 }
 
 /**
@@ -182,6 +183,7 @@ export interface Afu9IssueRow {
   kpi_context: Record<string, unknown> | null;
   publish_batch_id: string | null;
   publish_request_id: string | null;
+  canonical_id: string | null;
 }
 
 /**
@@ -197,6 +199,7 @@ export const AFU9_ISSUE_CONSTRAINTS = {
   handoff_state: 50,
   priority: 10,
   execution_state: 50,
+  canonical_id: 50,
 } as const;
 
 /**
@@ -511,5 +514,6 @@ export function sanitizeAfu9IssueInput(input: Afu9IssueInput): Afu9IssueInput {
     kpi_context: input.kpi_context === undefined ? null : input.kpi_context,
     publish_batch_id: input.publish_batch_id === undefined ? null : input.publish_batch_id,
     publish_request_id: input.publish_request_id === undefined ? null : input.publish_request_id,
+    canonical_id: input.canonical_id === undefined || input.canonical_id === null ? null : input.canonical_id.trim().slice(0, AFU9_ISSUE_CONSTRAINTS.canonical_id),
   };
 }
