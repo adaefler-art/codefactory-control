@@ -21,6 +21,52 @@ import {
 import { IssueState, isValidTransition } from '../types/issue-state';
 
 /**
+ * Helper function to build parameter array for INSERT queries
+ * Reduces duplication and potential parameter misalignment errors
+ * 
+ * @param sanitized - Sanitized AFU9 issue input
+ * @returns Array of parameters in the correct order for INSERT query
+ */
+function buildIssueInsertParams(sanitized: Afu9IssueInput): unknown[] {
+  return [
+    sanitized.title,
+    sanitized.body,
+    sanitized.status,
+    sanitized.labels,
+    sanitized.priority,
+    sanitized.assignee,
+    sanitized.source,
+    sanitized.handoff_state,
+    sanitized.github_issue_number,
+    sanitized.github_url,
+    sanitized.last_error,
+    sanitized.activated_at,
+    sanitized.activated_by,
+    sanitized.execution_state,
+    sanitized.execution_started_at,
+    sanitized.execution_completed_at,
+    sanitized.execution_output ? JSON.stringify(sanitized.execution_output) : null,
+    sanitized.handoff_at,
+    sanitized.handoff_error,
+    sanitized.github_repo,
+    sanitized.github_issue_last_sync_at,
+    sanitized.github_status_raw,
+    sanitized.github_status_updated_at,
+    sanitized.status_source,
+    sanitized.github_mirror_status,
+    sanitized.github_sync_error,
+    sanitized.source_session_id,
+    sanitized.current_draft_id,
+    sanitized.active_cr_id,
+    sanitized.github_synced_at,
+    sanitized.kpi_context ? JSON.stringify(sanitized.kpi_context) : null,
+    sanitized.publish_batch_id,
+    sanitized.publish_request_id,
+    sanitized.canonical_id,
+  ];
+}
+
+/**
  * Operation result type
  */
 export interface OperationResult<T = Afu9IssueRow> {
@@ -66,6 +112,7 @@ export async function createAfu9Issue(
   }
 
   try {
+    const params = buildIssueInsertParams(sanitized);
     const result = await pool.query<Afu9IssueRow>(
       `INSERT INTO afu9_issues (
         title, body, status, labels, priority, assignee, source,
@@ -77,42 +124,7 @@ export async function createAfu9Issue(
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
       RETURNING *`,
-      [
-        sanitized.title,
-        sanitized.body,
-        sanitized.status,
-        sanitized.labels,
-        sanitized.priority,
-        sanitized.assignee,
-        sanitized.source,
-        sanitized.handoff_state,
-        sanitized.github_issue_number,
-        sanitized.github_url,
-        sanitized.last_error,
-        sanitized.activated_at,
-        sanitized.activated_by,
-        sanitized.execution_state,
-        sanitized.execution_started_at,
-        sanitized.execution_completed_at,
-        sanitized.execution_output,
-        sanitized.handoff_at,
-        sanitized.handoff_error,
-        sanitized.github_repo,
-        sanitized.github_issue_last_sync_at,
-        sanitized.github_status_raw,
-        sanitized.github_status_updated_at,
-        sanitized.status_source,
-        sanitized.github_mirror_status,
-        sanitized.github_sync_error,
-        sanitized.source_session_id,
-        sanitized.current_draft_id,
-        sanitized.active_cr_id,
-        sanitized.github_synced_at,
-        sanitized.kpi_context ? JSON.stringify(sanitized.kpi_context) : null,
-        sanitized.publish_batch_id,
-        sanitized.publish_request_id,
-        sanitized.canonical_id,
-      ]
+      params
     );
 
     if (result.rows.length === 0) {
@@ -1262,7 +1274,7 @@ export async function ensureIssueForCommittedDraft(
     const sanitized = sanitizeAfu9IssueInput({
       ...input,
       status: Afu9IssueStatus.CREATED,
-      source: 'afu9',
+      source: 'afu9', // Always afu9 source, not INTENT_COMMIT
       source_session_id: sessionId,
       current_draft_id: draftVersionId || null,
       canonical_id: canonicalId,
@@ -1279,45 +1291,18 @@ export async function ensureIssueForCommittedDraft(
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
       RETURNING *`,
-      [
-        sanitized.title,
-        sanitized.body,
-        sanitized.status,
-        sanitized.labels,
-        sanitized.priority,
-        sanitized.assignee,
-        sanitized.source,
-        sanitized.handoff_state,
-        sanitized.github_issue_number,
-        sanitized.github_url,
-        sanitized.last_error,
-        sanitized.activated_at,
-        sanitized.activated_by,
-        sanitized.execution_state,
-        sanitized.execution_started_at,
-        sanitized.execution_completed_at,
-        sanitized.execution_output ? JSON.stringify(sanitized.execution_output) : null,
-        sanitized.handoff_at,
-        sanitized.handoff_error,
-        sanitized.github_repo,
-        sanitized.github_issue_last_sync_at,
-        sanitized.github_status_raw,
-        sanitized.github_status_updated_at,
-        sanitized.status_source,
-        sanitized.github_mirror_status,
-        sanitized.github_sync_error,
-        sanitized.source_session_id,
-        sanitized.current_draft_id,
-        sanitized.active_cr_id,
-        sanitized.github_synced_at,
-        sanitized.kpi_context ? JSON.stringify(sanitized.kpi_context) : null,
-        sanitized.publish_batch_id,
-        sanitized.publish_request_id,
-        sanitized.canonical_id,
-      ]
+      buildIssueInsertParams(sanitized)
     );
 
     if (insertResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: 'Failed to create issue',
+      };
+    }
+
+    const newIssue = insertResult.rows[0];
       await client.query('ROLLBACK');
       return {
         success: false,
@@ -1377,7 +1362,7 @@ export async function ensureIssueForCommittedDraft(
       try {
         const retryResult = await pool.query<Afu9IssueRow>(
           'SELECT * FROM afu9_issues WHERE canonical_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1',
-          [input.canonical_id?.trim()]
+          [canonicalId]
         );
 
         if (retryResult.rows.length > 0) {

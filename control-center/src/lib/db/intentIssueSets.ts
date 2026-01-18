@@ -403,7 +403,7 @@ export async function commitIssueSet(
           dcu: issueDraft.kpi.dcu,
           intent: issueDraft.kpi.intent,
         } : null,
-        source: 'INTENT_COMMIT' as const,
+        // Note: source field is set to 'afu9' in ensureIssueForCommittedDraft
       };
 
       // Ensure AFU-9 Issue exists (idempotent)
