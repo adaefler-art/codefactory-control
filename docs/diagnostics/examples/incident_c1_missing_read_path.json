@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "1.0.0",
+  "incidentId": "INC-2026-000001",
+  "createdAt": "2026-01-18T17:00:00.000Z",
+  "env": "staging",
+  "deployedVersion": "v0.5.0-abc123",
+  "sessionId": "sess_test_c1_001",
+  "mode": "DRAFTING",
+  "requestIds": [
+    "req_001_draft_attempt",
+    "req_002_draft_attempt"
+  ],
+  "networkTraceSummary": {
+    "endpointPatterns": [
+      {
+        "pattern": "/api/intent/sessions/:id/issue-draft",
+        "method": "POST",
+        "statusCounts": {
+          "200": 1
+        }
+      },
+      {
+        "pattern": "/api/intent/sessions/:id/issue-draft",
+        "method": "PUT",
+        "statusCounts": {
+          "200": 1
+        }
+      }
+    ]
+  },
+  "apiSnippets": [
+    {
+      "endpoint": "/api/intent/sessions/sess_test_c1_001/issue-draft",
+      "method": "GET",
+      "status": 404,
+      "requestSnippet": {},
+      "responseSnippet": {
+        "error": "Not Found"
+      },
+      "timestamp": "2026-01-18T16:59:00.000Z"
+    },
+    {
+      "endpoint": "/api/intent/sessions/sess_test_c1_001/issue-draft",
+      "method": "POST",
+      "status": 200,
+      "requestSnippet": {
+        "title": "Test Issue"
+      },
+      "responseSnippet": {
+        "status": "NO_DRAFT",
+        "message": "Draft creation attempted but GET endpoint returns 404"
+      },
+      "timestamp": "2026-01-18T17:00:00.000Z"
+    }
+  ],
+  "serverLogRefs": [
+    {
+      "requestId": "req_001_draft_attempt",
+      "logLevel": "ERROR",
+      "message": "GET /api/intent/sessions/sess_test_c1_001/issue-draft returned 404",
+      "timestamp": "2026-01-18T16:59:00.000Z"
+    }
+  ],
+  "notes": "INTENT UI shows 'NO DRAFT' status but GET endpoint is missing. POST works but subsequent GET fails."
+}
