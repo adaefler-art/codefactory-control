@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codefactory.control/schemas/incident-evidence-pack.v1.json",
+  "title": "Incident Evidence Pack",
+  "description": "Versioned schema for INTENT authoring incident evidence collection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "incidentId",
+    "createdAt",
+    "env",
+    "sessionId",
+    "mode"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Evidence pack schema version"
+    },
+    "incidentId": {
+      "type": "string",
+      "pattern": "^INC-[0-9]{4}-[0-9]{6}$",
+      "description": "Unique incident identifier (format: INC-YYYY-NNNNNN)"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when evidence was collected"
+    },
+    "env": {
+      "type": "string",
+      "enum": ["development", "staging", "production"],
+      "description": "Environment where incident occurred"
+    },
+    "deployedVersion": {
+      "type": "string",
+      "description": "Deployed application version or build SHA"
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "INTENT session identifier"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["DRAFTING", "DISCUSS"],
+      "description": "INTENT session mode"
+    },
+    "requestIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of request IDs involved in the incident"
+    },
+    "networkTraceSummary": {
+      "type": "object",
+      "description": "Summary of network calls (no secrets)",
+      "properties": {
+        "endpointPatterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "method", "statusCounts"],
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Endpoint pattern (e.g., /api/intent/sessions/:id/issue-draft)"
+              },
+              "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+              },
+              "statusCounts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "HTTP status code counts (e.g., {\"200\": 5, \"404\": 2})"
+              }
+            }
+          }
+        }
+      }
+    },
+    "apiSnippets": {
+      "type": "array",
+      "maxItems": 10,
+      "description": "Sanitized request/response snippets (capped at 10)",
+      "items": {
+        "type": "object",
+        "required": ["endpoint", "method", "status"],
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "requestSnippet": {
+            "type": "object",
+            "description": "Sanitized request data (no auth headers/cookies)"
+          },
+          "responseSnippet": {
+            "type": "object",
+            "description": "Sanitized response data"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "serverLogRefs": {
+      "type": "array",
+      "description": "Server log references or sanitized excerpts",
+      "items": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "logLevel": {
+            "type": "string",
+            "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
+          },
+          "message": {
+            "type": "string",
+            "description": "Sanitized log message"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional operator notes"
+    }
+  }
+}

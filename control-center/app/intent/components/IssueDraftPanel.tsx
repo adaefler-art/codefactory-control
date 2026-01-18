@@ -112,6 +112,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const showDebug = process.env.NODE_ENV !== "production";
+  const debugSessionId = sessionId ? sessionId.substring(0, 8) : "none";
+  const debugRefreshKey = typeof refreshKey === "number" ? String(refreshKey) : "n/a";
   // --- AFU-9 Issue Creation ---
   const [isCreatingAfu9Issue, setIsCreatingAfu9Issue] = useState(false);
   const [afu9IssueResult, setAfu9IssueResult] = useState<any>(null);
