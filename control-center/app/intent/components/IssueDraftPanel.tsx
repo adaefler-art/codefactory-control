@@ -112,6 +112,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const showDebug = process.env.NODE_ENV !== "production";
+  const debugSessionId = sessionId ? sessionId.substring(0, 8) : "none";
+  const debugRefreshKey = typeof refreshKey === "number" ? String(refreshKey) : "n/a";
   // --- AFU-9 Issue Creation ---
   const [isCreatingAfu9Issue, setIsCreatingAfu9Issue] = useState(false);
   const [afu9IssueResult, setAfu9IssueResult] = useState<any>(null);
@@ -453,6 +456,11 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
           <h3 className="text-sm font-semibold text-gray-100">Issue Draft</h3>
           <div className="flex items-center gap-3">
             {renderValidationBadge()}
+            {showDebug && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+                sid:{debugSessionId} rk:{debugRefreshKey}
+              </span>
+            )}
             {draft && lastUpdatedAt && (
               <span className="text-xs text-gray-400">
                 Updated: {new Date(lastUpdatedAt).toLocaleTimeString()}
