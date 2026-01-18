@@ -15,7 +15,7 @@
  */
 
 import { Pool } from 'pg';
-import { getDeploymentEnv } from '../utils/deployment-env.js';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 
 /**
  * Actions allowed in DEV MODE during DISCUSS mode
