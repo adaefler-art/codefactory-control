@@ -381,7 +381,7 @@ export async function commitIssueSet(
     );
 
     // Get all items to create AFU-9 Issues
-    const itemsResult = await client.query(
+    const itemsToCommitResult = await client.query(
       `SELECT id, issue_json, canonical_id FROM intent_issue_set_items WHERE issue_set_id = $1 ORDER BY position ASC`,
       [setRow.id]
     );
@@ -389,7 +389,7 @@ export async function commitIssueSet(
     const createdIssues: CommitResult['createdIssues'] = [];
 
     // Create AFU-9 Issue for each item (idempotent)
-    for (const item of itemsResult.rows) {
+    for (const item of itemsToCommitResult.rows) {
       const issueDraft = item.issue_json as IssueDraft;
       
       // Map IssueDraft to AFU-9 Issue input

@@ -21,7 +21,7 @@
 import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { probeAllCapabilities } from '@/lib/capability-probe-service';
-import { getDbPool } from '@/lib/db';
+import { getPool } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // Probe all capabilities
-    const pool = getDbPool();
+    const pool = getPool();
     const summary = await probeAllCapabilities(pool, {
       userId,
       sessionId: `probe-${requestId}`,
