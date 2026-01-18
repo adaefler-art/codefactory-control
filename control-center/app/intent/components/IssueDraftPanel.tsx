@@ -115,6 +115,8 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   // --- AFU-9 Issue Creation ---
   const [isCreatingAfu9Issue, setIsCreatingAfu9Issue] = useState(false);
   const [afu9IssueResult, setAfu9IssueResult] = useState<any>(null);
+  const isDev = process.env.NODE_ENV === "development";
+  const viewDraft = draft?.issue_json ?? null;
 
   // --- Handlers and helpers ---
   const handleValidate = async () => {
@@ -453,6 +455,11 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
           <h3 className="text-sm font-semibold text-gray-100">Issue Draft</h3>
           <div className="flex items-center gap-3">
             {renderValidationBadge()}
+            {isDev && (
+              <span className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5">
+                [draft] sid={sessionId ?? "null"} draft={draft ? "present" : "null"}
+              </span>
+            )}
             {draft && lastUpdatedAt && (
               <span className="text-xs text-gray-400">
                 Updated: {new Date(lastUpdatedAt).toLocaleTimeString()}
@@ -548,7 +555,12 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
             <p className="text-xs">INTENT will create a draft when generating issue content</p>
           </div>
         )}
-        {draft && (
+        {draft && !viewDraft && (
+          <div className="text-xs text-yellow-300 bg-yellow-900/20 border border-yellow-700 rounded p-2">
+            Draft loaded but issue content is missing.
+          </div>
+        )}
+        {viewDraft && (
           <div className="bg-gray-800 border border-gray-700 rounded">
             <div className="px-3 py-2 border-b border-gray-700">
               <h4 className="text-sm font-medium text-gray-100">Preview</h4>
@@ -558,15 +570,15 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <span className="text-gray-400">Canonical ID:</span>
-                  <span className="font-mono text-purple-300">{draft.issue_json.canonicalId}</span>
+                  <span className="font-mono text-purple-300">{viewDraft.canonicalId}</span>
                 </div>
                 <div className="flex items-start justify-between">
                   <span className="text-gray-400">Type:</span>
-                  <span className="text-gray-200">{draft.issue_json.type}</span>
+                  <span className="text-gray-200">{viewDraft.type}</span>
                 </div>
                 <div className="flex items-start justify-between">
                   <span className="text-gray-400">Priority:</span>
-                  <span className="text-gray-200">{draft.issue_json.priority}</span>
+                  <span className="text-gray-200">{viewDraft.priority}</span>
                 </div>
                 {draft.issue_hash && (
                   <div className="flex items-start justify-between">
@@ -580,14 +592,14 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
               {/* Title */}
               <div>
                 <h5 className="text-xs font-semibold text-gray-400 mb-1">Title</h5>
-                <p className="text-gray-100 font-medium">{draft.issue_json.title}</p>
+                <p className="text-gray-100 font-medium">{viewDraft.title}</p>
               </div>
               {/* Labels (sorted deterministically) */}
-              {draft.issue_json.labels.length > 0 && (
+              {viewDraft.labels.length > 0 && (
                 <div>
                   <h5 className="text-xs font-semibold text-gray-400 mb-2">Labels</h5>
                   <div className="flex flex-wrap gap-1">
-                    {draft.issue_json.labels.map((label) => (
+                    {viewDraft.labels.map((label) => (
                       <span
                         key={label}
                         className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-900/30 text-blue-300 border border-blue-700"
@@ -599,11 +611,11 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 </div>
               )}
               {/* Dependencies (sorted deterministically) */}
-              {draft.issue_json.dependsOn.length > 0 && (
+              {viewDraft.dependsOn.length > 0 && (
                 <div>
                   <h5 className="text-xs font-semibold text-gray-400 mb-2">Dependencies</h5>
                   <div className="flex flex-wrap gap-1">
-                    {draft.issue_json.dependsOn.map((dep) => (
+                    {viewDraft.dependsOn.map((dep) => (
                       <span
                         key={dep}
                         className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-purple-900/30 text-purple-300 border border-purple-700"
@@ -619,26 +631,26 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 <h5 className="text-xs font-semibold text-gray-400 mb-1">Body</h5>
                 <div className="bg-gray-900 border border-gray-700 rounded p-2 max-h-40 overflow-y-auto">
                   <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
-                    {draft.issue_json.body.length > 500
-                      ? draft.issue_json.body.substring(0, 500) + "..."
-                      : draft.issue_json.body}
+                    {viewDraft.body.length > 500
+                      ? viewDraft.body.substring(0, 500) + "..."
+                      : viewDraft.body}
                   </pre>
                 </div>
               </div>
               {/* Acceptance Criteria */}
               <div>
                 <h5 className="text-xs font-semibold text-gray-400 mb-2">
-                  Acceptance Criteria ({draft.issue_json.acceptanceCriteria.length})
+                  Acceptance Criteria ({viewDraft.acceptanceCriteria.length})
                 </h5>
                 <ul className="space-y-1 list-disc list-inside text-gray-300">
-                  {draft.issue_json.acceptanceCriteria.slice(0, 5).map((ac, idx) => (
+                  {viewDraft.acceptanceCriteria.slice(0, 5).map((ac, idx) => (
                     <li key={idx} className="text-xs">
                       {ac.length > 100 ? ac.substring(0, 100) + "..." : ac}
                     </li>
                   ))}
-                  {draft.issue_json.acceptanceCriteria.length > 5 && (
+                  {viewDraft.acceptanceCriteria.length > 5 && (
                     <li className="text-xs text-gray-500">
-                      ... and {draft.issue_json.acceptanceCriteria.length - 5} more
+                      ... and {viewDraft.acceptanceCriteria.length - 5} more
                     </li>
                   )}
                 </ul>
@@ -649,12 +661,12 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 <div className="bg-gray-900 border border-gray-700 rounded p-2 text-xs">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-gray-400">Environment:</span>
-                    <span className="text-gray-200">{draft.issue_json.guards.env}</span>
+                    <span className="text-gray-200">{viewDraft.guards.env}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Prod Blocked:</span>
                     <span className="text-gray-200">
-                      {draft.issue_json.guards.prodBlocked ? "Yes" : "No"}
+                      {viewDraft.guards.prodBlocked ? "Yes" : "No"}
                     </span>
                   </div>
                 </div>
