@@ -19,6 +19,10 @@ import { ISSUE_DRAFT_VERSION, type IssueDraft } from '@/lib/schemas/issueDraft';
 import { classifyMessage } from '@/lib/intent/message-classifier';
 import { ZodError } from 'zod';
 import { createHash } from 'crypto';
+import { getDeploymentEnv } from '@/lib/utils/deployment-env';
+import { listIntentToolSpecs, getToolGateStatus } from '@/lib/intent-tool-registry';
+import { checkDevModeActionAllowed, getDevModeActionForTool } from '@/lib/guards/intent-dev-mode';
+import { executeIntentTool } from '@/lib/intent-agent-tool-executor';
 
 function deterministicI8xx(sessionId: string): string {
   const digest = createHash('sha256').update(sessionId, 'utf8').digest();
@@ -33,9 +37,21 @@ function clampTitle(raw: string): string {
   return title.length <= 200 ? title : title.slice(0, 197) + '...';
 }
 
-function buildMinimalDraft(sessionId: string, userText: string): IssueDraft {
-  const canonicalId = deterministicI8xx(sessionId);
-  const title = clampTitle(userText);
+function safeParseToolResult(result: string): { success?: boolean; code?: string } | null {
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as { success?: boolean; code?: string };
+    }
+  } catch (err) {
+    return null;
+  }
+  return null;
+}
+
+function buildMinimalDraft(sessionId: string, userText: string, explicitCanonicalId?: string): IssueDraft {
+  const canonicalId = explicitCanonicalId || deterministicI8xx(sessionId);
+  const title = explicitCanonicalId || clampTitle(userText);
 
   const body = `Canonical-ID: ${canonicalId}\n\n${userText}\n\n## Problem\nUser request captured by INTENT.\n\n## Acceptance Criteria\n- Draft is persisted and visible in the Issue Draft panel\n- Draft validates (schema v${ISSUE_DRAFT_VERSION})\n\n## Verify\n- Run unit tests and ensure UI renders the draft`;
 
@@ -245,6 +261,43 @@ export async function POST(
       });
     }
 
+    const debugExecutionErrors: string[] = agentResponse.debug?.executionErrors ?? [];
+    const debugPlannedToolCallIds: string[] = agentResponse.debug?.plannedToolCallIds ?? [];
+    const debugExecutedToolCallIds: string[] = agentResponse.debug?.executedToolCallIds ?? [];
+
+    const draftCreateActionTypes = new Set([
+      'slash_draft',
+      'draft_create',
+    ]);
+
+    const shouldAutoDraft =
+      conversationMode === 'DRAFTING' &&
+      classification.isActionIntent &&
+      classification.actionType &&
+      draftCreateActionTypes.has(classification.actionType);
+
+    if (shouldAutoDraft && !debugExecutedToolCallIds.includes('save_issue_draft')) {
+      const canonicalMatch = body.content.match(/canonicalId\s*=\s*([A-Za-z0-9:_-]+)/i);
+      const explicitCanonicalId = canonicalMatch?.[1];
+      const draftPayload = buildMinimalDraft(sessionId, body.content, explicitCanonicalId);
+
+      const toolContext = { userId, sessionId, triggerType, conversationMode: 'DRAFTING' as const };
+
+      const saveResult = await executeIntentTool('save_issue_draft', { issueJson: draftPayload }, toolContext);
+      debugExecutedToolCallIds.push('save_issue_draft');
+      const saveParsed = safeParseToolResult(saveResult) as { success?: boolean; code?: string } | null;
+      if (saveParsed?.success === false) {
+        debugExecutionErrors.push(saveParsed.code || 'TOOL_EXECUTION_ERROR');
+      }
+
+      const validateResult = await executeIntentTool('validate_issue_draft', { issueJson: draftPayload }, toolContext);
+      debugExecutedToolCallIds.push('validate_issue_draft');
+      const validateParsed = safeParseToolResult(validateResult) as { success?: boolean; code?: string } | null;
+      if (validateParsed?.success === false) {
+        debugExecutionErrors.push(validateParsed.code || 'TOOL_EXECUTION_ERROR');
+      }
+    }
+
     // Best-effort: ensure a persisted Issue Draft exists for this session.
     // This unblocks Draft E2E in the UI (no persistent NO_DRAFT after first user message).
     let issueDraftAutoCreate: any = undefined;
@@ -289,6 +342,36 @@ export async function POST(
         console.error('[API /api/intent/sessions/[id]/messages] Context pack generation error:', err);
       });
     
+    const isStaging = getDeploymentEnv() === 'staging';
+    const intentToolSpecs = listIntentToolSpecs();
+    const allowedToolIds = intentToolSpecs
+      .filter(spec => {
+        const gate = getToolGateStatus(spec.name, { userId, sessionId });
+        if (!gate.enabled) return false;
+
+        if (conversationMode === 'DISCUSS' && spec.isDraftMutating && triggerType !== 'USER_EXPLICIT') {
+          const devModeAction = getDevModeActionForTool(spec.name);
+          const devModeCheck = devModeAction
+            ? checkDevModeActionAllowed(userId, devModeAction, { sessionId, toolName: spec.name, requestId })
+            : { allowed: false };
+          return devModeCheck.allowed;
+        }
+
+        return true;
+      })
+      .map(spec => spec.name);
+
+    const debugPayload = isStaging
+      ? {
+          conversationMode,
+          allowedToolIds,
+          plannedToolCallIds: debugPlannedToolCallIds,
+          executedToolCallIds: debugExecutedToolCallIds,
+          executionErrors: debugExecutionErrors,
+          requestId,
+        }
+      : undefined;
+
     return jsonResponse({
       userMessage: userMessageResult.data,
       assistantMessage: assistantMessageResult.data,
@@ -298,6 +381,7 @@ export async function POST(
         model: agentResponse.model,
       },
       issueDraftAutoCreate,
+      debug: debugPayload,
     }, { status: 201, requestId });
   } catch (error) {
     console.error('[API /api/intent/sessions/[id]/messages] Error appending message:', error);
