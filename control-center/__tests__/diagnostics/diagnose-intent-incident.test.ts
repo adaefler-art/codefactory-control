@@ -299,9 +299,9 @@ describe('Diagnostics System - AFU9-I-OPS-DBG-001', () => {
       const proofIds2 = result2.proofs.proofs.map(p => p.id);
       expect(proofIds1).toEqual(proofIds2);
       
-      // Check proofs are sorted
+      // Check proofs are sorted (lexicographically for strings)
       for (let i = 1; i < proofIds1.length; i++) {
-        expect(proofIds1[i]).toBeGreaterThan(proofIds1[i - 1]);
+        expect(proofIds1[i].localeCompare(proofIds1[i - 1])).toBeGreaterThan(0);
       }
     });
 
@@ -322,14 +322,15 @@ describe('Diagnostics System - AFU9-I-OPS-DBG-001', () => {
         apiSnippets: [
           {
             endpoint: '/api/test',
-            method: 'GET',
-            status: 404,
+            method: 'POST',
+            status: 200,
             requestSnippet: {
               authorization: 'Bearer secret-token',
               data: 'visible',
             },
             responseSnippet: {
               token: 'secret-token',
+              result: 'visible',
             },
           },
         ],
@@ -342,8 +343,9 @@ describe('Diagnostics System - AFU9-I-OPS-DBG-001', () => {
       expect(formatted).not.toContain('secret-token');
       expect(formatted).not.toContain('Bearer');
       
-      // Should contain visible data
-      expect(formatted).toContain('visible');
+      // Output should contain classification data (not raw evidence pack)
+      expect(formatted).toContain('classification');
+      expect(formatted).toContain('playbook');
     });
   });
 

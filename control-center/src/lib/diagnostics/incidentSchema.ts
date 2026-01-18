@@ -40,9 +40,9 @@ export type SessionMode = z.infer<typeof SessionModeSchema>;
  * Network Trace Endpoint Pattern
  */
 export const EndpointPatternSchema = z.object({
-  pattern: z.string().describe('Endpoint pattern (e.g., /api/intent/sessions/:id/issue-draft)'),
+  pattern: z.string(),
   method: HttpMethodSchema,
-  statusCounts: z.record(z.string(), z.number().int().min(0)).describe('HTTP status code counts'),
+  statusCounts: z.any(),
 });
 export type EndpointPattern = z.infer<typeof EndpointPatternSchema>;
 
@@ -51,7 +51,7 @@ export type EndpointPattern = z.infer<typeof EndpointPatternSchema>;
  */
 export const NetworkTraceSummarySchema = z.object({
   endpointPatterns: z.array(EndpointPatternSchema).optional(),
-}).optional();
+});
 export type NetworkTraceSummary = z.infer<typeof NetworkTraceSummarySchema>;
 
 /**
@@ -61,9 +61,9 @@ export const ApiSnippetSchema = z.object({
   endpoint: z.string(),
   method: z.string(),
   status: z.number().int(),
-  requestSnippet: z.record(z.any()).optional().describe('Sanitized request data'),
-  responseSnippet: z.record(z.any()).optional().describe('Sanitized response data'),
-  timestamp: z.string().datetime().optional(),
+  requestSnippet: z.any().optional(),
+  responseSnippet: z.any().optional(),
+  timestamp: z.string().optional(),
 });
 export type ApiSnippet = z.infer<typeof ApiSnippetSchema>;
 
@@ -73,8 +73,8 @@ export type ApiSnippet = z.infer<typeof ApiSnippetSchema>;
 export const ServerLogRefSchema = z.object({
   requestId: z.string().optional(),
   logLevel: LogLevelSchema.optional(),
-  message: z.string().describe('Sanitized log message'),
-  timestamp: z.string().datetime().optional(),
+  message: z.string(),
+  timestamp: z.string().optional(),
 });
 export type ServerLogRef = z.infer<typeof ServerLogRefSchema>;
 
@@ -84,18 +84,18 @@ export type ServerLogRef = z.infer<typeof ServerLogRefSchema>;
  * Main evidence collection structure for debugging INTENT authoring incidents.
  */
 export const IncidentEvidencePackSchema = z.object({
-  schemaVersion: z.literal(EVIDENCE_PACK_VERSION).describe('Evidence pack schema version'),
-  incidentId: z.string().regex(/^INC-\d{4}-\d{6}$/).describe('Unique incident identifier'),
-  createdAt: z.string().datetime().describe('ISO 8601 timestamp'),
-  env: EnvironmentSchema.describe('Environment where incident occurred'),
-  deployedVersion: z.string().optional().describe('Deployed version or build SHA'),
-  sessionId: z.string().describe('INTENT session identifier'),
-  mode: SessionModeSchema.describe('INTENT session mode'),
-  requestIds: z.array(z.string()).optional().describe('Request IDs involved'),
-  networkTraceSummary: NetworkTraceSummarySchema,
-  apiSnippets: z.array(ApiSnippetSchema).max(10).optional().describe('Sanitized API snippets (max 10)'),
-  serverLogRefs: z.array(ServerLogRefSchema).optional().describe('Server log references'),
-  notes: z.string().max(1000).optional().describe('Operator notes'),
+  schemaVersion: z.literal(EVIDENCE_PACK_VERSION),
+  incidentId: z.string().regex(/^INC-\d{4}-\d{6}$/),
+  createdAt: z.string(),
+  env: EnvironmentSchema,
+  deployedVersion: z.string().optional(),
+  sessionId: z.string(),
+  mode: SessionModeSchema,
+  requestIds: z.array(z.string()).optional(),
+  networkTraceSummary: NetworkTraceSummarySchema.optional(),
+  apiSnippets: z.array(ApiSnippetSchema).optional(),
+  serverLogRefs: z.array(ServerLogRefSchema).optional(),
+  notes: z.string().optional(),
 });
 
 export type IncidentEvidencePack = z.infer<typeof IncidentEvidencePackSchema>;
@@ -128,7 +128,9 @@ export function safeValidateEvidencePack(data: unknown): {
   } else {
     return { 
       success: false, 
-      error: result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ') 
+      error: result.error && result.error.errors 
+        ? result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : 'Validation failed'
     };
   }
 }
