@@ -65,6 +65,7 @@ const ACTION_PATTERNS = {
   // Draft patterns
   draft_create: [
     /\bcreate\s+(the\s+)?draft\s+(now|immediately)\b/i,
+    /\bcreate\s+(a|an|the)\s+(minimal\s+)?draft\b/i,
     /\bmake\s+(a|an|the)\s+draft\s+(now|immediately)\b/i,
     /\bgenerate\s+(the\s+)?draft\s+(now|immediately)\b/i,
   ],

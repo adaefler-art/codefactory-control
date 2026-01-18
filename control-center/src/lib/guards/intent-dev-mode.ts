@@ -24,6 +24,7 @@ import { getDeploymentEnv } from '@/lib/utils/deployment-env';
 export const DEV_MODE_ALLOWLIST = [
   // Issue draft tools
   'save_issue_draft',
+  'apply_issue_draft_patch',
   'validate_issue_draft',
   'commit_issue_draft',
   // Change request tools
@@ -150,7 +151,7 @@ export function getDevModeActionForTool(toolName: string): string | undefined {
  * 
  * @param entry - The audit entry to log
  */
-export function logDevModeException(entry: Omit<DevModeAuditEntry, 'timestamp' | 'devMode'>): void {
+export function logDevModeException(entry: Omit<DevModeAuditEntry, 'timestamp' | 'devMode' | 'environment'>): void {
   const auditEntry: DevModeAuditEntry = {
     ...entry,
     timestamp: new Date().toISOString(),

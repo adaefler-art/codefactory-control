@@ -75,6 +75,11 @@ export interface IntentAgentResponse {
   timestamp: string;
   model: string;
   usedSources?: UsedSources; // E89.5: Sources from evidence tools
+  debug?: {
+    plannedToolCallIds: string[];
+    executedToolCallIds: string[];
+    executionErrors: string[];
+  };
 }
 
 /**
@@ -285,6 +290,8 @@ You are in DRAFTING mode. Draft-mutating tools are ENABLED but validation is opt
 - Help user structure their draft (guide with schema fields)
 - Allow incomplete drafts (prodBlocked=true)
 - Suggest missing fields but don't block on them
+- When the user asks to create or modify an Issue Draft, you MUST call save_issue_draft immediately
+- After saving, you MUST call validate_issue_draft to store validation status
 - Validate when user explicitly asks or before ACT operations
 - To commit/publish, user should switch to ACT mode or use explicit commands
 - Commands: "/draft", "update draft", "save draft"`;
@@ -323,9 +330,8 @@ CRITICAL RULES FOR TOOL USAGE:
 7. Tool results are JSON strings - parse them and present to user in German
 
 ISSUE DRAFT RULES:
-- In ALL modes: if the user asks to create or modify an issue, you MUST call save_issue_draft or apply_issue_draft_patch immediately
-- Draft creation is NEVER coupled to publish; do NOT require publish or GitHub actions
-- In DRAFTING mode: guide with schema, don't enforce validation
+- In DISCUSS mode: DO NOT create drafts. Help user plan and clarify.
+- In DRAFTING mode: When user asks to create or modify a draft, you MUST save the draft and then validate it.
 - In ACT mode with explicit command (/draft, "create draft now", etc.):
   1) Call get_issue_draft first
   2) If draft is null/empty: call save_issue_draft with schema-shaped JSON (prodBlocked=true)
@@ -399,6 +405,10 @@ Response language: German (user may use English or German)`;
       }
 
       // Handle tool calls if present
+      const plannedToolCallIds: string[] = [];
+      const executedToolCallIds: string[] = [];
+      const executionErrors: string[] = [];
+
       if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
         console.log("[INTENT Agent] Processing tool calls", {
           requestId,
@@ -407,6 +417,10 @@ Response language: German (user may use English or German)`;
             'function' in tc ? tc.function.name : 'unknown'
           ),
         });
+
+        plannedToolCallIds.push(
+          ...responseMessage.tool_calls.map(toolCall => toolCall.id)
+        );
 
         // Build messages with assistant's tool call message
         const toolMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -438,6 +452,8 @@ Response language: German (user may use English or German)`;
           
           // Execute tool with context (V09-I02: includes trigger type and mode)
           const toolResult = await executeIntentTool(functionName, functionArgs, toolExecutionContext);
+
+          executedToolCallIds.push(toolCall.id);
           
           console.log(`[INTENT Agent] Tool result:`, {
             requestId,
@@ -446,9 +462,12 @@ Response language: German (user may use English or German)`;
           });
           
           // E89.5: Record tool invocation for source tracking
-          const parsedResult = safeParseToolResult(toolResult);
+          const parsedResult = safeParseToolResult(toolResult) as { success?: boolean; code?: string } | null;
           if (parsedResult) {
             sourcesTracker.recordInvocation(functionName, functionArgs, parsedResult);
+            if (parsedResult.success === false) {
+              executionErrors.push(parsedResult.code || 'TOOL_EXECUTION_ERROR');
+            }
           }
           
           // Add tool result to messages
@@ -499,6 +518,11 @@ Response language: German (user may use English or German)`;
           timestamp,
           model: OPENAI_MODEL,
           usedSources: usedSources.length > 0 ? usedSources : undefined,
+          debug: {
+            plannedToolCallIds,
+            executedToolCallIds,
+            executionErrors,
+          },
         };
       }
 
@@ -532,6 +556,11 @@ Response language: German (user may use English or German)`;
         requestId,
         timestamp,
         model: OPENAI_MODEL,
+        debug: {
+          plannedToolCallIds: [],
+          executedToolCallIds: [],
+          executionErrors: [],
+        },
       };
     } catch (error) {
       clearTimeout(timeoutId);
