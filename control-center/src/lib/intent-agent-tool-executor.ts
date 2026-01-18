@@ -57,6 +57,11 @@ export async function executeIntentTool(
 ): Promise<string> {
   const pool = getPool();
   const { userId, sessionId, triggerType, conversationMode } = context;
+  const alwaysAllowedDraftTools = new Set([
+    'save_issue_draft',
+    'apply_issue_draft_patch',
+    'validate_issue_draft',
+  ]);
   
   console.log(`[Tool Executor] Executing ${toolName}`, {
     sessionId: sessionId.substring(0, 20),
@@ -73,7 +78,7 @@ export async function executeIntentTool(
     
     // 2. In DISCUSS mode, block draft-mutating tools unless explicitly triggered
     //    OR DEV MODE is active and action is in allowlist
-    if (conversationMode === 'DISCUSS' && isDraftMutating) {
+    if (conversationMode === 'DISCUSS' && isDraftMutating && !alwaysAllowedDraftTools.has(toolName)) {
       if (triggerType !== 'USER_EXPLICIT' && triggerType !== 'UI_ACTION') {
         // Check DEV MODE allowlist before blocking
         const devModeAction = getDevModeActionForTool(toolName);
@@ -446,6 +451,11 @@ async function executeToolInternal(
             code: 'MISSING_ISSUE_JSON',
           });
         }
+
+        console.log('[INTENT Agent] save_issue_draft called', {
+          sessionId: sessionId.substring(0, 20),
+          userId: userId.substring(0, 8),
+        });
 
         const result = await saveIssueDraft(pool, sessionId, userId, issueJson);
 

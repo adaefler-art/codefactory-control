@@ -263,7 +263,7 @@ export async function generateIntentResponse(
     const toolCapabilities = renderIntentToolCapabilities({ userId, sessionId });
 
     // I903: Three-stage mode-aware system prompt
-    // DISCUSS mode: Free planning, no auto-drafting, tools gated
+    // DISCUSS mode: Free planning, issue draft creation allowed
     // DRAFTING mode: Structured drafting, schema-guided but validation optional
     // ACT mode: Full validation, commits, publishes
     let modeInstructions: string;
@@ -292,15 +292,11 @@ You are in DRAFTING mode. Draft-mutating tools are ENABLED but validation is opt
       // DISCUSS mode (default)
       modeInstructions = `
 CONVERSATION MODE: DISCUSS
-You are in DISCUSS mode. Draft-mutating tools are DISABLED.
-- DO NOT attempt to create, save, or modify drafts automatically
-- DO NOT call save_issue_draft, commit_issue_draft, or publish tools
-- If the user says "issue" or "ticket", they are DISCUSSING, not commanding
-- Help them plan, clarify requirements, brainstorm, explore options
-- If they want to create a draft, tell them to:
-  1. Use explicit commands: "/draft", "/commit", "/publish"
-  2. Or switch to DRAFTING mode via UI
-  3. Or switch to ACT mode for full validation+write operations
+You are in DISCUSS mode. Planning is allowed, and Issue Draft creation is ALWAYS allowed.
+- When the user asks to create or modify an issue draft, you MUST call save_issue_draft or apply_issue_draft_patch immediately
+- Draft creation is NEVER coupled to publish; do NOT require publish or GitHub actions
+- Use validate_issue_draft only when user explicitly asks to validate
+- Commit/publish only on explicit "commit" / "publish" commands
 - Read-only tools (get_issue_draft, get_context_pack) are always allowed`;
     }
 
@@ -311,7 +307,7 @@ Your role:
 - Help users understand and operate the AFU-9 system
 - Provide guidance on issues, workflows, deployments, and observability
 - Assist with Change Request (CR) creation and planning
-- Execute actions via available tools ONLY when explicitly requested
+- Execute actions via available tools when the user requests them
 ${modeInstructions}
 
 AVAILABLE TOOLS:
@@ -327,8 +323,9 @@ CRITICAL RULES FOR TOOL USAGE:
 7. Tool results are JSON strings - parse them and present to user in German
 
 ISSUE DRAFT RULES:
-- In DISCUSS mode: DO NOT create drafts. Help user plan and clarify.
-- In DRAFTING mode: Allow draft creation/updates, guide with schema, don't enforce validation.
+- In ALL modes: if the user asks to create or modify an issue, you MUST call save_issue_draft or apply_issue_draft_patch immediately
+- Draft creation is NEVER coupled to publish; do NOT require publish or GitHub actions
+- In DRAFTING mode: guide with schema, don't enforce validation
 - In ACT mode with explicit command (/draft, "create draft now", etc.):
   1) Call get_issue_draft first
   2) If draft is null/empty: call save_issue_draft with schema-shaped JSON (prodBlocked=true)
@@ -522,6 +519,12 @@ Response language: German (user may use English or German)`;
         timestamp,
         outputLength: sanitizedContent.length,
         tokensUsed: completion.usage?.total_tokens || 0,
+      });
+
+      console.log("[INTENT Agent] Text-only response (no tool calls)", {
+        requestId,
+        conversationMode,
+        triggerType,
       });
 
       return {
