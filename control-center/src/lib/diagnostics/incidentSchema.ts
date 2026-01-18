@@ -126,11 +126,11 @@ export function safeValidateEvidencePack(data: unknown): {
   if (result.success) {
     return { success: true, data: result.data };
   } else {
-    return { 
-      success: false, 
-      error: result.error && result.error.errors 
-        ? result.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ')
-        : 'Validation failed'
+    return {
+      success: false,
+      error: result.error && result.error.issues
+        ? result.error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : 'Validation failed',
     };
   }
 }
