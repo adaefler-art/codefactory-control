@@ -570,6 +570,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
             </div>
             <div className="p-4 space-y-4 text-sm">
               {/* Metadata */}
+              {(() => {
+                const issueHash = draft?.issue_hash;
+                return (
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <span className="text-gray-400">Canonical ID:</span>
@@ -583,15 +586,17 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                   <span className="text-gray-400">Priority:</span>
                   <span className="text-gray-200">{viewDraft.priority}</span>
                 </div>
-                {draft.issue_hash && (
+                {issueHash && (
                   <div className="flex items-start justify-between">
                     <span className="text-gray-400">Hash:</span>
-                    <span className="font-mono text-xs text-gray-500" title={draft.issue_hash}>
-                      {draft.issue_hash.substring(0, 12)}...
+                    <span className="font-mono text-xs text-gray-500" title={issueHash}>
+                      {issueHash.substring(0, 12)}...
                     </span>
                   </div>
                 )}
               </div>
+                );
+              })()}
               {/* Title */}
               <div>
                 <h5 className="text-xs font-semibold text-gray-400 mb-1">Title</h5>
