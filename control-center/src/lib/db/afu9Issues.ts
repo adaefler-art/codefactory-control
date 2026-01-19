@@ -1211,7 +1211,8 @@ export async function ensureIssueForCommittedDraft(
   pool: Pool,
   input: Afu9IssueInput,
   sessionId: string,
-  draftVersionId?: string
+  draftVersionId?: string,
+  issueHash?: string
 ): Promise<OperationResult<{ issue: Afu9IssueRow; isNew: boolean }>> {
   // Validate that canonical_id is provided
   if (!input.canonical_id || input.canonical_id.trim().length === 0) {
@@ -1228,55 +1229,7 @@ export async function ensureIssueForCommittedDraft(
   try {
     await client.query('BEGIN');
 
-    // Check if an issue already exists for this canonical ID
-    const existingResult = await client.query<Afu9IssueRow>(
-      'SELECT * FROM afu9_issues WHERE canonical_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1',
-      [canonicalId]
-    );
-
-    if (existingResult.rows.length > 0) {
-      // Issue already exists - update pointers and return
-      const existingIssue = existingResult.rows[0];
-      
-      // Update session and draft pointers if provided
-      const updateFields: string[] = [];
-      const updateValues: (string | null)[] = [];
-      let paramIndex = 1;
-
-      if (sessionId) {
-        updateFields.push(`source_session_id = $${paramIndex}`);
-        updateValues.push(sessionId);
-        paramIndex++;
-      }
-
-      if (draftVersionId) {
-        updateFields.push(`current_draft_id = $${paramIndex}`);
-        updateValues.push(draftVersionId);
-        paramIndex++;
-      }
-
-      if (updateFields.length > 0) {
-        updateFields.push(`updated_at = NOW()`);
-        updateValues.push(existingIssue.id);
-        
-        await client.query(
-          `UPDATE afu9_issues SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`,
-          updateValues
-        );
-      }
-
-      await client.query('COMMIT');
-
-      return {
-        success: true,
-        data: {
-          issue: existingIssue,
-          isNew: false,
-        },
-      };
-    }
-
-    // Issue doesn't exist - create it
+    // Upsert issue (idempotent) using canonical_id as unique key
     // Note: source is always 'afu9' for database constraint compliance
     // The origin is tracked via source_session_id and timeline event
     const sanitized = sanitizeAfu9IssueInput({
@@ -1288,7 +1241,7 @@ export async function ensureIssueForCommittedDraft(
       canonical_id: canonicalId,
     });
 
-    const insertResult = await client.query<Afu9IssueRow>(
+    const insertResult = await client.query<Afu9IssueRow & { is_new: boolean }>(
       `INSERT INTO afu9_issues (
         title, body, status, labels, priority, assignee, source,
         handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
@@ -1298,7 +1251,15 @@ export async function ensureIssueForCommittedDraft(
         source_session_id, current_draft_id, active_cr_id, github_synced_at, kpi_context, publish_batch_id, publish_request_id, canonical_id
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
-      RETURNING *`,
+      ON CONFLICT (canonical_id)
+      DO UPDATE SET
+        source_session_id = EXCLUDED.source_session_id,
+        current_draft_id = CASE
+          WHEN EXCLUDED.current_draft_id IS NULL THEN afu9_issues.current_draft_id
+          ELSE EXCLUDED.current_draft_id
+        END,
+        updated_at = NOW()
+      RETURNING *, (xmax = 0) AS is_new`,
       buildIssueInsertParams(sanitized)
     );
 
@@ -1310,7 +1271,20 @@ export async function ensureIssueForCommittedDraft(
       };
     }
 
-    const newIssue = insertResult.rows[0];
+    const upsertedIssue = insertResult.rows[0];
+    const isNew = Boolean(upsertedIssue.is_new);
+    const issue = upsertedIssue as Afu9IssueRow;
+
+    if (!isNew) {
+      await client.query('COMMIT');
+      return {
+        success: true,
+        data: {
+          issue,
+          isNew: false,
+        },
+      };
+    }
 
     // Log ISSUE_CREATED timeline event (exactly once)
     // Timeline event uses INTENT_COMMIT source to track the creation context
@@ -1323,12 +1297,13 @@ export async function ensureIssueForCommittedDraft(
         actor_type
       ) VALUES ($1, $2, $3, $4, $5)`,
       [
-        newIssue.id,
+        issue.id,
         'ISSUE_CREATED',
         JSON.stringify({
           canonical_id: canonicalId,
           session_id: sessionId,
           draft_version_id: draftVersionId || null,
+          issue_hash: issueHash || null,
           source: 'INTENT_COMMIT', // Event source, not issue source
         }),
         'system',
@@ -1341,7 +1316,7 @@ export async function ensureIssueForCommittedDraft(
     return {
       success: true,
       data: {
-        issue: newIssue,
+        issue,
         isNew: true,
       },
     };

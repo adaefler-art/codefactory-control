@@ -39,7 +39,7 @@ interface ParityInfo {
 interface MigrationParityData {
   version: string;
   generatedAt: string;
-  lawbookVersion: string;
+  lawbookVersion: string | null;
   db: DbInfo;
   repo: RepoInfo;
   ledger: LedgerInfo;
@@ -63,7 +63,7 @@ const isMigrationParityData = (value: unknown): value is MigrationParityData =>
   isRecord(value) &&
   typeof value.version === "string" &&
   typeof value.generatedAt === "string" &&
-  typeof value.lawbookVersion === "string" &&
+  (typeof value.lawbookVersion === "string" || value.lawbookVersion === null) &&
   isRecord(value.db) &&
   isRecord(value.repo) &&
   isRecord(value.ledger) &&

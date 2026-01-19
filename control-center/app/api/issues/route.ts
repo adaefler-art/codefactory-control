@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
-import { listAfu9Issues, createAfu9Issue } from '../../../src/lib/db/afu9Issues';
+import { listAfu9Issues, createAfu9Issue, getAfu9IssueByCanonicalId } from '../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { normalizeIssueForApi } from './_shared';
 import {
@@ -44,6 +44,39 @@ export async function GET(request: NextRequest) {
   try {
     const pool = getPool();
     const searchParams = request.nextUrl.searchParams;
+
+    const canonicalIdParam = searchParams.get('canonicalId');
+
+    if (canonicalIdParam) {
+      const canonicalResult = await getAfu9IssueByCanonicalId(pool, canonicalIdParam);
+      if (!canonicalResult.success || !canonicalResult.data) {
+        return errorResponse('Issue not found', {
+          status: 404,
+          requestId,
+          details: canonicalResult.error,
+        });
+      }
+
+      const responseBody: any = {
+        issues: [normalizeIssueForApi(canonicalResult.data)],
+        total: 1,
+        filtered: 1,
+        limit: 1,
+        offset: 0,
+      };
+
+      if (isDebugApiEnabled()) {
+        responseBody.contextTrace = await buildContextTrace(request);
+      }
+
+      return jsonResponse(responseBody, {
+        requestId,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+          Pragma: 'no-cache',
+        },
+      });
+    }
 
     // Parse and validate status filter
     const statusParam = searchParams.get('status');
