@@ -63,6 +63,16 @@ export const StepResultSchema = z.object({
 
 export type StepResult = z.infer<typeof StepResultSchema>;
 
+// Evidence Reference schema - I201.6: Link to Engine evidence
+export const EvidenceRefSchema = z.object({
+  url: z.string().describe('URL to Engine evidence (e.g., s3://, https://)'),
+  evidenceHash: z.string().length(64).describe('SHA256 hash for verification'),
+  fetchedAt: z.string().datetime().describe('Timestamp when evidence was fetched'),
+  version: z.string().optional().describe('Evidence format/schema version'),
+}).strict();
+
+export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
+
 // RunResult schema - output contract for run execution results
 export const RunResultSchema = z.object({
   runId: z.string(),
@@ -84,6 +94,7 @@ export const RunResultSchema = z.object({
     bytes: z.number().optional(),
     stepIdx: z.number().optional(),
   })).optional(),
+  evidenceRef: EvidenceRefSchema.optional().describe('I201.6: Reference to Engine evidence'),
 }).strict();
 
 export type RunResult = z.infer<typeof RunResultSchema>;

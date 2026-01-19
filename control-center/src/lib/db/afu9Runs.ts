@@ -171,6 +171,29 @@ export class RunsDAO {
   }
 
   /**
+   * Update evidence reference for a run (I201.6)
+   * 
+   * Updates the evidence reference fields for deterministic and bounded evidence linking.
+   * All parameters are required for atomic update.
+   */
+  async updateEvidenceRef(
+    runId: string,
+    url: string,
+    evidenceHash: string,
+    version?: string
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE runs 
+       SET evidence_url = $2,
+           evidence_hash = $3,
+           evidence_fetched_at = NOW(),
+           evidence_version = $4
+       WHERE id = $1`,
+      [runId, url, evidenceHash, version || null]
+    );
+  }
+
+  /**
    * Update step status and results
    */
   async updateStep(
@@ -306,6 +329,14 @@ export class RunsDAO {
   }
 
   /**
+   * Check if run has valid evidence reference
+   * I201.6: Helper for evidence reference validation
+   */
+  private hasValidEvidenceRef(run: any): boolean {
+    return !!(run.evidence_url && run.evidence_hash && run.evidence_fetched_at);
+  }
+
+  /**
    * Reconstruct RunResult from database
    */
   async reconstructRunResult(runId: string): Promise<RunResult | null> {
@@ -376,6 +407,16 @@ export class RunsDAO {
 
     if (run.started_at && run.finished_at) {
       runResult.durationMs = run.finished_at.getTime() - run.started_at.getTime();
+    }
+
+    // I201.6: Add evidence reference if present
+    if (this.hasValidEvidenceRef(run)) {
+      runResult.evidenceRef = {
+        url: run.evidence_url,
+        evidenceHash: run.evidence_hash,
+        fetchedAt: run.evidence_fetched_at.toISOString(),
+        version: run.evidence_version || undefined,
+      };
     }
 
     return runResult;
