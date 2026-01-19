@@ -31,7 +31,7 @@ export type CommandType =
 const COMMAND_PATTERNS: Record<CommandType, RegExp | null> = {
   validate: /^(?:validate|validiere|prüfe|check)$/i,
   commit: /^(?:commit(?:\s+version)?|committe|versioniere)$/i,
-  publish: /^(?:publish(?:\s+to\s+github)?|github|handoff|publish\s+to\s+github)$/i,
+  publish: /^(?:publish(?:\s+to\s+github)?|github|handoff)$/i,
   create_issue: /^(?:create\s+(?:afu9\s+)?issue|issue\s+anlegen|create\s+afu-9\s+issue)$/i,
   copy_snippet: /^(?:copy\s+snippet|export|copy)$/i,
   null: null, // fallback

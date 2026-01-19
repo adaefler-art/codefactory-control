@@ -22,20 +22,24 @@ export interface ActionResult<T = any> {
   requestId?: string;
 }
 
+export interface ValidationError {
+  code: string;
+  message: string;
+  path: string;
+  severity: "error";
+}
+
+export interface ValidationWarning {
+  code: string;
+  message: string;
+  path: string;
+  severity: "warning";
+}
+
 export interface ValidationResult {
   isValid: boolean;
-  errors: Array<{
-    code: string;
-    message: string;
-    path: string;
-    severity: "error" | "warning";
-  }>;
-  warnings: Array<{
-    code: string;
-    message: string;
-    path: string;
-    severity: "error" | "warning";
-  }>;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
   meta: {
     issueDraftVersion?: string;
     validatedAt: string;
@@ -67,6 +71,15 @@ export interface PublishResult {
 }
 
 /**
+ * Extract requestId from error object if present
+ */
+function extractRequestId(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "requestId" in err 
+    ? String((err as any).requestId) 
+    : undefined;
+}
+
+/**
  * Validate the issue draft for the given session
  */
 export async function validateIssueDraft(
@@ -93,9 +106,7 @@ export async function validateIssueDraft(
     return {
       success: false,
       error: formatErrorMessage(err),
-      requestId: typeof err === "object" && err !== null && "requestId" in err 
-        ? String((err as any).requestId) 
-        : undefined,
+      requestId: extractRequestId(err),
     };
   }
 }
@@ -126,9 +137,7 @@ export async function commitIssueDraft(
     return {
       success: false,
       error: formatErrorMessage(err),
-      requestId: typeof err === "object" && err !== null && "requestId" in err 
-        ? String((err as any).requestId) 
-        : undefined,
+      requestId: extractRequestId(err),
     };
   }
 }
@@ -170,9 +179,7 @@ export async function publishIssueDraft(
     return {
       success: false,
       error: formatErrorMessage(err),
-      requestId: typeof err === "object" && err !== null && "requestId" in err 
-        ? String((err as any).requestId) 
-        : undefined,
+      requestId: extractRequestId(err),
     };
   }
 }
@@ -204,9 +211,7 @@ export async function createAfu9Issue(
     return {
       success: false,
       error: formatErrorMessage(err),
-      requestId: typeof err === "object" && err !== null && "requestId" in err 
-        ? String((err as any).requestId) 
-        : undefined,
+      requestId: extractRequestId(err),
     };
   }
 }

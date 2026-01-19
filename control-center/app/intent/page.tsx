@@ -391,37 +391,39 @@ export default function IntentPage() {
           });
           const draftData = await safeFetch(draftResponse);
           
-          if (typeof draftData === "object" && draftData !== null && "draft" in draftData) {
-            const draft = (draftData as any).draft;
-            if (draft && draft.id) {
-              const result = await createAfu9Issue(sessionId, draft.id);
-              if (result.success && result.data) {
-                addSystemMessage(
-                  `✅ ACTION_CREATE_AFU9_ISSUE executed\n\n` +
-                  `Issue ID: ${result.data.issueId || "N/A"}\n` +
-                  `Canonical ID: ${result.data.canonicalId || "N/A"}\n` +
-                  `State: ${result.data.state || "N/A"}`
-                );
-                return true;
-              } else {
-                addSystemMessage(
-                  `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
-                  `Error: ${result.error || "Unknown error"}` +
-                  (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
-                );
-                return false;
-              }
+          interface DraftResponse {
+            success?: boolean;
+            draft?: {
+              id: string;
+              session_id: string;
+              issue_json: any;
+            } | null;
+          }
+          
+          const typedDraftData = draftData as DraftResponse;
+          
+          if (typedDraftData.draft?.id) {
+            const result = await createAfu9Issue(sessionId, typedDraftData.draft.id);
+            if (result.success && result.data) {
+              addSystemMessage(
+                `✅ ACTION_CREATE_AFU9_ISSUE executed\n\n` +
+                `Issue ID: ${result.data.issueId || "N/A"}\n` +
+                `Canonical ID: ${result.data.canonicalId || "N/A"}\n` +
+                `State: ${result.data.state || "N/A"}`
+              );
+              return true;
             } else {
               addSystemMessage(
                 `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
-                `Error: No draft found in session`
+                `Error: ${result.error || "Unknown error"}` +
+                (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
               );
               return false;
             }
           } else {
             addSystemMessage(
               `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
-              `Error: Could not retrieve draft`
+              `Error: No draft found in session`
             );
             return false;
           }
