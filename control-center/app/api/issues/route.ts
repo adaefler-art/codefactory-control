@@ -29,14 +29,22 @@ export const revalidate = 0;
  * GET /api/issues
  * List issues with optional filtering and sorting
  * 
+ * I201.1: This endpoint now delegates to the canonical /api/afu9/issues API
+ * to ensure a single source of truth for issue listing.
+ * 
  * Query parameters:
+ * - canonicalId (or canonical_id): Filter by canonical ID (exact match)
+ * - publicId (or public_id): Filter by 8-hex publicId
  * - status: Filter by status (CREATED, ACTIVE, BLOCKED, DONE)
- * - label: Filter by label (single label, exact match)
- * - q: Search query (searches in title and body)
+ * - label: Filter by label (single label, exact match) - post-query filter
+ * - q: Search query (searches in title and body) - post-query filter
  * - sort: Sort field (default: updatedAt)
  * - order: Sort order (asc, desc - default: desc)
  * - limit: Results per page (default: 100, max: 100)
  * - offset: Pagination offset (default: 0)
+ * 
+ * Note: canonicalId and publicId filters are applied at database level.
+ * Label and search (q) filters are applied post-query for backward compatibility.
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
@@ -44,6 +52,12 @@ export async function GET(request: NextRequest) {
   try {
     const pool = getPool();
     const searchParams = request.nextUrl.searchParams;
+
+    // Parse canonicalId filter (support both canonicalId and canonical_id)
+    const canonicalId = searchParams.get('canonicalId') || searchParams.get('canonical_id') || undefined;
+
+    // Parse publicId filter (support both publicId and public_id)
+    const publicId = searchParams.get('publicId') || searchParams.get('public_id') || undefined;
 
     // Parse and validate status filter
     const statusParam = searchParams.get('status');
@@ -80,8 +94,10 @@ export async function GET(request: NextRequest) {
     );
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    // Get issues from database
+    // Get issues from database with deterministic filters
     const result = await listAfu9Issues(pool, {
+      canonicalId,
+      publicId,
       status,
       handoff_state,
       limit,
