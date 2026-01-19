@@ -23,6 +23,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { safeFetch, formatErrorMessage } from "../../../src/lib/api/safe-fetch";
 import { API_ROUTES } from "../../../src/lib/api-routes";
 import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
+import { executeIssueDraftAction } from "@/lib/intent/issueDraftActions";
 
 // Configuration constants
 const DEFAULT_GITHUB_OWNER = "adaefler-art";
@@ -159,16 +160,11 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setError(null);
     setRequestId(null);
     try {
-      const response = await fetch(
-        API_ROUTES.intent.issueDraft.validate(sessionId),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ issue_json: draft.issue_json }),
-        }
-      );
-      const data = (await safeFetch(response)) as { validation: ValidationResult };
+      const result = await executeIssueDraftAction("validate", sessionId, { draft });
+      if (!result.ok) {
+        throw new Error(result.error || "VALIDATE_FAILED");
+      }
+      const data = result.data as { validation: ValidationResult };
       // Update local draft with validation result
       setDraft({
         ...draft,
@@ -285,15 +281,11 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setRequestId(null);
     setAfu9IssueResult(null);
     try {
-      const route = `/api/intent/sessions/${sessionId}/issues/create`;
-      const response = await fetch(route, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ issueDraftId: draft.id }),
-      });
-      const data = await safeFetch(response);
-      setAfu9IssueResult(data);
+      const result = await executeIssueDraftAction("createIssue", sessionId, { draft });
+      if (!result.ok) {
+        throw new Error(result.error || "CREATE_ISSUE_FAILED");
+      }
+      setAfu9IssueResult(result.data);
     } catch (err) {
       setError("Failed to create AFU-9 Issue");
     } finally {
@@ -309,15 +301,10 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setRequestId(null);
 
     try {
-      const response = await fetch(
-        API_ROUTES.intent.issueDraft.commit(sessionId),
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      const data = await safeFetch(response);
+      const result = await executeIssueDraftAction("commit", sessionId, { draft });
+      if (!result.ok) {
+        throw new Error(result.error || "COMMIT_FAILED");
+      }
       // Show success message
       setError(null);
       // Reload draft to get updated state
@@ -350,21 +337,11 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setShowPublishResult(false);
 
     try {
-      const response = await fetch(
-        API_ROUTES.intent.issueDraft.publish(sessionId),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            owner,
-            repo,
-            issue_set_id: sessionId, // Publish all versions from this session
-          }),
-        }
-      );
-
-      const data = await safeFetch(response);
+      const result = await executeIssueDraftAction("publishGithub", sessionId, { draft, owner, repo });
+      if (!result.ok) {
+        throw new Error(result.error || "PUBLISH_FAILED");
+      }
+      const data = result.data;
       
       // Show success with publish result
       setPublishResult(data as PublishResult);

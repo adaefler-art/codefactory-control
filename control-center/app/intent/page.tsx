@@ -10,6 +10,7 @@ import IssueDraftPanel from "./components/IssueDraftPanel";
 import PublishHistoryPanel from "./components/PublishHistoryPanel";
 import WorkPlanPanel from "./components/WorkPlanPanel";
 import type { UsedSources } from "@/lib/schemas/usedSources";
+import { executeIssueDraftAction, parseChatCommand, type IssueDraftAction } from "@/lib/intent/issueDraftActions";
 
 interface IntentSession {
   id: string;
@@ -67,6 +68,9 @@ export default function IntentPage() {
   const [conversationMode, setConversationMode] = useState<"DISCUSS" | "DRAFTING" | "ACT">("DISCUSS");
   const [isTogglingMode, setIsTogglingMode] = useState(false);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
+  const isDev = process.env.NODE_ENV === "development";
+  const DEFAULT_GITHUB_OWNER = "adaefler-art";
+  const DEFAULT_GITHUB_REPO = "codefactory-control";
 
   const isValidSessionId = (value: unknown): value is string => {
     return typeof value === "string" && value.trim().length > 0 && value !== "undefined" && value !== "null";
@@ -282,12 +286,71 @@ export default function IntentPage() {
     }
   };
 
+  const appendLocalMessage = (sessionId: string, role: IntentMessage["role"], content: string) => {
+    setMessages((prev) => {
+      const nextSeq = (prev[prev.length - 1]?.seq ?? 0) + 1;
+      const message: IntentMessage = {
+        id: `local-${Date.now()}-${role}`,
+        session_id: sessionId,
+        role,
+        content,
+        created_at: new Date().toISOString(),
+        seq: nextSeq,
+      };
+      return [...prev, message];
+    });
+  };
+
+  const getCommandLabel = (action: IssueDraftAction): string => {
+    switch (action) {
+      case "validate":
+        return "validate";
+      case "commit":
+        return "commit";
+      case "publishGithub":
+        return "publish";
+      case "createIssue":
+        return "create issue";
+      default:
+        return "action";
+    }
+  };
+
+  const handleChatCommand = async (action: IssueDraftAction, sessionId: string, content: string) => {
+    setInputValue("");
+    setIsSending(true);
+    setError(null);
+
+    appendLocalMessage(sessionId, "user", content);
+
+    try {
+      const owner = process.env.NEXT_PUBLIC_GITHUB_OWNER || DEFAULT_GITHUB_OWNER;
+      const repo = process.env.NEXT_PUBLIC_GITHUB_REPO || DEFAULT_GITHUB_REPO;
+      const result = await executeIssueDraftAction(action, sessionId, { owner, repo });
+      if (!result.ok) {
+        throw new Error(result.error || "ACTION_FAILED");
+      }
+
+      setIssueDraftRefreshKey((prev) => prev + 1);
+      appendLocalMessage(sessionId, "system", `✅ ${getCommandLabel(action)} executed`);
+      await fetchSessions();
+    } catch (err) {
+      appendLocalMessage(sessionId, "system", `⚠️ ${getCommandLabel(action)} failed`);
+      if (isDev) {
+        console.error("[INTENT] Chat command failed:", err);
+      }
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     
     if (!inputValue.trim()) return;
 
     const messageContent = inputValue.trim();
+    const commandAction = parseChatCommand(messageContent);
     
     // STRICT validation: Check if we have a valid session
     const hasValidSession = isValidSessionId(currentSessionId);
@@ -325,30 +388,35 @@ export default function IntentPage() {
           setSessions((prev) => [newSession as IntentSession, ...prev]);
           setCurrentSessionId((newSession as { id: string }).id);
 
-          // Now send the message to the new session
-          console.log('[INTENT] Sending message to new session:', (newSession as any).id.substring(0, 20));
-          const sendResponse = await fetch(
-            API_ROUTES.intent.messages.create((newSession as { id: string }).id),
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ content: messageContent }),
-            }
-          );
-          const data = await safeFetch(sendResponse);
-          if (
-            typeof data === 'object' &&
-            data !== null &&
-            'userMessage' in data && 'assistantMessage' in data
-          ) {
-            setMessages([(data as any).userMessage, (data as any).assistantMessage]);
-          } else {
+          if (commandAction) {
             setMessages([]);
-            setError('Invalid response from server');
+            await handleChatCommand(commandAction, (newSession as { id: string }).id, messageContent);
+          } else {
+            // Now send the message to the new session
+            console.log('[INTENT] Sending message to new session:', (newSession as any).id.substring(0, 20));
+            const sendResponse = await fetch(
+              API_ROUTES.intent.messages.create((newSession as { id: string }).id),
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ content: messageContent }),
+              }
+            );
+            const data = await safeFetch(sendResponse);
+            if (
+              typeof data === 'object' &&
+              data !== null &&
+              'userMessage' in data && 'assistantMessage' in data
+            ) {
+              setMessages([(data as any).userMessage, (data as any).assistantMessage]);
+            } else {
+              setMessages([]);
+              setError('Invalid response from server');
+            }
+            setIssueDraftRefreshKey((prev) => prev + 1);
+            await fetchSessions();
           }
-          setIssueDraftRefreshKey((prev) => prev + 1);
-          await fetchSessions();
         } else {
           setError('Invalid response from server');
         }
@@ -367,6 +435,11 @@ export default function IntentPage() {
     
     console.log('[INTENT] Sending message to existing session:', sessionId.substring(0, 20));
     
+    if (commandAction) {
+      await handleChatCommand(commandAction, sessionId, messageContent);
+      return;
+    }
+
     setInputValue("");
     setIsSending(true);
     setError(null);
