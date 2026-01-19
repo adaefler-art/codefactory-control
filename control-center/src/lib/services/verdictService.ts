@@ -85,7 +85,7 @@ export async function applyVerdict(
         newStatus,
         stateChanged,
       },
-      actor: ActorType.SYSTEM,
+      actor: 'system',
       actor_type: ActorType.SYSTEM,
     });
 
@@ -113,7 +113,7 @@ export async function applyVerdict(
           newStatus,
           reason: `verdict:${verdict}`,
         },
-        actor: ActorType.SYSTEM,
+        actor: 'system',
         actor_type: ActorType.SYSTEM,
       });
     }

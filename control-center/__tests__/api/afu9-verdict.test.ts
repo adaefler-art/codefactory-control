@@ -11,9 +11,9 @@
 
 import { NextRequest } from 'next/server';
 import { POST as verdictHandler } from '../../app/api/afu9/issues/[id]/verdict/route';
-import { Afu9IssueStatus } from '../src/lib/contracts/afu9Issue';
-import { Verdict } from '../src/lib/contracts/verdict';
-import { IssueTimelineEventType, ActorType } from '../src/lib/contracts/issueTimeline';
+import { Afu9IssueStatus } from '@/lib/contracts/afu9Issue';
+import { Verdict } from '@/lib/contracts/verdict';
+import { IssueTimelineEventType, ActorType } from '@/lib/contracts/issueTimeline';
 
 const mockPool = {
   query: jest.fn(),
@@ -43,17 +43,17 @@ const mockTimelineResult = {
 };
 
 // Mock the database module
-jest.mock('../src/lib/db', () => ({
+jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => mockPool),
 }));
 
 // Mock database functions
-jest.mock('../src/lib/db/afu9Issues', () => ({
+jest.mock('@/lib/db/afu9Issues', () => ({
   getAfu9IssueById: jest.fn(),
   updateAfu9Issue: jest.fn(),
 }));
 
-jest.mock('../src/lib/db/issueTimeline', () => ({
+jest.mock('@/lib/db/issueTimeline', () => ({
   logTimelineEvent: jest.fn(),
 }));
 
@@ -63,8 +63,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('GREEN verdict transitions IMPLEMENTING to VERIFIED', async () => {
-    const { getAfu9IssueById, updateAfu9Issue } = require('../src/lib/db/afu9Issues');
-    const { logTimelineEvent } = require('../src/lib/db/issueTimeline');
+    const { getAfu9IssueById, updateAfu9Issue } = require('@/lib/db/afu9Issues');
+    const { logTimelineEvent } = require('@/lib/db/issueTimeline');
 
     getAfu9IssueById.mockResolvedValue({
       ...mockIssueResult,
@@ -126,8 +126,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('GREEN verdict transitions VERIFIED to DONE', async () => {
-    const { getAfu9IssueById, updateAfu9Issue } = require('../src/lib/db/afu9Issues');
-    const { logTimelineEvent } = require('../src/lib/db/issueTimeline');
+    const { getAfu9IssueById, updateAfu9Issue } = require('@/lib/db/afu9Issues');
+    const { logTimelineEvent } = require('@/lib/db/issueTimeline');
 
     getAfu9IssueById.mockResolvedValue({
       ...mockIssueResult,
@@ -154,8 +154,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('RED verdict transitions to HOLD', async () => {
-    const { getAfu9IssueById, updateAfu9Issue } = require('../src/lib/db/afu9Issues');
-    const { logTimelineEvent } = require('../src/lib/db/issueTimeline');
+    const { getAfu9IssueById, updateAfu9Issue } = require('@/lib/db/afu9Issues');
+    const { logTimelineEvent } = require('@/lib/db/issueTimeline');
 
     getAfu9IssueById.mockResolvedValue({
       ...mockIssueResult,
@@ -187,8 +187,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('HOLD verdict transitions to HOLD', async () => {
-    const { getAfu9IssueById, updateAfu9Issue } = require('../src/lib/db/afu9Issues');
-    const { logTimelineEvent } = require('../src/lib/db/issueTimeline');
+    const { getAfu9IssueById, updateAfu9Issue } = require('@/lib/db/afu9Issues');
+    const { logTimelineEvent } = require('@/lib/db/issueTimeline');
 
     getAfu9IssueById.mockResolvedValue({
       ...mockIssueResult,
@@ -216,8 +216,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('Idempotent: same verdict does not change state', async () => {
-    const { getAfu9IssueById, updateAfu9Issue } = require('../src/lib/db/afu9Issues');
-    const { logTimelineEvent } = require('../src/lib/db/issueTimeline');
+    const { getAfu9IssueById, updateAfu9Issue } = require('@/lib/db/afu9Issues');
+    const { logTimelineEvent } = require('@/lib/db/issueTimeline');
 
     getAfu9IssueById.mockResolvedValue({
       ...mockIssueResult,
@@ -262,7 +262,7 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('Returns 404 when issue not found', async () => {
-    const { getAfu9IssueById } = require('../src/lib/db/afu9Issues');
+    const { getAfu9IssueById } = require('@/lib/db/afu9Issues');
 
     getAfu9IssueById.mockResolvedValue({
       success: false,
@@ -334,8 +334,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('GREEN verdict on non-advancing state stays in same state', async () => {
-    const { getAfu9IssueById, updateAfu9Issue } = require('../src/lib/db/afu9Issues');
-    const { logTimelineEvent } = require('../src/lib/db/issueTimeline');
+    const { getAfu9IssueById, updateAfu9Issue } = require('@/lib/db/afu9Issues');
+    const { logTimelineEvent } = require('@/lib/db/issueTimeline');
 
     getAfu9IssueById.mockResolvedValue({
       ...mockIssueResult,
