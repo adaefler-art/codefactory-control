@@ -10,7 +10,7 @@ import { NextRequest } from 'next/server';
 import { getIssueDraft } from '../../src/lib/db/intentIssueDrafts';
 import { getLatestCommittedVersion } from '../../src/lib/db/intentIssueDraftVersions';
 import { ensureIssueForCommittedDraft, getAfu9IssueById, getPublicId } from '../../src/lib/db/afu9Issues';
-import { Afu9IssueStatus } from '../../src/lib/contracts/afu9Issue';
+import { Afu9IssueStatus, Afu9IssuePriority } from '../../src/lib/contracts/afu9Issue';
 
 // Mock dependencies
 jest.mock('../../src/lib/db');
@@ -206,7 +206,7 @@ describe('POST /api/intent/sessions/:sessionId/issues/create', () => {
       body: 'Test body content',
       status: Afu9IssueStatus.CREATED,
       labels: ['test', 'draft'],
-      priority: 'P1',
+      priority: Afu9IssuePriority.P1,
       assignee: null,
       source: 'afu9',
       handoff_state: 'NOT_SENT',
