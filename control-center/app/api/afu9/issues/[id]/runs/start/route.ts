@@ -105,7 +105,7 @@ export async function POST(
         type: runType,
         status: 'RUNNING',
       },
-      actor: 'system',
+      actor: ActorType.SYSTEM,
       actor_type: ActorType.SYSTEM,
     });
 
