@@ -111,34 +111,56 @@ describe('I201.3: Timeline API + Minimal Event Contract', () => {
     });
 
     it('should return events in stable ascending order (created_at ASC)', async () => {
-      // Add multiple events with small delays to ensure different timestamps
-      await logTimelineEvent(pool, {
-        issue_id: testIssueId,
-        event_type: IssueTimelineEventType.STATE_CHANGED,
-        event_data: { from: 'CREATED', to: 'DRAFT_READY' },
-        actor: 'system',
-        actor_type: ActorType.SYSTEM,
-      });
-
-      await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
-
-      await logTimelineEvent(pool, {
-        issue_id: testIssueId,
-        event_type: IssueTimelineEventType.RUN_STARTED,
-        event_data: { run_id: 'test-run-1' },
-        actor: 'system',
-        actor_type: ActorType.SYSTEM,
-      });
-
-      await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
-
-      await logTimelineEvent(pool, {
-        issue_id: testIssueId,
-        event_type: IssueTimelineEventType.VERDICT_SET,
-        event_data: { verdict: 'SUCCESS', run_id: 'test-run-1' },
-        actor: 'system',
-        actor_type: ActorType.SYSTEM,
-      });
+      // Add multiple events with explicit ordering using PostgreSQL's clock_timestamp()
+      // to ensure different timestamps even if called in quick succession
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        // Insert events with explicit timing
+        await client.query(
+          `INSERT INTO issue_timeline (issue_id, event_type, event_data, actor, actor_type, created_at)
+           VALUES ($1, $2, $3, $4, $5, clock_timestamp())`,
+          [
+            testIssueId,
+            IssueTimelineEventType.STATE_CHANGED,
+            JSON.stringify({ from: 'CREATED', to: 'DRAFT_READY' }),
+            'system',
+            ActorType.SYSTEM,
+          ]
+        );
+        
+        await client.query(
+          `INSERT INTO issue_timeline (issue_id, event_type, event_data, actor, actor_type, created_at)
+           VALUES ($1, $2, $3, $4, $5, clock_timestamp() + interval '1 millisecond')`,
+          [
+            testIssueId,
+            IssueTimelineEventType.RUN_STARTED,
+            JSON.stringify({ run_id: 'test-run-1' }),
+            'system',
+            ActorType.SYSTEM,
+          ]
+        );
+        
+        await client.query(
+          `INSERT INTO issue_timeline (issue_id, event_type, event_data, actor, actor_type, created_at)
+           VALUES ($1, $2, $3, $4, $5, clock_timestamp() + interval '2 milliseconds')`,
+          [
+            testIssueId,
+            IssueTimelineEventType.VERDICT_SET,
+            JSON.stringify({ verdict: 'SUCCESS', run_id: 'test-run-1' }),
+            'system',
+            ActorType.SYSTEM,
+          ]
+        );
+        
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
 
       const response = await fetch(`http://localhost:3000/api/afu9/timeline?issueId=${testIssueId}`);
       expect(response.status).toBe(200);

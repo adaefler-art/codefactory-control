@@ -93,12 +93,28 @@ export async function GET(request: NextRequest) {
       eventType = eventTypeParam as IssueTimelineEventType;
     }
 
-    // Parse pagination
-    const limit = Math.min(
-      parseInt(searchParams.get('limit') || '100', 10),
-      500 // Max limit to prevent abuse
-    );
-    const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10));
+    // Parse pagination with validation
+    const limitParam = parseInt(searchParams.get('limit') || '100', 10);
+    const offsetParam = parseInt(searchParams.get('offset') || '0', 10);
+    
+    if (isNaN(limitParam) || limitParam < 1) {
+      return errorResponse('Invalid limit parameter', {
+        status: 400,
+        requestId,
+        details: 'limit must be a positive integer',
+      });
+    }
+    
+    if (isNaN(offsetParam) || offsetParam < 0) {
+      return errorResponse('Invalid offset parameter', {
+        status: 400,
+        requestId,
+        details: 'offset must be a non-negative integer',
+      });
+    }
+    
+    const limit = Math.min(limitParam, 500); // Max limit to prevent abuse
+    const offset = offsetParam;
 
     // Build query
     let query = `
@@ -141,7 +157,17 @@ export async function GET(request: NextRequest) {
       countParams.push(eventType);
     }
     const countResult = await pool.query<{ total: string }>(countQuery, countParams);
-    const total = parseInt(countResult.rows[0]?.total || '0', 10);
+    
+    // Handle edge case where count query returns no rows
+    if (countResult.rows.length === 0) {
+      return errorResponse('Failed to count timeline events', {
+        status: 500,
+        requestId,
+        details: 'Count query returned no results',
+      });
+    }
+    
+    const total = parseInt(countResult.rows[0].total, 10);
 
     // Build response
     interface ResponseBody {
