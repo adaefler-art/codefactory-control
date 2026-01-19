@@ -101,6 +101,14 @@ export const API_ROUTES = {
     activeCheck: '/api/issues/active-check',
   },
 
+  // AFU-9 Runs (I201.x series)
+  afu9: {
+    runs: {
+      start: (issueId: string) => `/api/afu9/issues/${issueId}/runs/start`,
+      evidenceRefresh: (runId: string) => `/api/afu9/runs/${runId}/evidence/refresh`,
+    },
+  },
+
   // Incidents
   incidents: {
     list: '/api/incidents',
