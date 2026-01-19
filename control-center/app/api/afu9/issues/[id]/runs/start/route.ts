@@ -20,7 +20,7 @@
  * - Logs RUN_STARTED timeline event
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getRunsDAO } from '@/lib/db/afu9Runs';
 import { updateAfu9Issue, getAfu9IssueById } from '@/lib/db/afu9Issues';

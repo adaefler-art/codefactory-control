@@ -51,13 +51,13 @@ jest.mock('../../src/lib/db/afu9Runs', () => ({
 
 // Mock afu9Issues
 jest.mock('../../src/lib/db/afu9Issues', () => ({
-  getAfu9IssueById: (...args: any[]) => mockGetAfu9IssueById(...args),
-  updateAfu9Issue: (...args: any[]) => mockUpdateAfu9Issue(...args),
+  getAfu9IssueById: (...args: unknown[]) => mockGetAfu9IssueById(...args),
+  updateAfu9Issue: (...args: unknown[]) => mockUpdateAfu9Issue(...args),
 }));
 
 // Mock issueTimeline
 jest.mock('../../src/lib/db/issueTimeline', () => ({
-  logTimelineEvent: (...args: any[]) => mockLogTimelineEvent(...args),
+  logTimelineEvent: (...args: unknown[]) => mockLogTimelineEvent(...args),
 }));
 
 // Mock uuid
