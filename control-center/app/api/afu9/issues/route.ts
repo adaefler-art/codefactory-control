@@ -23,7 +23,7 @@
  * }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
 import { listAfu9Issues } from '../../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
@@ -96,7 +96,16 @@ export async function GET(request: NextRequest) {
     const issues = result.data || [];
 
     // Build response with deterministic counts
-    const responseBody: any = {
+    interface ResponseBody {
+      issues: unknown[];
+      total: number;
+      filtered: number;
+      limit: number;
+      offset: number;
+      contextTrace?: unknown;
+    }
+
+    const responseBody: ResponseBody = {
       issues: issues.map((issue) => normalizeIssueForApi(issue)),
       total: issues.length,     // Total from DB (already filtered)
       filtered: issues.length,  // Same as total (no post-query filtering)
