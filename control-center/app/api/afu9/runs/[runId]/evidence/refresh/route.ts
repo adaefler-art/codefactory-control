@@ -85,15 +85,15 @@ export async function POST(
 
     // Get updated run to fetch the fetchedAt timestamp
     const updatedRun = await dao.getRun(runId);
-    if (!updatedRun) {
-      // Should not happen, but handle defensively
-      throw new Error('Run not found after update');
+    if (!updatedRun || !updatedRun.run.evidence_fetched_at) {
+      // Should not happen - the update should have set the timestamp
+      throw new Error('Evidence reference update failed - timestamp not set');
     }
 
     const evidenceRef = {
       url,
       evidenceHash,
-      fetchedAt: updatedRun.run.evidence_fetched_at?.toISOString() || new Date().toISOString(),
+      fetchedAt: updatedRun.run.evidence_fetched_at.toISOString(),
       version: version || undefined,
     };
 

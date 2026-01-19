@@ -329,6 +329,14 @@ export class RunsDAO {
   }
 
   /**
+   * Check if run has valid evidence reference
+   * I201.6: Helper for evidence reference validation
+   */
+  private hasValidEvidenceRef(run: any): boolean {
+    return !!(run.evidence_url && run.evidence_hash && run.evidence_fetched_at);
+  }
+
+  /**
    * Reconstruct RunResult from database
    */
   async reconstructRunResult(runId: string): Promise<RunResult | null> {
@@ -402,7 +410,7 @@ export class RunsDAO {
     }
 
     // I201.6: Add evidence reference if present
-    if (run.evidence_url && run.evidence_hash && run.evidence_fetched_at) {
+    if (this.hasValidEvidenceRef(run)) {
       runResult.evidenceRef = {
         url: run.evidence_url,
         evidenceHash: run.evidence_hash,
