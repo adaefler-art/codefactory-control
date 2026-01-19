@@ -22,8 +22,12 @@ export enum IssueTimelineEventType {
   CP_ASSIGNED = 'CP_ASSIGNED',
   CP_UNASSIGNED = 'CP_UNASSIGNED',
   STATE_TRANSITION = 'STATE_TRANSITION',
+  STATE_CHANGED = 'STATE_CHANGED', // I201.3: Minimal event contract
   FIELD_UPDATED = 'FIELD_UPDATED',
   ERROR_OCCURRED = 'ERROR_OCCURRED',
+  RUN_STARTED = 'RUN_STARTED', // I201.3: Minimal event contract
+  VERDICT_SET = 'VERDICT_SET', // I201.3: Minimal event contract
+  EVIDENCE_LINKED = 'EVIDENCE_LINKED', // I201.3: Minimal event contract (optional)
 }
 
 /**
