@@ -85,6 +85,8 @@ export interface OperationResult<T = Afu9IssueRow> {
  * Query options for listing issues
  */
 export interface ListIssuesOptions {
+  canonicalId?: string;
+  publicId?: string;
   status?: Afu9IssueStatus;
   handoff_state?: Afu9HandoffState;
   limit?: number;
@@ -298,12 +300,26 @@ export async function listAfu9Issues(
   pool: Pool,
   options: ListIssuesOptions = {}
 ): Promise<OperationResult<Afu9IssueRow[]>> {
-  const { status, handoff_state, limit = 100, offset = 0 } = options;
+  const { canonicalId, publicId, status, handoff_state, limit = 100, offset = 0 } = options;
 
   try {
     let query = 'SELECT * FROM afu9_issues WHERE deleted_at IS NULL';
     const params: (string | number)[] = [];
     let paramIndex = 1;
+
+    // canonicalId filter (exact match, case-sensitive)
+    if (canonicalId) {
+      query += ` AND canonical_id = $${paramIndex}`;
+      params.push(canonicalId);
+      paramIndex++;
+    }
+
+    // publicId filter (8-hex prefix match on UUID)
+    if (publicId) {
+      query += ` AND SUBSTRING(id::TEXT, 1, 8) = $${paramIndex}`;
+      params.push(publicId.toLowerCase());
+      paramIndex++;
+    }
 
     if (status) {
       query += ` AND status = $${paramIndex}`;
