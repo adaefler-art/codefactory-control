@@ -28,6 +28,26 @@ import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
 const DEFAULT_GITHUB_OWNER = "adaefler-art";
 const DEFAULT_GITHUB_REPO = "codefactory-control";
 const BATCH_ID_DISPLAY_LENGTH = 12;
+const SESSION_ID_DISPLAY_LENGTH = 16;
+
+// R3: Validate draft shape to avoid blank/broken UI (module-level utility)
+const validateDraftShape = (draftData: IssueDraftData | null): boolean => {
+  if (!draftData) return true; // null is valid (NO_DRAFT state)
+  
+  // Check required fields
+  if (!draftData.id || !draftData.session_id) {
+    console.error("[IssueDraftPanel] Invalid draft shape: missing id or session_id");
+    return false;
+  }
+  
+  // Check issue_json exists and has minimal shape
+  if (!draftData.issue_json || typeof draftData.issue_json !== "object") {
+    console.error("[IssueDraftPanel] Invalid draft shape: missing or invalid issue_json");
+    return false;
+  }
+  
+  return true;
+};
 
 interface ValidationError {
   code: string;
@@ -90,6 +110,14 @@ interface IssueDraftData {
   last_validation_result: ValidationResult | null;
 }
 
+// Explicit states for draft panel (R1)
+type DraftPanelState = 
+  | "LOADING"      // Initial load or refresh in progress
+  | "NO_DRAFT"     // Session exists but no draft created yet
+  | "LOADED"       // Draft successfully loaded
+  | "ERROR"        // API error or network failure
+  | "SCHEMA_ERROR"; // Draft exists but invalid shape
+
 interface IssueDraftPanelProps {
   sessionId: string | null;
   refreshKey?: number;
@@ -98,7 +126,7 @@ interface IssueDraftPanelProps {
 
 export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated }: IssueDraftPanelProps) {
   const [draft, setDraft] = useState<IssueDraftData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [panelState, setPanelState] = useState<DraftPanelState>("LOADING");
   const [isValidating, setIsValidating] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -108,10 +136,13 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [showWarnings, setShowWarnings] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
+  const [invalidDraftData, setInvalidDraftData] = useState<IssueDraftData | null>(null); // R3: Store invalid draft separately
   const abortRef = useRef<AbortController | null>(null);
+  const fetchSequenceRef = useRef(0); // R2: Sequence ID for race condition guard
   const showDebug = process.env.NODE_ENV !== "production";
   const debugSessionId = sessionId ? sessionId.substring(0, 8) : "none";
   const debugRefreshKey = typeof refreshKey === "number" ? String(refreshKey) : "n/a";
@@ -159,13 +190,19 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   };
 
   const loadDraft = async () => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setPanelState("NO_DRAFT");
+      return;
+    }
 
+    // R2: Abort previous request and track sequence
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    
+    const currentSequence = ++fetchSequenceRef.current;
 
-    setIsLoading(true);
+    setPanelState("LOADING");
     setError(null);
     setRequestId(null);
 
@@ -180,25 +217,54 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
 
       const data = await safeFetch(response);
 
+      // R2: Ignore late responses
+      if (currentSequence !== fetchSequenceRef.current) {
+        console.log("[IssueDraftPanel] Ignoring late response", { currentSequence, latest: fetchSequenceRef.current });
+        return;
+      }
+
       if (typeof data === "object" && data !== null && "success" in data) {
         const success = (data as { success: boolean }).success;
         if (success && "draft" in data) {
           const draftData = (data as { draft: IssueDraftData | null }).draft;
+          
+          // R3: Validate draft shape
+          if (!validateDraftShape(draftData)) {
+            setPanelState("SCHEMA_ERROR");
+            setError("Draft has invalid structure");
+            setInvalidDraftData(draftData); // Store invalid draft separately
+            setDraft(null); // Keep draft null to prevent broken UI
+            setLastRefreshed(new Date().toISOString());
+            return;
+          }
+          
           setDraft(draftData ?? null);
           setLastUpdatedAt(draftData?.updated_at ?? null);
+          setLastRefreshed(new Date().toISOString());
+          
+          // R1: Set appropriate state
+          if (draftData === null) {
+            setPanelState("NO_DRAFT");
+          } else {
+            setPanelState("LOADED");
+          }
           return;
         }
       }
 
+      setPanelState("ERROR");
       setError("Invalid response from server");
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
+        // R2: Don't change state on abort, but check if this was a late abort
+        if (currentSequence !== fetchSequenceRef.current) {
+          console.log("[IssueDraftPanel] Ignoring aborted late request", { currentSequence, latest: fetchSequenceRef.current });
+        }
         return;
       }
       console.error("Failed to load issue draft:", err);
+      setPanelState("ERROR");
       setError(formatErrorMessage(err));
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -408,6 +474,33 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   };
 
   const renderValidationBadge = () => {
+    // R1: Show appropriate badge based on panel state
+    if (panelState === "LOADING") {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600">
+          <span className="w-2 h-2 bg-gray-400 rounded-full mr-1.5 animate-pulse"></span>
+          LOADING
+        </span>
+      );
+    }
+
+    if (panelState === "NO_DRAFT") {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600">
+          NO DRAFT
+        </span>
+      );
+    }
+
+    if (panelState === "ERROR" || panelState === "SCHEMA_ERROR") {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-red-900/30 text-red-300 border border-red-700">
+          <span className="w-2 h-2 bg-red-400 rounded-full mr-1.5"></span>
+          ERROR
+        </span>
+      );
+    }
+
     if (!draft) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600">
@@ -444,10 +537,10 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   };
 
   const hasActions = Boolean(sessionId);
-  const canValidate = hasActions && draft && !isValidating && !isCommitting && !isPublishing;
-  const canCommit = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting && !isPublishing;
-  const canPublish = hasActions && draft && draft.last_validation_status === "valid" && !isValidating && !isCommitting && !isPublishing;
-  const canCopy = Boolean(draft);
+  const canValidate = hasActions && draft && panelState === "LOADED" && !isValidating && !isCommitting && !isPublishing;
+  const canCommit = hasActions && draft && draft.last_validation_status === "valid" && panelState === "LOADED" && !isValidating && !isCommitting && !isPublishing;
+  const canPublish = hasActions && draft && draft.last_validation_status === "valid" && panelState === "LOADED" && !isValidating && !isCommitting && !isPublishing;
+  const canCopy = Boolean(draft) && panelState === "LOADED";
   // Get errors and warnings (deterministic - already sorted from validator)
 
   return (
@@ -460,7 +553,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
             {renderValidationBadge()}
             {isDev && (
               <span className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5">
-                [draft] sid={sessionId ?? "null"} draft={draft ? "present" : "null"}
+                [draft] sid={sessionId ? sessionId.substring(0, 8) : "null"} state={panelState}
               </span>
             )}
             {draft && lastUpdatedAt && (
@@ -471,6 +564,15 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
             )}
           </div>
         </div>
+        {/* R4: Dev-only metadata for debuggability */}
+        {isDev && draft && panelState === "LOADED" && (
+          <div className="mb-2 text-[10px] text-gray-500 space-y-0.5">
+            <div>Session: {sessionId?.substring(0, SESSION_ID_DISPLAY_LENGTH)}...</div>
+            {draft.created_at && <div>Created: {new Date(draft.created_at).toLocaleString()}</div>}
+            {draft.updated_at && <div>Updated: {new Date(draft.updated_at).toLocaleString()}</div>}
+            {lastRefreshed && <div>Last refreshed: {new Date(lastRefreshed).toLocaleTimeString()}</div>}
+          </div>
+        )}
         {/* Action Buttons */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -551,19 +653,60 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       </div>
       {/* Content - Scrollable */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {isLoading && (<div className="text-center text-gray-400 py-8">Loading draft...</div>)}
-        {!isLoading && !draft && !error && (
+        {/* R1: Explicit state rendering - LOADING */}
+        {panelState === "LOADING" && (
+          <div className="text-center text-gray-400 py-8">
+            <div className="animate-pulse">Loading draft...</div>
+          </div>
+        )}
+        
+        {/* R1: Explicit state rendering - NO_DRAFT */}
+        {panelState === "NO_DRAFT" && (
           <div className="text-center text-gray-400 py-8">
             <p className="mb-2">No draft yet</p>
             <p className="text-xs">INTENT will create a draft when generating issue content</p>
           </div>
         )}
-        {draft && !viewDraft && (
+        
+        {/* R1: Explicit state rendering - ERROR */}
+        {panelState === "ERROR" && (
+          <div className="text-center py-8">
+            <div className="text-red-300 mb-2">Failed to load draft</div>
+            {error && <p className="text-xs text-gray-400">{error}</p>}
+            {requestId && <p className="text-xs text-gray-500 mt-1 font-mono">Request ID: {requestId}</p>}
+          </div>
+        )}
+        
+        {/* R1 & R3: Explicit state rendering - SCHEMA_ERROR */}
+        {panelState === "SCHEMA_ERROR" && (
+          <div className="py-4">
+            <div className="bg-red-900/20 border border-red-700 rounded p-4">
+              <div className="text-red-300 font-semibold mb-2">Draft Shape Invalid</div>
+              <p className="text-xs text-gray-400 mb-3">
+                The draft exists but has an invalid structure. This may indicate a data corruption issue.
+              </p>
+              {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+              {isDev && invalidDraftData && (
+                <details className="mt-3">
+                  <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                    Show raw JSON (dev mode)
+                  </summary>
+                  <pre className="mt-2 p-2 bg-gray-900 border border-gray-700 rounded text-xs text-gray-300 overflow-auto max-h-64">
+                    {JSON.stringify(invalidDraftData, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* R1: Explicit state rendering - LOADED (with draft content) */}
+        {panelState === "LOADED" && draft && !viewDraft && (
           <div className="text-xs text-yellow-300 bg-yellow-900/20 border border-yellow-700 rounded p-2">
             Draft loaded but issue content is missing.
           </div>
         )}
-        {viewDraft && (
+        {panelState === "LOADED" && viewDraft && (
           <div className="bg-gray-800 border border-gray-700 rounded">
             <div className="px-3 py-2 border-b border-gray-700">
               <h4 className="text-sm font-medium text-gray-100">Preview</h4>
