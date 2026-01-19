@@ -9,7 +9,8 @@
  * Query parameters:
  * - canonicalId (or canonical_id): Filter by canonical ID (e.g., I867, E81.1)
  * - publicId (or public_id): Filter by 8-hex publicId
- * - status: Filter by status (CREATED, ACTIVE, BLOCKED, DONE)
+ * - status: Filter by status (CREATED, SPEC_READY, etc.)
+ * - handoff_state: Filter by handoff state (NOT_SENT, SENT, etc.)
  * - limit: Results per page (default: 100, max: 100)
  * - offset: Pagination offset (default: 0)
  * 
@@ -30,7 +31,9 @@ import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { normalizeIssueForApi } from '../../issues/_shared';
 import {
   Afu9IssueStatus,
+  Afu9HandoffState,
   isValidStatus,
+  isValidHandoffState,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 
@@ -69,6 +72,20 @@ export async function GET(request: NextRequest) {
       status = statusParam as Afu9IssueStatus;
     }
 
+    // Parse handoff_state filter (optional)
+    const handoffStateParam = searchParams.get('handoff_state');
+    let handoff_state: Afu9HandoffState | undefined;
+    if (handoffStateParam) {
+      if (!isValidHandoffState(handoffStateParam)) {
+        return errorResponse('Invalid handoff_state parameter', {
+          status: 400,
+          requestId,
+          details: `handoff_state must be one of: ${Object.values(Afu9HandoffState).join(', ')}`,
+        });
+      }
+      handoff_state = handoffStateParam as Afu9HandoffState;
+    }
+
     // Parse pagination
     const limit = Math.min(
       parseInt(searchParams.get('limit') || '100', 10),
@@ -81,6 +98,7 @@ export async function GET(request: NextRequest) {
       canonicalId,
       publicId,
       status,
+      handoff_state,
       limit,
       offset,
     });

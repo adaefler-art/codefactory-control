@@ -185,6 +185,27 @@ describe('I201.1: Canonical Issues API', () => {
       expect(body.issues[0].status).toBe('SPEC_READY');
     });
 
+    test('filters by handoff_state', async () => {
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({ success: true, data: [mockIssueE81] });
+
+      const req = new NextRequest('http://localhost/api/afu9/issues?handoff_state=SENT');
+      const res = await getAfu9Issues(req);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(listAfu9Issues).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          handoff_state: 'SENT',
+        })
+      );
+
+      expect(body.filtered).toBe(1);
+      expect(body.issues[0].handoffState).toBe('SENT');
+    });
+
     test('respects limit and offset parameters', async () => {
       const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({ success: true, data: [mockIssueI867, mockIssueE81] });
