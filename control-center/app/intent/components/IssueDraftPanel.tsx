@@ -28,6 +28,26 @@ import type { IssueDraft } from "../../../src/lib/schemas/issueDraft.js";
 const DEFAULT_GITHUB_OWNER = "adaefler-art";
 const DEFAULT_GITHUB_REPO = "codefactory-control";
 const BATCH_ID_DISPLAY_LENGTH = 12;
+const SESSION_ID_DISPLAY_LENGTH = 16;
+
+// R3: Validate draft shape to avoid blank/broken UI (module-level utility)
+const validateDraftShape = (draftData: IssueDraftData | null): boolean => {
+  if (!draftData) return true; // null is valid (NO_DRAFT state)
+  
+  // Check required fields
+  if (!draftData.id || !draftData.session_id) {
+    console.error("[IssueDraftPanel] Invalid draft shape: missing id or session_id");
+    return false;
+  }
+  
+  // Check issue_json exists and has minimal shape
+  if (!draftData.issue_json || typeof draftData.issue_json !== "object") {
+    console.error("[IssueDraftPanel] Invalid draft shape: missing or invalid issue_json");
+    return false;
+  }
+  
+  return true;
+};
 
 interface ValidationError {
   code: string;
@@ -120,6 +140,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [showPublishResult, setShowPublishResult] = useState(false);
+  const [invalidDraftData, setInvalidDraftData] = useState<IssueDraftData | null>(null); // R3: Store invalid draft separately
   const abortRef = useRef<AbortController | null>(null);
   const fetchSequenceRef = useRef(0); // R2: Sequence ID for race condition guard
   const showDebug = process.env.NODE_ENV !== "production";
@@ -168,25 +189,6 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     }
   };
 
-  // R3: Validate draft shape to avoid blank/broken UI
-  const validateDraftShape = (draftData: IssueDraftData | null): boolean => {
-    if (!draftData) return true; // null is valid (NO_DRAFT state)
-    
-    // Check required fields
-    if (!draftData.id || !draftData.session_id) {
-      console.error("[IssueDraftPanel] Invalid draft shape: missing id or session_id");
-      return false;
-    }
-    
-    // Check issue_json exists and has minimal shape
-    if (!draftData.issue_json || typeof draftData.issue_json !== "object") {
-      console.error("[IssueDraftPanel] Invalid draft shape: missing or invalid issue_json");
-      return false;
-    }
-    
-    return true;
-  };
-
   const loadDraft = async () => {
     if (!sessionId) {
       setPanelState("NO_DRAFT");
@@ -230,7 +232,8 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
           if (!validateDraftShape(draftData)) {
             setPanelState("SCHEMA_ERROR");
             setError("Draft has invalid structure");
-            setDraft(draftData);
+            setInvalidDraftData(draftData); // Store invalid draft separately
+            setDraft(null); // Keep draft null to prevent broken UI
             setLastRefreshed(new Date().toISOString());
             return;
           }
@@ -253,7 +256,10 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       setError("Invalid response from server");
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
-        // Don't change state on abort
+        // R2: Don't change state on abort, but check if this was a late abort
+        if (currentSequence !== fetchSequenceRef.current) {
+          console.log("[IssueDraftPanel] Ignoring aborted late request", { currentSequence, latest: fetchSequenceRef.current });
+        }
         return;
       }
       console.error("Failed to load issue draft:", err);
@@ -561,7 +567,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
         {/* R4: Dev-only metadata for debuggability */}
         {isDev && draft && panelState === "LOADED" && (
           <div className="mb-2 text-[10px] text-gray-500 space-y-0.5">
-            <div>Session: {sessionId?.substring(0, 16)}...</div>
+            <div>Session: {sessionId?.substring(0, SESSION_ID_DISPLAY_LENGTH)}...</div>
             {draft.created_at && <div>Created: {new Date(draft.created_at).toLocaleString()}</div>}
             {draft.updated_at && <div>Updated: {new Date(draft.updated_at).toLocaleString()}</div>}
             {lastRefreshed && <div>Last refreshed: {new Date(lastRefreshed).toLocaleTimeString()}</div>}
@@ -680,13 +686,13 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
                 The draft exists but has an invalid structure. This may indicate a data corruption issue.
               </p>
               {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
-              {isDev && draft && (
+              {isDev && invalidDraftData && (
                 <details className="mt-3">
                   <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
                     Show raw JSON (dev mode)
                   </summary>
                   <pre className="mt-2 p-2 bg-gray-900 border border-gray-700 rounded text-xs text-gray-300 overflow-auto max-h-64">
-                    {JSON.stringify(draft, null, 2)}
+                    {JSON.stringify(invalidDraftData, null, 2)}
                   </pre>
                 </details>
               )}
