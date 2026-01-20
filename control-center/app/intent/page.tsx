@@ -10,12 +10,13 @@ import IssueDraftPanel from "./components/IssueDraftPanel";
 import PublishHistoryPanel from "./components/PublishHistoryPanel";
 import WorkPlanPanel from "./components/WorkPlanPanel";
 import type { UsedSources } from "@/lib/schemas/usedSources";
-import { detectCommand, getActionName, type CommandType } from "@/lib/intent/chatCommandRouter";
 import { 
+  parseChatCommand,
   validateIssueDraft, 
   commitIssueDraft, 
   publishIssueDraft, 
-  createAfu9Issue 
+  createAfu9Issue,
+  type IssueDraftAction
 } from "@/lib/intent/issueDraftActions";
 
 interface IntentSession {
@@ -309,141 +310,129 @@ export default function IntentPage() {
    * Execute a command action
    * R3: Deterministisches Verhalten - execute action, refresh draft, show confirmation
    */
-  const executeCommand = async (command: CommandType, sessionId: string): Promise<boolean> => {
-    if (!command) return false;
+  const executeCommand = async (action: IssueDraftAction, sessionId: string): Promise<boolean> => {
+    if (!action) return false;
 
-    const actionName = getActionName(command);
-    console.log(`[INTENT] Executing command: ${command} (${actionName})`);
+    console.log(`[INTENT] Executing action: ${action}`);
 
     try {
-      switch (command) {
-        case "validate": {
-          const result = await validateIssueDraft(sessionId);
-          if (result.success && result.data) {
-            const isValid = result.data.validation.isValid;
-            const errorCount = result.data.validation.errors.length;
-            const warningCount = result.data.validation.warnings.length;
-            
-            addSystemMessage(
-              `✅ ACTION_VALIDATE executed\n\n` +
-              `Status: ${isValid ? "VALID" : "INVALID"}\n` +
-              (errorCount > 0 ? `Errors: ${errorCount}\n` : "") +
-              (warningCount > 0 ? `Warnings: ${warningCount}` : "")
-            );
-            setIssueDraftRefreshKey((prev) => prev + 1);
-            return true;
-          } else {
-            addSystemMessage(
-              `❌ ACTION_VALIDATE failed\n\n` +
-              `Error: ${result.error || "Unknown error"}` +
-              (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
-            );
-            return false;
-          }
-        }
-
-        case "commit": {
-          const result = await commitIssueDraft(sessionId);
-          if (result.success) {
-            addSystemMessage(
-              `✅ ACTION_COMMIT_VERSION executed\n\n` +
-              `Draft version committed successfully.`
-            );
-            setIssueDraftRefreshKey((prev) => prev + 1);
-            return true;
-          } else {
-            addSystemMessage(
-              `❌ ACTION_COMMIT_VERSION failed\n\n` +
-              `Error: ${result.error || "Unknown error"}` +
-              (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
-            );
-            return false;
-          }
-        }
-
-        case "publish": {
-          const result = await publishIssueDraft(sessionId);
-          if (result.success && result.data) {
-            const summary = result.data.summary;
-            addSystemMessage(
-              `✅ ACTION_PUBLISH_TO_GITHUB executed\n\n` +
-              `Batch ID: ${result.data.batch_id.substring(0, 12)}...\n` +
-              `Total: ${summary.total}, Created: ${summary.created}, Updated: ${summary.updated}, Failed: ${summary.failed}`
-            );
-            setIssueDraftRefreshKey((prev) => prev + 1);
-            return true;
-          } else {
-            addSystemMessage(
-              `❌ ACTION_PUBLISH_TO_GITHUB failed\n\n` +
-              `Error: ${result.error || "Unknown error"}` +
-              (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
-            );
-            return false;
-          }
-        }
-
-        case "create_issue": {
-          // First, we need to get the current draft to obtain the draft ID
-          const draftResponse = await fetch(API_ROUTES.intent.issueDraft.get(sessionId), {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store",
-          });
-          const draftData = await safeFetch(draftResponse);
+      if (action === "validate") {
+        const result = await validateIssueDraft(sessionId);
+        if (result.success && result.data) {
+          const isValid = result.data.validation.isValid;
+          const errorCount = result.data.validation.errors.length;
+          const warningCount = result.data.validation.warnings.length;
           
-          interface DraftResponse {
-            success?: boolean;
-            draft?: {
-              id: string;
-              session_id: string;
-              issue_json: any;
-            } | null;
-          }
-          
-          const typedDraftData = draftData as DraftResponse;
-          
-          if (typedDraftData.draft?.id) {
-            const result = await createAfu9Issue(sessionId, typedDraftData.draft.id);
-            if (result.success && result.data) {
-              addSystemMessage(
-                `✅ ACTION_CREATE_AFU9_ISSUE executed\n\n` +
-                `Issue ID: ${result.data.issueId || "N/A"}\n` +
-                `Canonical ID: ${result.data.canonicalId || "N/A"}\n` +
-                `State: ${result.data.state || "N/A"}`
-              );
-              return true;
-            } else {
-              addSystemMessage(
-                `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
-                `Error: ${result.error || "Unknown error"}` +
-                (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
-              );
-              return false;
-            }
-          } else {
-            addSystemMessage(
-              `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
-              `Error: No draft found in session`
-            );
-            return false;
-          }
-        }
-
-        case "copy_snippet": {
           addSystemMessage(
-            `❌ ACTION_COPY_SNIPPET not supported in chat\n\n` +
-            `Please use the "Copy Snippet" button in the Issue Draft panel.`
+            `✅ ACTION_VALIDATE executed\n\n` +
+            `Status: ${isValid ? "VALID" : "INVALID"}\n` +
+            (errorCount > 0 ? `Errors: ${errorCount}\n` : "") +
+            (warningCount > 0 ? `Warnings: ${warningCount}` : "")
+          );
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          return true;
+        } else {
+          addSystemMessage(
+            `❌ ACTION_VALIDATE failed\n\n` +
+            `Error: ${result.error || "Unknown error"}` +
+            (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
           );
           return false;
         }
-
-        default:
-          return false;
       }
+
+      if (action === "commit") {
+        const result = await commitIssueDraft(sessionId);
+        if (result.success) {
+          addSystemMessage(
+            `✅ ACTION_COMMIT_VERSION executed\n\n` +
+            `Draft version committed successfully.`
+          );
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          return true;
+        } else {
+          addSystemMessage(
+            `❌ ACTION_COMMIT_VERSION failed\n\n` +
+            `Error: ${result.error || "Unknown error"}` +
+            (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+          );
+          return false;
+        }
+      }
+
+      if (action === "publishGithub") {
+        const result = await publishIssueDraft(sessionId);
+        if (result.success && result.data) {
+          const summary = result.data.summary;
+          addSystemMessage(
+            `✅ ACTION_PUBLISH_TO_GITHUB executed\n\n` +
+            `Batch ID: ${result.data.batch_id.substring(0, 12)}...\n` +
+            `Total: ${summary.total}, Created: ${summary.created}, Updated: ${summary.updated}, Failed: ${summary.failed}`
+          );
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          return true;
+        } else {
+          addSystemMessage(
+            `❌ ACTION_PUBLISH_TO_GITHUB failed\n\n` +
+            `Error: ${result.error || "Unknown error"}` +
+            (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+          );
+          return false;
+        }
+      }
+
+      if (action === "createIssue") {
+        // First, we need to get the current draft to obtain the draft ID
+        const draftResponse = await fetch(API_ROUTES.intent.issueDraft.get(sessionId), {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const draftData = await safeFetch(draftResponse);
+        
+        interface DraftResponse {
+          success?: boolean;
+          draft?: {
+            id: string;
+            session_id: string;
+            issue_json: any;
+          } | null;
+        }
+        
+        const typedDraftData = draftData as DraftResponse;
+        
+        if (typedDraftData.draft?.id) {
+          const result = await createAfu9Issue(sessionId, typedDraftData.draft.id);
+          if (result.success && result.data) {
+            addSystemMessage(
+              `✅ ACTION_CREATE_AFU9_ISSUE executed\n\n` +
+              `Issue ID: ${result.data.issueId || "N/A"}\n` +
+              `Canonical ID: ${result.data.canonicalId || "N/A"}\n` +
+              `State: ${result.data.state || "N/A"}`
+            );
+            return true;
+          } else {
+            addSystemMessage(
+              `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
+              `Error: ${result.error || "Unknown error"}` +
+              (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+            );
+            return false;
+          }
+        } else {
+          addSystemMessage(
+            `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
+            `Error: No draft found in session`
+          );
+          return false;
+        }
+      }
+
+      return false;
     } catch (err) {
       console.error(`[INTENT] Command execution failed:`, err);
       addSystemMessage(
-        `❌ ACTION_${actionName} failed\n\n` +
+        `❌ ACTION_${action} failed\n\n` +
         `Error: ${formatErrorMessage(err)}`
       );
       return false;
@@ -468,7 +457,7 @@ export default function IntentPage() {
     });
 
     // R1: Detect command BEFORE processing
-    const detectedCommand = detectCommand(messageContent);
+    const detectedCommand = parseChatCommand(messageContent);
     console.log('[INTENT] Command detection:', { input: messageContent, command: detectedCommand });
 
     // Auto-create session if NO valid session
@@ -500,7 +489,7 @@ export default function IntentPage() {
           // R4: Commands in new session without draft should show helpful message
           if (detectedCommand) {
             addSystemMessage(
-              `⚠️ Command detected: ${getActionName(detectedCommand)}\n\n` +
+              `⚠️ Command detected: ${detectedCommand}\n\n` +
               `This command requires a draft. Please create a draft first by chatting with INTENT.`
             );
             setIsSending(false);

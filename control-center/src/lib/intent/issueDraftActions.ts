@@ -8,12 +8,15 @@
  * Requirement R2: Dispatch über shared actions
  */
 
-import { safeFetch, formatErrorMessage } from "../api/safe-fetch";
-import { API_ROUTES } from "../api-routes";
+import { API_ROUTES } from "@/lib/api-routes";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
 // Configuration constants
 const DEFAULT_GITHUB_OWNER = "adaefler-art";
 const DEFAULT_GITHUB_REPO = "codefactory-control";
+
+// Types from main branch (Current)
+export type IssueDraftAction = "validate" | "commit" | "publishGithub" | "createIssue";
 
 export interface ActionResult<T = any> {
   success: boolean;
@@ -80,7 +83,35 @@ function extractRequestId(err: unknown): string | undefined {
 }
 
 /**
+ * Parse chat command text to action type
+ * From main branch (Current) - preserved for compatibility
+ */
+export function parseChatCommand(text: string): IssueDraftAction | null {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (["validate", "validiere", "prüfe", "pruefe"].includes(normalized)) {
+    return "validate";
+  }
+
+  if (["commit", "committe", "commit version", "versioniere"].includes(normalized)) {
+    return "commit";
+  }
+
+  if (["publish", "github", "handoff"].includes(normalized)) {
+    return "publishGithub";
+  }
+
+  if (["create issue", "issue anlegen", "create afu9 issue"].includes(normalized)) {
+    return "createIssue";
+  }
+
+  return null;
+}
+
+/**
  * Validate the issue draft for the given session
+ * CRITICAL: Does NOT send request body (per I201.8 requirements)
  */
 export async function validateIssueDraft(
   sessionId: string
