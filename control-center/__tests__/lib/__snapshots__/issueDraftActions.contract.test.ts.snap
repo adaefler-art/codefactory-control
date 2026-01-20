@@ -1,0 +1,112 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Issue Draft Actions - Action Types Contract action type constants are stable 1`] = `
+{
+  "COMMIT": "commit",
+  "CREATE_ISSUE": "createIssue",
+  "PUBLISH_GITHUB": "publishGithub",
+  "VALIDATE": "validate",
+}
+`;
+
+exports[`Issue Draft Actions - Action Types Contract all action types are documented 1`] = `
+[
+  "validate",
+  "commit",
+  "publishGithub",
+  "createIssue",
+]
+`;
+
+exports[`Issue Draft Actions - Endpoint Map Contract all action endpoints follow consistent pattern 1`] = `
+[
+  "/api/intent/sessions/test-session-123/issue-draft/validate",
+  "/api/intent/sessions/test-session-123/issue-draft/commit",
+  "/api/intent/sessions/test-session-123/issue-draft/versions/publish",
+  "/api/intent/sessions/test-session-123/issues/create",
+]
+`;
+
+exports[`Issue Draft Actions - Endpoint Map Contract commit endpoint contract 1`] = `
+{
+  "bodyRequired": false,
+  "method": "POST",
+  "requiresAuth": true,
+  "url": "/api/intent/sessions/test-session-123/issue-draft/commit",
+}
+`;
+
+exports[`Issue Draft Actions - Endpoint Map Contract create AFU9 issue endpoint contract 1`] = `
+{
+  "bodyRequired": true,
+  "expectedBodyFields": [
+    "issueDraftId",
+  ],
+  "method": "POST",
+  "requiresAuth": true,
+  "url": "/api/intent/sessions/test-session-123/issues/create",
+}
+`;
+
+exports[`Issue Draft Actions - Endpoint Map Contract publish endpoint contract 1`] = `
+{
+  "bodyRequired": true,
+  "expectedBodyFields": [
+    "owner",
+    "repo",
+    "issue_set_id",
+  ],
+  "method": "POST",
+  "requiresAuth": true,
+  "url": "/api/intent/sessions/test-session-123/issue-draft/versions/publish",
+}
+`;
+
+exports[`Issue Draft Actions - Endpoint Map Contract validate endpoint contract 1`] = `
+{
+  "bodyRequired": false,
+  "method": "POST",
+  "requiresAuth": true,
+  "url": "/api/intent/sessions/test-session-123/issue-draft/validate",
+}
+`;
+
+exports[`Issue Draft Actions - Response Schema Contract ActionResult schema contract 1`] = `
+{
+  "data": "optional<any>",
+  "error": "optional<string>",
+  "requestId": "optional<string>",
+  "success": "boolean",
+}
+`;
+
+exports[`Issue Draft Actions - Response Schema Contract PublishResult schema contract 1`] = `
+{
+  "batch_id": "string",
+  "items": "array<PublishResultItem>",
+  "message": "optional<string>",
+  "success": "boolean",
+  "summary": {
+    "created": "number",
+    "failed": "number",
+    "skipped": "number",
+    "total": "number",
+    "updated": "number",
+  },
+  "warnings": "optional<array<string>>",
+}
+`;
+
+exports[`Issue Draft Actions - Response Schema Contract ValidationResult schema contract 1`] = `
+{
+  "errors": "array<ValidationError>",
+  "isValid": "boolean",
+  "meta": {
+    "hash": "optional<string>",
+    "issueDraftVersion": "optional<string>",
+    "validatedAt": "string",
+    "validatorVersion": "string",
+  },
+  "warnings": "array<ValidationWarning>",
+}
+`;
