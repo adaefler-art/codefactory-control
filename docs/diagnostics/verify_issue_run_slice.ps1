@@ -63,7 +63,9 @@ function Invoke-ApiRequest {
         
         if ($Body) {
             $bodyJson = $Body | ConvertTo-Json -Depth 10 -Compress
-            Write-Host "  Body:     $($bodyJson.Substring(0, [Math]::Min(100, $bodyJson.Length)))$(if ($bodyJson.Length -gt 100) { '...' } else { '' })" -ForegroundColor Gray
+            if ($bodyJson -and $bodyJson.Length -gt 0) {
+                Write-Host "  Body:     $($bodyJson.Substring(0, [Math]::Min(100, $bodyJson.Length)))$(if ($bodyJson.Length -gt 100) { '...' } else { '' })" -ForegroundColor Gray
+            }
             $requestParams.Body = $bodyJson
         }
         
@@ -120,7 +122,7 @@ function Invoke-ApiRequest {
         }
         
         # Truncate error body to 200 chars
-        if ($errorBody.Length -gt 200) {
+        if ($errorBody -and $errorBody.Length -gt 200) {
             $errorBody = $errorBody.Substring(0, 200) + "..."
         }
         
@@ -302,6 +304,7 @@ Assert-Value -Actual $runResult.Data.issueId -Expected $issueId -Description "Ru
 # ───────────────────────────────────────────────────────────────────────
 
 # Generate a mock evidence hash (SHA256 format - 64 hex characters)
+# Note: This is for testing/verification purposes only, not for cryptographic security
 $evidenceHash = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
 
 $evidenceBody = @{
