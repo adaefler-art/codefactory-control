@@ -350,6 +350,9 @@ export const API_ROUTES = {
       versions: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions`,
       publish: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions/publish`, // I907
     },
+    issues: {
+      create: (sessionId: string) => `/api/intent/sessions/${sessionId}/issues/create`,
+    },
   },
 } as const;
 
