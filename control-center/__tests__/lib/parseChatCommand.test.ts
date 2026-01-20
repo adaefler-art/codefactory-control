@@ -50,7 +50,7 @@ describe("parseChatCommand - Basic Commands", () => {
       expect(parseChatCommand("commit")).toBe("commit");
     });
 
-    test("should parse 'committe' (German typo variant)", () => {
+    test("should parse 'committe' (alternative spelling)", () => {
       expect(parseChatCommand("committe")).toBe("commit");
     });
 

@@ -25,20 +25,13 @@ export const ValidationErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
   path: z.string(),
-  severity: z.literal("error"),
-});
-
-export const ValidationWarningSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  path: z.string(),
-  severity: z.literal("warning"),
+  severity: z.enum(["error", "warning"]),
 });
 
 export const ValidationResultSchema = z.object({
   isValid: z.boolean(),
   errors: z.array(ValidationErrorSchema),
-  warnings: z.array(ValidationWarningSchema),
+  warnings: z.array(ValidationErrorSchema),
   meta: z.object({
     issueDraftVersion: z.string().optional(),
     validatedAt: z.string(),
@@ -90,7 +83,6 @@ export interface IssueDraftActionDraftRef {
 
 export type ActionResult<T = any> = z.infer<typeof ActionResultSchema> & { data?: T };
 export type ValidationError = z.infer<typeof ValidationErrorSchema>;
-export type ValidationWarning = z.infer<typeof ValidationWarningSchema>;
 export type ValidationResult = z.infer<typeof ValidationResultSchema>;
 export type PublishResult = z.infer<typeof PublishResultSchema>;
 export type PublishResultItem = z.infer<typeof PublishResultItemSchema>;
