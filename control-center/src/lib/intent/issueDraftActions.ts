@@ -1,5 +1,5 @@
-import { API_ROUTES } from "../api-routes.js";
-import { safeFetch } from "../api/safe-fetch.js";
+import { API_ROUTES } from "@/lib/api-routes";
+import { safeFetch } from "@/lib/api/safe-fetch";
 
 export type IssueDraftAction = "validate" | "commit" | "publishGithub" | "createIssue";
 
