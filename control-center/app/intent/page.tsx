@@ -75,6 +75,9 @@ export default function IntentPage() {
   const [conversationMode, setConversationMode] = useState<"DISCUSS" | "DRAFTING" | "ACT">("DISCUSS");
   const [isTogglingMode, setIsTogglingMode] = useState(false);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
+  const isDev = process.env.NODE_ENV === "development";
+  const DEFAULT_GITHUB_OWNER = "adaefler-art";
+  const DEFAULT_GITHUB_REPO = "codefactory-control";
 
   const isValidSessionId = (value: unknown): value is string => {
     return typeof value === "string" && value.trim().length > 0 && value !== "undefined" && value !== "null";
@@ -445,6 +448,7 @@ export default function IntentPage() {
     if (!inputValue.trim()) return;
 
     const messageContent = inputValue.trim();
+    const commandAction = parseChatCommand(messageContent);
     
     // STRICT validation: Check if we have a valid session
     const hasValidSession = isValidSessionId(currentSessionId);
@@ -516,10 +520,33 @@ export default function IntentPage() {
             setMessages([(data as any).userMessage, (data as any).assistantMessage]);
           } else {
             setMessages([]);
-            setError('Invalid response from server');
+            await handleChatCommand(commandAction, (newSession as { id: string }).id, messageContent);
+          } else {
+            // Now send the message to the new session
+            console.log('[INTENT] Sending message to new session:', (newSession as any).id.substring(0, 20));
+            const sendResponse = await fetch(
+              API_ROUTES.intent.messages.create((newSession as { id: string }).id),
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ content: messageContent }),
+              }
+            );
+            const data = await safeFetch(sendResponse);
+            if (
+              typeof data === 'object' &&
+              data !== null &&
+              'userMessage' in data && 'assistantMessage' in data
+            ) {
+              setMessages([(data as any).userMessage, (data as any).assistantMessage]);
+            } else {
+              setMessages([]);
+              setError('Invalid response from server');
+            }
+            setIssueDraftRefreshKey((prev) => prev + 1);
+            await fetchSessions();
           }
-          setIssueDraftRefreshKey((prev) => prev + 1);
-          await fetchSessions();
         } else {
           setError('Invalid response from server');
         }
@@ -538,6 +565,11 @@ export default function IntentPage() {
     
     console.log('[INTENT] Sending message to existing session:', sessionId.substring(0, 20));
     
+    if (commandAction) {
+      await handleChatCommand(commandAction, sessionId, messageContent);
+      return;
+    }
+
     setInputValue("");
     setIsSending(true);
     setError(null);
