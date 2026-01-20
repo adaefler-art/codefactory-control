@@ -1,8 +1,76 @@
-# INTENT Incident Diagnostics
+# Diagnostics & Verification Tools
 
-Deterministic debug loop MVP for INTENT authoring incidents.
+This directory contains diagnostic and verification tools for AFU-9 systems.
 
-## Overview
+## Tools
+
+### 1. Issue Run Slice Verification (I201.10)
+
+**Script**: `verify_issue_run_slice.ps1`
+
+**Purpose**: End-to-end deterministic verification of the I201.x issue run slice workflow. Prevents falling back into microdebug by providing clear PASS/FAIL results.
+
+**Usage**:
+
+```powershell
+# Run on staging
+.\docs\diagnostics\verify_issue_run_slice.ps1 `
+  -BaseUrl "https://stage.afu-9.com" `
+  -Cookie "session=your-session-cookie"
+
+# Run on local development
+.\docs\diagnostics\verify_issue_run_slice.ps1 `
+  -BaseUrl "http://localhost:3000" `
+  -Cookie "session=your-session-cookie"
+```
+
+**Workflow Steps**:
+
+1. **Ensure Draft** - Create draft/session (simplified: uses CREATED issue status)
+2. **Create Issue** - POST `/api/issues`
+3. **Read by canonicalId** - GET `/api/issues/:id` (assert count = 1)
+4. **Start Run** - POST `/api/afu9/issues/:id/runs/start`
+5. **Refresh/Link Evidence** - POST `/api/afu9/runs/:runId/evidence/refresh`
+6. **Set Verdict** - POST `/api/afu9/issues/:id/verdict`
+7. **Read Timeline** - GET `/api/afu9/timeline` (assert required events)
+
+**Output**:
+
+- PASS/FAIL for each step
+- On FAIL: requestId, endpoint, status code, response snippet
+- Clear summary at the end
+
+**Exit Codes**:
+
+- `0` - PASS (all steps succeeded)
+- `1` - FAIL (one or more steps failed)
+
+**Example Output**:
+
+```
+╔═══════════════════════════════════════════════════════════╗
+║   I201.10 - Release Gate: End-to-End Verification        ║
+╚═══════════════════════════════════════════════════════════╝
+  Base URL: https://stage.afu-9.com
+
+═══════════════════════════════════════════════════════════
+[1] Create Issue
+───────────────────────────────────────────────────────────
+  Method:   POST
+  Endpoint: /api/issues
+  ✓ PASS
+  RequestID: req_abc123
+
+...
+
+╔═══════════════════════════════════════════════════════════╗
+║                    VERIFICATION PASSED                    ║
+╚═══════════════════════════════════════════════════════════╝
+
+  All steps completed successfully!
+```
+
+### 2. INTENT Incident Diagnostics
 
 This diagnostic system provides a **deterministic, systemized pipeline** for debugging INTENT authoring incidents. It transforms symptoms (e.g., "Issue Draft stuck on NO DRAFT") into actionable diagnostics without ad-hoc probing.
 
