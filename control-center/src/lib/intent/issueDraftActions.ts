@@ -5,9 +5,11 @@
  * Used by both button clicks in IssueDraftPanel and chat command routing.
  * 
  * Issue: I201.8 - INTENT Chat Command Router
- * Requirement R2: Dispatch über shared actions
+ * Issue: I201.9 - Shared Draft Actions + Parser Tests
+ * Requirement R2: Dispatch über shared actions + Zod typed responses
  */
 
+import { z } from "zod";
 import { API_ROUTES } from "@/lib/api-routes";
 import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 
@@ -15,67 +17,83 @@ import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
 const DEFAULT_GITHUB_OWNER = "adaefler-art";
 const DEFAULT_GITHUB_REPO = "codefactory-control";
 
-// Types from main branch (Current)
+// ===================================================================
+// R2: Zod Schemas for Typed Responses (I201.9)
+// ===================================================================
+
+export const ValidationErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  path: z.string(),
+  severity: z.literal("error"),
+});
+
+export const ValidationWarningSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  path: z.string(),
+  severity: z.literal("warning"),
+});
+
+export const ValidationResultSchema = z.object({
+  isValid: z.boolean(),
+  errors: z.array(ValidationErrorSchema),
+  warnings: z.array(ValidationWarningSchema),
+  meta: z.object({
+    issueDraftVersion: z.string().optional(),
+    validatedAt: z.string(),
+    validatorVersion: z.string(),
+    hash: z.string().optional(),
+  }),
+});
+
+export const PublishResultItemSchema = z.object({
+  canonical_id: z.string(),
+  action: z.enum(["created", "updated", "skipped", "failed"]),
+  status: z.enum(["success", "failed"]),
+  github_issue_number: z.number().optional(),
+  github_issue_url: z.string().optional(),
+  error_message: z.string().optional(),
+});
+
+export const PublishResultSchema = z.object({
+  success: z.boolean(),
+  batch_id: z.string(),
+  summary: z.object({
+    total: z.number(),
+    created: z.number(),
+    updated: z.number(),
+    skipped: z.number(),
+    failed: z.number(),
+  }),
+  items: z.array(PublishResultItemSchema),
+  warnings: z.array(z.string()).optional(),
+  message: z.string().optional(),
+});
+
+export const ActionResultSchema = z.object({
+  success: z.boolean(),
+  data: z.any().optional(),
+  error: z.string().optional(),
+  requestId: z.string().optional(),
+});
+
+// ===================================================================
+// TypeScript Types (derived from Zod schemas for backwards compat)
+// ===================================================================
+
 export type IssueDraftAction = "validate" | "commit" | "publishGithub" | "createIssue";
 
 export interface IssueDraftActionDraftRef {
   id?: string;
 }
 
-export interface ActionResult<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  requestId?: string;
-}
-
-export interface ValidationError {
-  code: string;
-  message: string;
-  path: string;
-  severity: "error";
-}
-
-export interface ValidationWarning {
-  code: string;
-  message: string;
-  path: string;
-  severity: "warning";
-}
-
-export interface ValidationResult {
-  isValid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationWarning[];
-  meta: {
-    issueDraftVersion?: string;
-    validatedAt: string;
-    validatorVersion: string;
-    hash?: string;
-  };
-}
-
-export interface PublishResult {
-  success: boolean;
-  batch_id: string;
-  summary: {
-    total: number;
-    created: number;
-    updated: number;
-    skipped: number;
-    failed: number;
-  };
-  items: Array<{
-    canonical_id: string;
-    action: 'created' | 'updated' | 'skipped' | 'failed';
-    status: 'success' | 'failed';
-    github_issue_number?: number;
-    github_issue_url?: string;
-    error_message?: string;
-  }>;
-  warnings?: string[];
-  message?: string;
-}
+export type ActionResult<T = any> = z.infer<typeof ActionResultSchema> & { data?: T };
+export type ValidationError = z.infer<typeof ValidationErrorSchema>;
+export type ValidationWarning = z.infer<typeof ValidationWarningSchema>;
+export type ValidationResult = z.infer<typeof ValidationResultSchema>;
+export type PublishResult = z.infer<typeof PublishResultSchema>;
+export type PublishResultItem = z.infer<typeof PublishResultItemSchema>;
 
 /**
  * Extract requestId from error object if present
