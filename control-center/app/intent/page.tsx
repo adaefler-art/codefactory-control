@@ -442,6 +442,26 @@ export default function IntentPage() {
     }
   };
 
+  const handleChatCommand = async (action: IssueDraftAction, sessionId: string, content: string) => {
+    setInputValue("");
+    setIsSending(true);
+    setError(null);
+
+    const userMessage: IntentMessage = {
+      id: `user-${Date.now()}`,
+      session_id: sessionId,
+      role: "user",
+      content,
+      created_at: new Date().toISOString(),
+      seq: messages.length + 1,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    await executeCommand(action, sessionId);
+    setIssueDraftRefreshKey((prev) => prev + 1);
+    setIsSending(false);
+  };
+
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     

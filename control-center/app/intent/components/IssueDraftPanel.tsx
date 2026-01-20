@@ -161,7 +161,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setRequestId(null);
     try {
       const result = await executeIssueDraftAction("validate", sessionId, { draft });
-      if (!result.ok) {
+      if (!result.success) {
         throw new Error(result.error || "VALIDATE_FAILED");
       }
       const data = result.data as { validation: ValidationResult };
@@ -282,7 +282,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
     setAfu9IssueResult(null);
     try {
       const result = await executeIssueDraftAction("createIssue", sessionId, { draft });
-      if (!result.ok) {
+      if (!result.success) {
         throw new Error(result.error || "CREATE_ISSUE_FAILED");
       }
       setAfu9IssueResult(result.data);
@@ -302,7 +302,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
 
     try {
       const result = await executeIssueDraftAction("commit", sessionId, { draft });
-      if (!result.ok) {
+      if (!result.success) {
         throw new Error(result.error || "COMMIT_FAILED");
       }
       // Show success message
@@ -338,7 +338,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
 
     try {
       const result = await executeIssueDraftAction("publishGithub", sessionId, { draft, owner, repo });
-      if (!result.ok) {
+      if (!result.success) {
         throw new Error(result.error || "PUBLISH_FAILED");
       }
       const data = result.data;
