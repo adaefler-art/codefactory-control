@@ -248,7 +248,7 @@ if (-not $createResult.Success) {
 }
 
 $issueId = $createResult.Data.id
-$publicId = $issueId.Substring(0, 8)
+$publicId = if ($issueId.Length -ge 8) { $issueId.Substring(0, 8) } else { $issueId }
 
 Write-Host "  Created Issue ID: $issueId" -ForegroundColor Green
 Write-Host "  Public ID:        $publicId" -ForegroundColor Green
@@ -301,8 +301,8 @@ Assert-Value -Actual $runResult.Data.issueId -Expected $issueId -Description "Ru
 # STEP 5: Refresh/Link Evidence
 # ───────────────────────────────────────────────────────────────────────
 
-# Generate a mock evidence hash (SHA256 format)
-$evidenceHash = -join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+# Generate a mock evidence hash (SHA256 format - 64 hex characters)
+$evidenceHash = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
 
 $evidenceBody = @{
     url = "https://example.com/evidence/test-$runId.json"
