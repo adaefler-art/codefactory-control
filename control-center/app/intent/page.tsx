@@ -10,7 +10,14 @@ import IssueDraftPanel from "./components/IssueDraftPanel";
 import PublishHistoryPanel from "./components/PublishHistoryPanel";
 import WorkPlanPanel from "./components/WorkPlanPanel";
 import type { UsedSources } from "@/lib/schemas/usedSources";
-import { executeIssueDraftAction, parseChatCommand, type IssueDraftAction } from "@/lib/intent/issueDraftActions";
+import { 
+  parseChatCommand,
+  validateIssueDraft, 
+  commitIssueDraft, 
+  publishIssueDraft, 
+  createAfu9Issue,
+  type IssueDraftAction
+} from "@/lib/intent/issueDraftActions";
 
 interface IntentSession {
   id: string;
@@ -286,33 +293,152 @@ export default function IntentPage() {
     }
   };
 
-  const appendLocalMessage = (sessionId: string, role: IntentMessage["role"], content: string) => {
-    setMessages((prev) => {
-      const nextSeq = (prev[prev.length - 1]?.seq ?? 0) + 1;
-      const message: IntentMessage = {
-        id: `local-${Date.now()}-${role}`,
-        session_id: sessionId,
-        role,
-        content,
-        created_at: new Date().toISOString(),
-        seq: nextSeq,
-      };
-      return [...prev, message];
-    });
+  /**
+   * Add a system message to the current chat thread (local only)
+   * R3: Deterministisches Verhalten - show system confirmation after action
+   */
+  const addSystemMessage = (content: string) => {
+    const systemMessage: IntentMessage = {
+      id: `system-${Date.now()}`,
+      session_id: currentSessionId || "",
+      role: "system",
+      content,
+      created_at: new Date().toISOString(),
+      seq: messages.length + 1,
+    };
+    setMessages((prev) => [...prev, systemMessage]);
   };
 
-  const getCommandLabel = (action: IssueDraftAction): string => {
-    switch (action) {
-      case "validate":
-        return "validate";
-      case "commit":
-        return "commit";
-      case "publishGithub":
-        return "publish";
-      case "createIssue":
-        return "create issue";
-      default:
-        return "action";
+  /**
+   * Execute a command action
+   * R3: Deterministisches Verhalten - execute action, refresh draft, show confirmation
+   */
+  const executeCommand = async (action: IssueDraftAction, sessionId: string): Promise<boolean> => {
+    if (!action) return false;
+
+    console.log(`[INTENT] Executing action: ${action}`);
+
+    try {
+      if (action === "validate") {
+        const result = await validateIssueDraft(sessionId);
+        if (result.success && result.data) {
+          const isValid = result.data.validation.isValid;
+          const errorCount = result.data.validation.errors.length;
+          const warningCount = result.data.validation.warnings.length;
+          
+          addSystemMessage(
+            `✅ ACTION_VALIDATE executed\n\n` +
+            `Status: ${isValid ? "VALID" : "INVALID"}\n` +
+            (errorCount > 0 ? `Errors: ${errorCount}\n` : "") +
+            (warningCount > 0 ? `Warnings: ${warningCount}` : "")
+          );
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          return true;
+        } else {
+          addSystemMessage(
+            `❌ ACTION_VALIDATE failed\n\n` +
+            `Error: ${result.error || "Unknown error"}` +
+            (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+          );
+          return false;
+        }
+      }
+
+      if (action === "commit") {
+        const result = await commitIssueDraft(sessionId);
+        if (result.success) {
+          addSystemMessage(
+            `✅ ACTION_COMMIT_VERSION executed\n\n` +
+            `Draft version committed successfully.`
+          );
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          return true;
+        } else {
+          addSystemMessage(
+            `❌ ACTION_COMMIT_VERSION failed\n\n` +
+            `Error: ${result.error || "Unknown error"}` +
+            (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+          );
+          return false;
+        }
+      }
+
+      if (action === "publishGithub") {
+        const result = await publishIssueDraft(sessionId);
+        if (result.success && result.data) {
+          const summary = result.data.summary;
+          addSystemMessage(
+            `✅ ACTION_PUBLISH_TO_GITHUB executed\n\n` +
+            `Batch ID: ${result.data.batch_id.substring(0, 12)}...\n` +
+            `Total: ${summary.total}, Created: ${summary.created}, Updated: ${summary.updated}, Failed: ${summary.failed}`
+          );
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          return true;
+        } else {
+          addSystemMessage(
+            `❌ ACTION_PUBLISH_TO_GITHUB failed\n\n` +
+            `Error: ${result.error || "Unknown error"}` +
+            (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+          );
+          return false;
+        }
+      }
+
+      if (action === "createIssue") {
+        // First, we need to get the current draft to obtain the draft ID
+        const draftResponse = await fetch(API_ROUTES.intent.issueDraft.get(sessionId), {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const draftData = await safeFetch(draftResponse);
+        
+        interface DraftResponse {
+          success?: boolean;
+          draft?: {
+            id: string;
+            session_id: string;
+            issue_json: any;
+          } | null;
+        }
+        
+        const typedDraftData = draftData as DraftResponse;
+        
+        if (typedDraftData.draft?.id) {
+          const result = await createAfu9Issue(sessionId, typedDraftData.draft.id);
+          if (result.success && result.data) {
+            addSystemMessage(
+              `✅ ACTION_CREATE_AFU9_ISSUE executed\n\n` +
+              `Issue ID: ${result.data.issueId || "N/A"}\n` +
+              `Canonical ID: ${result.data.canonicalId || "N/A"}\n` +
+              `State: ${result.data.state || "N/A"}`
+            );
+            return true;
+          } else {
+            addSystemMessage(
+              `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
+              `Error: ${result.error || "Unknown error"}` +
+              (result.requestId ? `\nRequest ID: ${result.requestId}` : "")
+            );
+            return false;
+          }
+        } else {
+          addSystemMessage(
+            `❌ ACTION_CREATE_AFU9_ISSUE failed\n\n` +
+            `Error: No draft found in session`
+          );
+          return false;
+        }
+      }
+
+      return false;
+    } catch (err) {
+      console.error(`[INTENT] Command execution failed:`, err);
+      addSystemMessage(
+        `❌ ACTION_${action} failed\n\n` +
+        `Error: ${formatErrorMessage(err)}`
+      );
+      return false;
     }
   };
 
@@ -321,27 +447,19 @@ export default function IntentPage() {
     setIsSending(true);
     setError(null);
 
-    appendLocalMessage(sessionId, "user", content);
+    const userMessage: IntentMessage = {
+      id: `user-${Date.now()}`,
+      session_id: sessionId,
+      role: "user",
+      content,
+      created_at: new Date().toISOString(),
+      seq: messages.length + 1,
+    };
+    setMessages((prev) => [...prev, userMessage]);
 
-    try {
-      const owner = process.env.NEXT_PUBLIC_GITHUB_OWNER || DEFAULT_GITHUB_OWNER;
-      const repo = process.env.NEXT_PUBLIC_GITHUB_REPO || DEFAULT_GITHUB_REPO;
-      const result = await executeIssueDraftAction(action, sessionId, { owner, repo });
-      if (!result.ok) {
-        throw new Error(result.error || "ACTION_FAILED");
-      }
-
-      setIssueDraftRefreshKey((prev) => prev + 1);
-      appendLocalMessage(sessionId, "system", `✅ ${getCommandLabel(action)} executed`);
-      await fetchSessions();
-    } catch (err) {
-      appendLocalMessage(sessionId, "system", `⚠️ ${getCommandLabel(action)} failed`);
-      if (isDev) {
-        console.error("[INTENT] Chat command failed:", err);
-      }
-    } finally {
-      setIsSending(false);
-    }
+    await executeCommand(action, sessionId);
+    setIssueDraftRefreshKey((prev) => prev + 1);
+    setIsSending(false);
   };
 
   const sendMessage = async (e: FormEvent) => {
@@ -361,6 +479,10 @@ export default function IntentPage() {
       sessionIdType: typeof currentSessionId,
       sessionIdValue: currentSessionId && typeof currentSessionId === 'string' ? currentSessionId.substring(0, 20) : 'null/undefined',
     });
+
+    // R1: Detect command BEFORE processing
+    const detectedCommand = parseChatCommand(messageContent);
+    console.log('[INTENT] Command detection:', { input: messageContent, command: detectedCommand });
 
     // Auto-create session if NO valid session
     if (!hasValidSession) {
@@ -388,35 +510,40 @@ export default function IntentPage() {
           setSessions((prev) => [newSession as IntentSession, ...prev]);
           setCurrentSessionId((newSession as { id: string }).id);
 
-          if (commandAction) {
-            setMessages([]);
-            await handleChatCommand(commandAction, (newSession as { id: string }).id, messageContent);
-          } else {
-            // Now send the message to the new session
-            console.log('[INTENT] Sending message to new session:', (newSession as any).id.substring(0, 20));
-            const sendResponse = await fetch(
-              API_ROUTES.intent.messages.create((newSession as { id: string }).id),
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ content: messageContent }),
-              }
+          // R4: Commands in new session without draft should show helpful message
+          if (detectedCommand) {
+            addSystemMessage(
+              `⚠️ Command detected: ${detectedCommand}\n\n` +
+              `This command requires a draft. Please create a draft first by chatting with INTENT.`
             );
-            const data = await safeFetch(sendResponse);
-            if (
-              typeof data === 'object' &&
-              data !== null &&
-              'userMessage' in data && 'assistantMessage' in data
-            ) {
-              setMessages([(data as any).userMessage, (data as any).assistantMessage]);
-            } else {
-              setMessages([]);
-              setError('Invalid response from server');
-            }
-            setIssueDraftRefreshKey((prev) => prev + 1);
-            await fetchSessions();
+            setIsSending(false);
+            return;
           }
+
+          // Now send the message to the new session (no command detected)
+          console.log('[INTENT] Sending message to new session:', (newSession as any).id.substring(0, 20));
+          const sendResponse = await fetch(
+            API_ROUTES.intent.messages.create((newSession as { id: string }).id),
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ content: messageContent }),
+            }
+          );
+          const data = await safeFetch(sendResponse);
+          if (
+            typeof data === 'object' &&
+            data !== null &&
+            'userMessage' in data && 'assistantMessage' in data
+          ) {
+            setMessages([(data as any).userMessage, (data as any).assistantMessage]);
+          } else {
+            setMessages([]);
+            setError('Invalid response from server');
+          }
+          setIssueDraftRefreshKey((prev) => prev + 1);
+          await fetchSessions();
         } else {
           setError('Invalid response from server');
         }
@@ -445,6 +572,32 @@ export default function IntentPage() {
     setError(null);
 
     try {
+      // R3: If command detected, execute action instead of sending to LLM
+      if (detectedCommand) {
+        console.log('[INTENT] Executing command instead of sending to LLM:', detectedCommand);
+        
+        // Add user message to show command in thread
+        const userMessage: IntentMessage = {
+          id: `user-${Date.now()}`,
+          session_id: sessionId,
+          role: "user",
+          content: messageContent,
+          created_at: new Date().toISOString(),
+          seq: messages.length + 1,
+        };
+        setMessages((prev) => [...prev, userMessage]);
+        
+        // Execute command
+        await executeCommand(detectedCommand, sessionId);
+        
+        // Refresh draft
+        setIssueDraftRefreshKey((prev) => prev + 1);
+        
+        setIsSending(false);
+        return;
+      }
+
+      // R4: No command detected, fallback to normal LLM message
       const response = await fetch(
         API_ROUTES.intent.messages.create(sessionId),
         {

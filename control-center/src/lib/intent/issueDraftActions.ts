@@ -1,20 +1,95 @@
-import { API_ROUTES } from "@/lib/api-routes";
-import { safeFetch } from "@/lib/api/safe-fetch";
+/**
+ * Issue Draft Actions
+ * 
+ * Shared action handlers for INTENT Issue Draft operations.
+ * Used by both button clicks in IssueDraftPanel and chat command routing.
+ * 
+ * Issue: I201.8 - INTENT Chat Command Router
+ * Requirement R2: Dispatch über shared actions
+ */
 
+import { API_ROUTES } from "@/lib/api-routes";
+import { safeFetch, formatErrorMessage } from "@/lib/api/safe-fetch";
+
+// Configuration constants
+const DEFAULT_GITHUB_OWNER = "adaefler-art";
+const DEFAULT_GITHUB_REPO = "codefactory-control";
+
+// Types from main branch (Current)
 export type IssueDraftAction = "validate" | "commit" | "publishGithub" | "createIssue";
 
-export interface IssueDraftActionDraft {
+export interface IssueDraftActionDraftRef {
   id?: string;
-  issue_json?: unknown;
 }
 
-export interface IssueDraftActionResult {
-  ok: boolean;
-  data?: unknown;
+export interface ActionResult<T = any> {
+  success: boolean;
+  data?: T;
   error?: string;
   requestId?: string;
 }
 
+export interface ValidationError {
+  code: string;
+  message: string;
+  path: string;
+  severity: "error";
+}
+
+export interface ValidationWarning {
+  code: string;
+  message: string;
+  path: string;
+  severity: "warning";
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+  meta: {
+    issueDraftVersion?: string;
+    validatedAt: string;
+    validatorVersion: string;
+    hash?: string;
+  };
+}
+
+export interface PublishResult {
+  success: boolean;
+  batch_id: string;
+  summary: {
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  };
+  items: Array<{
+    canonical_id: string;
+    action: 'created' | 'updated' | 'skipped' | 'failed';
+    status: 'success' | 'failed';
+    github_issue_number?: number;
+    github_issue_url?: string;
+    error_message?: string;
+  }>;
+  warnings?: string[];
+  message?: string;
+}
+
+/**
+ * Extract requestId from error object if present
+ */
+function extractRequestId(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "requestId" in err 
+    ? String((err as any).requestId) 
+    : undefined;
+}
+
+/**
+ * Parse chat command text to action type
+ * From main branch (Current) - preserved for compatibility
+ */
 export function parseChatCommand(text: string): IssueDraftAction | null {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return null;
@@ -38,92 +113,166 @@ export function parseChatCommand(text: string): IssueDraftAction | null {
   return null;
 }
 
-async function fetchDraft(sessionId: string): Promise<IssueDraftActionDraft | null> {
-  const response = await fetch(API_ROUTES.intent.issueDraft.get(sessionId), {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  });
-
-  const data = await safeFetch(response);
-  if (typeof data === "object" && data !== null && "success" in data) {
-    const success = (data as { success: boolean }).success;
-    if (success && "draft" in data) {
-      return (data as { draft: IssueDraftActionDraft | null }).draft;
-    }
-  }
-
-  return null;
-}
-
-export async function executeIssueDraftAction(
-  action: IssueDraftAction,
-  sessionId: string,
-  options?: { draft?: IssueDraftActionDraft | null; owner?: string; repo?: string }
-): Promise<IssueDraftActionResult> {
+/**
+ * Validate the issue draft for the given session
+ * CRITICAL: Does NOT send request body (per I201.8 requirements)
+ */
+export async function validateIssueDraft(
+  sessionId: string
+): Promise<ActionResult<{ validation: ValidationResult }>> {
   try {
-    const draft = options?.draft ?? (await fetchDraft(sessionId));
-
-    if (action === "validate") {
-      if (!draft?.issue_json) {
-        return { ok: false, error: "NO_DRAFT" };
-      }
-
-      const response = await fetch(API_ROUTES.intent.issueDraft.validate(sessionId), {
+    const response = await fetch(
+      API_ROUTES.intent.issueDraft.validate(sessionId),
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ issue_json: draft.issue_json }),
-      });
-      const data = await safeFetch(response);
-      return { ok: true, data };
-    }
+      }
+    );
+    
+    const data = await safeFetch(response) as { validation: ValidationResult };
+    
+    return {
+      success: true,
+      data,
+    };
+  } catch (err) {
+    console.error("Failed to validate issue draft:", err);
+    return {
+      success: false,
+      error: formatErrorMessage(err),
+      requestId: extractRequestId(err),
+    };
+  }
+}
 
-    if (action === "commit") {
-      const response = await fetch(API_ROUTES.intent.issueDraft.commit(sessionId), {
+/**
+ * Commit a version of the issue draft
+ */
+export async function commitIssueDraft(
+  sessionId: string
+): Promise<ActionResult> {
+  try {
+    const response = await fetch(
+      API_ROUTES.intent.issueDraft.commit(sessionId),
+      {
         method: "POST",
         credentials: "include",
-      });
-      const data = await safeFetch(response);
-      return { ok: true, data };
-    }
+      }
+    );
+    
+    const data = await safeFetch(response);
+    
+    return {
+      success: true,
+      data,
+    };
+  } catch (err) {
+    console.error("Failed to commit issue draft:", err);
+    return {
+      success: false,
+      error: formatErrorMessage(err),
+      requestId: extractRequestId(err),
+    };
+  }
+}
 
-    if (action === "publishGithub") {
-      const owner = options?.owner;
-      const repo = options?.repo;
-      const response = await fetch(API_ROUTES.intent.issueDraft.publish(sessionId), {
+/**
+ * Publish committed draft versions to GitHub
+ */
+export async function publishIssueDraft(
+  sessionId: string,
+  owner?: string,
+  repo?: string
+): Promise<ActionResult<PublishResult>> {
+  try {
+    const finalOwner = owner || process.env.NEXT_PUBLIC_GITHUB_OWNER || DEFAULT_GITHUB_OWNER;
+    const finalRepo = repo || process.env.NEXT_PUBLIC_GITHUB_REPO || DEFAULT_GITHUB_REPO;
+    
+    const response = await fetch(
+      API_ROUTES.intent.issueDraft.publish(sessionId),
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          owner,
-          repo,
+          owner: finalOwner,
+          repo: finalRepo,
           issue_set_id: sessionId,
         }),
-      });
-      const data = await safeFetch(response);
-      return { ok: true, data };
-    }
-
-    if (action === "createIssue") {
-      const response = await fetch(API_ROUTES.intent.issues.create(sessionId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ issueDraftId: draft?.id }),
-      });
-      const data = await safeFetch(response);
-      return { ok: true, data };
-    }
-
-    return { ok: false, error: "UNKNOWN_ACTION" };
+      }
+    );
+    
+    const data = await safeFetch(response) as PublishResult;
+    
+    return {
+      success: true,
+      data,
+    };
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "ACTION_FAILED";
-    let requestId: string | undefined;
-    if (typeof err === "object" && err !== null && "requestId" in err) {
-      requestId = String((err as { requestId?: unknown }).requestId ?? "");
+    console.error("Failed to publish issue draft:", err);
+    return {
+      success: false,
+      error: formatErrorMessage(err),
+      requestId: extractRequestId(err),
+    };
+  }
+}
+
+/**
+ * Create an AFU-9 Issue from the committed draft
+ */
+export async function createAfu9Issue(
+  sessionId: string,
+  draftId: string
+): Promise<ActionResult> {
+  try {
+    const response = await fetch(API_ROUTES.intent.issues.create(sessionId), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ issueDraftId: draftId }),
+    });
+    
+    const data = await safeFetch(response);
+    
+    return {
+      success: true,
+      data,
+    };
+  } catch (err) {
+    console.error("Failed to create AFU-9 Issue:", err);
+    return {
+      success: false,
+      error: formatErrorMessage(err),
+      requestId: extractRequestId(err),
+    };
+  }
+}
+
+/**
+ * Unified action dispatcher for INTENT draft actions
+ */
+export async function executeIssueDraftAction(
+  action: IssueDraftAction,
+  sessionId: string,
+  options?: { draft?: IssueDraftActionDraftRef | null; owner?: string; repo?: string }
+): Promise<ActionResult> {
+  switch (action) {
+    case "validate":
+      return validateIssueDraft(sessionId);
+    case "commit":
+      return commitIssueDraft(sessionId);
+    case "publishGithub":
+      return publishIssueDraft(sessionId, options?.owner, options?.repo);
+    case "createIssue": {
+      const draftId = options?.draft?.id;
+      if (!draftId) {
+        return { success: false, error: "NO_DRAFT" };
+      }
+      return createAfu9Issue(sessionId, draftId);
     }
-    return { ok: false, error: errorMessage, requestId };
+    default:
+      return { success: false, error: "UNKNOWN_ACTION" };
   }
 }
