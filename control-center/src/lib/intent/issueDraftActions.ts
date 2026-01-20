@@ -18,6 +18,10 @@ const DEFAULT_GITHUB_REPO = "codefactory-control";
 // Types from main branch (Current)
 export type IssueDraftAction = "validate" | "commit" | "publishGithub" | "createIssue";
 
+export interface IssueDraftActionDraftRef {
+  id?: string;
+}
+
 export interface ActionResult<T = any> {
   success: boolean;
   data?: T;
@@ -223,8 +227,7 @@ export async function createAfu9Issue(
   draftId: string
 ): Promise<ActionResult> {
   try {
-    const route = `/api/intent/sessions/${sessionId}/issues/create`;
-    const response = await fetch(route, {
+    const response = await fetch(API_ROUTES.intent.issues.create(sessionId), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -244,5 +247,32 @@ export async function createAfu9Issue(
       error: formatErrorMessage(err),
       requestId: extractRequestId(err),
     };
+  }
+}
+
+/**
+ * Unified action dispatcher for INTENT draft actions
+ */
+export async function executeIssueDraftAction(
+  action: IssueDraftAction,
+  sessionId: string,
+  options?: { draft?: IssueDraftActionDraftRef | null; owner?: string; repo?: string }
+): Promise<ActionResult> {
+  switch (action) {
+    case "validate":
+      return validateIssueDraft(sessionId);
+    case "commit":
+      return commitIssueDraft(sessionId);
+    case "publishGithub":
+      return publishIssueDraft(sessionId, options?.owner, options?.repo);
+    case "createIssue": {
+      const draftId = options?.draft?.id;
+      if (!draftId) {
+        return { success: false, error: "NO_DRAFT" };
+      }
+      return createAfu9Issue(sessionId, draftId);
+    }
+    default:
+      return { success: false, error: "UNKNOWN_ACTION" };
   }
 }
