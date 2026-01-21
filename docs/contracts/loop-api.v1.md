@@ -50,6 +50,7 @@ Execute the next step in the loop for a given AFU-9 issue.
   schemaVersion: "loop.runNextStep.v1",  // Contract version identifier
   requestId: string,                      // UUID for request tracing
   issueId: string,                        // Issue that was processed
+  runId: string,                          // UUID of persisted run record (E9.1-CTRL-2)
   stepExecuted?: {                        // Details of the step that was executed
     stepNumber: number,                   // Positive integer
     stepType: string,                     // Type/name of the step
@@ -220,8 +221,29 @@ The `schemaVersion` field in responses enables:
 5. Missing authentication (401)
 6. Non-existent issue (404)
 7. Concurrent execution (409)
+8. Verify runId is persisted in loop_runs table (E9.1-CTRL-2)
+
+## Persistence (E9.1-CTRL-2)
+
+Every loop execution creates a record in the `loop_runs` table:
+
+**Run Lifecycle:**
+1. **Creation**: Run record created with `status = 'pending'`
+2. **Execution**: Status transitions to `running` when execution starts
+3. **Completion**: Status transitions to `completed`, `failed`, or `blocked`
+4. **Timestamps**: `created_at`, `started_at`, `completed_at` tracked
+5. **Traceability**: `runId` returned in response for audit/replay
+
+**Database Tables:**
+- `loop_runs`: Main run records with status and timestamps
+- `loop_run_steps`: Individual step execution results (future use)
 
 ## Changelog
+
+### v1.1 (2026-01-21) - E9.1-CTRL-2
+- Added `runId` field to response
+- Run persistence in `loop_runs` table
+- Track all executions (success, blocked, fail)
 
 ### v1 (2026-01-21)
 - Initial contract version
