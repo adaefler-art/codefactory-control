@@ -109,7 +109,7 @@ pwsh ./scripts/release/v0.5/create-v0.4-release.ps1 -Execute
 gh release create v0.4.0 `
    --repo adaefler-art/codefactory-control `
    --title "AFU-9 v0.4.0" `
-   --notes-file "./scripts/release/v0.5/release-notes-v0.4.0.md" `
+   --notes-file "./docs/cleanup/archive/release-v0.5/release-notes-v0.4.0.md" `
    --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae `
    --verify-tag
 
@@ -394,8 +394,8 @@ gh issue create \
 - `create-v0.4-release.ps1` - PowerShell release script
 - `create-v0.5-project.ps1` - PowerShell project/issues script
 - `create-release-and-project.ps1` - Combined PowerShell entrypoint
-- `release-notes-v0.4.0.md` - Release notes for `gh release create`
-- `EXECUTION_GUIDE.md` - Comprehensive manual guide
+- `release-notes-v0.4.0.md` - Release notes for `gh release create` (archived in docs/cleanup)
+- `EXECUTION_GUIDE.md` - Comprehensive manual guide (archived in docs/cleanup)
 
 ### Script Capabilities
 
@@ -489,7 +489,7 @@ No other information is required from humans - all content is complete and ready
 - **v0.5 Release Prep:** `docs/v05/V05_RELEASE_PREP.md`
 
 ### Scripts
-- **Execution Guide:** `scripts/release/v0.5/EXECUTION_GUIDE.md`
+- **Execution Guide:** `docs/cleanup/archive/release-v0.5/EXECUTION_GUIDE.md`
 - **PowerShell Entrypoint:** `scripts/release/v0.5/create-release-and-project.ps1`
 - **PowerShell Scripts:** `scripts/release/v0.5/*.ps1`
 

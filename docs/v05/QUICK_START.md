@@ -62,7 +62,7 @@ Or use GitHub CLI:
 gh release create v0.4.0 `
     --repo adaefler-art/codefactory-control `
     --title "AFU-9 v0.4.0" `
-    --notes-file "./scripts/release/v0.5/release-notes-v0.4.0.md" `
+    --notes-file "./docs/cleanup/archive/release-v0.5/release-notes-v0.4.0.md" `
     --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae `
     --verify-tag
 ```
@@ -135,7 +135,7 @@ Use the issue templates in `scripts/release/v0.5/create-v0.5-project.ps1`
 ## Documentation
 
 **Comprehensive Report:** `docs/v05/V05_RELEASE_SETUP_REPORT.md`  
-**Execution Guide:** `scripts/release/v0.5/EXECUTION_GUIDE.md`  
+**Execution Guide:** `docs/cleanup/archive/release-v0.5/EXECUTION_GUIDE.md`  
 **Tracking Doc:** `docs/v05/V05_RELEASE_PREP.md`
 
 **Scripts:**
@@ -172,7 +172,7 @@ After execution, verify:
 ## Need Help?
 
 **Full Details:** See `docs/v05/V05_RELEASE_SETUP_REPORT.md`  
-**Step-by-Step:** See `scripts/release/v0.5/EXECUTION_GUIDE.md`  
+**Step-by-Step:** See `docs/cleanup/archive/release-v0.5/EXECUTION_GUIDE.md`  
 **Issue Templates:** See `scripts/release/v0.5/create-v0.5-project.ps1`
 
 ---

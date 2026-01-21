@@ -41,7 +41,7 @@ Or GitHub CLI:
 gh release create v0.4.0 `
   --repo adaefler-art/codefactory-control `
   --title "AFU-9 v0.4.0" `
-  --notes-file "./scripts/release/v0.5/release-notes-v0.4.0.md" `
+  --notes-file "./docs/cleanup/archive/release-v0.5/release-notes-v0.4.0.md" `
   --target 22cdb6a41c42366ad165a0fb4c96282304f6f7ae `
   --verify-tag
 ```
