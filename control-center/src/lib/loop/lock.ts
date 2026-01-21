@@ -101,7 +101,7 @@ export class LoopLockManager {
     mode: string;
     actorId: string;
   }): string {
-    const normalized = {
+    const normalized: Record<string, string> = {
       issueId: params.issueId,
       step: params.step || 'default',
       mode: params.mode,
@@ -126,7 +126,7 @@ export class LoopLockManager {
     mode: string;
     actorId?: string;
   }): string {
-    const normalized: any = {
+    const normalized: Record<string, string> = {
       issueId: params.issueId,
       step: params.step || 'default',
       mode: params.mode,
@@ -216,7 +216,7 @@ export class LoopLockManager {
           // Another process acquired the lock between our check and insert
           // This is the race condition case - fetch the lock details
           const conflictLock = await client.query(
-            `SELECT locked_by, expires_at FROM loop_locks WHERE lock_key = $1`,
+            `SELECT locked_by, expires_at FROM loop_locks WHERE lock_key = $1 AND expires_at >= NOW()`,
             [lockKey]
           );
 
