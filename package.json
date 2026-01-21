@@ -31,7 +31,8 @@
     "import-v04-issues": "ts-node scripts/import-afu9-v04-issues.ts",
     "test": "jest",
     "test-secrets-scope": "ts-node scripts/test-secrets-scope.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "verify:contracts": "node scripts/verify-contracts.mjs"
   },
   "devDependencies": {
     "@octokit/rest": "^22.0.1",
