@@ -59,6 +59,7 @@ describe('Loop API Schemas', () => {
         schemaVersion: LOOP_SCHEMA_VERSION,
         requestId: '550e8400-e29b-41d4-a716-446655440000',
         issueId: 'AFU9-123',
+        runId: '550e8400-e29b-41d4-a716-446655440001',
         loopStatus: 'active' as const,
       };
       const result = RunNextStepResponseSchema.safeParse(response);
@@ -70,6 +71,7 @@ describe('Loop API Schemas', () => {
         schemaVersion: LOOP_SCHEMA_VERSION,
         requestId: '550e8400-e29b-41d4-a716-446655440000',
         issueId: 'AFU9-123',
+        runId: '550e8400-e29b-41d4-a716-446655440001',
         stepExecuted: {
           stepNumber: 1,
           stepType: 'initialize',
@@ -95,6 +97,7 @@ describe('Loop API Schemas', () => {
         schemaVersion: 'wrong.version',
         requestId: '550e8400-e29b-41d4-a716-446655440000',
         issueId: 'AFU9-123',
+        runId: '550e8400-e29b-41d4-a716-446655440001',
         loopStatus: 'active' as const,
       };
       const result = RunNextStepResponseSchema.safeParse(response);
@@ -106,6 +109,7 @@ describe('Loop API Schemas', () => {
         schemaVersion: LOOP_SCHEMA_VERSION,
         requestId: '550e8400-e29b-41d4-a716-446655440000',
         issueId: 'AFU9-123',
+        runId: '550e8400-e29b-41d4-a716-446655440001',
         loopStatus: 'invalid-status',
       };
       const result = RunNextStepResponseSchema.safeParse(response);
@@ -117,6 +121,7 @@ describe('Loop API Schemas', () => {
         schemaVersion: LOOP_SCHEMA_VERSION,
         requestId: '550e8400-e29b-41d4-a716-446655440000',
         issueId: 'AFU9-123',
+        runId: '550e8400-e29b-41d4-a716-446655440001',
         stepExecuted: {
           stepNumber: -1,
           stepType: 'test',

@@ -52,6 +52,7 @@ export const RunNextStepResponseSchema = z.object({
   schemaVersion: z.literal(LOOP_SCHEMA_VERSION),
   requestId: z.string().uuid(),
   issueId: z.string(),
+  runId: z.string().uuid(),
   stepExecuted: z.object({
     stepNumber: z.number().int().positive(),
     stepType: z.string(),
