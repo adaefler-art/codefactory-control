@@ -58,7 +58,7 @@ export interface IdempotencyCheckParams {
  */
 export interface IdempotencyResult {
   found: boolean;
-  responseData?: any;
+  responseData?: unknown;
   runId?: string;
   createdAt?: Date;
 }
@@ -73,7 +73,7 @@ export interface StoreIdempotencyParams {
   actorId?: string;
   requestId: string;
   runId: string;
-  responseData: any;
+  responseData: unknown;
   ttlSeconds?: number; // Default: 3600 (1 hour)
 }
 

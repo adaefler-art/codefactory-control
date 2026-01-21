@@ -57,8 +57,10 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
     });
     
     // Return cached response with current requestId
+    // responseData is stored as unknown, but we know it's a RunNextStepResponse
+    const cachedResponse = idempotencyCheck.responseData as RunNextStepResponse;
     return {
-      ...idempotencyCheck.responseData,
+      ...cachedResponse,
       requestId, // Update with current requestId for traceability
     };
   }
