@@ -247,7 +247,7 @@ aws ecs wait services-stable \
 ./scripts/health-check.sh $ENVIRONMENT
 
 # 4. Bei Erfolg: Commit und dokumentieren
-echo "Rollback erfolgreich. Dokumentiere in CHANGELOG.md"
+echo "Rollback erfolgreich. Dokumentiere in ../releases/CHANGELOG.md"
 ```
 
 ---
@@ -460,7 +460,7 @@ aws cloudwatch describe-alarms \
 - [ ] Keine Alarms aktiv
 - [ ] Dokumentation aktualisiert
 - [ ] Git Tag v0.4.0 erstellt & gepusht (Production only)
-- [ ] CHANGELOG.md aktualisiert
+- [ ] ../releases/CHANGELOG.md aktualisiert
 - [ ] Stakeholder informiert (Production only)
 
 ### Rollback (bei Problemen)

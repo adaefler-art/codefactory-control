@@ -27,7 +27,7 @@ Only these documents are permitted at repository root:
 
 ```
 /README.md                 - Primary repository documentation
-/CHANGELOG.md              - Version history and changes
+/docs/releases/CHANGELOG.md              - Version history and changes
 /CONTRIBUTING.md           - Contribution guidelines
 /SECURITY.md               - Security policy and reporting
 /LICENSE                   - Repository license

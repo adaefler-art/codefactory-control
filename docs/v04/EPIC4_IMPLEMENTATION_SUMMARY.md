@@ -232,7 +232,7 @@ scripts/ecs_debug.ps1                        (new, 490 lines)
 scripts/validate_epic4_implementation.ps1    (new, 180 lines)
 docs/TESTING_EPIC4.md                        (new, 600+ lines)
 package.json                                 (modified, +2 scripts)
-CHANGELOG.md                                 (updated with Epic-4 details)
+../releases/CHANGELOG.md                     (updated with Epic-4 details)
 ```
 
 ## Related Documentation
