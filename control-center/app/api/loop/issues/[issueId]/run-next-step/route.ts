@@ -138,8 +138,9 @@ export async function POST(
     // Execute the next step via the single function call
     const result: RunNextStepResponse = await runNextStep({
       issueId,
-      mode: mode || 'execute',
+      mode,
       actor,
+      requestId,
     });
     
     // Return successful response with schema version and request ID

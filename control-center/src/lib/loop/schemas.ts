@@ -16,8 +16,9 @@ export const LOOP_SCHEMA_VERSION = 'loop.runNextStep.v1';
 
 /**
  * Execution mode for the loop step
+ * Optional - defaults to "execute" if not provided
  */
-export const ExecutionModeSchema = z.enum(['execute', 'dryRun']).optional();
+export const ExecutionModeSchema = z.enum(['execute', 'dryRun']).default('execute');
 
 export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
 
@@ -26,7 +27,7 @@ export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
  * POST /api/loop/issues/[issueId]/run-next-step
  */
 export const RunNextStepRequestSchema = z.object({
-  mode: ExecutionModeSchema.default('execute'),
+  mode: ExecutionModeSchema,
 }).strict();
 
 export type RunNextStepRequest = z.infer<typeof RunNextStepRequestSchema>;

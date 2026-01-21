@@ -15,6 +15,7 @@ export interface RunNextStepParams {
   issueId: string;
   mode: 'execute' | 'dryRun';
   actor: string;
+  requestId: string;
 }
 
 /**
@@ -25,15 +26,12 @@ export interface RunNextStepParams {
  * @throws Error if execution fails
  */
 export async function runNextStep(params: RunNextStepParams): Promise<RunNextStepResponse> {
-  const { issueId, mode, actor } = params;
+  const { issueId, mode, actor, requestId } = params;
   
-  console.log('[Loop] Running next step', { issueId, mode, actor });
+  console.log('[Loop] Running next step', { issueId, mode, actor, requestId });
   
   // TODO: Implement actual loop execution logic
   // This is a stub implementation that returns a minimal valid response
-  
-  // Generate a request ID for tracking
-  const requestId = crypto.randomUUID();
   
   // Return a minimal valid response indicating the loop is active
   // but no step was executed yet (stub implementation)
