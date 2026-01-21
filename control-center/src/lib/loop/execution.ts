@@ -11,6 +11,7 @@
 import { RunNextStepResponse, LOOP_SCHEMA_VERSION } from './schemas';
 import { getPool } from '../db';
 import { getLoopRunStore, LoopRunRow } from './runStore';
+import { getLoopLockManager, LockConflictError } from './lock';
 
 /**
  * Parameters for running the next step in a loop
@@ -39,6 +40,57 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
   
   const pool = getPool();
   const runStore = getLoopRunStore(pool);
+  const lockManager = getLoopLockManager(pool);
+  
+  // E9.1-CTRL-3: Check idempotency first for replay
+  const idempotencyCheck = await lockManager.checkIdempotency({
+    issueId,
+    mode,
+    actorId: actor,
+  });
+  
+  if (idempotencyCheck.found && idempotencyCheck.responseData) {
+    console.log('[Loop] Idempotent replay - returning cached response', {
+      issueId,
+      runId: idempotencyCheck.runId,
+      requestId,
+    });
+    
+    // Return cached response with current requestId
+    // responseData is stored as unknown, but we know it's a RunNextStepResponse
+    const cachedResponse = idempotencyCheck.responseData as RunNextStepResponse;
+    return {
+      ...cachedResponse,
+      requestId, // Update with current requestId for traceability
+    };
+  }
+  
+  // E9.1-CTRL-3: Acquire lock before execution
+  const lockResult = await lockManager.acquireLock({
+    issueId,
+    mode,
+    actorId: actor,
+    requestId,
+    ttlSeconds: 300, // 5 minutes
+  });
+  
+  if (!lockResult.acquired) {
+    // Lock conflict - another execution is in progress
+    console.log('[Loop] Lock conflict - execution already in progress', {
+      issueId,
+      lockKey: lockResult.lockKey,
+      lockedBy: lockResult.existingLockBy,
+      expiresAt: lockResult.existingLockExpiresAt,
+    });
+    
+    throw new LockConflictError(
+      lockResult.lockKey,
+      lockResult.existingLockBy,
+      lockResult.existingLockExpiresAt
+    );
+  }
+  
+  console.log('[Loop] Lock acquired', { issueId, lockKey: lockResult.lockKey });
   
   let run: LoopRunRow | null = null;
   
@@ -51,6 +103,7 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
       mode,
       metadata: {
         initialStatus: 'pending',
+        lockKey: lockResult.lockKey,
       },
     });
     
@@ -83,7 +136,7 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
     
     // Return a minimal valid response indicating the loop is active
     // but no step was executed yet (stub implementation)
-    return {
+    const response: RunNextStepResponse = {
       schemaVersion: LOOP_SCHEMA_VERSION,
       requestId,
       issueId,
@@ -93,8 +146,33 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         ? `Dry run mode - no step executed for issue ${issueId}` 
         : `Loop execution not yet implemented for issue ${issueId}`,
     };
+    
+    // E9.1-CTRL-3: Store idempotency record for replay
+    await lockManager.storeIdempotency({
+      issueId,
+      mode,
+      actorId: actor,
+      requestId,
+      runId: run.id,
+      responseData: response,
+      ttlSeconds: 3600, // 1 hour
+    });
+    
+    // E9.1-CTRL-3: Release lock after completion
+    await lockManager.releaseLock(lockResult.lockKey, actor);
+    
+    console.log('[Loop] Lock released', { issueId, lockKey: lockResult.lockKey });
+    
+    return response;
   } catch (error) {
     console.error('[Loop] Error executing next step', error);
+    
+    // E9.1-CTRL-3: Release lock on error
+    if (lockResult?.acquired && lockResult.lockKey) {
+      await lockManager.releaseLock(lockResult.lockKey, actor).catch(releaseError => {
+        console.error('[Loop] Failed to release lock on error', releaseError);
+      });
+    }
     
     // Update run to failed status if we have a run ID
     if (run?.id) {
