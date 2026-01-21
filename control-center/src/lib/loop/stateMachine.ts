@@ -170,7 +170,10 @@ export function resolveNextStep(
   }
 
   // For other states that might transition to S2
-  if (status === 'DRAFT_READY' || status === 'VERSION_COMMITTED') {
+  if (
+    (status as string) === 'DRAFT_READY' || 
+    (status as string) === 'VERSION_COMMITTED'
+  ) {
     // Check if draft exists
     if (!issue.current_draft_id && !draft) {
       return {
