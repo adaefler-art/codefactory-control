@@ -4,7 +4,7 @@ param(
   [Parameter()] [string] $Tag = 'v0.4.0',
   [Parameter()] [string] $TargetCommit = '22cdb6a41c42366ad165a0fb4c96282304f6f7ae',
   [Parameter()] [string] $Title = 'AFU-9 v0.4.0',
-  [Parameter()] [string] $NotesFile = (Join-Path $PSScriptRoot 'release-notes-v0.4.0.md'),
+  [Parameter()] [string] $NotesFile = (Join-Path $PSScriptRoot '..\..\..\docs\cleanup\archive\release-v0.5\release-notes-v0.4.0.md'),
   [Parameter()] [switch] $Execute
 )
 

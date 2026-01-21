@@ -55,8 +55,8 @@ All scripts are located in `scripts/release/v0.5/`:
 - `create-v0.4-release.ps1` - PowerShell script for tag + release creation
 - `create-v0.5-project.ps1` - PowerShell script for project scaffolding
 - `create-release-and-project.ps1` - Combined PowerShell entrypoint
-- `release-notes-v0.4.0.md` - Release notes file for `gh release create`
-- `EXECUTION_GUIDE.md` - Manual execution guide (PowerShell-first)
+- `release-notes-v0.4.0.md` - Release notes file for `gh release create` (archived in docs/cleanup)
+- `EXECUTION_GUIDE.md` - Manual execution guide (PowerShell-first) (archived in docs/cleanup)
 
 ### Documentation References
 
@@ -79,7 +79,7 @@ Due to authentication constraints, the following manual steps are needed:
 
 2. **Create Release:**
    - Execute (PowerShell-first): `pwsh ./scripts/release/v0.5/create-release-and-project.ps1 -Execute`
-   - OR use GitHub Web UI with notes from `scripts/release/v0.5/release-notes-v0.4.0.md`
+   - OR use GitHub Web UI with notes from `docs/cleanup/archive/release-v0.5/release-notes-v0.4.0.md`
 
 3. **Create Project:**
    - GitHub Web UI: https://github.com/orgs/adaefler-art/projects
@@ -120,4 +120,4 @@ This preparation was done in an automated environment with limited GitHub authen
 
 **Prepared By:** Copilot Agent  
 **Date:** 2025-12-22  
-**Next Action:** Execute manual steps as documented in `scripts/release/v0.5/EXECUTION_GUIDE.md`
+**Next Action:** Execute manual steps as documented in `docs/cleanup/archive/release-v0.5/EXECUTION_GUIDE.md`

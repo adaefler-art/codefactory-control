@@ -2,7 +2,7 @@
 
 **AFU-9** (Autonomous Fabrication Unit - Ninefold Architecture) orchestrates autonomous code fabrication through issue lifecycle management, MCP-based debugging, and deployment guardrails.
 
-**Current Version:** v0.6.5  
+**Current Version:** v0.8  
 **Status:** Production-Ready  
 **Architecture:** AWS (Lambda, Step Functions, ECS Fargate) + GitHub Actions + LLM-based patching
 
@@ -89,6 +89,7 @@ npm run determinism:check
 - **[Release Notes](docs/releases/)** - Version history and changelogs
   - [v0.6 Release](docs/releases/v0.6/RELEASE.md)
   - [v0.6.5 Release](docs/releases/v0.6.5.md)
+   - [v0.8 Release](docs/releases/v0.8.md)
   
 - **[Architecture](docs/architecture/README.md)** - System architecture overview
   - AWS infrastructure (VPC, ECS, RDS)
