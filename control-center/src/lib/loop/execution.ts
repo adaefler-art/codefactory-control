@@ -12,6 +12,8 @@ import { RunNextStepResponse, LOOP_SCHEMA_VERSION } from './schemas';
 import { getPool } from '../db';
 import { getLoopRunStore, LoopRunRow } from './runStore';
 import { getLoopLockManager, LockConflictError } from './lock';
+import { resolveNextStep, LoopStep } from './stateMachine';
+import { executeS1 } from './stepExecutors/s1-pick-issue';
 
 /**
  * Parameters for running the next step in a loop
@@ -116,36 +118,175 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
       startedAt,
     });
     
-    // TODO: Implement actual loop execution logic
-    // This is a stub implementation that returns a minimal valid response
+    // E9.1-CTRL-5: Execute the next step based on state machine resolution
+    // Fetch issue data to determine next step
+    const issueResult = await pool.query(
+      `SELECT id, status, github_url, current_draft_id, handoff_state
+       FROM afu9_issues
+       WHERE id = $1`,
+      [issueId]
+    );
     
-    // For now, mark run as completed successfully
-    const completedAt = new Date();
-    const durationMs = completedAt.getTime() - startedAt.getTime();
+    if (issueResult.rows.length === 0) {
+      throw new Error(`Issue not found: ${issueId}`);
+    }
     
-    await runStore.updateRunStatus(run.id, {
-      status: 'completed',
-      completedAt,
-      durationMs,
-      metadata: {
-        message: mode === 'dryRun' 
-          ? `Dry run mode - no step executed for issue ${issueId}` 
-          : `Loop execution not yet implemented for issue ${issueId}`,
-      },
-    });
+    const issue = issueResult.rows[0];
     
-    // Return a minimal valid response indicating the loop is active
-    // but no step was executed yet (stub implementation)
-    const response: RunNextStepResponse = {
-      schemaVersion: LOOP_SCHEMA_VERSION,
-      requestId,
-      issueId,
-      runId: run.id,
-      loopStatus: 'active',
-      message: mode === 'dryRun' 
-        ? `Dry run mode - no step executed for issue ${issueId}` 
-        : `Loop execution not yet implemented for issue ${issueId}`,
-    };
+    // Resolve next step using state machine
+    const stepResolution = resolveNextStep(issue);
+    
+    let response: RunNextStepResponse;
+    
+    // Check if step is blocked
+    if (stepResolution.blocked) {
+      console.log('[Loop] Step blocked', {
+        issueId,
+        blockerCode: stepResolution.blockerCode,
+        message: stepResolution.blockerMessage,
+      });
+      
+      // Mark run as completed but with blocked status
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - startedAt.getTime();
+      
+      await runStore.updateRunStatus(run.id, {
+        status: 'completed',
+        completedAt,
+        durationMs,
+        metadata: {
+          blocked: true,
+          blockerCode: stepResolution.blockerCode,
+          blockerMessage: stepResolution.blockerMessage,
+        },
+      });
+      
+      response = {
+        schemaVersion: LOOP_SCHEMA_VERSION,
+        requestId,
+        issueId,
+        runId: run.id,
+        loopStatus: 'paused',
+        message: stepResolution.blockerMessage || 'Step is blocked',
+      };
+    } else if (!stepResolution.step) {
+      // No step available (terminal state or unknown state)
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - startedAt.getTime();
+      
+      await runStore.updateRunStatus(run.id, {
+        status: 'completed',
+        completedAt,
+        durationMs,
+        metadata: {
+          message: stepResolution.blockerMessage || 'No next step available',
+        },
+      });
+      
+      response = {
+        schemaVersion: LOOP_SCHEMA_VERSION,
+        requestId,
+        issueId,
+        runId: run.id,
+        loopStatus: 'completed',
+        message: stepResolution.blockerMessage || 'No next step available',
+      };
+    } else {
+      // Execute the step
+      console.log('[Loop] Executing step', {
+        issueId,
+        step: stepResolution.step,
+        mode,
+      });
+      
+      // Currently only S1 is implemented
+      if (stepResolution.step === LoopStep.S1_PICK_ISSUE) {
+        const stepResult = await executeS1(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+        
+        // Update run status based on step result
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
+        
+        if (stepResult.blocked) {
+          await runStore.updateRunStatus(run.id, {
+            status: 'completed',
+            completedAt,
+            durationMs,
+            metadata: {
+              blocked: true,
+              blockerCode: stepResult.blockerCode,
+              blockerMessage: stepResult.blockerMessage,
+              step: stepResolution.step,
+            },
+          });
+          
+          response = {
+            schemaVersion: LOOP_SCHEMA_VERSION,
+            requestId,
+            issueId,
+            runId: run.id,
+            loopStatus: 'paused',
+            message: stepResult.message,
+          };
+        } else {
+          await runStore.updateRunStatus(run.id, {
+            status: 'completed',
+            completedAt,
+            durationMs,
+            metadata: {
+              step: stepResolution.step,
+              fieldsChanged: stepResult.fieldsChanged,
+              message: stepResult.message,
+            },
+          });
+          
+          response = {
+            schemaVersion: LOOP_SCHEMA_VERSION,
+            requestId,
+            issueId,
+            runId: run.id,
+            stepExecuted: {
+              stepNumber: 1,
+              stepType: stepResolution.step,
+              status: 'completed',
+              startedAt: startedAt.toISOString(),
+              completedAt: completedAt.toISOString(),
+              durationMs,
+            },
+            loopStatus: 'active',
+            message: stepResult.message,
+          };
+        }
+      } else {
+        // Step not yet implemented
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
+        
+        await runStore.updateRunStatus(run.id, {
+          status: 'completed',
+          completedAt,
+          durationMs,
+          metadata: {
+            message: `Step ${stepResolution.step} not yet implemented`,
+          },
+        });
+        
+        response = {
+          schemaVersion: LOOP_SCHEMA_VERSION,
+          requestId,
+          issueId,
+          runId: run.id,
+          loopStatus: 'active',
+          message: `Step ${stepResolution.step} not yet implemented`,
+        };
+      }
+    }
     
     // E9.1-CTRL-3: Store idempotency record for replay
     await lockManager.storeIdempotency({
