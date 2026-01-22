@@ -14,6 +14,7 @@ import { getLoopRunStore, LoopRunRow } from './runStore';
 import { getLoopLockManager, LockConflictError } from './lock';
 import { resolveNextStep, LoopStep } from './stateMachine';
 import { executeS1 } from './stepExecutors/s1-pick-issue';
+import { executeS2 } from './stepExecutors/s2-spec-gate';
 
 /**
  * Parameters for running the next step in a loop
@@ -199,17 +200,54 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         mode,
       });
       
-      // Currently only S1 is implemented
+      // Execute the appropriate step
+      let stepResult;
+      let stepNumber = 0;
+      
       if (stepResolution.step === LoopStep.S1_PICK_ISSUE) {
-        const stepResult = await executeS1(pool, {
+        stepNumber = 1;
+        stepResult = await executeS1(pool, {
           issueId,
           runId: run.id,
           requestId,
           actor,
           mode,
         });
+      } else if (stepResolution.step === LoopStep.S2_SPEC_READY) {
+        stepNumber = 2;
+        stepResult = await executeS2(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+      } else {
+        // Step not yet implemented
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
         
-        // Update run status based on step result
+        await runStore.updateRunStatus(run.id, {
+          status: 'completed',
+          completedAt,
+          durationMs,
+          metadata: {
+            message: `Step ${stepResolution.step} not yet implemented`,
+          },
+        });
+        
+        response = {
+          schemaVersion: LOOP_SCHEMA_VERSION,
+          requestId,
+          issueId,
+          runId: run.id,
+          loopStatus: 'active',
+          message: `Step ${stepResolution.step} not yet implemented`,
+        };
+      }
+      
+      // Process step result if we executed a step
+      if (stepResult) {
         const completedAt = new Date();
         const durationMs = completedAt.getTime() - startedAt.getTime();
         
@@ -252,7 +290,7 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
             issueId,
             runId: run.id,
             stepExecuted: {
-              stepNumber: 1,
+              stepNumber,
               stepType: stepResolution.step,
               status: 'completed',
               startedAt: startedAt.toISOString(),
@@ -263,28 +301,6 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
             message: stepResult.message,
           };
         }
-      } else {
-        // Step not yet implemented
-        const completedAt = new Date();
-        const durationMs = completedAt.getTime() - startedAt.getTime();
-        
-        await runStore.updateRunStatus(run.id, {
-          status: 'completed',
-          completedAt,
-          durationMs,
-          metadata: {
-            message: `Step ${stepResolution.step} not yet implemented`,
-          },
-        });
-        
-        response = {
-          schemaVersion: LOOP_SCHEMA_VERSION,
-          requestId,
-          issueId,
-          runId: run.id,
-          loopStatus: 'active',
-          message: `Step ${stepResolution.step} not yet implemented`,
-        };
       }
     }
     
