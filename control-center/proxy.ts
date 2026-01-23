@@ -166,7 +166,6 @@ function isValidServiceToken(request: NextRequest): boolean {
   if (!provided) return false;
   return provided === SERVICE_READ_TOKEN;
 }
-
 /**
  * Proxy (middleware) to protect routes and verify authentication
  * 
@@ -215,7 +214,6 @@ export async function middleware(request: NextRequest) {
     logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'service_token_allow' });
     return response;
   }
-
   // Optional smoke-auth bypass for runtime-configurable allowlist of API endpoints (staging only).
   // I906: Replaced hardcoded allowlist with database-backed runtime configuration.
   // Contract:
@@ -251,41 +249,6 @@ export async function middleware(request: NextRequest) {
       return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
     }
   }
-
-  // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
-  // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
-  if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
-    return nextWithRequestId();
-  }
-
-  if (isPublicRoute(pathname)) {
-    return nextWithRequestId();
-  }
-
-  // Determine if this is an API route (for differentiated error handling)
-  const isApiRoute = pathname.startsWith('/api/');
-
-  // Extract JWT tokens from cookies
-  const idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
-  const accessToken = request.cookies.get(AFU9_ACCESS_COOKIE)?.value;
-  const refreshToken = request.cookies.get(AFU9_REFRESH_COOKIE)?.value;
-
-  const redirectToRefresh = () => {
-    const original = request.nextUrl.pathname + request.nextUrl.search;
-    const url = new URL('/auth/refresh', request.url);
-    url.searchParams.set('redirectTo', original);
-    const response = NextResponse.redirect(url);
-    if (AFU9_DEBUG_AUTH) {
-      response.headers.set('x-afu9-auth-debug', '1');
-      response.headers.set('x-afu9-auth-via', 'refresh');
-    }
-    response.headers.set('cache-control', 'no-store, max-age=0');
-    response.headers.set('pragma', 'no-cache');
-    return attachRequestId(response, requestId);
-  };
-
-  // If we have no usable JWT (id/access) but do have a refresh cookie,
-  // redirect UI navigation through the refresh endpoint to mint new tokens.
   // (Cognito refresh tokens are typically opaque and cannot be verified in middleware.)
   if (!idToken && !accessToken && refreshToken) {
     if (AFU9_DEBUG_AUTH) {

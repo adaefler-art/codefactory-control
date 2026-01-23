@@ -393,8 +393,17 @@ describe('Middleware Authentication Logic', () => {
       const response = await middleware(request);
       expect(response.status).toBe(401);
     });
-  });
+    test('wrong token keeps unauthenticated behavior', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/issues',
+        headers: { 'x-afu9-service-token': 'wrong-secret' },
+      });
 
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+    });
+  });
   describe('Smoke-auth bypass allowlist for Intent Sessions (staging only)', () => {
     test('stage + correct key + POST /api/intent/sessions => bypass active', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
