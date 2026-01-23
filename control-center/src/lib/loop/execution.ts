@@ -11,6 +11,11 @@
 import { RunNextStepResponse, LOOP_SCHEMA_VERSION } from './schemas';
 import { getPool } from '../db';
 import { getLoopRunStore, LoopRunRow } from './runStore';
+import { getLoopLockManager, LockConflictError } from './lock';
+import { resolveNextStep, LoopStep } from './stateMachine';
+import { executeS1 } from './stepExecutors/s1-pick-issue';
+import { executeS2 } from './stepExecutors/s2-spec-gate';
+import { getLoopEventStore, LoopEventType } from './eventStore';
 
 /**
  * Parameters for running the next step in a loop
@@ -39,6 +44,58 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
   
   const pool = getPool();
   const runStore = getLoopRunStore(pool);
+  const lockManager = getLoopLockManager(pool);
+  const eventStore = getLoopEventStore(pool);
+  
+  // E9.1-CTRL-3: Check idempotency first for replay
+  const idempotencyCheck = await lockManager.checkIdempotency({
+    issueId,
+    mode,
+    actorId: actor,
+  });
+  
+  if (idempotencyCheck.found && idempotencyCheck.responseData) {
+    console.log('[Loop] Idempotent replay - returning cached response', {
+      issueId,
+      runId: idempotencyCheck.runId,
+      requestId,
+    });
+    
+    // Return cached response with current requestId
+    // responseData is stored as unknown, but we know it's a RunNextStepResponse
+    const cachedResponse = idempotencyCheck.responseData as RunNextStepResponse;
+    return {
+      ...cachedResponse,
+      requestId, // Update with current requestId for traceability
+    };
+  }
+  
+  // E9.1-CTRL-3: Acquire lock before execution
+  const lockResult = await lockManager.acquireLock({
+    issueId,
+    mode,
+    actorId: actor,
+    requestId,
+    ttlSeconds: 300, // 5 minutes
+  });
+  
+  if (!lockResult.acquired) {
+    // Lock conflict - another execution is in progress
+    console.log('[Loop] Lock conflict - execution already in progress', {
+      issueId,
+      lockKey: lockResult.lockKey,
+      lockedBy: lockResult.existingLockBy,
+      expiresAt: lockResult.existingLockExpiresAt,
+    });
+    
+    throw new LockConflictError(
+      lockResult.lockKey,
+      lockResult.existingLockBy,
+      lockResult.existingLockExpiresAt
+    );
+  }
+  
+  console.log('[Loop] Lock acquired', { issueId, lockKey: lockResult.lockKey });
   
   let run: LoopRunRow | null = null;
   
@@ -51,6 +108,7 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
       mode,
       metadata: {
         initialStatus: 'pending',
+        lockKey: lockResult.lockKey,
       },
     });
     
@@ -63,38 +121,325 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
       startedAt,
     });
     
-    // TODO: Implement actual loop execution logic
-    // This is a stub implementation that returns a minimal valid response
+    // E9.1-CTRL-5: Execute the next step based on state machine resolution
+    // Fetch issue data to determine next step
+    const issueResult = await pool.query(
+      `SELECT id, status, github_url, current_draft_id, handoff_state
+       FROM afu9_issues
+       WHERE id = $1`,
+      [issueId]
+    );
     
-    // For now, mark run as completed successfully
-    const completedAt = new Date();
-    const durationMs = completedAt.getTime() - startedAt.getTime();
+    if (issueResult.rows.length === 0) {
+      throw new Error(`Issue not found: ${issueId}`);
+    }
     
-    await runStore.updateRunStatus(run.id, {
-      status: 'completed',
-      completedAt,
-      durationMs,
-      metadata: {
-        message: mode === 'dryRun' 
-          ? `Dry run mode - no step executed for issue ${issueId}` 
-          : `Loop execution not yet implemented for issue ${issueId}`,
-      },
-    });
+    const issue = issueResult.rows[0];
     
-    // Return a minimal valid response indicating the loop is active
-    // but no step was executed yet (stub implementation)
-    return {
-      schemaVersion: LOOP_SCHEMA_VERSION,
-      requestId,
+    // Resolve next step using state machine
+    const stepResolution = resolveNextStep(issue);
+    
+    // E9.1-CTRL-8: Emit loop_run_started event
+    await eventStore.createEvent({
       issueId,
       runId: run.id,
-      loopStatus: 'active',
-      message: mode === 'dryRun' 
-        ? `Dry run mode - no step executed for issue ${issueId}` 
-        : `Loop execution not yet implemented for issue ${issueId}`,
-    };
+      eventType: LoopEventType.RUN_STARTED,
+      eventData: {
+        runId: run.id,
+        step: stepResolution.step || 'UNKNOWN',
+        stateBefore: issue.status,
+        requestId,
+      },
+    }).catch(err => {
+      console.error('[Loop] Failed to create loop_run_started event', err);
+      // Don't fail the run if event logging fails
+    });
+    
+    let response: RunNextStepResponse;
+    
+    // Check if step is blocked
+    if (stepResolution.blocked) {
+      console.log('[Loop] Step blocked', {
+        issueId,
+        blockerCode: stepResolution.blockerCode,
+        message: stepResolution.blockerMessage,
+      });
+      
+      // Mark run as completed but with blocked status
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - startedAt.getTime();
+      
+      await runStore.updateRunStatus(run.id, {
+        status: 'completed',
+        completedAt,
+        durationMs,
+        metadata: {
+          blocked: true,
+          blockerCode: stepResolution.blockerCode,
+          blockerMessage: stepResolution.blockerMessage,
+        },
+      });
+      
+      // E9.1-CTRL-8: Emit loop_run_blocked event
+      await eventStore.createEvent({
+        issueId,
+        runId: run.id,
+        eventType: LoopEventType.RUN_BLOCKED,
+        eventData: {
+          runId: run.id,
+          step: stepResolution.step || 'UNKNOWN',
+          stateBefore: issue.status,
+          blockerCode: stepResolution.blockerCode,
+          requestId,
+        },
+      }).catch(err => {
+        console.error('[Loop] Failed to create loop_run_blocked event', err);
+      });
+      
+      response = {
+        schemaVersion: LOOP_SCHEMA_VERSION,
+        requestId,
+        issueId,
+        runId: run.id,
+        loopStatus: 'paused',
+        message: stepResolution.blockerMessage || 'Step is blocked',
+      };
+    } else if (!stepResolution.step) {
+      // No step available (terminal state or unknown state)
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - startedAt.getTime();
+      
+      await runStore.updateRunStatus(run.id, {
+        status: 'completed',
+        completedAt,
+        durationMs,
+        metadata: {
+          message: stepResolution.blockerMessage || 'No next step available',
+        },
+      });
+      
+      // E9.1-CTRL-8: Emit loop_run_finished event for terminal state
+      await eventStore.createEvent({
+        issueId,
+        runId: run.id,
+        eventType: LoopEventType.RUN_FINISHED,
+        eventData: {
+          runId: run.id,
+          step: 'TERMINAL',
+          stateBefore: issue.status,
+          stateAfter: issue.status,
+          requestId,
+        },
+      }).catch(err => {
+        console.error('[Loop] Failed to create loop_run_finished event', err);
+      });
+      
+      response = {
+        schemaVersion: LOOP_SCHEMA_VERSION,
+        requestId,
+        issueId,
+        runId: run.id,
+        loopStatus: 'completed',
+        message: stepResolution.blockerMessage || 'No next step available',
+      };
+    } else {
+      // Execute the step
+      console.log('[Loop] Executing step', {
+        issueId,
+        step: stepResolution.step,
+        mode,
+      });
+      
+      // Execute the appropriate step
+      let stepResult;
+      let stepNumber = 0;
+      
+      if (stepResolution.step === LoopStep.S1_PICK_ISSUE) {
+        stepNumber = 1;
+        stepResult = await executeS1(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+      } else if (stepResolution.step === LoopStep.S2_SPEC_READY) {
+        stepNumber = 2;
+        stepResult = await executeS2(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+      } else {
+        // Step not yet implemented
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
+        
+        await runStore.updateRunStatus(run.id, {
+          status: 'completed',
+          completedAt,
+          durationMs,
+          metadata: {
+            message: `Step ${stepResolution.step} not yet implemented`,
+          },
+        });
+        
+        response = {
+          schemaVersion: LOOP_SCHEMA_VERSION,
+          requestId,
+          issueId,
+          runId: run.id,
+          loopStatus: 'active',
+          message: `Step ${stepResolution.step} not yet implemented`,
+        };
+      }
+      
+      // Process step result if we executed a step
+      if (stepResult) {
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
+        
+        if (stepResult.blocked) {
+          await runStore.updateRunStatus(run.id, {
+            status: 'completed',
+            completedAt,
+            durationMs,
+            metadata: {
+              blocked: true,
+              blockerCode: stepResult.blockerCode,
+              blockerMessage: stepResult.blockerMessage,
+              step: stepResolution.step,
+            },
+          });
+          
+          // E9.1-CTRL-8: Emit loop_run_blocked event for step-level block
+          await eventStore.createEvent({
+            issueId,
+            runId: run.id,
+            eventType: LoopEventType.RUN_BLOCKED,
+            eventData: {
+              runId: run.id,
+              step: stepResolution.step,
+              stateBefore: stepResult.stateBefore,
+              blockerCode: stepResult.blockerCode,
+              requestId,
+            },
+          }).catch(err => {
+            console.error('[Loop] Failed to create loop_run_blocked event', err);
+          });
+          
+          response = {
+            schemaVersion: LOOP_SCHEMA_VERSION,
+            requestId,
+            issueId,
+            runId: run.id,
+            loopStatus: 'paused',
+            message: stepResult.message,
+          };
+        } else {
+          await runStore.updateRunStatus(run.id, {
+            status: 'completed',
+            completedAt,
+            durationMs,
+            metadata: {
+              step: stepResolution.step,
+              fieldsChanged: stepResult.fieldsChanged,
+              message: stepResult.message,
+            },
+          });
+          
+          // E9.1-CTRL-8: Emit step-specific completion event
+          let stepEventType: LoopEventType;
+          if (stepResolution.step === LoopStep.S1_PICK_ISSUE) {
+            stepEventType = LoopEventType.STEP_S1_COMPLETED;
+          } else if (stepResolution.step === LoopStep.S2_SPEC_READY) {
+            stepEventType = LoopEventType.STEP_S2_SPEC_READY;
+          } else if (stepResolution.step === LoopStep.S3_IMPLEMENT_PREP) {
+            stepEventType = LoopEventType.STEP_S3_IMPLEMENT_PREP;
+          } else {
+            // Fallback to finished event for unknown steps
+            stepEventType = LoopEventType.RUN_FINISHED;
+          }
+          
+          await eventStore.createEvent({
+            issueId,
+            runId: run.id,
+            eventType: stepEventType,
+            eventData: {
+              runId: run.id,
+              step: stepResolution.step,
+              stateBefore: stepResult.stateBefore,
+              stateAfter: stepResult.stateAfter,
+              requestId,
+            },
+          }).catch(err => {
+            console.error('[Loop] Failed to create step completion event', err);
+          });
+          
+          // E9.1-CTRL-8: Also emit loop_run_finished event
+          await eventStore.createEvent({
+            issueId,
+            runId: run.id,
+            eventType: LoopEventType.RUN_FINISHED,
+            eventData: {
+              runId: run.id,
+              step: stepResolution.step,
+              stateBefore: stepResult.stateBefore,
+              stateAfter: stepResult.stateAfter,
+              requestId,
+            },
+          }).catch(err => {
+            console.error('[Loop] Failed to create loop_run_finished event', err);
+          });
+          
+          response = {
+            schemaVersion: LOOP_SCHEMA_VERSION,
+            requestId,
+            issueId,
+            runId: run.id,
+            stepExecuted: {
+              stepNumber,
+              stepType: stepResolution.step,
+              status: 'completed',
+              startedAt: startedAt.toISOString(),
+              completedAt: completedAt.toISOString(),
+              durationMs,
+            },
+            loopStatus: 'active',
+            message: stepResult.message,
+          };
+        }
+      }
+    }
+    
+    // E9.1-CTRL-3: Store idempotency record for replay
+    await lockManager.storeIdempotency({
+      issueId,
+      mode,
+      actorId: actor,
+      requestId,
+      runId: run.id,
+      responseData: response,
+      ttlSeconds: 3600, // 1 hour
+    });
+    
+    // E9.1-CTRL-3: Release lock after completion
+    await lockManager.releaseLock(lockResult.lockKey, actor);
+    
+    console.log('[Loop] Lock released', { issueId, lockKey: lockResult.lockKey });
+    
+    return response;
   } catch (error) {
     console.error('[Loop] Error executing next step', error);
+    
+    // E9.1-CTRL-3: Release lock on error
+    if (lockResult?.acquired && lockResult.lockKey) {
+      await lockManager.releaseLock(lockResult.lockKey, actor).catch(releaseError => {
+        console.error('[Loop] Failed to release lock on error', releaseError);
+      });
+    }
     
     // Update run to failed status if we have a run ID
     if (run?.id) {
@@ -103,6 +448,20 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         ? completedAt.getTime() - new Date(run.started_at).getTime()
         : 0;
       
+      // Get current issue status for event
+      let currentStatus = 'UNKNOWN';
+      try {
+        const issueResult = await pool.query(
+          'SELECT status FROM afu9_issues WHERE id = $1',
+          [issueId]
+        );
+        if (issueResult.rows.length > 0) {
+          currentStatus = issueResult.rows[0].status;
+        }
+      } catch (statusError) {
+        console.error('[Loop] Failed to fetch issue status for event', statusError);
+      }
+      
       await runStore.updateRunStatus(run.id, {
         status: 'failed',
         completedAt,
@@ -110,6 +469,21 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         errorMessage: error instanceof Error ? error.message : String(error),
       }).catch(updateError => {
         console.error('[Loop] Failed to update run status to failed', updateError);
+      });
+      
+      // E9.1-CTRL-8: Emit loop_run_failed event
+      await eventStore.createEvent({
+        issueId,
+        runId: run.id,
+        eventType: LoopEventType.RUN_FAILED,
+        eventData: {
+          runId: run.id,
+          step: 'UNKNOWN',
+          stateBefore: currentStatus,
+          requestId,
+        },
+      }).catch(eventError => {
+        console.error('[Loop] Failed to create loop_run_failed event', eventError);
       });
     }
     

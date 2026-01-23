@@ -24,6 +24,7 @@ import {
   LoopErrorResponse,
 } from '@/lib/loop/schemas';
 import { runNextStep } from '@/lib/loop/execution';
+import { LockConflictError } from '@/lib/loop/lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,6 +155,28 @@ export async function POST(
     
   } catch (error) {
     console.error('[Loop API] Error executing next step:', error);
+    
+    // E9.1-CTRL-3: Handle lock conflict errors specifically
+    if (error instanceof LockConflictError) {
+      const errorResponse: LoopErrorResponse = createLoopError(
+        requestId,
+        'LOOP_CONFLICT',
+        error.message,
+        { 
+          lockKey: error.lockKey,
+          lockedBy: error.lockedBy,
+          expiresAt: error.expiresAt?.toISOString(),
+        }
+      );
+      
+      return NextResponse.json(
+        errorResponse,
+        { 
+          status: getHttpStatusForErrorCode('LOOP_CONFLICT'),
+          headers: { 'x-request-id': requestId }
+        }
+      );
+    }
     
     // Map specific errors to appropriate status codes
     let errorCode: 'ISSUE_NOT_FOUND' | 'LOOP_CONFLICT' | 'INTERNAL_ERROR' = 'INTERNAL_ERROR';

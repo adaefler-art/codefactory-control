@@ -96,8 +96,32 @@ All error responses follow this structure:
 | 400 | `INVALID_REQUEST` | Request validation failed | Invalid JSON, wrong enum value, extra fields |
 | 401 | `UNAUTHORIZED` | Authentication required | Missing or invalid `x-afu9-sub` header |
 | 404 | `ISSUE_NOT_FOUND` | Issue does not exist | Issue ID not found in database |
-| 409 | `LOOP_CONFLICT` | Loop already running | Concurrent execution attempt |
+| 409 | `LOOP_CONFLICT` | Loop already running or locked | Concurrent execution attempt, lock held by another actor (E9.1-CTRL-3) |
 | 500 | `INTERNAL_ERROR` | Unexpected server error | Database error, service unavailable |
+
+**E9.1-CTRL-3 Locking and Idempotency:**
+
+The Loop API implements hard fail-closed locking to prevent race conditions and double execution:
+
+1. **Lock Acquisition**: Before execution, a distributed lock is acquired based on {issueId, step, mode, actorId}
+   - If lock is available: Lock acquired, execution proceeds
+   - If lock is held: Returns 409 `LOOP_CONFLICT` with lock details (who, expires when)
+   
+2. **Idempotency Check**: Before lock acquisition, checks for cached response
+   - If found: Returns 200 with cached response (deterministic replay)
+   - If not found: Proceeds with lock acquisition and execution
+   
+3. **Lock Release**: Lock is released after completion or on error
+   - TTL: 5 minutes (auto-cleanup if process crashes)
+   
+4. **Idempotency Cache**: Successful responses are cached for replay
+   - TTL: 1 hour
+   - Key: Hash of {issueId, step, mode, actorId}
+
+**Two Quick Clicks Behavior:**
+- First click: 200 OK (execution starts) → lock acquired
+- Second click (during execution): 409 `LOOP_CONFLICT` → lock held
+- Third click (after completion): 200 OK (replay) → cached response returned
 
 #### Examples
 
@@ -237,8 +261,29 @@ Every loop execution creates a record in the `loop_runs` table:
 **Database Tables:**
 - `loop_runs`: Main run records with status and timestamps
 - `loop_run_steps`: Individual step execution results (future use)
+- `loop_locks`: Distributed locks for concurrency control (E9.1-CTRL-3)
+- `loop_idempotency`: Idempotency cache for deterministic replay (E9.1-CTRL-3)
+
+## Locking and Idempotency (E9.1-CTRL-3)
+
+**Guarantees:**
+- No race conditions: Only one execution per {issueId, step, mode, actorId} at a time
+- No double execution: Locks prevent concurrent runs
+- Deterministic replay: Cached responses ensure consistent results
+
+**Lock TTL:** 5 minutes (auto-cleanup on crash)  
+**Idempotency TTL:** 1 hour (cache expiration)
+
+**Cleanup:** Expired locks and idempotency records are automatically cleaned up on each request.
 
 ## Changelog
+
+### v1.2 (2026-01-21) - E9.1-CTRL-3
+- Added hard fail-closed locking to prevent race conditions
+- Added idempotency cache for deterministic replay
+- New database tables: `loop_locks`, `loop_idempotency`
+- Enhanced 409 `LOOP_CONFLICT` with lock details
+- Two quick clicks behavior: first 200, second 409, third 200 (replay)
 
 ### v1.1 (2026-01-21) - E9.1-CTRL-2
 - Added `runId` field to response
