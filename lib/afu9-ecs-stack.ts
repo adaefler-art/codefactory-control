@@ -428,6 +428,16 @@ export class Afu9EcsStack extends cdk.Stack {
       ? secretsmanager.Secret.fromSecretNameV2(this, 'StageSmokeKey', 'afu9/stage/smoke-key')
       : undefined;
 
+    const shouldIncludeServiceReadToken =
+      environment === ENVIRONMENT.STAGE || (!!props.stageTargetGroup && createStagingService);
+    const serviceReadTokenSecret = shouldIncludeServiceReadToken
+      ? secretsmanager.Secret.fromSecretNameV2(
+          this,
+          'ServiceReadTokenSecret',
+          'afu9/stage/service-read-token'
+        )
+      : undefined;
+
     // E80.1: Admin subscription IDs for ops endpoints (migration parity, etc.)
     // Stage/prod are supported; legacy deployments can omit this secret.
     const adminSubsSecretsByEnv: Record<string, secretsmanager.ISecret> = {};
@@ -491,6 +501,15 @@ export class Afu9EcsStack extends cdk.Stack {
         smokeKeySecret,
         [],
         'Stage smoke key'
+      );
+    }
+
+    if (serviceReadTokenSecret) {
+      validateSecretKeys(
+        this,
+        serviceReadTokenSecret,
+        [],
+        'Stage service read token'
       );
     }
 
@@ -592,6 +611,21 @@ export class Afu9EcsStack extends cdk.Stack {
           actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
           resources: [
             `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:afu9/stage/smoke-key-*`,
+          ],
+        })
+      );
+    }
+
+    if (serviceReadTokenSecret) {
+      serviceReadTokenSecret.grantRead(taskExecutionRole);
+
+      taskExecutionRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'StageServiceReadTokenRead',
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+          resources: [
+            `arn:aws:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:afu9/stage/service-read-token-*`,
           ],
         })
       );
@@ -832,6 +866,11 @@ export class Afu9EcsStack extends cdk.Stack {
           ...(shouldInjectSmokeKey
             ? {
                 AFU9_SMOKE_KEY: ecs.Secret.fromSecretsManager(smokeKeySecret),
+              }
+            : {}),
+          ...(serviceReadTokenSecret
+            ? {
+                SERVICE_READ_TOKEN: ecs.Secret.fromSecretsManager(serviceReadTokenSecret),
               }
             : {}),
           ...(adminSubsSecretsByEnv[environmentLabel]
