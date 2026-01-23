@@ -5,8 +5,8 @@
  */
 
 import { Pool } from 'pg';
-import { executeS3, StepContext, StepExecutionResult } from '../../../src/lib/loop/stepExecutors/s3-implement-prep';
-import { BlockerCode, IssueState } from '../../../src/lib/loop/stateMachine';
+import { executeS3, StepContext } from '../../../src/lib/loop/stepExecutors/s3-implement-prep';
+import { BlockerCode } from '../../../src/lib/loop/stateMachine';
 
 // Mock pg Pool
 const mockQuery = jest.fn();
