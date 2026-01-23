@@ -8,7 +8,7 @@
  * Acceptance Criteria:
  * - Preconditions: State == SPEC_READY
  * - Success: set state → IMPLEMENTING_PREP, Timeline-Event loop_step_s3_implement_prep
- * - Fehler: blocked mit UNKNOWN_STATE oder INVARIANT_VIOLATION
+ * - Error: blocked mit UNKNOWN_STATE oder INVARIANT_VIOLATION
  * - Idempotent, kein PR-Handling
  */
 
