@@ -15,6 +15,7 @@ const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
 const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN;
 const AFU9_COOKIE_SAMESITE_ENV = (process.env.AFU9_COOKIE_SAMESITE || 'lax').toLowerCase();
+const SERVICE_READ_TOKEN = process.env.SERVICE_READ_TOKEN || '';
 
 const cookieSameSite: 'lax' | 'strict' | 'none' =
   AFU9_COOKIE_SAMESITE_ENV === 'none' || AFU9_COOKIE_SAMESITE_ENV === 'strict'
@@ -153,6 +154,18 @@ function maybeAttachSmokeDebugHeaders(
   return response;
 }
 
+function isServiceReadRoute(pathname: string, method: string): boolean {
+  if (method !== 'GET') return false;
+  if (pathname === '/api/issues') return true;
+  return /^\/api\/issues\/[^/]+$/.test(pathname);
+}
+
+function isValidServiceToken(request: NextRequest): boolean {
+  if (!SERVICE_READ_TOKEN) return false;
+  const provided = request.headers.get('x-afu9-service-token')?.trim();
+  if (!provided) return false;
+  return provided === SERVICE_READ_TOKEN;
+}
 /**
  * Proxy (middleware) to protect routes and verify authentication
  * 
@@ -176,6 +189,31 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
+  if (isValidServiceToken(request)) {
+    if (!isServiceReadRoute(pathname, request.method)) {
+      const response = NextResponse.json(
+        { error: 'Forbidden', message: 'Service token is read-only' },
+        { status: 403 }
+      );
+      attachRequestId(response, requestId);
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'service_token_read_only' });
+      return response;
+    }
+
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.delete('x-afu9-sub');
+    requestHeaders.delete('x-afu9-stage');
+    requestHeaders.delete('x-afu9-groups');
+    requestHeaders.delete('x-afu9-auth-debug');
+    requestHeaders.delete('x-afu9-auth-via');
+    requestHeaders.set('x-request-id', requestId);
+    requestHeaders.set('x-afu9-auth-via', 'service-token');
+
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('x-request-id', requestId);
+    logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'service_token_allow' });
+    return response;
+  }
   // Optional smoke-auth bypass for runtime-configurable allowlist of API endpoints (staging only).
   // I906: Replaced hardcoded allowlist with database-backed runtime configuration.
   // Contract:
@@ -211,41 +249,6 @@ export async function middleware(request: NextRequest) {
       return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
     }
   }
-
-  // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
-  // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
-  if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
-    return nextWithRequestId();
-  }
-
-  if (isPublicRoute(pathname)) {
-    return nextWithRequestId();
-  }
-
-  // Determine if this is an API route (for differentiated error handling)
-  const isApiRoute = pathname.startsWith('/api/');
-
-  // Extract JWT tokens from cookies
-  const idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
-  const accessToken = request.cookies.get(AFU9_ACCESS_COOKIE)?.value;
-  const refreshToken = request.cookies.get(AFU9_REFRESH_COOKIE)?.value;
-
-  const redirectToRefresh = () => {
-    const original = request.nextUrl.pathname + request.nextUrl.search;
-    const url = new URL('/auth/refresh', request.url);
-    url.searchParams.set('redirectTo', original);
-    const response = NextResponse.redirect(url);
-    if (AFU9_DEBUG_AUTH) {
-      response.headers.set('x-afu9-auth-debug', '1');
-      response.headers.set('x-afu9-auth-via', 'refresh');
-    }
-    response.headers.set('cache-control', 'no-store, max-age=0');
-    response.headers.set('pragma', 'no-cache');
-    return attachRequestId(response, requestId);
-  };
-
-  // If we have no usable JWT (id/access) but do have a refresh cookie,
-  // redirect UI navigation through the refresh endpoint to mint new tokens.
   // (Cognito refresh tokens are typically opaque and cannot be verified in middleware.)
   if (!idToken && !accessToken && refreshToken) {
     if (AFU9_DEBUG_AUTH) {
