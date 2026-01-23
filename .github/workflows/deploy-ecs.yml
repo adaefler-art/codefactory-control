@@ -516,14 +516,26 @@ jobs:
         env:
           DEPLOY_EVENTS_TOKEN: ${{ secrets.DEPLOY_EVENTS_TOKEN }}
           SHOULD_MIGRATE: ${{ steps.gates.outputs.should_migrate }}
+          DEPLOY_ENV: ${{ steps.target.outputs.deploy_env }}
+          ENV_LABEL: ${{ steps.target.outputs.env_label }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECS_CLUSTER: ${{ steps.target.outputs.ecs_cluster }}
+          ECS_SERVICE: ${{ steps.target.outputs.ecs_service }}
+          TAG_PREFIX: ${{ steps.target.outputs.tag_prefix }}
+          FULL_SHA: ${{ steps.image-tags.outputs.full_sha }}
+          CC_IMAGE: ${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+          MCP_GITHUB_IMAGE: ${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+          MCP_DEPLOY_IMAGE: ${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+          MCP_OBSERVABILITY_IMAGE: ${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
+          MCP_RUNNER_IMAGE: ${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}
         run: |
           set -euo pipefail
-          echo "Creating new task definition for ${{ steps.target.outputs.env_label }} with env-tagged images..."
+          echo "Creating new task definition for ${ENV_LABEL} with env-tagged images..."
           echo "should_migrate=${SHOULD_MIGRATE}"
 
           SMOKE_ARN=""
           SERVICE_READ_TOKEN_ARN=""
-          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+          if [ "${DEPLOY_ENV}" = "staging" ]; then
             # Canonical identifier (must appear in this workflow for repo invariants).
             # Note: ECS `valueFrom` treats non-ARN strings as SSM Parameter Store names.
             # To inject from Secrets Manager, we resolve the secret ARN by name at deploy time.
@@ -536,7 +548,7 @@ jobs:
               --secret-id "${SMOKE_SECRET_ID}" \
               --query 'ARN' \
               --output text \
-              --region "${{ env.AWS_REGION }}" 2>smoke-key.describe.err)
+              --region "${AWS_REGION}" 2>smoke-key.describe.err)
             SMOKE_DESCRIBE_RC=$?
             set -e
 
@@ -546,14 +558,14 @@ jobs:
               echo "   AWS CLI error:" >&2
               cat smoke-key.describe.err >&2 || true
               echo "   Remedy:" >&2
-              echo "   - Ensure the secret exists in Secrets Manager (name: ${SMOKE_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
+              echo "   - Ensure the secret exists in Secrets Manager (name: ${SMOKE_SECRET_ID}) in region ${AWS_REGION}" >&2
               echo "   - Ensure the deploy role can call secretsmanager:DescribeSecret" >&2
               exit 1
             fi
 
             if [ -z "${SMOKE_ARN:-}" ] || [ "${SMOKE_ARN}" = "None" ]; then
               echo "❌ Secrets Manager secret not resolvable by name (${SMOKE_SECRET_ID})." >&2
-              echo "   Expected a secret named exactly: ${SMOKE_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
+              echo "   Expected a secret named exactly: ${SMOKE_SECRET_ID} (region ${AWS_REGION})." >&2
               exit 1
             fi
 
@@ -572,7 +584,7 @@ jobs:
               --secret-id "${SERVICE_READ_TOKEN_SECRET_ID}" \
               --query 'ARN' \
               --output text \
-              --region "${{ env.AWS_REGION }}" 2>service-read-token.describe.err)
+              --region "${AWS_REGION}" 2>service-read-token.describe.err)
             SERVICE_READ_TOKEN_DESCRIBE_RC=$?
             set -e
 
@@ -581,14 +593,14 @@ jobs:
               echo "   AWS CLI error:" >&2
               cat service-read-token.describe.err >&2 || true
               echo "   Remedy:" >&2
-              echo "   - Ensure the secret exists in Secrets Manager (name: ${SERVICE_READ_TOKEN_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
+              echo "   - Ensure the secret exists in Secrets Manager (name: ${SERVICE_READ_TOKEN_SECRET_ID}) in region ${AWS_REGION}" >&2
               echo "   - Ensure the deploy role can call secretsmanager:DescribeSecret" >&2
               exit 1
             fi
 
             if [ -z "${SERVICE_READ_TOKEN_ARN:-}" ] || [ "${SERVICE_READ_TOKEN_ARN}" = "None" ]; then
               echo "❌ Secrets Manager secret not resolvable by name (${SERVICE_READ_TOKEN_SECRET_ID})." >&2
-              echo "   Expected a secret named exactly: ${SERVICE_READ_TOKEN_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
+              echo "   Expected a secret named exactly: ${SERVICE_READ_TOKEN_SECRET_ID} (region ${AWS_REGION})." >&2
               exit 1
             fi
 
@@ -607,13 +619,13 @@ jobs:
           export DEPLOY_EVENTS_TOKEN
 
           echo "Listing clusters for debugging..."
-          aws ecs list-clusters --region "${{ env.AWS_REGION }}" --output text || true
-          echo "Using cluster=${{ steps.target.outputs.ecs_cluster }} service=${{ steps.target.outputs.ecs_service }}"
+          aws ecs list-clusters --region "${AWS_REGION}" --output text || true
+          echo "Using cluster=${ECS_CLUSTER} service=${ECS_SERVICE}"
 
           SERVICE_JSON=$(aws ecs describe-services \
-            --cluster "${{ steps.target.outputs.ecs_cluster }}" \
-            --services "${{ steps.target.outputs.ecs_service }}" \
-            --region "${{ env.AWS_REGION }}" \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" \
             --output json)
 
           if echo "$SERVICE_JSON" | jq -e '.failures | length > 0' >/dev/null; then
@@ -623,16 +635,16 @@ jobs:
           fi
 
           if [ "$(echo "$SERVICE_JSON" | jq -r '.services | length')" = "0" ]; then
-            echo "❌ ECS service ${{ steps.target.outputs.ecs_service }} not found in cluster ${{ steps.target.outputs.ecs_cluster }}" >&2
+            echo "❌ ECS service ${ECS_SERVICE} not found in cluster ${ECS_CLUSTER}" >&2
             echo "Listing services for debugging:" >&2
-            aws ecs list-services --cluster "${{ steps.target.outputs.ecs_cluster }}" --region "${{ env.AWS_REGION }}" --output json >&2
+            aws ecs list-services --cluster "${ECS_CLUSTER}" --region "${AWS_REGION}" --output json >&2
             exit 1
           fi
 
           TASK_DEF_ARN=$(echo "$SERVICE_JSON" | jq -r '.services[0].taskDefinition // ""')
 
           if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
-            echo "❌ Task definition is empty for service ${{ steps.target.outputs.ecs_service }}" >&2
+            echo "❌ Task definition is empty for service ${ECS_SERVICE}" >&2
             echo "$SERVICE_JSON" | jq '.services[0]' >&2
             exit 1
           fi
@@ -641,7 +653,7 @@ jobs:
 
           aws ecs describe-task-definition \
             --task-definition "$TASK_DEF_ARN" \
-            --region "${{ env.AWS_REGION }}" \
+            --region "${AWS_REGION}" \
             --query 'taskDefinition' > task-def.json
 
           ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
@@ -654,7 +666,7 @@ jobs:
           # Staging preflight (best-effort): ensure the task execution role can read the smoke key.
           # Note: GitHub deploy role may not be allowed to call iam:GetRole, so we derive executionRoleArn
           # from the task definition we just fetched.
-          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+          if [ "${DEPLOY_ENV}" = "staging" ]; then
             EXEC_ROLE_ARN=$(jq -r '.executionRoleArn // empty' task-def.json)
             if [ -z "${EXEC_ROLE_ARN:-}" ]; then
               echo "⚠️  Could not resolve executionRoleArn from task definition; skipping smoke-key preflight" >&2
@@ -696,7 +708,7 @@ jobs:
           # Canonical DB secret reference for ECS Secrets Manager JSON-key selectors.
           # IMPORTANT: Using plain secret name with ":jsonKey::" can be parsed by ECS as an SSM parameter name.
           # Use an ARN prefix (rotation-safe/partial ARN) to force Secrets Manager interpretation.
-          DB_SECRET_ARN="arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:afu9/database"
+          DB_SECRET_ARN="arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:afu9/database"
           echo "Using DB secret arn prefix: $DB_SECRET_ARN"
           export DB_SECRET_ARN
 
@@ -714,11 +726,11 @@ jobs:
           mv task-def.sanitized.json task-def.json
 
           jq \
-            --arg cc_image "${{ steps.ecr-uris.outputs.control_center }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
-            --arg mcp_github_image "${{ steps.ecr-uris.outputs.mcp_github }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
-            --arg mcp_deploy_image "${{ steps.ecr-uris.outputs.mcp_deploy }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
-            --arg mcp_observability_image "${{ steps.ecr-uris.outputs.mcp_observability }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
-            --arg mcp_runner_image "${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}" \
+            --arg cc_image "${CC_IMAGE}" \
+            --arg mcp_github_image "${MCP_GITHUB_IMAGE}" \
+            --arg mcp_deploy_image "${MCP_DEPLOY_IMAGE}" \
+            --arg mcp_observability_image "${MCP_OBSERVABILITY_IMAGE}" \
+            --arg mcp_runner_image "${MCP_RUNNER_IMAGE}" \
              '.containerDefinitions |= map(
                if (
                  .name == "control-center" or
@@ -760,8 +772,8 @@ jobs:
              task-def.json > new-task-def.json
 
           # Ensure runner sidecar is present for staging (optional sidecar; do not break tasks if it is down).
-          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            export MCP_RUNNER_IMAGE="${{ steps.ecr-uris.outputs.mcp_runner }}:${{ steps.target.outputs.tag_prefix }}-${{ steps.image-tags.outputs.full_sha }}"
+          if [ "${DEPLOY_ENV}" = "staging" ]; then
+            export MCP_RUNNER_IMAGE="${MCP_RUNNER_IMAGE}"
 
             jq '
               def has_runner: any(.containerDefinitions[]?; .name == "mcp-runner");
@@ -823,7 +835,7 @@ jobs:
 
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
-          if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
+          if [ "${DEPLOY_ENV}" = "staging" ]; then
             jq --arg smoke_value_from "${SMOKE_ARN}" --arg service_read_value_from "${SERVICE_READ_TOKEN_ARN}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
