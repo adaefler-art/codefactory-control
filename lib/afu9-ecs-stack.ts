@@ -821,6 +821,7 @@ export class Afu9EcsStack extends cdk.Stack {
         environmentLower === 'stage' ||
         serviceNameLower.endsWith('-staging');
       const shouldInjectSmokeKey = !!smokeKeySecret && !isProdLike && isStagingLike;
+      const shouldInjectServiceReadToken = !!serviceReadTokenSecret && !isProdLike && isStagingLike;
       const cc = td.addContainer('control-center', {
         image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, tag),
         containerName: 'control-center',
@@ -868,7 +869,7 @@ export class Afu9EcsStack extends cdk.Stack {
                 AFU9_SMOKE_KEY: ecs.Secret.fromSecretsManager(smokeKeySecret),
               }
             : {}),
-          ...(serviceReadTokenSecret
+          ...(shouldInjectServiceReadToken
             ? {
                 SERVICE_READ_TOKEN: ecs.Secret.fromSecretsManager(serviceReadTokenSecret),
               }

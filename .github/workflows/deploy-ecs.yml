@@ -522,6 +522,7 @@ jobs:
           echo "should_migrate=${SHOULD_MIGRATE}"
 
           SMOKE_ARN=""
+          SERVICE_READ_TOKEN_ARN=""
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
             # Canonical identifier (must appear in this workflow for repo invariants).
             # Note: ECS `valueFrom` treats non-ARN strings as SSM Parameter Store names.
@@ -562,6 +563,41 @@ jobs:
             fi
 
             echo "Using Secrets Manager ARN for smoke key (resolved by name): ${SMOKE_ARN}"
+
+            SERVICE_READ_TOKEN_SECRET_ID="afu9/stage/service-read-token"
+            echo "Resolving staging service read token secret ARN by name: ${SERVICE_READ_TOKEN_SECRET_ID}"
+
+            set +e
+            SERVICE_READ_TOKEN_ARN=$(aws secretsmanager describe-secret \
+              --secret-id "${SERVICE_READ_TOKEN_SECRET_ID}" \
+              --query 'ARN' \
+              --output text \
+              --region "${{ env.AWS_REGION }}" 2>service-read-token.describe.err)
+            SERVICE_READ_TOKEN_DESCRIBE_RC=$?
+            set -e
+
+            if [ "${SERVICE_READ_TOKEN_DESCRIBE_RC}" -ne 0 ]; then
+              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SERVICE_READ_TOKEN_SECRET_ID}" >&2
+              echo "   AWS CLI error:" >&2
+              cat service-read-token.describe.err >&2 || true
+              echo "   Remedy:" >&2
+              echo "   - Ensure the secret exists in Secrets Manager (name: ${SERVICE_READ_TOKEN_SECRET_ID}) in region ${{ env.AWS_REGION }}" >&2
+              echo "   - Ensure the deploy role can call secretsmanager:DescribeSecret" >&2
+              exit 1
+            fi
+
+            if [ -z "${SERVICE_READ_TOKEN_ARN:-}" ] || [ "${SERVICE_READ_TOKEN_ARN}" = "None" ]; then
+              echo "❌ Secrets Manager secret not resolvable by name (${SERVICE_READ_TOKEN_SECRET_ID})." >&2
+              echo "   Expected a secret named exactly: ${SERVICE_READ_TOKEN_SECRET_ID} (region ${{ env.AWS_REGION }})." >&2
+              exit 1
+            fi
+
+            if ! echo "${SERVICE_READ_TOKEN_ARN}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ Resolved service read token valueFrom is not a Secrets Manager ARN: ${SERVICE_READ_TOKEN_ARN}" >&2
+              exit 1
+            fi
+
+            echo "Using Secrets Manager ARN for service read token (resolved by name): ${SERVICE_READ_TOKEN_ARN}"
           fi
 
           if [ -z "${DEPLOY_EVENTS_TOKEN:-}" ]; then
@@ -634,6 +670,22 @@ jobs:
                 echo "⚠️  IAM simulation not permitted; skipping smoke-key preflight" >&2
               elif echo "${SIM_RESULT}" | grep -qiE "implicitDeny|explicitDeny"; then
                 echo "❌ ECS task execution role cannot read staging smoke key secret: ${SMOKE_ARN}" >&2
+                echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on the resolved secret ARN." >&2
+                echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
+                exit 1
+              fi
+
+              SIM_RESULT_SERVICE=$(aws iam simulate-principal-policy \
+                --policy-source-arn "${EXEC_ROLE_ARN}" \
+                --action-names "secretsmanager:GetSecretValue" "secretsmanager:DescribeSecret" \
+                --resource-arns "${SERVICE_READ_TOKEN_ARN}" \
+                --query 'EvaluationResults[].EvalDecision' \
+                --output text 2>/dev/null || true)
+
+              if [ -z "${SIM_RESULT_SERVICE:-}" ]; then
+                echo "⚠️  IAM simulation not permitted; skipping service-read-token preflight" >&2
+              elif echo "${SIM_RESULT_SERVICE}" | grep -qiE "implicitDeny|explicitDeny"; then
+                echo "❌ ECS task execution role cannot read staging service read token secret: ${SERVICE_READ_TOKEN_ARN}" >&2
                 echo "   Required: secretsmanager:GetSecretValue + secretsmanager:DescribeSecret on the resolved secret ARN." >&2
                 echo "   Remedy: deploy the CDK stack change that grants read to the execution role (staging-only)." >&2
                 exit 1
@@ -772,10 +824,15 @@ jobs:
           # Ensure stage smoke auth bypass key is always injected for staging service task definitions.
           # This workflow registers a task definition directly, so CDK-only injection is not sufficient.
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            jq --arg smoke_value_from "${SMOKE_ARN}" '
+            jq --arg smoke_value_from "${SMOKE_ARN}" --arg service_read_value_from "${SERVICE_READ_TOKEN_ARN}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
-                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_value_from}])
+                  .secrets = ((.secrets // [])
+                    | map(select(.name != "AFU9_SMOKE_KEY" and .name != "SERVICE_READ_TOKEN"))
+                    + [
+                      {name:"AFU9_SMOKE_KEY", valueFrom:$smoke_value_from},
+                      {name:"SERVICE_READ_TOKEN", valueFrom:$service_read_value_from}
+                    ])
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json
@@ -799,12 +856,31 @@ jobs:
               echo "❌ AFU9_SMOKE_KEY not injected for staging task definition" >&2
               exit 1
             fi
+
+            INJECTED_SERVICE_READ_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN") | .valueFrom' new-task-def.json | head -n 1)
+            echo "Injected SERVICE_READ_TOKEN valueFrom: ${INJECTED_SERVICE_READ_VALUE_FROM}"
+            if [ -z "${INJECTED_SERVICE_READ_VALUE_FROM:-}" ] || ! echo "${INJECTED_SERVICE_READ_VALUE_FROM}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ SERVICE_READ_TOKEN injection is not a Secrets Manager ARN; refusing to deploy." >&2
+              exit 1
+            fi
+
+            if [ "${INJECTED_SERVICE_READ_VALUE_FROM}" != "${SERVICE_READ_TOKEN_ARN}" ]; then
+              echo "❌ SERVICE_READ_TOKEN valueFrom does not match name-resolved secret ARN." >&2
+              echo "   Expected: ${SERVICE_READ_TOKEN_ARN}" >&2
+              echo "   Actual:   ${INJECTED_SERVICE_READ_VALUE_FROM}" >&2
+              exit 1
+            fi
+
+            if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN")' new-task-def.json >/dev/null; then
+              echo "❌ SERVICE_READ_TOKEN not injected for staging task definition" >&2
+              exit 1
+            fi
           else
-            # Safety: prod must never receive the stage smoke key.
+            # Safety: prod must never receive the stage smoke key or service-read token.
             jq '
               .containerDefinitions |= map(
                 if .name == "control-center" then
-                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")))
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY" and .name != "SERVICE_READ_TOKEN")))
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json
@@ -812,6 +888,11 @@ jobs:
 
             if jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
               echo "❌ AFU9_SMOKE_KEY present in production task definition" >&2
+              exit 1
+            fi
+
+            if jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN")' new-task-def.json >/dev/null; then
+              echo "❌ SERVICE_READ_TOKEN present in production task definition" >&2
               exit 1
             fi
           fi
@@ -876,6 +957,7 @@ jobs:
           echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "migration_task_def_arn=$MIGRATION_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
           echo "smoke_arn=$SMOKE_ARN" >> "$GITHUB_OUTPUT"
+          echo "service_read_token_arn=$SERVICE_READ_TOKEN_ARN" >> "$GITHUB_OUTPUT"
           echo "New task definition: $NEW_TASK_DEF_ARN"
           if [ -n "${MIGRATION_TASK_DEF_ARN}" ]; then
             echo "Migration task definition: $MIGRATION_TASK_DEF_ARN"
@@ -1594,7 +1676,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify staging smoke-key ARN applied
+      - name: Verify staging smoke-key and service token ARNs applied
         if: steps.target.outputs.deploy_env == 'staging'
         shell: bash
         env:
@@ -1609,9 +1691,15 @@ jobs:
           SERVICE="${{ steps.target.outputs.ecs_service }}"
           REGION="${{ env.AWS_REGION }}"
           SMOKE_ARN="${{ steps.task-def.outputs.smoke_arn }}"
+          SERVICE_READ_TOKEN_ARN="${{ steps.task-def.outputs.service_read_token_arn }}"
 
           if [ -z "${SMOKE_ARN:-}" ] || [ "${SMOKE_ARN}" = "None" ]; then
             echo "❌ Missing smoke_arn output from task definition step; cannot verify staging smoke-key injection." >&2
+            exit 1
+          fi
+
+          if [ -z "${SERVICE_READ_TOKEN_ARN:-}" ] || [ "${SERVICE_READ_TOKEN_ARN}" = "None" ]; then
+            echo "❌ Missing service_read_token_arn output from task definition step; cannot verify staging service-read-token injection." >&2
             exit 1
           fi
 
@@ -1634,9 +1722,16 @@ jobs:
             --output json > active-task-def.json
 
           ACTUAL_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY") | .valueFrom' active-task-def.json | head -n 1)
+          ACTUAL_SERVICE_READ_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN") | .valueFrom' active-task-def.json | head -n 1)
 
           if [ -z "${ACTUAL_VALUE_FROM:-}" ] || [ "${ACTUAL_VALUE_FROM}" = "null" ]; then
             echo "❌ AFU9_SMOKE_KEY is not present in the active staging task definition." >&2
+            echo "   taskDef=${ACTIVE_TASK_DEF}" >&2
+            exit 1
+          fi
+
+          if [ -z "${ACTUAL_SERVICE_READ_VALUE_FROM:-}" ] || [ "${ACTUAL_SERVICE_READ_VALUE_FROM}" = "null" ]; then
+            echo "❌ SERVICE_READ_TOKEN is not present in the active staging task definition." >&2
             echo "   taskDef=${ACTIVE_TASK_DEF}" >&2
             exit 1
           fi
@@ -1649,7 +1744,16 @@ jobs:
             exit 1
           fi
 
+          if [ "${ACTUAL_SERVICE_READ_VALUE_FROM}" != "${SERVICE_READ_TOKEN_ARN}" ]; then
+            echo "❌ Staging task definition service-read-token mismatch after deploy." >&2
+            echo "   taskDef=${ACTIVE_TASK_DEF}" >&2
+            echo "   expected=${SERVICE_READ_TOKEN_ARN}" >&2
+            echo "   actual=${ACTUAL_SERVICE_READ_VALUE_FROM}" >&2
+            exit 1
+          fi
+
           echo "✅ Verified: AFU9_SMOKE_KEY.valueFrom matches resolved canonical secret ARN"
+          echo "✅ Verified: SERVICE_READ_TOKEN.valueFrom matches resolved canonical secret ARN"
 
           URL="https://${READY_HOST}/api/internal/deploy-events"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
