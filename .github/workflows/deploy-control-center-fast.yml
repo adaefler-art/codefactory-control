@@ -194,6 +194,8 @@ jobs:
 
           SMOKE_KEY_SECRET_ID=""
           SMOKE_KEY_SECRET_ARN=""
+          SERVICE_READ_TOKEN_SECRET_ID=""
+          SERVICE_READ_TOKEN_SECRET_ARN=""
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
             SMOKE_KEY_SECRET_ID="afu9/stage/smoke-key"
             echo "Resolving staging smoke key secret ARN by name: ${SMOKE_KEY_SECRET_ID}"
@@ -220,6 +222,34 @@ jobs:
 
             if ! echo "${SMOKE_KEY_SECRET_ARN}" | grep -q '^arn:aws:secretsmanager:'; then
               echo "❌ Resolved smoke key valueFrom is not a Secrets Manager ARN: ${SMOKE_KEY_SECRET_ARN}" >&2
+              exit 1
+            fi
+
+            SERVICE_READ_TOKEN_SECRET_ID="afu9/stage/service-read-token"
+            echo "Resolving staging service read token secret ARN by name: ${SERVICE_READ_TOKEN_SECRET_ID}"
+
+            set +e
+            SERVICE_READ_TOKEN_SECRET_ARN=$(aws secretsmanager describe-secret \
+              --secret-id "${SERVICE_READ_TOKEN_SECRET_ID}" \
+              --region "${REGION}" \
+              --query 'ARN' \
+              --output text 2>service-read-token.describe.err)
+            SERVICE_READ_TOKEN_DESCRIBE_RC=$?
+            set -e
+
+            if [ "${SERVICE_READ_TOKEN_DESCRIBE_RC}" -ne 0 ]; then
+              echo "❌ Failed to resolve Secrets Manager secret ARN by name: ${SERVICE_READ_TOKEN_SECRET_ID}" >&2
+              cat service-read-token.describe.err >&2 || true
+              exit 1
+            fi
+
+            if [ -z "${SERVICE_READ_TOKEN_SECRET_ARN:-}" ] || [ "${SERVICE_READ_TOKEN_SECRET_ARN}" = "None" ]; then
+              echo "❌ Secrets Manager secret not resolvable by name (${SERVICE_READ_TOKEN_SECRET_ID})" >&2
+              exit 1
+            fi
+
+            if ! echo "${SERVICE_READ_TOKEN_SECRET_ARN}" | grep -q '^arn:aws:secretsmanager:'; then
+              echo "❌ Resolved service read token valueFrom is not a Secrets Manager ARN: ${SERVICE_READ_TOKEN_SECRET_ARN}" >&2
               exit 1
             fi
           fi
@@ -259,10 +289,15 @@ jobs:
           ' task-def.json > new-task-def.json
 
           if [ "${{ steps.target.outputs.deploy_env }}" = "staging" ]; then
-            jq --arg smoke_arn "${SMOKE_KEY_SECRET_ARN}" '
+            jq --arg smoke_arn "${SMOKE_KEY_SECRET_ARN}" --arg service_read_arn "${SERVICE_READ_TOKEN_SECRET_ARN}" '
               .containerDefinitions |= map(
                 if .name == "control-center" then
-                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")) + [{name:"AFU9_SMOKE_KEY", valueFrom:$smoke_arn}])
+                  .secrets = ((.secrets // [])
+                    | map(select(.name != "AFU9_SMOKE_KEY" and .name != "SERVICE_READ_TOKEN"))
+                    + [
+                      {name:"AFU9_SMOKE_KEY", valueFrom:$smoke_arn},
+                      {name:"SERVICE_READ_TOKEN", valueFrom:$service_read_arn}
+                    ])
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json
@@ -281,11 +316,25 @@ jobs:
               echo "❌ AFU9_SMOKE_KEY not injected for staging task definition" >&2
               exit 1
             fi
+
+            INJECTED_SERVICE_READ_VALUE_FROM=$(jq -r '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN") | .valueFrom' new-task-def.json | head -n 1)
+            echo "Injected SERVICE_READ_TOKEN valueFrom: ${INJECTED_SERVICE_READ_VALUE_FROM}"
+            if [ "${INJECTED_SERVICE_READ_VALUE_FROM}" != "${SERVICE_READ_TOKEN_SECRET_ARN}" ]; then
+              echo "❌ SERVICE_READ_TOKEN valueFrom does not match name-resolved secret ARN." >&2
+              echo "   Expected: ${SERVICE_READ_TOKEN_SECRET_ARN}" >&2
+              echo "   Actual:   ${INJECTED_SERVICE_READ_VALUE_FROM}" >&2
+              exit 1
+            fi
+
+            if ! jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN")' new-task-def.json >/dev/null; then
+              echo "❌ SERVICE_READ_TOKEN not injected for staging task definition" >&2
+              exit 1
+            fi
           else
             jq '
               .containerDefinitions |= map(
                 if .name == "control-center" then
-                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY")))
+                  .secrets = ((.secrets // []) | map(select(.name != "AFU9_SMOKE_KEY" and .name != "SERVICE_READ_TOKEN")))
                 else . end
               )
             ' new-task-def.json > new-task-def.tmp.json
@@ -293,6 +342,11 @@ jobs:
 
             if jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="AFU9_SMOKE_KEY")' new-task-def.json >/dev/null; then
               echo "❌ AFU9_SMOKE_KEY present in production task definition" >&2
+              exit 1
+            fi
+
+            if jq -e '.containerDefinitions[] | select(.name=="control-center") | .secrets[]? | select(.name=="SERVICE_READ_TOKEN")' new-task-def.json >/dev/null; then
+              echo "❌ SERVICE_READ_TOKEN present in production task definition" >&2
               exit 1
             fi
           fi
