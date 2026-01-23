@@ -17,6 +17,7 @@ describe('Middleware Authentication Logic', () => {
     process.env.AFU9_UNAUTH_REDIRECT = 'https://afu-9.com/';
     delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
     delete process.env.AFU9_SMOKE_KEY;
+    delete process.env.SERVICE_READ_TOKEN;
   });
 
   afterEach(() => {
@@ -24,6 +25,7 @@ describe('Middleware Authentication Logic', () => {
     delete process.env.AFU9_UNAUTH_REDIRECT;
     delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
     delete process.env.AFU9_SMOKE_KEY;
+    delete process.env.SERVICE_READ_TOKEN;
   });
 
   function makeRequest(params: { url: string; method?: string; headers?: Record<string, string> }) {
@@ -346,6 +348,50 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-env-len')).toBe('0');
       expect(response.headers.get('x-afu9-smoke-key-len')).toBe(String('secret'.length));
       expect(response.headers.get('x-afu9-smoke-key-match')).toBe('0');
+    });
+  });
+
+  describe('Service read token access', () => {
+    test('valid token allows GET /api/issues', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/issues',
+        headers: { 'x-afu9-service-token': 'service-secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+    });
+
+    test('valid token allows GET /api/issues/:id', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/issues/ISS-001',
+        headers: { 'x-afu9-service-token': 'service-secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+    });
+
+    test('valid token blocks non-read endpoints', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/ops/kpis',
+        method: 'POST',
+        headers: { 'x-afu9-service-token': 'service-secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(403);
+    });
+
+    test('missing token keeps unauthenticated behavior', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({ url: 'https://stage.afu-9.com/api/issues' });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
     });
   });
 
