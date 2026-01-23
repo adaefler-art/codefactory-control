@@ -15,6 +15,7 @@ import { getLoopLockManager, LockConflictError } from './lock';
 import { resolveNextStep, LoopStep } from './stateMachine';
 import { executeS1 } from './stepExecutors/s1-pick-issue';
 import { executeS2 } from './stepExecutors/s2-spec-gate';
+import { getLoopEventStore, LoopEventType } from './eventStore';
 
 /**
  * Parameters for running the next step in a loop
@@ -44,6 +45,7 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
   const pool = getPool();
   const runStore = getLoopRunStore(pool);
   const lockManager = getLoopLockManager(pool);
+  const eventStore = getLoopEventStore(pool);
   
   // E9.1-CTRL-3: Check idempotency first for replay
   const idempotencyCheck = await lockManager.checkIdempotency({
@@ -137,6 +139,22 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
     // Resolve next step using state machine
     const stepResolution = resolveNextStep(issue);
     
+    // E9.1-CTRL-8: Emit loop_run_started event
+    await eventStore.createEvent({
+      issueId,
+      runId: run.id,
+      eventType: LoopEventType.RUN_STARTED,
+      eventData: {
+        runId: run.id,
+        step: stepResolution.step || 'UNKNOWN',
+        stateBefore: issue.status,
+        requestId,
+      },
+    }).catch(err => {
+      console.error('[Loop] Failed to create loop_run_started event', err);
+      // Don't fail the run if event logging fails
+    });
+    
     let response: RunNextStepResponse;
     
     // Check if step is blocked
@@ -162,6 +180,22 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         },
       });
       
+      // E9.1-CTRL-8: Emit loop_run_blocked event
+      await eventStore.createEvent({
+        issueId,
+        runId: run.id,
+        eventType: LoopEventType.RUN_BLOCKED,
+        eventData: {
+          runId: run.id,
+          step: stepResolution.step || 'UNKNOWN',
+          stateBefore: issue.status,
+          blockerCode: stepResolution.blockerCode,
+          requestId,
+        },
+      }).catch(err => {
+        console.error('[Loop] Failed to create loop_run_blocked event', err);
+      });
+      
       response = {
         schemaVersion: LOOP_SCHEMA_VERSION,
         requestId,
@@ -182,6 +216,22 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         metadata: {
           message: stepResolution.blockerMessage || 'No next step available',
         },
+      });
+      
+      // E9.1-CTRL-8: Emit loop_run_finished event for terminal state
+      await eventStore.createEvent({
+        issueId,
+        runId: run.id,
+        eventType: LoopEventType.RUN_FINISHED,
+        eventData: {
+          runId: run.id,
+          step: 'TERMINAL',
+          stateBefore: issue.status,
+          stateAfter: issue.status,
+          requestId,
+        },
+      }).catch(err => {
+        console.error('[Loop] Failed to create loop_run_finished event', err);
       });
       
       response = {
@@ -264,6 +314,22 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
             },
           });
           
+          // E9.1-CTRL-8: Emit loop_run_blocked event for step-level block
+          await eventStore.createEvent({
+            issueId,
+            runId: run.id,
+            eventType: LoopEventType.RUN_BLOCKED,
+            eventData: {
+              runId: run.id,
+              step: stepResolution.step,
+              stateBefore: stepResult.stateBefore,
+              blockerCode: stepResult.blockerCode,
+              requestId,
+            },
+          }).catch(err => {
+            console.error('[Loop] Failed to create loop_run_blocked event', err);
+          });
+          
           response = {
             schemaVersion: LOOP_SCHEMA_VERSION,
             requestId,
@@ -282,6 +348,50 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
               fieldsChanged: stepResult.fieldsChanged,
               message: stepResult.message,
             },
+          });
+          
+          // E9.1-CTRL-8: Emit step-specific completion event
+          let stepEventType: LoopEventType;
+          if (stepResolution.step === LoopStep.S1_PICK_ISSUE) {
+            stepEventType = LoopEventType.STEP_S1_COMPLETED;
+          } else if (stepResolution.step === LoopStep.S2_SPEC_READY) {
+            stepEventType = LoopEventType.STEP_S2_SPEC_READY;
+          } else if (stepResolution.step === LoopStep.S3_IMPLEMENT_PREP) {
+            stepEventType = LoopEventType.STEP_S3_IMPLEMENT_PREP;
+          } else {
+            // Fallback to finished event for unknown steps
+            stepEventType = LoopEventType.RUN_FINISHED;
+          }
+          
+          await eventStore.createEvent({
+            issueId,
+            runId: run.id,
+            eventType: stepEventType,
+            eventData: {
+              runId: run.id,
+              step: stepResolution.step,
+              stateBefore: stepResult.stateBefore,
+              stateAfter: stepResult.stateAfter,
+              requestId,
+            },
+          }).catch(err => {
+            console.error('[Loop] Failed to create step completion event', err);
+          });
+          
+          // E9.1-CTRL-8: Also emit loop_run_finished event
+          await eventStore.createEvent({
+            issueId,
+            runId: run.id,
+            eventType: LoopEventType.RUN_FINISHED,
+            eventData: {
+              runId: run.id,
+              step: stepResolution.step,
+              stateBefore: stepResult.stateBefore,
+              stateAfter: stepResult.stateAfter,
+              requestId,
+            },
+          }).catch(err => {
+            console.error('[Loop] Failed to create loop_run_finished event', err);
           });
           
           response = {
@@ -338,6 +448,20 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         ? completedAt.getTime() - new Date(run.started_at).getTime()
         : 0;
       
+      // Get current issue status for event
+      let currentStatus = 'UNKNOWN';
+      try {
+        const issueResult = await pool.query(
+          'SELECT status FROM afu9_issues WHERE id = $1',
+          [issueId]
+        );
+        if (issueResult.rows.length > 0) {
+          currentStatus = issueResult.rows[0].status;
+        }
+      } catch (statusError) {
+        console.error('[Loop] Failed to fetch issue status for event', statusError);
+      }
+      
       await runStore.updateRunStatus(run.id, {
         status: 'failed',
         completedAt,
@@ -345,6 +469,21 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
         errorMessage: error instanceof Error ? error.message : String(error),
       }).catch(updateError => {
         console.error('[Loop] Failed to update run status to failed', updateError);
+      });
+      
+      // E9.1-CTRL-8: Emit loop_run_failed event
+      await eventStore.createEvent({
+        issueId,
+        runId: run.id,
+        eventType: LoopEventType.RUN_FAILED,
+        eventData: {
+          runId: run.id,
+          step: 'UNKNOWN',
+          stateBefore: currentStatus,
+          requestId,
+        },
+      }).catch(eventError => {
+        console.error('[Loop] Failed to create loop_run_failed event', eventError);
       });
     }
     
