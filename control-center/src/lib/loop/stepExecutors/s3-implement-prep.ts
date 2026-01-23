@@ -8,8 +8,8 @@
  * Acceptance Criteria:
  * - Preconditions: State == SPEC_READY
  * - Success: set state → IMPLEMENTING_PREP, Timeline-Event loop_step_s3_implement_prep
- * - Error: blocked mit UNKNOWN_STATE oder INVARIANT_VIOLATION
- * - Idempotent, kein PR-Handling
+ * - Error: blocked with UNKNOWN_STATE or INVARIANT_VIOLATION
+ * - Idempotent, no PR-Handling
  */
 
 import { Pool } from 'pg';
