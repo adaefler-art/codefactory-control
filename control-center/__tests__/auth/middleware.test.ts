@@ -17,6 +17,7 @@ describe('Middleware Authentication Logic', () => {
     process.env.AFU9_UNAUTH_REDIRECT = 'https://afu-9.com/';
     delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
     delete process.env.AFU9_SMOKE_KEY;
+    delete process.env.SERVICE_READ_TOKEN;
   });
 
   afterEach(() => {
@@ -24,6 +25,7 @@ describe('Middleware Authentication Logic', () => {
     delete process.env.AFU9_UNAUTH_REDIRECT;
     delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
     delete process.env.AFU9_SMOKE_KEY;
+    delete process.env.SERVICE_READ_TOKEN;
   });
 
   function makeRequest(params: { url: string; method?: string; headers?: Record<string, string> }) {
