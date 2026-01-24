@@ -416,6 +416,18 @@ export class Afu9IamStack extends cdk.Stack {
       })
     );
 
+    // Allow the deploy workflow to resolve the staging service-read-token ARN by name.
+    // Justification: the ECS deploy workflow injects SERVICE_READ_TOKEN for staging tasks.
+    // Note: Secrets Manager ARNs include a randomized suffix; use wildcard.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'SecretsManagerDescribeAfu9StageServiceReadToken',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:DescribeSecret'],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/stage/service-read-token*`],
+      })
+    );
+
     // Allow CI/CD to validate required keys in AFU-9 secrets.
     // Justification: repo build/deploy scripts run secret validation (reads secret JSON).
     // Also includes stage/smoke-key for staging deploy smoke tests.
@@ -429,6 +441,7 @@ export class Afu9IamStack extends cdk.Stack {
           `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/github*`,
           `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/llm*`,
           `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/stage/smoke-key*`,
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:afu9/stage/service-read-token*`,
         ],
       })
     );
