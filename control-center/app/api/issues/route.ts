@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { getPool } from '../../../src/lib/db';
 import { listAfu9Issues, createAfu9Issue } from '../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
@@ -48,6 +49,21 @@ export const revalidate = 0;
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
+
+  const providedServiceToken = headers().get('x-afu9-service-token')?.trim();
+  if (!providedServiceToken) {
+    return errorResponse('Authentication required', {
+      status: 401,
+      requestId,
+    });
+  }
+  const expectedServiceToken = process.env.SERVICE_READ_TOKEN || '';
+  if (!expectedServiceToken || providedServiceToken !== expectedServiceToken) {
+    return errorResponse('service token rejected', {
+      status: 403,
+      requestId,
+    });
+  }
   
   try {
     const pool = getPool();

@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { getPool } from '../../../../src/lib/db';
 import {
   updateAfu9Issue,
@@ -30,6 +31,7 @@ import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../_shared';
 import { withApi, apiError } from '../../../../src/lib/http/withApi';
 import { normalizeLabels } from '../../../../src/lib/label-utils';
+import { getRequestId } from '@/lib/api/response-helpers';
 
 /**
  * GET /api/issues/[id]
@@ -45,6 +47,16 @@ export const GET = withApi(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
+  const requestId = getRequestId(request);
+  const providedServiceToken = headers().get('x-afu9-service-token')?.trim();
+  if (!providedServiceToken) {
+    return apiError('Authentication required', 401, undefined, requestId);
+  }
+  const expectedServiceToken = process.env.SERVICE_READ_TOKEN || '';
+  if (!expectedServiceToken || providedServiceToken !== expectedServiceToken) {
+    return apiError('service token rejected', 403, undefined, requestId);
+  }
+
   const pool = getPool();
   const { id } = await params;
 

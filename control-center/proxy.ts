@@ -15,7 +15,6 @@ const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
 const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN;
 const AFU9_COOKIE_SAMESITE_ENV = (process.env.AFU9_COOKIE_SAMESITE || 'lax').toLowerCase();
-const SERVICE_READ_TOKEN = process.env.SERVICE_READ_TOKEN || '';
 
 const cookieSameSite: 'lax' | 'strict' | 'none' =
   AFU9_COOKIE_SAMESITE_ENV === 'none' || AFU9_COOKIE_SAMESITE_ENV === 'strict'
@@ -159,13 +158,6 @@ function isServiceReadRoute(pathname: string, method: string): boolean {
   if (pathname === '/api/issues') return true;
   return /^\/api\/issues\/[^/]+$/.test(pathname);
 }
-
-function isValidServiceToken(request: NextRequest): boolean {
-  if (!SERVICE_READ_TOKEN) return false;
-  const provided = request.headers.get('x-afu9-service-token')?.trim();
-  if (!provided) return false;
-  return provided === SERVICE_READ_TOKEN;
-}
 /**
  * Proxy (middleware) to protect routes and verify authentication
  * 
@@ -189,30 +181,8 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
-  if (isValidServiceToken(request)) {
-    if (!isServiceReadRoute(pathname, request.method)) {
-      const response = NextResponse.json(
-        { error: 'Forbidden', message: 'Service token is read-only' },
-        { status: 403 }
-      );
-      attachRequestId(response, requestId);
-      logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'service_token_read_only' });
-      return response;
-    }
-
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.delete('x-afu9-sub');
-    requestHeaders.delete('x-afu9-stage');
-    requestHeaders.delete('x-afu9-groups');
-    requestHeaders.delete('x-afu9-auth-debug');
-    requestHeaders.delete('x-afu9-auth-via');
-    requestHeaders.set('x-request-id', requestId);
-    requestHeaders.set('x-afu9-auth-via', 'service-token');
-
-    const response = NextResponse.next({ request: { headers: requestHeaders } });
-    response.headers.set('x-request-id', requestId);
-    logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'service_token_allow' });
-    return response;
+  if (isServiceReadRoute(pathname, request.method)) {
+    return nextWithRequestId();
   }
   // Optional smoke-auth bypass for runtime-configurable allowlist of API endpoints (staging only).
   // I906: Replaced hardcoded allowlist with database-backed runtime configuration.
