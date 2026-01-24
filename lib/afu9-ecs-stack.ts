@@ -871,7 +871,10 @@ export class Afu9EcsStack extends cdk.Stack {
             : {}),
           ...(shouldInjectServiceReadToken
             ? {
-                SERVICE_READ_TOKEN: ecs.Secret.fromSecretsManager(serviceReadTokenSecret),
+                SERVICE_READ_TOKEN: ecs.Secret.fromSecretsManager(
+                  serviceReadTokenSecret,
+                  'SERVICE_READ_TOKEN'
+                ),
               }
             : {}),
           ...(adminSubsSecretsByEnv[environmentLabel]
