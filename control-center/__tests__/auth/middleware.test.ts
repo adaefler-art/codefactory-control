@@ -527,4 +527,47 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-stage')).toBeNull();
     });
   });
+
+  describe('Service read token access (afu9 issues)', () => {
+    test('missing token keeps unauthenticated behavior (401)', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({ url: 'https://stage.afu-9.com/api/afu9/issues' });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+    });
+
+    test('wrong token returns 403', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/issues',
+        headers: { 'x-afu9-service-token': 'wrong-secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(403);
+    });
+
+    test('correct token allows GET /api/afu9/issues', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/issues',
+        headers: { 'x-afu9-service-token': 'service-secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+    });
+
+    test('correct token allows GET /api/afu9/issues/:id', async () => {
+      process.env.SERVICE_READ_TOKEN = 'service-secret';
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/issues/ISS-001',
+        headers: { 'x-afu9-service-token': 'service-secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+    });
+  });
 });
