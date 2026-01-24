@@ -15,6 +15,7 @@ const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
 const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN;
 const AFU9_COOKIE_SAMESITE_ENV = (process.env.AFU9_COOKIE_SAMESITE || 'lax').toLowerCase();
+const SERVICE_READ_TOKEN = process.env.SERVICE_READ_TOKEN || '';
 
 const cookieSameSite: 'lax' | 'strict' | 'none' =
   AFU9_COOKIE_SAMESITE_ENV === 'none' || AFU9_COOKIE_SAMESITE_ENV === 'strict'
@@ -156,7 +157,9 @@ function maybeAttachSmokeDebugHeaders(
 function isServiceReadRoute(pathname: string, method: string): boolean {
   if (method !== 'GET') return false;
   if (pathname === '/api/issues') return true;
-  return /^\/api\/issues\/[^/]+$/.test(pathname);
+  if (pathname === '/api/afu9/issues') return true;
+  if (/^\/api\/issues\/[^/]+$/.test(pathname)) return true;
+  return /^\/api\/afu9\/issues\/[^/]+$/.test(pathname);
 }
 /**
  * Proxy (middleware) to protect routes and verify authentication
@@ -182,7 +185,21 @@ export async function middleware(request: NextRequest) {
   };
 
   if (isServiceReadRoute(pathname, request.method)) {
-    return nextWithRequestId();
+    const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
+    if (providedServiceToken) {
+      if (!SERVICE_READ_TOKEN || providedServiceToken !== SERVICE_READ_TOKEN) {
+        const response = NextResponse.json(
+          { error: 'Forbidden', message: 'service token rejected' },
+          { status: 403 }
+        );
+        attachRequestId(response, requestId);
+        logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'service_token_rejected' });
+        return response;
+      }
+      const response = nextWithRequestId();
+      logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'service_token_allow' });
+      return response;
+    }
   }
   // Optional smoke-auth bypass for runtime-configurable allowlist of API endpoints (staging only).
   // I906: Replaced hardcoded allowlist with database-backed runtime configuration.
