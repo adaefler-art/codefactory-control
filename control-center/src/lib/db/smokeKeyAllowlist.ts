@@ -367,7 +367,8 @@ export function isRouteAllowed(
 
     for (const entry of allowlist) {
       // Check method match (wildcard or exact)
-      const methodMatches = entry.method === '*' || entry.method === normalizedMethod;
+      const entryMethod = (entry.method || '*').toUpperCase();
+      const methodMatches = entryMethod === '*' || entryMethod === normalizedMethod;
       if (!methodMatches) continue;
 
       // Check route match

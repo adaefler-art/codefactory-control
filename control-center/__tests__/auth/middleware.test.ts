@@ -9,6 +9,7 @@ import * as jwtVerify from '../../lib/auth/jwt-verify';
 import * as stageEnforcement from '../../lib/auth/stage-enforcement';
 import { PUBLIC_ROUTES, isPublicRoute } from '../../lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from '../../src/lib/auth/public-status-endpoints';
+import * as smokeAllowlist from '../../src/lib/db/smokeKeyAllowlist';
 import { middleware } from '../../proxy';
 
 describe('Middleware Authentication Logic', () => {
@@ -525,6 +526,64 @@ describe('Middleware Authentication Logic', () => {
       expect(response.status).toBe(401);
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
       expect(response.headers.get('x-afu9-smoke-stage')).toBeNull();
+    });
+  });
+
+  describe('Smoke-auth bypass allowlist for S1S3 pick (staging only)', () => {
+    const allowlistedEntry = {
+      id: 1,
+      route_pattern: '/api/afu9/s1s3/issues/pick',
+      method: 'post',
+      is_regex: false,
+      description: 'S1S3 pick smoke test',
+      added_by: 'test',
+      added_at: new Date(0).toISOString(),
+      removed_by: null,
+      removed_at: null,
+      created_at: new Date(0).toISOString(),
+      updated_at: new Date(0).toISOString(),
+    };
+
+    test('stage + correct key + allowlisted POST /api/afu9/s1s3/issues/pick => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const allowlistSpy = jest
+        .spyOn(smokeAllowlist, 'getActiveAllowlist')
+        .mockResolvedValue({ success: true, data: [allowlistedEntry] });
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(0);
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/s1s3/issues/pick',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+
+      allowlistSpy.mockRestore();
+      nowSpy.mockRestore();
+    });
+
+    test('stage + correct key + NOT allowlisted => still 401', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const allowlistSpy = jest
+        .spyOn(smokeAllowlist, 'getActiveAllowlist')
+        .mockResolvedValue({ success: true, data: [] });
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(60000);
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/s1s3/issues/pick',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
+
+      allowlistSpy.mockRestore();
+      nowSpy.mockRestore();
     });
   });
 

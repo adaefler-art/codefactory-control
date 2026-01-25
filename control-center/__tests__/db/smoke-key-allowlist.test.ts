@@ -335,6 +335,28 @@ describe('Smoke Key Allowlist Database Operations', () => {
       expect(isRouteAllowed('/api/exact', 'Get', mockAllowlist)).toBe(true);
     });
 
+    test('matches AFU9 S1S3 issue spec route', () => {
+      const s1s3Allowlist: SmokeKeyAllowlistEntry[] = [
+        {
+          id: 10,
+          route_pattern: '^/api/afu9/s1s3/issues/[^/]+/spec$',
+          method: 'POST',
+          is_regex: true,
+          description: 'AFU9 S1S3 issue spec (E9.1 smoke)',
+          added_by: 'system:migration:087',
+          added_at: '2026-01-25T00:00:00Z',
+          removed_by: null,
+          removed_at: null,
+          created_at: '2026-01-25T00:00:00Z',
+          updated_at: '2026-01-25T00:00:00Z',
+        },
+      ];
+
+      expect(isRouteAllowed('/api/afu9/s1s3/issues/abc123/spec', 'POST', s1s3Allowlist)).toBe(true);
+      expect(isRouteAllowed('/api/afu9/s1s3/issues/abc123/spec', 'GET', s1s3Allowlist)).toBe(false);
+      expect(isRouteAllowed('/api/afu9/s1s3/issues/abc123/implement', 'POST', s1s3Allowlist)).toBe(false);
+    });
+
     test('handles invalid regex in allowlist gracefully (fail-closed)', () => {
       const badAllowlist: SmokeKeyAllowlistEntry[] = [
         {
