@@ -1,0 +1,211 @@
+===============================================================================
+E9.1_F1 IMPLEMENTATION SUMMARY
+S1–S3 Live Flow MVP: GitHub Issue Pick → Spec Ready → PR Create
+===============================================================================
+
+COMPLETION DATE: 2026-01-25
+BRANCH: copilot/create-pr-for-issue-pick
+COMMITS: 6 commits (1207597..60e5f2a)
+TOTAL CHANGES: 13 files, 3,343 insertions
+
+===============================================================================
+DELIVERABLES
+===============================================================================
+
+✅ Database Schema
+   - Migration 086_s1s3_flow_persistence.sql
+   - 3 tables: afu9_s1s3_issues, s1s3_runs, s1s3_run_steps
+   - Proper indexes, constraints, and comments
+
+✅ TypeScript Contracts
+   - control-center/src/lib/contracts/s1s3Flow.ts
+   - Type-safe enums, interfaces, and utilities
+   - JSONB normalization helpers
+
+✅ Data Access Layer
+   - control-center/src/lib/db/s1s3Flow.ts
+   - Complete DAO with 14 functions
+   - Specialized methods for spec and PR updates
+
+✅ API Endpoints (7 routes)
+   1. GET  /api/afu9/github/issues - List from allowlisted repos
+   2. POST /api/afu9/s1s3/issues/pick - S1: Pick Issue
+   3. GET  /api/afu9/s1s3/issues - List AFU9 issues
+   4. GET  /api/afu9/s1s3/issues/[id] - Get with timeline
+   5. POST /api/afu9/s1s3/issues/[id]/spec - S2: Spec Ready
+   6. POST /api/afu9/s1s3/issues/[id]/implement - S3: Implement
+   7. GET  /api/afu9/s1s3/prs/[prNumber]/checks - Check status
+
+✅ Testing
+   - Unit tests: __tests__/lib/db/s1s3Flow.test.ts
+   - Coverage: All DAO operations
+   - Mock-based Jest tests
+
+✅ Documentation
+   - User guide: docs/S1S3_FLOW.md
+   - API documentation with examples
+   - Architecture diagrams
+
+✅ Verification
+   - PowerShell script: scripts/verify-e91-f1-s1s3.ps1
+   - Automated endpoint testing
+   - File existence checks
+
+===============================================================================
+SECURITY COMPLIANCE
+===============================================================================
+
+✅ GitHub App Authentication (server-to-server, no PATs)
+✅ Repository Allowlist Enforcement (fail-closed)
+✅ Request ID Tracking (X-Request-ID)
+✅ Evidence-First Logging (append-only events)
+✅ No Mocks (all real GitHub API calls)
+✅ Acceptance Criteria Validation (required for SPEC_READY)
+
+===============================================================================
+CODE QUALITY
+===============================================================================
+
+All code review feedback addressed:
+✅ Fixed public_id generation (exclude UUID hyphens)
+✅ Added dedicated DAO methods (no raw SQL in routes)
+✅ Generic PR title format (not hardcoded "Fix:")
+✅ Use normalizeAcceptanceCriteria for JSONB handling
+✅ Improved null checks in verification script
+✅ Added SQL comments for clarity
+
+===============================================================================
+FLOW DIAGRAM
+===============================================================================
+
+                     S1: PICK ISSUE
+                          ↓
+   ┌────────────────────────────────────────┐
+   │ 1. Fetch GitHub issue (allowlist)     │
+   │ 2. Create/Update AFU9 issue record    │
+   │ 3. Create run (S1_PICK_ISSUE)         │
+   │ 4. Log step events (STARTED/SUCCEED)  │
+   └────────────────────────────────────────┘
+                          ↓
+                   S2: SPEC READY
+                          ↓
+   ┌────────────────────────────────────────┐
+   │ 1. Validate acceptance criteria       │
+   │ 2. Update spec fields                 │
+   │ 3. Create run (S2_SPEC_READY)         │
+   │ 4. Set status = SPEC_READY            │
+   │ 5. Log step events                    │
+   └────────────────────────────────────────┘
+                          ↓
+                   S3: IMPLEMENT
+                          ↓
+   ┌────────────────────────────────────────┐
+   │ 1. Create branch from base            │
+   │ 2. Generate PR with formatted body    │
+   │ 3. Link PR to issue (closes #N)      │
+   │ 4. Create run (S3_IMPLEMENT)          │
+   │ 5. Update PR tracking fields          │
+   │ 6. Log step events                    │
+   └────────────────────────────────────────┘
+                          ↓
+                    PR CREATED
+                          ↓
+   ┌────────────────────────────────────────┐
+   │ Poll checks via                        │
+   │ GET /api/afu9/s1s3/prs/[N]/checks     │
+   └────────────────────────────────────────┘
+
+===============================================================================
+VERIFICATION COMMANDS
+===============================================================================
+
+# Run verification script
+pwsh -File scripts/verify-e91-f1-s1s3.ps1 -BaseUrl http://localhost:3000
+
+# Run tests
+cd control-center
+npm test -- __tests__/lib/db/s1s3Flow.test.ts
+
+# Example S1-S3 flow
+curl "http://localhost:3000/api/afu9/github/issues?repo=owner/repo"
+curl -X POST http://localhost:3000/api/afu9/s1s3/issues/pick \
+  -d '{"repo":"owner/repo","issueNumber":42}'
+curl -X POST http://localhost:3000/api/afu9/s1s3/issues/{id}/spec \
+  -d '{"acceptanceCriteria":["AC1","AC2"]}'
+curl -X POST http://localhost:3000/api/afu9/s1s3/issues/{id}/implement
+curl "http://localhost:3000/api/afu9/s1s3/prs/{pr}/checks?repo=owner/repo"
+
+===============================================================================
+ARCHITECTURE PRINCIPLES
+===============================================================================
+
+1. Evidence First - Every action creates auditable events
+2. Fail Closed - Unauthorized → 403, auth fail → 401
+3. Deterministic - Append-only, no silent retries
+4. Idempotent - Safe to re-run S1 (upsert by repo+issue)
+5. Layered - Clean separation: Route → DAO → DB
+6. Type Safe - Full TypeScript contracts
+7. No Mocks - All real GitHub API calls
+8. Request Tracking - X-Request-ID throughout
+
+===============================================================================
+DATABASE TABLES
+===============================================================================
+
+afu9_s1s3_issues
+  - Issue records with spec and PR tracking
+  - Unique constraint on (repo_full_name, github_issue_number)
+  - Auto-generated public_id (8-char hex from UUID)
+
+s1s3_runs
+  - Run execution tracking with request IDs
+  - Types: S1_PICK_ISSUE, S2_SPEC_READY, S3_IMPLEMENT
+  - Status: CREATED → RUNNING → DONE/FAILED
+
+s1s3_run_steps
+  - Append-only event log with evidence refs
+  - Step IDs: S1, S2, S3
+  - Status: STARTED → SUCCEEDED/FAILED
+  - Evidence refs: JSONB with URLs, IDs, metadata
+
+===============================================================================
+FILE BREAKDOWN
+===============================================================================
+
+Database:
+  1 file  - 086_s1s3_flow_persistence.sql
+
+TypeScript:
+  2 files - contracts/s1s3Flow.ts, db/s1s3Flow.ts
+
+API Routes:
+  7 files - github/issues, s1s3/issues (CRUD), s1s3/prs/checks
+
+Tests:
+  1 file  - __tests__/lib/db/s1s3Flow.test.ts
+
+Docs:
+  1 file  - docs/S1S3_FLOW.md
+
+Scripts:
+  1 file  - scripts/verify-e91-f1-s1s3.ps1
+
+TOTAL: 13 files, 3,343 lines added
+
+===============================================================================
+NEXT STEPS
+===============================================================================
+
+1. Review PR and approve
+2. Run verification script against deployed environment
+3. Test with real GitHub repo (ensure it's allowlisted)
+4. Monitor step events in production
+5. Consider future enhancements:
+   - Auto-refresh PR checks on schedule
+   - Webhook integration for GitHub events
+   - Auto-merge when checks pass
+   - UI for flow visualization
+
+===============================================================================
+STATUS: ✅ COMPLETE AND READY FOR REVIEW
+===============================================================================
