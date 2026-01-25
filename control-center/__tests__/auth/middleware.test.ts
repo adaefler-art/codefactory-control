@@ -560,6 +560,8 @@ describe('Middleware Authentication Logic', () => {
       const response = await middleware(request);
       expect(response.status).toBe(200);
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-bypass')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('1');
 
       allowlistSpy.mockRestore();
       nowSpy.mockRestore();
@@ -581,9 +583,51 @@ describe('Middleware Authentication Logic', () => {
       const response = await middleware(request);
       expect(response.status).toBe(401);
       expect(response.headers.get('x-afu9-smoke-auth-used')).toBeNull();
+      expect(response.headers.get('x-afu9-smoke-bypass')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('0');
 
       allowlistSpy.mockRestore();
       nowSpy.mockRestore();
+    });
+
+    test('stage + correct key + allowlist lookup failure => 401 with allowlist error header', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+      const allowlistSpy = jest
+        .spyOn(smokeAllowlist, 'getActiveAllowlist')
+        .mockResolvedValue({ success: false, error: 'DB down' });
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(120000);
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/s1s3/issues/pick',
+        method: 'POST',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('x-afu9-smoke-bypass')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('0');
+      expect(response.headers.get('x-afu9-smoke-allowlist-error')).toBe('db_unreachable');
+
+      allowlistSpy.mockRestore();
+      nowSpy.mockRestore();
+    });
+  });
+
+  describe('Smoke-auth diagnostics bypass (staging only)', () => {
+    test('stage + correct key + GET /api/diagnostics/smoke-key/allowlist => bypass active', async () => {
+      process.env.AFU9_SMOKE_KEY = 'secret';
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/diagnostics/smoke-key/allowlist',
+        method: 'GET',
+        headers: { 'x-afu9-smoke-key': 'secret' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-afu9-smoke-bypass')).toBe('1');
+      expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('0');
     });
   });
 
