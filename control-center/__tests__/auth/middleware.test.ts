@@ -6,7 +6,7 @@
  */
 
 import * as jwtVerify from '../../lib/auth/jwt-verify';
-import * as stageEnforcement from '../../lib/auth/stage-enforcement';
+import * as stageEnforcement from '@/lib/auth/stage-enforcement';
 import { PUBLIC_ROUTES, isPublicRoute } from '../../lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from '../../src/lib/auth/public-status-endpoints';
 import * as smokeAllowlist from '../../src/lib/db/smokeKeyAllowlist';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT } from './lib/auth/jwt-verify';
-import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/auth/stage-enforcement';
+import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from '@/lib/auth/stage-enforcement';
 import { isPublicRoute } from './lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/public-status-endpoints';
 import { getEffectiveHostname } from './src/lib/http/effective-hostname';
