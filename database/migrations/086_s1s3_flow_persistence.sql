@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS afu9_s1s3_issues (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Public identifiers
+  -- Note: Extract first 9 chars (including hyphen) then remove hyphen for clean 8-char hex ID
   public_id VARCHAR(16) GENERATED ALWAYS AS (replace(substring(id::text, 1, 9), '-', '')) STORED,
   canonical_id VARCHAR(20),
   

@@ -127,7 +127,7 @@ if ($issuesList -and $issuesList.issues) {
 }
 
 # Test 4: Get Issue Detail
-if ($issueId) {
+if ($issueId -and $issueId -ne '') {
     Write-Host "`n--- Test 4: Get Issue Detail ---" -ForegroundColor Cyan
     $issueDetail = Test-Endpoint `
         -Name "GET /api/afu9/s1s3/issues/[id]" `
@@ -141,7 +141,7 @@ if ($issueId) {
 }
 
 # Test 5: Set Spec (S2)
-if ($issueId) {
+if ($issueId -and $issueId -ne '') {
     Write-Host "`n--- Test 5: Set Spec (S2) ---" -ForegroundColor Cyan
     $specResult = Test-Endpoint `
         -Name "POST /api/afu9/s1s3/issues/[id]/spec" `
@@ -167,7 +167,7 @@ if ($issueId) {
 # Test 6: Implement (S3) - Skip by default as it creates real branches/PRs
 Write-Host "`n--- Test 6: Implement (S3) ---" -ForegroundColor Cyan
 Write-Host "  ⚠ Skipped - Would create real branch/PR" -ForegroundColor Yellow
-if ($issueId) {
+if ($issueId -and $issueId -ne '') {
     Write-Host "  To test manually, run:" -ForegroundColor Gray
     Write-Host "  curl -X POST $BaseUrl/api/afu9/s1s3/issues/$issueId/implement -H 'Content-Type: application/json' -d '{\"baseBranch\":\"main\"}'" -ForegroundColor Gray
 } else {
