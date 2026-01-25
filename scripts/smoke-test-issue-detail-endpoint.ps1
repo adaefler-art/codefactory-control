@@ -15,10 +15,13 @@
 .PARAMETER ServiceToken
     Service Token für Authentication (optional, falls gesetzt)
 
+.PARAMETER Color
+    Enable ANSI color output (default: false, disabled for CI/log compatibility)
+
 .EXAMPLE
     .\smoke-test-issue-detail-endpoint.ps1
     .\smoke-test-issue-detail-endpoint.ps1 -BaseUrl "https://control-center.example.com"
-    .\smoke-test-issue-detail-endpoint.ps1 -ServiceToken "your-token-here"
+    .\smoke-test-issue-detail-endpoint.ps1 -ServiceToken "your-token-here" -Color
 #>
 
 [CmdletBinding()]
@@ -27,17 +30,28 @@ param(
     [string]$BaseUrl = "http://localhost:3000",
 
     [Parameter()]
-    [string]$ServiceToken = $null
+    [string]$ServiceToken = $null,
+
+    [Parameter()]
+    [switch]$Color = $false
 )
 
 $ErrorActionPreference = "Stop"
 
-# ANSI Color Codes
-$Green = "`e[32m"
-$Red = "`e[31m"
-$Yellow = "`e[33m"
-$Blue = "`e[34m"
-$Reset = "`e[0m"
+# ANSI Color Codes (only if -Color is enabled)
+if ($Color) {
+    $Green = "`e[32m"
+    $Red = "`e[31m"
+    $Yellow = "`e[33m"
+    $Blue = "`e[34m"
+    $Reset = "`e[0m"
+} else {
+    $Green = ""
+    $Red = ""
+    $Yellow = ""
+    $Blue = ""
+    $Reset = ""
+}
 
 function Write-TestResult {
     param(
@@ -68,7 +82,7 @@ function Invoke-ApiRequest {
     try {
         $uri = "${BaseUrl}${Endpoint}"
         
-        # Add service token if provided
+        # Add service token if provided (never log the token value)
         if ($ServiceToken) {
             $Headers["x-afu9-service-token"] = $ServiceToken
         }
@@ -87,9 +101,15 @@ function Invoke-ApiRequest {
             0 
         }
         
+        # Redact service token from error messages
+        $errorMessage = $_.Exception.Message
+        if ($ServiceToken -and $errorMessage -match [regex]::Escape($ServiceToken)) {
+            $errorMessage = $errorMessage -replace [regex]::Escape($ServiceToken), "[REDACTED]"
+        }
+        
         return @{
             Success = $false
-            Error = $_.Exception.Message
+            Error = $errorMessage
             StatusCode = $statusCode
         }
     }

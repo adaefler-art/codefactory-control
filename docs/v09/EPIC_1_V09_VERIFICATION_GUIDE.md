@@ -17,6 +17,8 @@ The new endpoint allows fetching issue details using three types of identifiers:
 scripts/smoke-test-issue-detail-endpoint.ps1
 ```
 
+## Local Development Testing
+
 ### Prerequisites
 
 1. Control Center must be running:
@@ -27,20 +29,20 @@ scripts/smoke-test-issue-detail-endpoint.ps1
 
 2. At least one issue must exist in the database
 
-### Basic Usage
+### Usage (Local)
 
 ```powershell
-# Test against local development server
+# Basic test (no colors, plain output for CI/logs)
 ./scripts/smoke-test-issue-detail-endpoint.ps1
 
-# Test against custom base URL
-./scripts/smoke-test-issue-detail-endpoint.ps1 -BaseUrl "https://control-center.example.com"
+# With color output (interactive terminal only)
+./scripts/smoke-test-issue-detail-endpoint.ps1 -Color
 
-# Test with service token authentication
-./scripts/smoke-test-issue-detail-endpoint.ps1 -ServiceToken "your-token-here"
+# Custom local URL
+./scripts/smoke-test-issue-detail-endpoint.ps1 -BaseUrl "http://localhost:3001"
 ```
 
-### Expected Output
+### Expected Output (Local, No Colors)
 
 ```
 ═══════════════════════════════════════════════════════════
@@ -75,6 +77,50 @@ Step 6: Testing 400 (invalid identifier)...
 ═══════════════════════════════════════════════════════════
 ```
 
+## Staging/Production Testing
+
+### Prerequisites
+
+1. Service token configured (never commit tokens to source)
+2. Staging/production endpoint accessible
+
+### Usage (Stage/Prod)
+
+```powershell
+# Set token securely (from environment or secure storage)
+$token = $env:AFU9_SERVICE_TOKEN  # or Get-Secret, etc.
+
+# Test staging
+./scripts/smoke-test-issue-detail-endpoint.ps1 `
+  -BaseUrl "https://stage.afu-9.com" `
+  -ServiceToken $token
+
+# Test production (use with caution)
+./scripts/smoke-test-issue-detail-endpoint.ps1 `
+  -BaseUrl "https://afu-9.com" `
+  -ServiceToken $token
+```
+
+### Security Notes (Stage/Prod)
+
+- **Never log service tokens** - Script automatically redacts tokens from error messages
+- **Use environment variables** - Don't hardcode tokens in scripts or command history
+- **Prefer secret management** - Use Azure KeyVault, AWS Secrets Manager, or similar
+- **CI/CD integration** - Tokens should be injected via pipeline secrets
+
+### CI/CD Integration
+
+```yaml
+# Example GitHub Actions workflow
+- name: Smoke Test (Staging)
+  env:
+    AFU9_SERVICE_TOKEN: ${{ secrets.AFU9_SERVICE_TOKEN_STAGING }}
+  run: |
+    pwsh scripts/smoke-test-issue-detail-endpoint.ps1 `
+      -BaseUrl "https://stage.afu-9.com" `
+      -ServiceToken $env:AFU9_SERVICE_TOKEN
+```
+
 ## Test Coverage
 
 The smoke test validates:
@@ -84,9 +130,9 @@ The smoke test validates:
 3. ✅ **canonicalId lookup** - Human-readable format (if available)
 4. ✅ **404 handling** - Non-existent issue returns 404
 5. ✅ **400 handling** - Invalid identifier format returns 400
-6. ✅ **Service token support** - Authentication header
+6. ✅ **Service token support** - Authentication header (redacted from logs)
 
-## Manual API Testing
+## Manual API Testing (Local)
 
 ### Test UUID Lookup
 
@@ -128,6 +174,35 @@ curl -X GET http://localhost:3000/api/afu9/issues/not-a-valid-id
 
 **Expected:** 400 Bad Request
 
+## Manual API Testing (Stage/Prod)
+
+### With Service Token
+
+```bash
+# Set token from environment
+TOKEN="${AFU9_SERVICE_TOKEN}"
+
+# Test UUID lookup
+curl -X GET https://stage.afu-9.com/api/afu9/issues/123e4567-e89b-12d3-a456-426614174000 \
+  -H "x-afu9-service-token: ${TOKEN}"
+```
+
+**Security:** Never log or commit the service token value.
+
+## Script Features
+
+### Color Output
+
+- **Default:** No colors (plain text for CI/CD and log files)
+- **Optional:** Use `-Color` flag for interactive terminals
+- **Reason:** ANSI escape codes break log parsers and CI output
+
+### Token Security
+
+- **Automatic redaction:** Service tokens are removed from error messages
+- **No logging:** Token values never appear in script output
+- **Header-only:** Token used only in HTTP header, not in URLs or query params
+
 ## Integration with Existing Endpoints
 
 The new endpoint complements the existing `/api/afu9/issues` endpoints:
@@ -146,14 +221,16 @@ The new endpoint complements the existing `/api/afu9/issues` endpoints:
 - ✅ 404 returned for non-existent issues
 - ✅ 400 returned for invalid identifiers
 - ✅ Service token authentication works (if configured)
-- ✅ Color-coded output displays correctly
+- ✅ No ANSI colors by default (CI/log compatible)
+- ✅ Service token never appears in output
 
 ## Notes
 
-- The script automatically fetches a test issue from the database
+- The script uses `/api/afu9/issues?limit=1` to fetch test data (no direct DB access)
 - If no issues exist, the script exits gracefully with a warning
 - canonicalId test is skipped if the test issue doesn't have one
 - All tests are idempotent and safe to run repeatedly
+- Color output is disabled by default to prevent breaking CI/CD pipelines
 
 ## Related Documentation
 
