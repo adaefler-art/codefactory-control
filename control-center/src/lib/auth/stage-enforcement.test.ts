@@ -2,7 +2,7 @@
  * Tests for stage enforcement and access control
  */
 
-import { hasStageAccess, getStageFromHostname } from '../../lib/auth/stage-enforcement';
+import { hasStageAccess, getStageFromHostname } from './stage-enforcement';
 
 describe('Stage Enforcement', () => {
   describe('hasStageAccess', () => {

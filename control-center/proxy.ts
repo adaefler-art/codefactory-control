@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT } from './lib/auth/jwt-verify';
-import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from './lib/auth/stage-enforcement';
+import { getStageFromHostname, hasStageAccess, getGroupsClaimKey } from '@/lib/auth/stage-enforcement';
 import { isPublicRoute } from './lib/auth/middleware-public-routes';
 import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/public-status-endpoints';
 import { getEffectiveHostname } from './src/lib/http/effective-hostname';
@@ -33,6 +33,11 @@ interface AllowlistCache {
   timestamp: number;
 }
 
+interface AllowlistFetchResult {
+  data: SmokeKeyAllowlistEntry[];
+  errorCode: string | null;
+}
+
 let allowlistCache: AllowlistCache | null = null;
 const ALLOWLIST_CACHE_TTL_MS = 30000; // 30 seconds
 
@@ -42,12 +47,12 @@ const ALLOWLIST_CACHE_TTL_MS = 30000; // 30 seconds
  * Cache TTL: 30 seconds (meets requirement for changes to take effect within 30s)
  * Fail-closed: on error, returns empty array (denies access)
  */
-async function getCachedAllowlist(): Promise<SmokeKeyAllowlistEntry[]> {
+async function getCachedAllowlist(): Promise<AllowlistFetchResult> {
   const now = Date.now();
   
   // Check cache validity
   if (allowlistCache && (now - allowlistCache.timestamp) < ALLOWLIST_CACHE_TTL_MS) {
-    return allowlistCache.data;
+    return { data: allowlistCache.data, errorCode: null };
   }
   
   // Fetch fresh data
@@ -59,16 +64,16 @@ async function getCachedAllowlist(): Promise<SmokeKeyAllowlistEntry[]> {
         data: result.data,
         timestamp: now,
       };
-      return result.data;
+      return { data: result.data, errorCode: null };
     } else {
       console.error('[MIDDLEWARE] Failed to fetch allowlist:', result.error);
       // Fail-closed: return empty array
-      return [];
+      return { data: [], errorCode: 'db_unreachable' };
     }
   } catch (error) {
     console.error('[MIDDLEWARE] Error fetching allowlist:', error);
     // Fail-closed: return empty array
-    return [];
+    return { data: [], errorCode: 'db_unreachable' };
   }
 }
 
@@ -175,6 +180,26 @@ export async function middleware(request: NextRequest) {
   const { pathname: rawPathname } = request.nextUrl;
   const hostname = getEffectiveHostnameFromRequest(request);
   const pathname = rawPathname === '/' ? rawPathname : rawPathname.replace(/\/+$/, '');
+  const isApiRoute = pathname.startsWith('/api/');
+  const smokeHeaderRaw = request.headers.get('x-afu9-smoke-key');
+  const smokeHeaderPresent = Boolean(smokeHeaderRaw && smokeHeaderRaw.trim());
+  const smokeKeyMatch = smokeHeaderPresent ? isSmokeBypass(request) : false;
+  const isSmokeDiagnosticsRoute =
+    pathname === '/api/diagnostics/smoke-key/allowlist' ||
+    pathname === '/api/diagnostics/smoke-key/allowlist/seed';
+  let smokeAllowlisted = false;
+  let smokeBypassUsed = false;
+  let smokeAllowlistError: string | null = null;
+
+  const attachSmokeBypassHeaders = (response: NextResponse): NextResponse => {
+    if (!smokeHeaderPresent || !isApiRoute) return response;
+    response.headers.set('x-afu9-smoke-bypass', smokeBypassUsed ? '1' : '0');
+    response.headers.set('x-afu9-smoke-allowlisted', smokeAllowlisted ? '1' : '0');
+    if (smokeAllowlistError) {
+      response.headers.set('x-afu9-smoke-allowlist-error', smokeAllowlistError);
+    }
+    return response;
+  };
 
   const nextWithRequestId = () => {
     const requestHeaders = new Headers(request.headers);
@@ -193,10 +218,12 @@ export async function middleware(request: NextRequest) {
           { status: 403 }
         );
         attachRequestId(response, requestId);
+        attachSmokeBypassHeaders(response);
         logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'service_token_rejected' });
         return response;
       }
       const response = nextWithRequestId();
+      attachSmokeBypassHeaders(response);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'service_token_allow' });
       return response;
     }
@@ -211,12 +238,32 @@ export async function middleware(request: NextRequest) {
   const detectedStage = getStageFromHostname(hostname);
   const isStagingHost = detectedStage === 'staging' || hostname.toLowerCase().startsWith('stage.');
 
-  if (isStagingHost && isSmokeBypass(request)) {
-    // Fetch allowlist from database (cached for 30s)
-    const allowlist = await getCachedAllowlist();
-    const allowlisted = isRouteAllowed(pathname, request.method, allowlist);
+  if (smokeHeaderPresent && smokeKeyMatch && isSmokeDiagnosticsRoute && isStagingHost) {
+    smokeBypassUsed = true;
 
-    if (allowlisted) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.delete('x-afu9-sub');
+    requestHeaders.delete('x-afu9-stage');
+    requestHeaders.delete('x-afu9-groups');
+    requestHeaders.delete('x-afu9-auth-debug');
+    requestHeaders.delete('x-afu9-auth-via');
+    requestHeaders.set('x-request-id', requestId);
+
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('x-request-id', requestId);
+    response.headers.set('x-afu9-smoke-auth-used', '1');
+    attachSmokeBypassHeaders(response);
+    return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
+  }
+
+  if (isStagingHost && smokeKeyMatch) {
+    // Fetch allowlist from database (cached for 30s)
+    const allowlistResult = await getCachedAllowlist();
+    smokeAllowlistError = allowlistResult.errorCode;
+    smokeAllowlisted = isRouteAllowed(pathname, request.method, allowlistResult.data);
+
+    if (smokeAllowlisted) {
+      smokeBypassUsed = true;
       const smokeSubRaw = request.headers.get('x-afu9-sub');
       const smokeSub = (smokeSubRaw || 'smoke').trim();
 
@@ -233,6 +280,7 @@ export async function middleware(request: NextRequest) {
       const response = NextResponse.next({ request: { headers: requestHeaders } });
       response.headers.set('x-request-id', requestId);
       response.headers.set('x-afu9-smoke-auth-used', '1');
+      attachSmokeBypassHeaders(response);
       return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
     }
   }
@@ -244,11 +292,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isPublicRoute(pathname)) {
-    return nextWithRequestId();
+    const response = nextWithRequestId();
+    attachSmokeBypassHeaders(response);
+    return response;
   }
-
-  // Determine if this is an API route (for differentiated error handling)
-  const isApiRoute = pathname.startsWith('/api/');
 
   // Extract JWT tokens from cookies
   const idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
@@ -283,21 +330,11 @@ export async function middleware(request: NextRequest) {
       });
     }
 
-    if (isApiRoute) {
-      const response = NextResponse.json(
-        { error: 'Unauthorized', message: 'Authentication required (refresh token present)' },
-        { status: 401 }
-      );
-      attachRequestId(response, requestId);
-      maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
-      logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_refresh_only' });
-      return response;
-    }
-
     const response = redirectToRefresh();
     logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_refresh_redirect' });
     return response;
   }
+
 
   // Fail closed: no auth material present
   if (!idToken && !accessToken) {
@@ -322,6 +359,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
+      attachSmokeBypassHeaders(response);
       maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_missing' });
       return response;
@@ -397,6 +435,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
+      attachSmokeBypassHeaders(response);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_invalid_or_expired' });
       return response;
     } else {
@@ -461,6 +500,7 @@ export async function middleware(request: NextRequest) {
         { status: 403 }
       );
       attachRequestId(response, requestId);
+      attachSmokeBypassHeaders(response);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'stage_access_denied' });
       return response;
     } else {
@@ -497,6 +537,7 @@ export async function middleware(request: NextRequest) {
   
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('x-request-id', requestId);
+  attachSmokeBypassHeaders(response);
 
   return response;
 }

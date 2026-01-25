@@ -65,6 +65,20 @@ export interface RemoveRouteResult {
   error?: string;
 }
 
+export interface SmokeKeySeedEntry {
+  route_pattern: string;
+  method: string;
+  is_regex: boolean;
+  description: string | null;
+}
+
+export interface SeedAllowlistResult {
+  success: boolean;
+  inserted: number;
+  alreadyPresent: number;
+  error?: string;
+}
+
 // ========================================
 // Constants
 // ========================================
@@ -367,7 +381,8 @@ export function isRouteAllowed(
 
     for (const entry of allowlist) {
       // Check method match (wildcard or exact)
-      const methodMatches = entry.method === '*' || entry.method === normalizedMethod;
+      const entryMethod = (entry.method || '*').toUpperCase();
+      const methodMatches = entryMethod === '*' || entryMethod === normalizedMethod;
       if (!methodMatches) continue;
 
       // Check route match
@@ -433,6 +448,86 @@ export async function getAllowlistStats(
       totalCount: 0,
       limitRemaining: 0,
       maxLimit: MAX_ACTIVE_ROUTES,
+    };
+  }
+}
+
+// ========================================
+// Seed Allowlist Entries
+// ========================================
+
+/**
+ * Idempotently seed allowlist entries (insert if not present).
+ * 
+ * Notes:
+ * - Uses removed_at IS NULL to define active entries
+ * - Fail-closed on any DB error
+ */
+export async function seedSmokeKeyAllowlistEntries(
+  entries: SmokeKeySeedEntry[],
+  addedBy: string,
+  pool?: Pool
+): Promise<SeedAllowlistResult> {
+  const db = pool || getPool();
+
+  if (!entries || entries.length === 0) {
+    return { success: true, inserted: 0, alreadyPresent: 0 };
+  }
+
+  try {
+    const valuesSql: string[] = [];
+    const params: Array<string | boolean | null> = [];
+
+    entries.forEach((entry, index) => {
+      const base = index * 4;
+      valuesSql.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+      params.push(entry.route_pattern, entry.method, entry.is_regex, entry.description ?? null);
+    });
+
+    const addedByParam = params.length + 1;
+    params.push(addedBy);
+
+    const query = `
+      WITH desired(route_pattern, method, is_regex, description) AS (
+        VALUES ${valuesSql.join(', ')}
+      ),
+      existing AS (
+        SELECT d.route_pattern, d.method
+        FROM desired d
+        JOIN smoke_key_allowlist s
+          ON s.route_pattern = d.route_pattern
+         AND s.method = d.method
+         AND s.removed_at IS NULL
+      ),
+      inserted AS (
+        INSERT INTO smoke_key_allowlist (route_pattern, method, is_regex, description, added_by)
+        SELECT d.route_pattern, d.method, d.is_regex, d.description, $${addedByParam}
+        FROM desired d
+        LEFT JOIN existing e
+          ON e.route_pattern = d.route_pattern AND e.method = d.method
+        WHERE e.route_pattern IS NULL
+        RETURNING route_pattern, method
+      )
+      SELECT
+        (SELECT COUNT(*)::int FROM inserted) AS inserted,
+        (SELECT COUNT(*)::int FROM existing) AS already_present;
+    `;
+
+    const result = await db.query<{ inserted: number; already_present: number }>(query, params);
+    const row = result.rows[0] || { inserted: 0, already_present: 0 };
+
+    return {
+      success: true,
+      inserted: Number(row.inserted) || 0,
+      alreadyPresent: Number(row.already_present) || 0,
+    };
+  } catch (error) {
+    console.error('[DB] Failed to seed smoke key allowlist entries:', error);
+    return {
+      success: false,
+      inserted: 0,
+      alreadyPresent: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
