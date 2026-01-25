@@ -30,7 +30,7 @@ import {
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
-  updateS1S3IssueStatus,
+  updateS1S3IssueSpec,
 } from '@/lib/db/s1s3Flow';
 import {
   S1S3IssueStatus,
@@ -134,36 +134,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     // Update issue with spec data
-    const updateResult = await pool.query(
-      `UPDATE afu9_s1s3_issues
-       SET problem = $1,
-           scope = $2,
-           acceptance_criteria = $3,
-           notes = $4,
-           status = $5,
-           spec_ready_at = NOW(),
-           updated_at = NOW()
-       WHERE id = $6
-       RETURNING *`,
-      [
-        problem?.trim() || null,
-        scope?.trim() || null,
-        JSON.stringify(acceptanceCriteria),
-        notes?.trim() || null,
-        S1S3IssueStatus.SPEC_READY,
-        issue.id,
-      ]
-    );
+    const updateResult = await updateS1S3IssueSpec(pool, issue.id, {
+      problem: problem?.trim() || null,
+      scope: scope?.trim() || null,
+      acceptance_criteria: acceptanceCriteria,
+      notes: notes?.trim() || null,
+    });
 
-    if (updateResult.rows.length === 0) {
+    if (!updateResult.success || !updateResult.data) {
       return errorResponse('Failed to update issue', {
         status: 500,
         requestId,
-        details: 'No rows updated',
+        details: updateResult.error,
       });
     }
 
-    const updatedIssue = updateResult.rows[0];
+    const updatedIssue = updateResult.data;
 
     console.log('[S2] Spec persisted:', {
       requestId,

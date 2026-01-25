@@ -275,6 +275,95 @@ export async function updateS1S3IssueStatus(
   }
 }
 
+/**
+ * Update S1-S3 issue spec fields
+ */
+export async function updateS1S3IssueSpec(
+  pool: Pool,
+  id: string,
+  spec: {
+    problem?: string | null;
+    scope?: string | null;
+    acceptance_criteria?: string[];
+    notes?: string | null;
+  }
+): Promise<OperationResult<S1S3IssueRow>> {
+  try {
+    const result = await pool.query<S1S3IssueRow>(
+      `UPDATE afu9_s1s3_issues
+       SET problem = $1,
+           scope = $2,
+           acceptance_criteria = $3,
+           notes = $4,
+           status = $5,
+           spec_ready_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [
+        spec.problem?.trim() || null,
+        spec.scope?.trim() || null,
+        JSON.stringify(spec.acceptance_criteria || []),
+        spec.notes?.trim() || null,
+        S1S3IssueStatus.SPEC_READY,
+        id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return { success: false, error: 'Issue not found' };
+    }
+
+    return { success: true, data: result.rows[0] };
+  } catch (error) {
+    console.error('[S1S3 DAO] Update issue spec failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
+ * Update S1-S3 issue PR fields
+ */
+export async function updateS1S3IssuePR(
+  pool: Pool,
+  id: string,
+  prData: {
+    pr_number: number;
+    pr_url: string;
+    branch_name: string;
+  }
+): Promise<OperationResult<S1S3IssueRow>> {
+  try {
+    const result = await pool.query<S1S3IssueRow>(
+      `UPDATE afu9_s1s3_issues
+       SET pr_number = $1,
+           pr_url = $2,
+           branch_name = $3,
+           status = $4,
+           pr_created_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [prData.pr_number, prData.pr_url, prData.branch_name, S1S3IssueStatus.PR_CREATED, id]
+    );
+
+    if (result.rows.length === 0) {
+      return { success: false, error: 'Issue not found' };
+    }
+
+    return { success: true, data: result.rows[0] };
+  } catch (error) {
+    console.error('[S1S3 DAO] Update issue PR failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
 // ========================================
 // Runs
 // ========================================

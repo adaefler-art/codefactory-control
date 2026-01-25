@@ -32,6 +32,7 @@ import {
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
+  updateS1S3IssuePR,
 } from '@/lib/db/s1s3Flow';
 import {
   S1S3IssueStatus,
@@ -173,7 +174,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
 
       // Generate PR title and body
-      const finalPrTitle = prTitle || `Fix: ${issue.github_issue_number} - Implementation`;
+      const finalPrTitle = prTitle || `Issue #${issue.github_issue_number}: Implementation`;
+      
+      // Import normalization utility for acceptance criteria
+      const { normalizeAcceptanceCriteria } = await import('@/lib/contracts/s1s3Flow');
+      const acceptanceCriteria = normalizeAcceptanceCriteria(issue.acceptance_criteria);
+      
       const finalPrBody =
         prBody ||
         `
@@ -186,8 +192,8 @@ ${issue.scope ? `### Scope\n${issue.scope}\n` : ''}
 
 ### Acceptance Criteria
 ${
-  Array.isArray(issue.acceptance_criteria)
-    ? issue.acceptance_criteria.map((ac, i) => `${i + 1}. ${ac}`).join('\n')
+  acceptanceCriteria.length > 0
+    ? acceptanceCriteria.map((ac, i) => `${i + 1}. ${ac}`).join('\n')
     : 'See issue description'
 }
 
@@ -214,28 +220,21 @@ Closes #${issue.github_issue_number}
       });
 
       // Update issue with PR info
-      const updateResult = await pool.query(
-        `UPDATE afu9_s1s3_issues
-         SET pr_number = $1,
-             pr_url = $2,
-             branch_name = $3,
-             status = $4,
-             pr_created_at = NOW(),
-             updated_at = NOW()
-         WHERE id = $5
-         RETURNING *`,
-        [pr.number, pr.html_url, branchName, S1S3IssueStatus.PR_CREATED, issue.id]
-      );
+      const updateResult = await updateS1S3IssuePR(pool, issue.id, {
+        pr_number: pr.number,
+        pr_url: pr.html_url,
+        branch_name: branchName,
+      });
 
-      if (updateResult.rows.length === 0) {
+      if (!updateResult.success || !updateResult.data) {
         return errorResponse('Failed to update issue', {
           status: 500,
           requestId,
-          details: 'No rows updated',
+          details: updateResult.error,
         });
       }
 
-      const updatedIssue = updateResult.rows[0];
+      const updatedIssue = updateResult.data;
 
       // Create step event - SUCCEEDED
       const stepResult = await createS1S3RunStep(pool, {

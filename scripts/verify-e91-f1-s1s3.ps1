@@ -167,8 +167,12 @@ if ($issueId) {
 # Test 6: Implement (S3) - Skip by default as it creates real branches/PRs
 Write-Host "`n--- Test 6: Implement (S3) ---" -ForegroundColor Cyan
 Write-Host "  ⚠ Skipped - Would create real branch/PR" -ForegroundColor Yellow
-Write-Host "  To test manually, run:" -ForegroundColor Gray
-Write-Host "  curl -X POST $BaseUrl/api/afu9/s1s3/issues/$issueId/implement -H 'Content-Type: application/json' -d '{\"baseBranch\":\"main\"}'" -ForegroundColor Gray
+if ($issueId) {
+    Write-Host "  To test manually, run:" -ForegroundColor Gray
+    Write-Host "  curl -X POST $BaseUrl/api/afu9/s1s3/issues/$issueId/implement -H 'Content-Type: application/json' -d '{\"baseBranch\":\"main\"}'" -ForegroundColor Gray
+} else {
+    Write-Host "  (Issue ID not available from previous steps)" -ForegroundColor Gray
+}
 
 # Test 7: Database Schema Verification
 Write-Host "`n--- Test 7: Database Schema Verification ---" -ForegroundColor Cyan
