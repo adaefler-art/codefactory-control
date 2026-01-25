@@ -101,10 +101,21 @@ function Invoke-ApiRequest {
             0 
         }
         
-        # Redact service token from error messages
+        # Redact service token from error messages (all occurrences)
         $errorMessage = $_.Exception.Message
-        if ($ServiceToken -and $errorMessage -match [regex]::Escape($ServiceToken)) {
-            $errorMessage = $errorMessage -replace [regex]::Escape($ServiceToken), "[REDACTED]"
+        if ($ServiceToken) {
+            $escapedToken = [regex]::Escape($ServiceToken)
+            # Replace all occurrences globally
+            $errorMessage = $errorMessage -replace $escapedToken, "[REDACTED]"
+            
+            # Also check inner exception if present
+            if ($_.Exception.InnerException) {
+                $innerMsg = $_.Exception.InnerException.Message
+                $innerMsg = $innerMsg -replace $escapedToken, "[REDACTED]"
+                if ($innerMsg -ne $_.Exception.InnerException.Message) {
+                    $errorMessage += " (Inner: $innerMsg)"
+                }
+            }
         }
         
         return @{
