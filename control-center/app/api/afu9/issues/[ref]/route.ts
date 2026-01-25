@@ -56,13 +56,14 @@ export async function GET(
     // Try UUID/publicId lookup first (fast path)
     const result = await fetchIssueRowByIdentifier(pool, ref);
 
-    // Invalid format → 400
+    // Invalid UUID/publicId format → Try canonicalId fallback
+    // fetchIssueRowByIdentifier returns 400 when ref doesn't match UUID or 8-hex pattern
+    // In this case, try canonicalId lookup as fallback (e.g., "I811", "E81.1")
     if (!result.ok && result.status === 400) {
-      // Fallback: Try canonicalId lookup (e.g., "I811", "E81.1")
-      // This handles cases where ref is not UUID/publicId but a canonicalId
       const canonicalResult = await getAfu9IssueByCanonicalId(pool, ref);
 
       if (!canonicalResult.success) {
+        // All lookup methods failed - return 400
         return errorResponse('Invalid issue identifier format', {
           status: 400,
           requestId,
