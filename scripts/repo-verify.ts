@@ -162,6 +162,63 @@ interface ValidationResult {
 }
 
 // ============================================================================
+// ECS Resource Sanity Check (warn only)
+// ============================================================================
+
+function checkEcsResourceSanity(): ValidationResult {
+  console.log('🔍 Running ECS Resource Sanity Check...');
+
+  const ecsStackPath = path.join(REPO_ROOT, 'lib', 'afu9-ecs-stack.ts');
+  if (!fs.existsSync(ecsStackPath)) {
+    console.log('   ⚠️  ECS Resource Sanity Check SKIPPED (afu9-ecs-stack.ts not found)');
+    return { passed: true, errors: [] };
+  }
+
+  const content = fs.readFileSync(ecsStackPath, 'utf-8');
+
+  const readNumber = (name: string): number | null => {
+    const match = content.match(new RegExp(`const\\s+${name}\\s*=\\s*(\\d+)`, 'm'));
+    return match ? Number(match[1]) : null;
+  };
+
+  const defaultTaskMemory = readNumber('DEFAULT_TASK_MEMORY_MIB');
+  const controlCenterReservation = readNumber('CONTROL_CENTER_MEMORY_RESERVATION_MIB');
+  const mcpReservation = readNumber('MCP_MEMORY_RESERVATION_MIB');
+  const mcpRunnerReservation = readNumber('MCP_RUNNER_MEMORY_RESERVATION_MIB');
+
+  if (
+    defaultTaskMemory === null ||
+    controlCenterReservation === null ||
+    mcpReservation === null ||
+    mcpRunnerReservation === null
+  ) {
+    return {
+      passed: true,
+      errors: [
+        `\n⚠️  ECS resource sanity check skipped: unable to parse memory constants in lib/afu9-ecs-stack.ts.\n` +
+          `   Ensure DEFAULT_TASK_MEMORY_MIB and container reservation constants are defined.\n`,
+      ],
+    };
+  }
+
+  const totalReservation = controlCenterReservation + mcpReservation * 3 + mcpRunnerReservation;
+
+  if (defaultTaskMemory < totalReservation) {
+    return {
+      passed: true,
+      errors: [
+        `\n⚠️  ECS resource sanity warning:\n` +
+          `   DEFAULT_TASK_MEMORY_MIB (${defaultTaskMemory} MiB) is below total container reservations (${totalReservation} MiB).\n` +
+          `   Remedy: increase DEFAULT_TASK_MEMORY_MIB or lower reservation values.\n`,
+      ],
+    };
+  }
+
+  console.log('   ✅ ECS Resource Sanity Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
 // Deploy Workflow Invariants (SMOKE + RUNNER)
 // ============================================================================
 
@@ -1442,6 +1499,7 @@ async function main() {
     checkEmptyFolders(),
     checkUnreferencedRoutes(),
     checkDeployEcsWorkflowInvariants(),
+    checkEcsResourceSanity(),
     checkMixedScope(),
     checkIssueSyncMvp(),       // AFU-9 Issue Sync MVP
     checkStateModelV1(),       // I5: State Model v1 Guardrails
