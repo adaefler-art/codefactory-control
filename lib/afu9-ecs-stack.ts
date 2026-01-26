@@ -820,6 +820,7 @@ export class Afu9EcsStack extends cdk.Stack {
         deployEnvLower === 'staging' ||
         environmentLower === 'stage' ||
         serviceNameLower.endsWith('-staging');
+      const mcpEssential = !isStagingLike;
       const shouldInjectSmokeKey = !!smokeKeySecret && !isProdLike && isStagingLike;
       const shouldInjectServiceReadToken = !!serviceReadTokenSecret && !isProdLike && isStagingLike;
       const cc = td.addContainer('control-center', {
@@ -929,7 +930,7 @@ export class Afu9EcsStack extends cdk.Stack {
         secrets: {
           GITHUB_TOKEN: ecs.Secret.fromSecretsManager(githubSecret, 'token'),
         },
-        essential: true,
+        essential: mcpEssential,
         healthCheck: {
           command: [
             'CMD-SHELL',
@@ -961,7 +962,7 @@ export class Afu9EcsStack extends cdk.Stack {
           PORT: '3002',
           AWS_REGION: cdk.Stack.of(this).region,
         },
-        essential: true,
+        essential: mcpEssential,
         healthCheck: {
           command: [
             'CMD-SHELL',
@@ -993,7 +994,7 @@ export class Afu9EcsStack extends cdk.Stack {
           PORT: '3003',
           AWS_REGION: cdk.Stack.of(this).region,
         },
-        essential: true,
+        essential: mcpEssential,
         healthCheck: {
           command: [
             'CMD-SHELL',
@@ -1078,7 +1079,12 @@ export class Afu9EcsStack extends cdk.Stack {
       enableExecuteCommand: true,
     });
 
-    this.service.attachToApplicationTargetGroup(targetGroup);
+    targetGroup.addTarget(
+      this.service.loadBalancerTarget({
+        containerName: 'control-center',
+        containerPort: 3000,
+      })
+    );
 
     const cfnService = this.service.node.defaultChild as ecs.CfnService;
     cfnService.deploymentConfiguration = {
@@ -1121,7 +1127,12 @@ export class Afu9EcsStack extends cdk.Stack {
         enableExecuteCommand: true,
       });
 
-      this.stageService.attachToApplicationTargetGroup(props.stageTargetGroup);
+      props.stageTargetGroup.addTarget(
+        this.stageService.loadBalancerTarget({
+          containerName: 'control-center',
+          containerPort: 3000,
+        })
+      );
 
       const cfnStageService = this.stageService.node.defaultChild as ecs.CfnService;
       cfnStageService.deploymentConfiguration = {
