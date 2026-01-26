@@ -5,6 +5,8 @@ declare global {
   var __afu9GithubEventsConsumerStarted: boolean | undefined;
   // eslint-disable-next-line no-var
   var __afu9ProcessHandlersRegistered: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __afu9StartupLogged: boolean | undefined;
 }
 
 export async function register(): Promise<void> {
@@ -31,6 +33,11 @@ export async function register(): Promise<void> {
         stack: error?.stack,
       });
     });
+  }
+
+  if (!globalThis.__afu9StartupLogged) {
+    globalThis.__afu9StartupLogged = true;
+    console.log('listening on port 3000');
   }
 
   if (globalThis.__afu9GithubEventsConsumerStarted) return;
