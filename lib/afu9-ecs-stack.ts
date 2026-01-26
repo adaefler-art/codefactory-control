@@ -18,6 +18,16 @@ export const ENVIRONMENT = {
   LEGACY: 'legacy', // For backward compatibility with single-environment deployments
 } as const;
 
+const DEFAULT_TASK_CPU = 2048;
+const DEFAULT_TASK_MEMORY_MIB = 8192;
+const CONTROL_CENTER_MEMORY_RESERVATION_MIB = 3072;
+const MCP_MEMORY_RESERVATION_MIB = 512;
+const MCP_RUNNER_MEMORY_RESERVATION_MIB = 512;
+const TOTAL_CONTAINER_MEMORY_RESERVATION_MIB =
+  CONTROL_CENTER_MEMORY_RESERVATION_MIB +
+  MCP_MEMORY_RESERVATION_MIB * 3 +
+  MCP_RUNNER_MEMORY_RESERVATION_MIB;
+
 export type Environment = typeof ENVIRONMENT[keyof typeof ENVIRONMENT];
 
 function normalizeEnvironment(value: string): Environment {
@@ -74,7 +84,7 @@ export interface Afu9EcsConfig {
   
   /**
    * Memory allocation for tasks (in MiB)
-   * @default 4096 (4 GB)
+   * @default 8192 (8 GB)
    */
   memoryLimitMiB: number;
 }
@@ -318,8 +328,8 @@ export class Afu9EcsStack extends cdk.Stack {
       targetGroup,
       imageTag,
       desiredCount,
-      cpu = 2048,
-      memoryLimitMiB = 4096,
+      cpu = DEFAULT_TASK_CPU,
+      memoryLimitMiB = DEFAULT_TASK_MEMORY_MIB,
     } = props;
 
     const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName, createStagingService } = resolveEcsConfig(this, props);
@@ -351,6 +361,13 @@ export class Afu9EcsStack extends cdk.Stack {
     console.log(`  Desired Count: ${envDesiredCount}`);
     console.log(`  CPU: ${cpu}, Memory: ${memoryLimitMiB}`);
     console.log(`  Create Staging Service: ${createStagingService && !!props.stageTargetGroup}`);
+
+    if (memoryLimitMiB < TOTAL_CONTAINER_MEMORY_RESERVATION_MIB) {
+      throw new Error(
+        `ECS task memory (${memoryLimitMiB} MiB) is below container reservations (${TOTAL_CONTAINER_MEMORY_RESERVATION_MIB} MiB). ` +
+        `Increase task memory or lower container reservations.`
+      );
+    }
 
     // ========================================
     // ECR Repositories (import existing)
@@ -826,6 +843,7 @@ export class Afu9EcsStack extends cdk.Stack {
       const cc = td.addContainer('control-center', {
         image: ecs.ContainerImage.fromEcrRepository(this.controlCenterRepo, tag),
         containerName: 'control-center',
+        memoryReservationMiB: CONTROL_CENTER_MEMORY_RESERVATION_MIB,
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: 'control-center',
           logGroup: controlCenterLogGroup,
@@ -918,6 +936,7 @@ export class Afu9EcsStack extends cdk.Stack {
       const gh = td.addContainer('mcp-github', {
         image: ecs.ContainerImage.fromEcrRepository(this.mcpGithubRepo, tag),
         containerName: 'mcp-github',
+        memoryReservationMiB: MCP_MEMORY_RESERVATION_MIB,
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: 'mcp-github',
           logGroup: mcpGithubLogGroup,
@@ -952,6 +971,7 @@ export class Afu9EcsStack extends cdk.Stack {
       const dp = td.addContainer('mcp-deploy', {
         image: ecs.ContainerImage.fromEcrRepository(this.mcpDeployRepo, tag),
         containerName: 'mcp-deploy',
+        memoryReservationMiB: MCP_MEMORY_RESERVATION_MIB,
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: 'mcp-deploy',
           logGroup: mcpDeployLogGroup,
@@ -984,6 +1004,7 @@ export class Afu9EcsStack extends cdk.Stack {
       const ob = td.addContainer('mcp-observability', {
         image: ecs.ContainerImage.fromEcrRepository(this.mcpObservabilityRepo, tag),
         containerName: 'mcp-observability',
+        memoryReservationMiB: MCP_MEMORY_RESERVATION_MIB,
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: 'mcp-observability',
           logGroup: mcpObservabilityLogGroup,
@@ -1016,6 +1037,7 @@ export class Afu9EcsStack extends cdk.Stack {
       const rn = td.addContainer('mcp-runner', {
         image: ecs.ContainerImage.fromEcrRepository(this.mcpRunnerRepo, tag),
         containerName: 'mcp-runner',
+        memoryReservationMiB: MCP_RUNNER_MEMORY_RESERVATION_MIB,
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: 'mcp-runner',
           logGroup: mcpRunnerLogGroup,
