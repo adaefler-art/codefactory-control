@@ -160,7 +160,7 @@ if (multiEnvEnabled) {
     imageTag: 'stage-latest',
     desiredCount: 1,
     cpu: 2048,
-    memoryLimitMiB: 4096,
+    memoryLimitMiB: 8192,
   });
 
   // ECS Stack for Prod Environment
@@ -177,7 +177,7 @@ if (multiEnvEnabled) {
     // Low-Cost Pause Mode: Set desiredCount=0 when prodPaused=true
     desiredCount: prodPausedFlag ? 0 : 2,
     cpu: 2048,
-    memoryLimitMiB: 4096,
+    memoryLimitMiB: 8192,
   });
 
   // Routing Stack (depends on DNS and both ECS stacks)
