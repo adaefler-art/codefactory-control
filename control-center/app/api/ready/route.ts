@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
@@ -72,6 +72,46 @@ function getRequiredDependencies(): string[] {
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   const buildInfo = getBuildInfo();
+  const missing: string[] = [];
+  const invalid: string[] = [];
+
+  const requiredStage = process.env.AFU9_STAGE;
+  const serviceReadToken = process.env.SERVICE_READ_TOKEN;
+  const intentEnabled = process.env.AFU9_INTENT_ENABLED === 'true';
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+
+  if (!requiredStage || !requiredStage.trim()) {
+    missing.push('AFU9_STAGE');
+  } else {
+    const normalizedStage = requiredStage.trim().toLowerCase();
+    const allowedStages = ['staging', 'stage', 'prod', 'production', 'dev', 'development'];
+    if (!allowedStages.includes(normalizedStage)) {
+      invalid.push('AFU9_STAGE');
+    }
+  }
+
+  if (!serviceReadToken || !serviceReadToken.trim()) {
+    missing.push('SERVICE_READ_TOKEN');
+  }
+
+  if (intentEnabled) {
+    if (!deepseekKey || !deepseekKey.trim()) {
+      missing.push('DEEPSEEK_API_KEY');
+    }
+  }
+
+  if (missing.length > 0 || invalid.length > 0) {
+    return jsonResponse(
+      {
+        ok: false,
+        service: 'afu9-control-center',
+        timestamp: new Date().toISOString(),
+        missing,
+        invalid,
+      },
+      { status: 503, requestId }
+    );
+  }
   
   try {
     const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {

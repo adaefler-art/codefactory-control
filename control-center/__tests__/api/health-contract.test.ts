@@ -31,7 +31,7 @@ describe('Health Endpoint Contract', () => {
     expect(response.status).toBe(200);
     
     const body = await response.json();
-    expect(body.status).toBe('ok');
+    expect(body.ok).toBe(true);
     expect(body.service).toBe('afu9-control-center');
     expect(body.version).toBeDefined();
     expect(body.timestamp).toBeDefined();
@@ -60,7 +60,7 @@ describe('Health Endpoint Contract', () => {
     const body = await response.json();
     
     // Verify required fields
-    expect(body).toHaveProperty('status');
+    expect(body).toHaveProperty('ok');
     expect(body).toHaveProperty('service');
     expect(body).toHaveProperty('version');
     expect(body).toHaveProperty('timestamp');
@@ -82,7 +82,7 @@ describe('Health Endpoint Contract', () => {
     
     // Status field should always be 'ok' for deployment safety
     const body = await response.json();
-    expect(body.status).toBe('ok');
+    expect(body.ok).toBe(true);
     
     // This guarantee ensures:
     // 1. ECS health checks don't kill healthy containers
@@ -98,6 +98,8 @@ describe('Ready Endpoint Contract', () => {
   beforeEach(() => {
     // Reset environment to clean state before each test
     process.env = { ...originalEnv };
+    process.env.AFU9_STAGE = 'staging';
+    process.env.SERVICE_READ_TOKEN = 'test-service-token';
     delete process.env.DATABASE_ENABLED;
     delete process.env.DATABASE_HOST;
     delete process.env.DATABASE_PORT;
@@ -142,6 +144,20 @@ describe('Ready Endpoint Contract', () => {
     expect(response.status).toBe(200);
     expect(body.ready).toBe(true);
     expect(body.checks.database.status).toBe('not_configured');
+  });
+
+  test('/api/ready returns 503 when required env is missing', async () => {
+    delete process.env.AFU9_STAGE;
+    delete process.env.SERVICE_READ_TOKEN;
+
+    const request = createMockRequest();
+    const response = await readyHandler(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body.ok).toBe(false);
+    expect(body.missing).toContain('AFU9_STAGE');
+    expect(body.missing).toContain('SERVICE_READ_TOKEN');
   });
 
   test('/api/ready returns 503 when DATABASE_ENABLED=true but secrets missing', async () => {

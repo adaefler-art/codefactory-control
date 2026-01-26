@@ -28,6 +28,9 @@ describe('/api/ready with ENABLE_PROD=false (Issue 3)', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     jest.clearAllMocks();
+
+    process.env.AFU9_STAGE = 'staging';
+    process.env.SERVICE_READ_TOKEN = 'test-service-token';
     
     // Default mocks
     mockGetProdDisabledReason.mockReturnValue('Production environment in cost-reduction mode');
