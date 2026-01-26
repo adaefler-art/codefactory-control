@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 import { getBuildInfo } from '@/lib/build/build-info';
 
@@ -25,41 +25,46 @@ import { getBuildInfo } from '@/lib/build/build-info';
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
-  
+  const startedAt = Date.now();
+
+  const stage = process.env.AFU9_STAGE || process.env.NODE_ENV || 'unknown';
+  const intentEnabled = process.env.AFU9_INTENT_ENABLED === 'true';
+
   try {
-    // Simple liveness check - if we can execute this code, the process is alive
     const buildInfo = getBuildInfo();
-    
+
     return jsonResponse(
       {
-        status: 'ok',
+        ok: true,
         service: 'afu9-control-center',
+        stage,
+        commitSha: buildInfo.gitSha,
         version: buildInfo.appVersion,
-        git_sha: buildInfo.gitSha,
-        build_time: buildInfo.buildTime,
-        database_enabled: process.env.DATABASE_ENABLED === 'true',
+        intentEnabled,
         timestamp: new Date().toISOString(),
       },
       { status: 200, requestId }
     );
   } catch (error) {
-    // Even in case of unexpected errors, return 200 to prevent deployment blocking
-    // Log the error but keep the service running
     console.error('Health check encountered error (still returning 200):', error);
-    const buildInfo = getBuildInfo();
-    
+
     return jsonResponse(
       {
-        status: 'ok',
+        ok: true,
         service: 'afu9-control-center',
-        version: buildInfo.appVersion,
-        git_sha: buildInfo.gitSha,
-        build_time: buildInfo.buildTime,
-        database_enabled: process.env.DATABASE_ENABLED === 'true',
+        stage,
+        commitSha: 'unknown',
+        version: 'unknown',
+        intentEnabled,
         timestamp: new Date().toISOString(),
-        warning: 'Health check executed with degraded performance',
       },
       { status: 200, requestId }
     );
+  } finally {
+    const durationMs = Date.now() - startedAt;
+    console.debug('[API] /api/health accessed', {
+      requestId,
+      durationMs,
+    });
   }
 }
