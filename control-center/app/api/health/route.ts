@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 import { getBuildInfo } from '@/lib/build/build-info';
 
+const HEALTH_CONTRACT_VERSION = '2026-01-26';
+
 /**
  * Health check endpoint for ALB health checks and ECS container health checks
  * 
@@ -37,6 +39,7 @@ export async function GET(request: NextRequest) {
       {
         ok: true,
         service: 'afu9-control-center',
+        healthContractVersion: HEALTH_CONTRACT_VERSION,
         stage,
         commitSha: buildInfo.gitSha,
         version: buildInfo.appVersion,
@@ -52,6 +55,7 @@ export async function GET(request: NextRequest) {
       {
         ok: true,
         service: 'afu9-control-center',
+        healthContractVersion: HEALTH_CONTRACT_VERSION,
         stage,
         commitSha: 'unknown',
         version: 'unknown',
