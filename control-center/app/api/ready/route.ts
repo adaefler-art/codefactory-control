@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
   const serviceReadToken = process.env.SERVICE_READ_TOKEN;
   const intentEnabled = process.env.AFU9_INTENT_ENABLED === 'true';
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
 
   if (!requiredStage || !requiredStage.trim()) {
     missing.push('AFU9_STAGE');
@@ -108,13 +109,18 @@ export async function GET(request: NextRequest) {
         timestamp: new Date().toISOString(),
         missing,
         invalid,
+        checks: {
+          database: databaseEnabled
+            ? { enabled: true, ok: false, status: 'error', message: 'Missing required environment variables' }
+            : { enabled: false, ok: true, status: 'not_configured', message: 'Database disabled in configuration' },
+        },
       },
       { status: 503, requestId }
     );
   }
   
   try {
-    const checks: Record<string, { status: string; message?: string; latency_ms?: number }> = {
+    const checks: Record<string, { status: string; message?: string; latency_ms?: number; enabled?: boolean; ok?: boolean }> = {
       service: { status: 'ok' },
     };
 
@@ -155,11 +161,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Check database connectivity based on DATABASE_ENABLED flag
-    const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
-    
     if (!databaseEnabled) {
       // Database explicitly disabled - report as not_configured (this is expected)
-      checks.database = { status: 'not_configured', message: 'Database disabled in configuration' };
+      checks.database = { enabled: false, ok: true, status: 'not_configured', message: 'Database disabled in configuration' };
     } else {
       // Database is enabled, check if credentials are configured
       const dbHost = process.env.DATABASE_HOST;
@@ -175,12 +179,14 @@ export async function GET(request: NextRequest) {
         try {
           const port = parseInt(dbPort, 10);
           if (port > 0 && port < 65536) {
-            checks.database = { status: 'ok', message: 'connection_configured' };
+            checks.database = { enabled: true, ok: true, status: 'ok', message: 'connection_configured' };
           } else {
-            checks.database = { status: 'error', message: 'invalid_port' };
+            checks.database = { enabled: true, ok: false, status: 'error', message: 'invalid_port' };
           }
         } catch (error) {
           checks.database = { 
+            enabled: true,
+            ok: false,
             status: 'error', 
             message: error instanceof Error ? error.message : 'invalid_port'
           };
@@ -195,6 +201,8 @@ export async function GET(request: NextRequest) {
         if (!dbPassword) missing.push('DATABASE_PASSWORD');
         
         checks.database = { 
+          enabled: true,
+          ok: false,
           status: 'error', 
           message: `Missing required environment variables: ${missing.join(', ')}`
         };
@@ -312,7 +320,10 @@ export async function GET(request: NextRequest) {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
         checks: {
-          service: { status: 'error', message: 'Readiness check exception' }
+          service: { status: 'error', message: 'Readiness check exception' },
+          database: databaseEnabled
+            ? { enabled: true, ok: false, status: 'error', message: 'Readiness check exception' }
+            : { enabled: false, ok: true, status: 'not_configured', message: 'Database disabled in configuration' },
         },
         dependencies: {
           required: getRequiredDependencies(),
