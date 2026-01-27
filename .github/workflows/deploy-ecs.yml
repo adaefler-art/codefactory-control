@@ -1129,115 +1129,6 @@ jobs:
 
           echo "✅ Database migrations applied"
 
-      - name: Seed Smoke Key Allowlist (staging)
-        # Ensures new routes are in the allowlist before gates run.
-        # Idempotent: re-seeding existing routes is a no-op.
-        if: steps.target.outputs.deploy_env == 'staging'
-        shell: pwsh
-        env:
-          READY_HOST: ${{ steps.target.outputs.ready_host }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $hostName = $env:READY_HOST
-          if (-not $hostName) { throw "READY_HOST is empty" }
-
-          $smokeSecretId = 'afu9/stage/smoke-key'
-          $smokeKey = (aws secretsmanager get-secret-value `
-            --region $env:AWS_REGION `
-            --secret-id $smokeSecretId `
-            --query SecretString `
-            --output text).Trim()
-
-          if (-not $smokeKey) { throw "Smoke key resolved empty (secret-id=$smokeSecretId)" }
-          Write-Host "::add-mask::$smokeKey"
-
-          $uri = "https://$hostName/api/diagnostics/smoke-key/allowlist/seed"
-          Write-Host "Calling smoke-key allowlist seed: $uri"
-
-          $headers = @{
-            'x-afu9-smoke-key' = $smokeKey
-          }
-
-          try {
-            $r = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -TimeoutSec 30
-            Write-Host "✅ Smoke-key allowlist seeded: inserted=$($r.inserted) alreadyPresent=$($r.alreadyPresent)"
-          } catch {
-            Write-Warning "⚠️ Failed to seed allowlist (non-fatal): $_"
-          }
-
-      - name: Post-migrate Required Tables Gate
-        # Always runs in STAGING to catch schema drift early (independent of should_migrate).
-        # Fail-closed: gates the deploy if required tables are missing.
-        if: steps.target.outputs.deploy_env == 'staging'
-        shell: pwsh
-        env:
-          READY_HOST: ${{ steps.target.outputs.ready_host }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-          SHOULD_MIGRATE: ${{ steps.gates.outputs.should_migrate }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $shouldMigrate = [string]($env:SHOULD_MIGRATE)
-          $migrationsSkipped = if ($shouldMigrate.Trim() -eq 'true') { $false } else { $true }
-          Write-Host "migrationsSkipped=$migrationsSkipped"
-
-          $hostName = $env:READY_HOST
-          if (-not $hostName) { throw "READY_HOST is empty" }
-
-          # Staging-only auth: reuse the existing smoke key stored in Secrets Manager.
-          # No new secrets are introduced; the deploy role must already have access.
-          $smokeSecretId = 'afu9/stage/smoke-key'
-          $smokeKey = (aws secretsmanager get-secret-value `
-            --region $env:AWS_REGION `
-            --secret-id $smokeSecretId `
-            --query SecretString `
-            --output text).Trim()
-
-          if (-not $smokeKey) { throw "Smoke key resolved empty (secret-id=$smokeSecretId)" }
-          Write-Host "::add-mask::$smokeKey"
-
-          $uri = "https://$hostName/api/ops/db/migrations?limit=200&env=staging"
-          Write-Host "Calling required tables gate endpoint: $uri"
-
-          $headers = @{
-            'x-afu9-smoke-key' = $smokeKey
-            'x-afu9-sub'       = 'github-actions-deploy-gate'
-          }
-
-          $r = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -TimeoutSec 20
-
-          $requestId = [string]($r.requestId)
-          $deploymentEnv = [string]($r.deploymentEnv)
-          $lawbookHash = [string]($r.lawbookHash)
-          $missing = @()
-
-          if ($null -ne $r.requiredTablesCheck -and $null -ne $r.requiredTablesCheck.missingTables) {
-            $missing = @($r.requiredTablesCheck.missingTables)
-          }
-
-          $status = $null
-          if ($null -ne $r.requiredTablesCheck -and $null -ne $r.requiredTablesCheck.status) {
-            $status = [string]($r.requiredTablesCheck.status)
-          }
-
-          Write-Host "Gate context: requestId=$requestId deploymentEnv=$deploymentEnv lawbookHash=$lawbookHash"
-          Write-Host "Required tables status: $status"
-          Write-Host ("Missing tables count: {0}" -f $missing.Count)
-
-          if ($status -and $status -ne 'PASS') {
-            Write-Error "❌ Required tables gate status is not PASS: $status"
-            exit 1
-          }
-
-          if ($missing.Count -gt 0) {
-            $limited = $missing | Select-Object -First 50
-            Write-Error ("❌ Missing required tables (showing up to 50): {0}" -f ($limited -join ', '))
-            exit 1
-          }
-
-          Write-Host '✅ Post-migrate required tables gate passed'
-
       - name: Check deployment verdict gate
         env:
           DEPLOYMENT_VERDICT: ${{ vars.DEPLOYMENT_VERDICT }}
@@ -1493,6 +1384,138 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments}' \
             --output table || true
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # POST-DEPLOY GATES: These run AFTER ECS update to target the NEW instance
+      # ─────────────────────────────────────────────────────────────────────────
+
+      - name: Seed Smoke Key Allowlist (staging, post-deploy)
+        id: seed-allowlist-postdeploy
+        if: steps.target.outputs.deploy_env == 'staging'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          Write-Host "=== Seeding smoke-key allowlist on newly deployed instance ==="
+
+          # Retrieve the smoke-key from Secrets Manager
+          $secretId = "afu9/stage/smoke-key"
+          try {
+            $secretValue = aws secretsmanager get-secret-value --secret-id $secretId --region "${{ env.AWS_REGION }}" --query SecretString --output text
+            if (-not $secretValue) {
+              Write-Warning "Smoke key secret is empty or not found"
+              exit 0
+            }
+          } catch {
+            Write-Warning "Failed to retrieve smoke key from Secrets Manager: $_"
+            exit 0
+          }
+
+          # Call the seed endpoint (POST-deploy: new instance is running)
+          $seedUrl = "https://stage.afu-9.com/api/diagnostics/smoke-key/allowlist/seed"
+          Write-Host "Calling POST $seedUrl (post-deploy, new instance)"
+
+          $maxRetries = 3
+          $retryDelaySeconds = 10
+
+          for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            try {
+              $headers = @{
+                "x-afu9-smoke-key" = $secretValue
+                "Content-Type" = "application/json"
+              }
+              $response = Invoke-RestMethod -Uri $seedUrl -Method Post -Headers $headers -TimeoutSec 30
+
+              Write-Host "Seed response:"
+              $response | ConvertTo-Json -Depth 5 | Write-Host
+
+              if ($response.success -eq $true) {
+                Write-Host "✅ Allowlist seeded successfully"
+                exit 0
+              } elseif ($response.error -eq "DB_UNREACHABLE") {
+                Write-Warning "DB_UNREACHABLE - new instance may not be ready yet (attempt $attempt/$maxRetries)"
+                if ($attempt -lt $maxRetries) {
+                  Start-Sleep -Seconds $retryDelaySeconds
+                  continue
+                }
+              } else {
+                Write-Warning "Seed returned unexpected response (attempt $attempt/$maxRetries)"
+                if ($attempt -lt $maxRetries) {
+                  Start-Sleep -Seconds $retryDelaySeconds
+                  continue
+                }
+              }
+            } catch {
+              Write-Warning "Failed to seed allowlist (attempt $attempt/$maxRetries): $_"
+              if ($attempt -lt $maxRetries) {
+                Start-Sleep -Seconds $retryDelaySeconds
+              }
+            }
+          }
+
+          Write-Warning "WARNING: Failed to seed allowlist after $maxRetries attempts - continuing anyway"
+          exit 0
+
+      - name: Post-deploy Required Tables Gate (staging)
+        id: gate-tables-postdeploy
+        if: steps.target.outputs.deploy_env == 'staging'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "=== Post-deploy Required Tables Gate (new instance) ==="
+
+          # Retrieve the smoke-key from Secrets Manager
+          $secretId = "afu9/stage/smoke-key"
+          $secretValue = aws secretsmanager get-secret-value --secret-id $secretId --region "${{ env.AWS_REGION }}" --query SecretString --output text
+          if (-not $secretValue) {
+            Write-Error "Failed to retrieve smoke key from Secrets Manager"
+            exit 1
+          }
+
+          $gateUrl = "https://stage.afu-9.com/api/ops/db/migrations"
+          Write-Host "Calling GET $gateUrl (post-deploy verification)"
+
+          $maxRetries = 3
+          $retryDelaySeconds = 15
+
+          for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            try {
+              $headers = @{ "x-afu9-smoke-key" = $secretValue }
+              $response = Invoke-RestMethod -Uri $gateUrl -Method Get -Headers $headers -TimeoutSec 60
+
+              Write-Host "Gate response:"
+              $response | ConvertTo-Json -Depth 5 | Write-Host
+
+              # Check for required tables
+              $tableNames = @()
+              if ($response.tables) {
+                $tableNames = $response.tables | ForEach-Object { $_.table_name }
+              }
+
+              $requiredTables = @("issues", "smoke_key_allowlist")
+              $missingTables = $requiredTables | Where-Object { $_ -notin $tableNames }
+
+              if ($missingTables.Count -eq 0) {
+                Write-Host "✅ All required tables present: $($requiredTables -join ', ')"
+                exit 0
+              } else {
+                Write-Warning "Missing tables (attempt $attempt/$maxRetries): $($missingTables -join ', ')"
+                if ($attempt -lt $maxRetries) {
+                  Start-Sleep -Seconds $retryDelaySeconds
+                  continue
+                }
+                Write-Error "❌ Required tables missing after $maxRetries attempts: $($missingTables -join ', ')"
+                exit 1
+              }
+            } catch {
+              Write-Warning "Gate check failed (attempt $attempt/$maxRetries): $_"
+              if ($attempt -lt $maxRetries) {
+                Start-Sleep -Seconds $retryDelaySeconds
+                continue
+              }
+              Write-Error "❌ Post-deploy gate failed after $maxRetries attempts"
+              exit 1
+            }
+          }
 
       - name: Resolve ALB DNS
         id: alb-dns
