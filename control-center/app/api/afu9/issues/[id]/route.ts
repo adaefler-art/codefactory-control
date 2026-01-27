@@ -1,5 +1,5 @@
 /**
- * API Route: /api/afu9/issues/[ref]
+ * API Route: /api/afu9/issues/[id]
  * 
  * Epic-1 v0.9: Issue Detail Endpoint
  * 
@@ -28,11 +28,11 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 interface RouteContext {
-  params: Promise<{ ref: string }>;
+  params: Promise<{ id: string }>;
 }
 
 /**
- * GET /api/afu9/issues/[ref]
+ * GET /api/afu9/issues/[id]
  * 
  * Resolve issue by UUID, publicId, or canonicalId
  */
@@ -41,9 +41,9 @@ export async function GET(
   context: RouteContext
 ) {
   const requestId = getRequestId(request);
-  const { ref } = await context.params;
+  const { id } = await context.params;
 
-  if (!ref || typeof ref !== 'string') {
+  if (!id || typeof id !== 'string') {
     return errorResponse('Issue identifier required', {
       status: 400,
       requestId,
@@ -54,13 +54,13 @@ export async function GET(
     const pool = getPool();
 
     // Try UUID/publicId lookup first (fast path)
-    const result = await fetchIssueRowByIdentifier(pool, ref);
+    const result = await fetchIssueRowByIdentifier(pool, id);
 
     // Invalid UUID/publicId format → Try canonicalId fallback
-    // fetchIssueRowByIdentifier returns 400 when ref doesn't match UUID or 8-hex pattern
+    // fetchIssueRowByIdentifier returns 400 when id doesn't match UUID or 8-hex pattern
     // In this case, try canonicalId lookup as fallback (e.g., "I811", "E81.1")
     if (!result.ok && result.status === 400) {
-      const canonicalResult = await getAfu9IssueByCanonicalId(pool, ref);
+      const canonicalResult = await getAfu9IssueByCanonicalId(pool, id);
 
       if (!canonicalResult.success) {
         // All lookup methods failed - return 400
@@ -125,7 +125,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[API /api/afu9/issues/[ref]] Unexpected error:', error);
+    console.error('[API /api/afu9/issues/[id]] Unexpected error:', error);
     return errorResponse('Failed to get issue', {
       status: 500,
       requestId,
