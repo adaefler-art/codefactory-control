@@ -35,7 +35,7 @@ const mockGitHubReadFile = mockReadFile as jest.MockedFunction<typeof mockReadFi
 
 describe('Evidence Tool: readFile', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    mockGitHubReadFile.mockReset();
   });
 
   // ========================================

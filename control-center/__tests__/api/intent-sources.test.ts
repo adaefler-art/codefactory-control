@@ -47,6 +47,7 @@ describe('GET /api/intent/sessions/[id]/sources', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockQuery = jest.fn();
+    mockQuery.mockResolvedValue({ rows: [] });
     (getPool as jest.Mock).mockReturnValue({ query: mockQuery });
   });
 

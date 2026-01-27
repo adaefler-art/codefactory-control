@@ -7,31 +7,31 @@
 import { NextRequest } from 'next/server';
 
 // Mock dependencies
-jest.mock('../../../src/lib/db', () => ({
-  getDbPool: jest.fn(() => ({
+jest.mock('@/lib/db', () => ({
+  getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
-jest.mock('../../../src/lib/capability-manifest-service', () => ({
+jest.mock('@/lib/capability-manifest-service', () => ({
   buildCapabilityManifest: jest.fn(),
 }));
 
-jest.mock('../../../src/lib/capability-probe-service', () => ({
+jest.mock('@/lib/capability-probe-service', () => ({
   getLatestProbeResults: jest.fn(),
   probeAllCapabilities: jest.fn(),
 }));
 
-import { GET as manifestGet } from '../../../app/api/ops/capabilities/manifest/route';
-import { POST as probePost } from '../../../app/api/ops/capabilities/probe/route';
-import { buildCapabilityManifest } from '../../../src/lib/capability-manifest-service';
-import { getLatestProbeResults, probeAllCapabilities } from '../../../src/lib/capability-probe-service';
-import { getDbPool } from '../../../src/lib/db';
+import { GET as manifestGet } from '@/api/ops/capabilities/manifest/route';
+import { POST as probePost } from '@/api/ops/capabilities/probe/route';
+import { buildCapabilityManifest } from '@/lib/capability-manifest-service';
+import { getLatestProbeResults, probeAllCapabilities } from '@/lib/capability-probe-service';
+import { getPool } from '@/lib/db';
 
 const mockBuildCapabilityManifest = buildCapabilityManifest as jest.MockedFunction<typeof buildCapabilityManifest>;
 const mockGetLatestProbeResults = getLatestProbeResults as jest.MockedFunction<typeof getLatestProbeResults>;
 const mockProbeAllCapabilities = probeAllCapabilities as jest.MockedFunction<typeof probeAllCapabilities>;
-const mockGetDbPool = getDbPool as jest.MockedFunction<typeof getDbPool>;
+const mockGetPool = getPool as jest.MockedFunction<typeof getPool>;
 
 describe('Capabilities Manifest API', () => {
   beforeEach(() => {
@@ -74,7 +74,7 @@ describe('Capabilities Manifest API', () => {
 
       mockBuildCapabilityManifest.mockResolvedValue(mockManifest as any);
       mockGetLatestProbeResults.mockResolvedValue([]);
-      mockGetDbPool.mockReturnValue({ query: jest.fn() } as any);
+      mockGetPool.mockReturnValue({ query: jest.fn() } as any);
 
       const request = new NextRequest('http://localhost/api/ops/capabilities/manifest', {
         method: 'GET',
@@ -134,7 +134,7 @@ describe('Capabilities Manifest API', () => {
 
       mockBuildCapabilityManifest.mockResolvedValue(mockManifest as any);
       mockGetLatestProbeResults.mockResolvedValue(mockProbeResults as any);
-      mockGetDbPool.mockReturnValue({ query: jest.fn() } as any);
+      mockGetPool.mockReturnValue({ query: jest.fn() } as any);
 
       const request = new NextRequest('http://localhost/api/ops/capabilities/manifest', {
         method: 'GET',
@@ -166,7 +166,7 @@ describe('Capabilities Manifest API', () => {
 
       mockBuildCapabilityManifest.mockResolvedValue(mockManifest as any);
       mockGetLatestProbeResults.mockResolvedValue([]);
-      mockGetDbPool.mockReturnValue({ query: jest.fn() } as any);
+      mockGetPool.mockReturnValue({ query: jest.fn() } as any);
 
       // First request to get the actual hash
       const firstRequest = new NextRequest('http://localhost/api/ops/capabilities/manifest', {
@@ -247,7 +247,7 @@ describe('Capabilities Probe API', () => {
       };
 
       mockProbeAllCapabilities.mockResolvedValue(mockProbeSummary);
-      mockGetDbPool.mockReturnValue({ query: jest.fn() } as any);
+      mockGetPool.mockReturnValue({ query: jest.fn() } as any);
 
       const request = new NextRequest('http://localhost/api/ops/capabilities/probe', {
         method: 'POST',
@@ -284,7 +284,7 @@ describe('Capabilities Probe API', () => {
       };
 
       mockProbeAllCapabilities.mockResolvedValue(mockProbeSummary);
-      mockGetDbPool.mockReturnValue({ query: jest.fn() } as any);
+      mockGetPool.mockReturnValue({ query: jest.fn() } as any);
 
       const request = new NextRequest('http://localhost/api/ops/capabilities/probe', {
         method: 'POST',

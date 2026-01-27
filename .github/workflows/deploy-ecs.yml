@@ -1129,6 +1129,43 @@ jobs:
 
           echo "✅ Database migrations applied"
 
+      - name: Seed Smoke Key Allowlist (staging)
+        # Ensures new routes are in the allowlist before gates run.
+        # Idempotent: re-seeding existing routes is a no-op.
+        if: steps.target.outputs.deploy_env == 'staging'
+        shell: pwsh
+        env:
+          READY_HOST: ${{ steps.target.outputs.ready_host }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostName = $env:READY_HOST
+          if (-not $hostName) { throw "READY_HOST is empty" }
+
+          $smokeSecretId = 'afu9/stage/smoke-key'
+          $smokeKey = (aws secretsmanager get-secret-value `
+            --region $env:AWS_REGION `
+            --secret-id $smokeSecretId `
+            --query SecretString `
+            --output text).Trim()
+
+          if (-not $smokeKey) { throw "Smoke key resolved empty (secret-id=$smokeSecretId)" }
+          Write-Host "::add-mask::$smokeKey"
+
+          $uri = "https://$hostName/api/diagnostics/smoke-key/allowlist/seed"
+          Write-Host "Calling smoke-key allowlist seed: $uri"
+
+          $headers = @{
+            'x-afu9-smoke-key' = $smokeKey
+          }
+
+          try {
+            $r = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -TimeoutSec 30
+            Write-Host "✅ Smoke-key allowlist seeded: inserted=$($r.inserted) alreadyPresent=$($r.alreadyPresent)"
+          } catch {
+            Write-Warning "⚠️ Failed to seed allowlist (non-fatal): $_"
+          }
+
       - name: Post-migrate Required Tables Gate
         # Always runs in STAGING to catch schema drift early (independent of should_migrate).
         # Fail-closed: gates the deploy if required tables are missing.

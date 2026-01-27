@@ -310,12 +310,10 @@ function deriveLabels(plan: WorkPlanContentV1): string[] {
   }
   
   // Look for layer references (e.g., "layer:B", "Layer A")
-  const layerMatches = contextStr.match(/layer[:\s]+([A-D])/gi);
-  if (layerMatches) {
-    layerMatches.forEach(match => {
-      const layer = match.match(/[A-D]/i)?.[0];
-      if (layer) labels.add(`layer:${layer.toUpperCase()}`);
-    });
+  const layerMatches = contextStr.matchAll(/layer[:\s]+([A-D])/gi);
+  for (const match of layerMatches) {
+    const layer = match[1];
+    if (layer) labels.add(`layer:${layer.toUpperCase()}`);
   }
   
   // Return as sorted array (max 50 per schema)

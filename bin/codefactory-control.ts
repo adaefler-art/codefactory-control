@@ -56,6 +56,14 @@ const createStagingServiceFlag = (() => {
   const v = getValidatedContext<boolean | string>(app, 'afu9-create-staging-service');
   return v === undefined ? true : v === true || v === 'true';
 })();
+const keepSingleExports = (() => {
+  const v = getValidatedContext<boolean | string>(app, 'afu9-keep-single-exports');
+  return v === undefined ? true : v === true || v === 'true';
+})();
+const skipEcsExports = (() => {
+  const v = getValidatedContext<boolean | string>(app, 'afu9-skip-ecs-exports');
+  return v === undefined ? false : v === true || v === 'true';
+})();
 
 // Check if PROD pause mode is enabled (Low-Cost Mode)
 // Use context: -c afu9-prod-paused=true to enable pause mode
@@ -92,6 +100,41 @@ const networkStack = new Afu9NetworkStack(app, 'Afu9NetworkStack', {
   baseDomainName: dnsStack?.domainName,
 });
 
+// Single-env stage target group (legacy export) - keep by default for migration safety
+const stageTargetGroupSingle = keepSingleExports
+  ? new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroupSingle', {
+      vpc: networkStack.vpc,
+      port: 3000,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      targetGroupName: 'afu9-tg-stage',
+      healthCheck: {
+        path: '/api/health',
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+        protocol: elbv2.Protocol.HTTP,
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
+    })
+  : undefined;
+
+  if (keepSingleExports && stageTargetGroupSingle) {
+    new cdk.CfnOutput(networkStack, 'ExportsOutputRefAfu9StageTargetGroupSingle64A0D0190ACCB4C0', {
+      value: stageTargetGroupSingle.targetGroupArn,
+      exportName: 'Afu9NetworkStack:ExportsOutputRefAfu9StageTargetGroupSingle64A0D0190ACCB4C0',
+    });
+    new cdk.CfnOutput(networkStack, 'ExportsOutputRefAfu9TargetGroupE3C98BA9418D8857', {
+      value: networkStack.targetGroup.targetGroupArn,
+      exportName: 'Afu9NetworkStack:ExportsOutputRefAfu9TargetGroupE3C98BA9418D8857',
+    });
+    new cdk.CfnOutput(networkStack, 'ExportsOutputFnGetAttAfu9TargetGroupE3C98BA9TargetGroupFullNameE004F0A4', {
+      value: networkStack.targetGroup.targetGroupFullName,
+      exportName: 'Afu9NetworkStack:ExportsOutputFnGetAttAfu9TargetGroupE3C98BA9TargetGroupFullNameE004F0A4',
+    });
+  }
+
 // Check if database should be enabled globally
 const globalEnableDatabase = isDatabaseEnabled(app);
 
@@ -118,7 +161,7 @@ if (multiEnvEnabled) {
     port: 3000,
     protocol: elbv2.ApplicationProtocol.HTTP,
     targetType: elbv2.TargetType.IP,
-    targetGroupName: 'afu9-tg-stage',
+    targetGroupName: 'afu9-tg-stage-v2',
     healthCheck: {
       path: '/api/health',
       interval: cdk.Duration.seconds(30),
@@ -135,7 +178,7 @@ if (multiEnvEnabled) {
     port: 3000,
     protocol: elbv2.ApplicationProtocol.HTTP,
     targetType: elbv2.TargetType.IP,
-    targetGroupName: 'afu9-tg-prod',
+    targetGroupName: 'afu9-tg-prod-v2',
     healthCheck: {
       path: '/api/health',
       interval: cdk.Duration.seconds(30),
@@ -161,6 +204,7 @@ if (multiEnvEnabled) {
     desiredCount: 1,
     cpu: 2048,
     memoryLimitMiB: 8192,
+    skipExports: skipEcsExports,
   });
 
   // ECS Stack for Prod Environment
@@ -259,22 +303,9 @@ if (multiEnvEnabled) {
   }
 
   // ECS stack (depends on network, optionally on database)
-  const stageTargetGroup = new elbv2.ApplicationTargetGroup(networkStack, 'Afu9StageTargetGroupSingle', {
-    vpc: networkStack.vpc,
-    port: 3000,
-    protocol: elbv2.ApplicationProtocol.HTTP,
-    targetType: elbv2.TargetType.IP,
-    targetGroupName: 'afu9-tg-stage',
-    healthCheck: {
-      path: '/api/health',
-      interval: cdk.Duration.seconds(30),
-      timeout: cdk.Duration.seconds(5),
-      healthyThresholdCount: 2,
-      unhealthyThresholdCount: 3,
-      protocol: elbv2.Protocol.HTTP,
-    },
-    deregistrationDelay: cdk.Duration.seconds(30),
-  });
+  if (!stageTargetGroupSingle) {
+    throw new Error('stageTargetGroupSingle is required in single-env mode (afu9-keep-single-exports)');
+  }
 
   const ecsStack = new Afu9EcsStack(app, 'Afu9EcsStack', {
     env,
@@ -282,7 +313,7 @@ if (multiEnvEnabled) {
     vpc: networkStack.vpc,
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: networkStack.targetGroup,
-    stageTargetGroup,
+    stageTargetGroup: stageTargetGroupSingle,
     // Single-env mode runs both prod + stage on a shared cluster/ALB.
     // Use an explicit rolling tag so new tasks can pull images during infra updates.
     imageTag: deployEnvironment === 'staging' ? 'staging-latest' : 'prod-latest',
@@ -304,7 +335,7 @@ if (multiEnvEnabled) {
       loadBalancer: networkStack.loadBalancer,
       httpsListener: networkStack.httpsListener,
       httpListener: networkStack.httpListener,
-      stageTargetGroup,
+      stageTargetGroup: stageTargetGroupSingle,
       prodTargetGroup: networkStack.targetGroup,
       hostedZone: dnsStack.hostedZone,
       baseDomainName: dnsStack.domainName,

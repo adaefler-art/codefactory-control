@@ -23,6 +23,13 @@ import {
 import { EXAMPLE_MINIMAL_ISSUE_DRAFT } from '../../src/lib/schemas/issueDraft';
 import type { IssueDraft } from '../../src/lib/schemas/issueDraft';
 
+jest.mock('../../src/lib/db/afu9Issues', () => ({
+  ensureIssueForCommittedDraft: jest.fn(),
+  getPublicId: jest.fn(() => 'public-1'),
+}));
+
+import { ensureIssueForCommittedDraft } from '../../src/lib/db/afu9Issues';
+
 // Mock the database pool
 const mockQuery = jest.fn();
 const mockConnect = jest.fn();
@@ -45,7 +52,14 @@ describe('INTENT Issue Sets Database Layer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockConnect.mockResolvedValue(mockClient);
-    mockClient.query = jest.fn();
+    mockClient.query = jest.fn().mockResolvedValue({ rows: [] });
+    (ensureIssueForCommittedDraft as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        issue: { id: 'issue-1', status: 'CREATED' },
+        isNew: true,
+      },
+    });
   });
 
   describe('getIssueSet', () => {
@@ -259,8 +273,8 @@ describe('INTENT Issue Sets Database Layer', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.is_committed).toBe(true);
-        expect(result.data.committed_at).toBeDefined();
+        expect(result.data.issueSet.is_committed).toBe(true);
+        expect(result.data.issueSet.committed_at).toBeDefined();
       }
     });
 

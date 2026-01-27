@@ -30,6 +30,12 @@ describe('E64.1: GitHub Runner API Routes', () => {
     return { dispatchRoute, pollRoute, ingestRoute };
   };
 
+  const createRequest = (url: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('x-afu9-sub', 'test-user');
+    return new NextRequest(url, { ...init, headers });
+  };
+
   describe('POST /api/integrations/github/runner/dispatch', () => {
     it('should dispatch workflow successfully', async () => {
       const { dispatchWorkflow } = require('../../src/lib/github-runner/adapter');
@@ -42,7 +48,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       });
 
       const { dispatchRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -76,7 +82,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       });
 
       const { dispatchRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -98,7 +104,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
 
     it('should return 400 for missing required fields', async () => {
       const { dispatchRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -115,7 +121,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
 
     it('should return 400 for missing correlationId', async () => {
       const { dispatchRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -139,7 +145,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       dispatchWorkflow.mockRejectedValue(new Error('GitHub API error'));
 
       const { dispatchRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -174,7 +180,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       });
 
       const { pollRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -195,7 +201,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
 
     it('should return 400 for missing required fields', async () => {
       const { pollRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -216,7 +222,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       pollRun.mockRejectedValue(new Error('Run not found'));
 
       const { pollRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -274,7 +280,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       });
 
       const { ingestRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -296,7 +302,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
 
     it('should return 400 for missing required fields', async () => {
       const { ingestRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -317,7 +323,7 @@ describe('E64.1: GitHub Runner API Routes', () => {
       ingestRun.mockRejectedValue(new Error('No run record found'));
 
       const { ingestRoute } = getRoutes();
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',

@@ -8,12 +8,6 @@ import { NextRequest } from 'next/server';
 import { GET as getIssues } from '../../app/api/issues/route';
 import { GET as getIssue } from '../../app/api/issues/[id]/route';
 
-let currentHeaders = new Headers();
-
-jest.mock('next/headers', () => ({
-  headers: () => currentHeaders,
-}));
-
 jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
@@ -31,7 +25,6 @@ jest.mock('../../app/api/issues/_shared', () => ({
 
 describe('Issues API service token guard', () => {
   beforeEach(() => {
-    currentHeaders = new Headers();
     process.env.SERVICE_READ_TOKEN = 'service-secret';
     jest.clearAllMocks();
   });
@@ -51,8 +44,8 @@ describe('Issues API service token guard', () => {
     });
 
     test('wrong header returns 403', async () => {
-      currentHeaders = new Headers({ 'x-afu9-service-token': 'wrong' });
-      const req = new NextRequest('http://localhost/api/issues');
+      const headers = new Headers({ 'x-afu9-service-token': 'wrong' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
       const res = await getIssues(req);
 
       expect(res.status).toBe(403);
@@ -64,8 +57,8 @@ describe('Issues API service token guard', () => {
       const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({ success: true, data: [] });
 
-      currentHeaders = new Headers({ 'x-afu9-service-token': 'service-secret' });
-      const req = new NextRequest('http://localhost/api/issues');
+      const headers = new Headers({ 'x-afu9-service-token': 'service-secret' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
       const res = await getIssues(req);
 
       expect(res.status).toBe(200);
@@ -83,8 +76,8 @@ describe('Issues API service token guard', () => {
     });
 
     test('wrong header returns 403', async () => {
-      currentHeaders = new Headers({ 'x-afu9-service-token': 'wrong' });
-      const req = new NextRequest('http://localhost/api/issues/ISS-001');
+      const headers = new Headers({ 'x-afu9-service-token': 'wrong' });
+      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
       const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
 
       expect(res.status).toBe(403);
@@ -96,8 +89,8 @@ describe('Issues API service token guard', () => {
       const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
       fetchIssueRowByIdentifier.mockResolvedValue({ ok: true, row: { id: 'issue-1' } });
 
-      currentHeaders = new Headers({ 'x-afu9-service-token': 'service-secret' });
-      const req = new NextRequest('http://localhost/api/issues/ISS-001');
+      const headers = new Headers({ 'x-afu9-service-token': 'service-secret' });
+      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
       const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
 
       expect(res.status).toBe(200);

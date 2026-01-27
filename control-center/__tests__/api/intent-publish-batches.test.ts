@@ -3,7 +3,7 @@
  * Issue E89.7: Publish Audit Trail (DB table + session-scoped UI view; append-only, bounded result_json)
  */
 
-import { GET } from '@/app/api/intent/sessions/[id]/publish-batches/route';
+import { GET } from '@/api/intent/sessions/[id]/publish-batches/route';
 import { NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import { queryPublishBatchesBySession } from '@/lib/db/intentIssueSetPublishLedger';

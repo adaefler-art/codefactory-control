@@ -35,10 +35,16 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
   const pollRoute = (request: NextRequest) => getRoutes().pollRoute(request);
   const ingestRoute = (request: NextRequest) => getRoutes().ingestRoute(request);
 
+  const createRequest = (url: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('x-afu9-sub', 'test-user');
+    return new NextRequest(url, { ...init, headers });
+  };
+
   describe('Gate 2: API Contract Validation', () => {
     describe('POST /api/integrations/github/runner/dispatch', () => {
       it('should return 400 when owner is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             // Missing owner
@@ -58,7 +64,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when repo is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -78,7 +84,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when workflowIdOrFile is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -98,7 +104,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when ref is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -117,7 +123,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when correlationId is missing (idempotency requirement)', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -140,7 +146,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
         const { dispatchWorkflow } = require('../../src/lib/github-runner/adapter');
         dispatchWorkflow.mockRejectedValue(new Error('Internal adapter error'));
 
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -168,7 +174,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
           isExisting: false,
         });
 
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -189,7 +195,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
 
     describe('POST /api/integrations/github/runner/poll', () => {
       it('should return 400 when owner is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
           method: 'POST',
           body: JSON.stringify({
             // Missing owner
@@ -206,7 +212,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when repo is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -223,7 +229,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when runId is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -244,7 +250,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
         const { pollRun } = require('../../src/lib/github-runner/adapter');
         pollRun.mockRejectedValue(new Error('Run not found'));
 
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -264,7 +270,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
 
     describe('POST /api/integrations/github/runner/ingest', () => {
       it('should return 400 when owner is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
           method: 'POST',
           body: JSON.stringify({
             // Missing owner
@@ -281,7 +287,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when repo is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -298,7 +304,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       });
 
       it('should return 400 when runId is missing', async () => {
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -319,7 +325,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
         const { ingestRun } = require('../../src/lib/github-runner/adapter');
         ingestRun.mockRejectedValue(new Error('No run record found for GitHub run ID 888888'));
 
-        const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+        const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
           method: 'POST',
           body: JSON.stringify({
             owner: 'test-owner',
@@ -348,7 +354,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
         isExisting: false,
       });
 
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -382,7 +388,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
         createdAt: '2024-01-01T12:00:00Z',
       });
 
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/poll', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/poll', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -423,7 +429,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
         logsUrl: 'https://api.github.com/repos/owner/repo/actions/runs/123456/logs',
       });
 
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/ingest', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/ingest', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',
@@ -447,7 +453,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
     });
 
     it('should return consistent error shape on 400 validation errors', async () => {
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({}), // Missing all required fields
       });
@@ -468,7 +474,7 @@ describe('E64.1: GitHub Runner API Validation Gates', () => {
       const { dispatchWorkflow } = require('../../src/lib/github-runner/adapter');
       dispatchWorkflow.mockRejectedValue(new Error('Database connection failed'));
 
-      const request = new NextRequest('http://localhost/api/integrations/github/runner/dispatch', {
+      const request = createRequest('http://localhost/api/integrations/github/runner/dispatch', {
         method: 'POST',
         body: JSON.stringify({
           owner: 'test-owner',

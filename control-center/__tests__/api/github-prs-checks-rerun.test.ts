@@ -8,8 +8,16 @@ import { NextRequest } from 'next/server';
 import { POST } from '../../app/api/github/prs/[prNumber]/checks/rerun/route';
 
 // Mock dependencies
+jest.mock('../../src/lib/db', () => ({
+  getPool: jest.fn(() => ({})),
+}));
+
 jest.mock('../../src/lib/github/job-rerun-service', () => ({
   rerunFailedJobs: jest.fn(),
+}));
+
+jest.mock('../../src/lib/automation/policy-evaluator', () => ({
+  evaluateAndRecordPolicy: jest.fn(),
 }));
 
 jest.mock('../../src/lib/repo-actions-registry-service', () => ({
@@ -24,6 +32,10 @@ jest.mock('../../src/lib/logger', () => ({
     warn: jest.fn(),
     error: jest.fn(),
   },
+}));
+
+jest.mock('../../src/lib/touchpoints/manual-touchpoints', () => ({
+  recordDebugInterventionTouchpoint: jest.fn(),
 }));
 
 jest.mock('../../src/lib/github/auth-wrapper', () => ({
@@ -45,8 +57,22 @@ describe('POST /api/github/prs/{prNumber}/checks/rerun', () => {
     mockRerunFailedJobs = rerunFailedJobs;
 
     const { RepoActionsRegistryService } = require('../../src/lib/repo-actions-registry-service');
-    const mockService = new RepoActionsRegistryService();
-    mockGetActiveRegistry = mockService.getActiveRegistry;
+    mockGetActiveRegistry = jest.fn();
+    RepoActionsRegistryService.mockImplementation(() => ({
+      getActiveRegistry: mockGetActiveRegistry,
+    }));
+
+    const { evaluateAndRecordPolicy } = require('../../src/lib/automation/policy-evaluator');
+    evaluateAndRecordPolicy.mockResolvedValue({
+      allow: true,
+      decision: 'allowed',
+      reason: null,
+      nextAllowedAt: null,
+      requiresApproval: false,
+      idempotencyKey: 'policy-key',
+      idempotencyKeyHash: 'policy-key-hash',
+      policyName: 'rerun_checks',
+    });
   });
 
   afterEach(() => {

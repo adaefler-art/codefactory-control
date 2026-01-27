@@ -261,6 +261,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
       console.error("Failed to load issue draft:", err);
       setPanelState("ERROR");
       setError(formatErrorMessage(err));
+      if (typeof err === "object" && err !== null && "requestId" in err) {
+        setRequestId(String((err as any).requestId));
+      }
     }
   };
 
@@ -519,6 +522,9 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
   const canPublish = hasActions && draft && draft.last_validation_status === "valid" && panelState === "LOADED" && !isValidating && !isCommitting && !isPublishing;
   const canCopy = Boolean(draft) && panelState === "LOADED";
   // Get errors and warnings (deterministic - already sorted from validator)
+  const validationErrors = draft?.last_validation_result?.errors ?? [];
+  const validationWarnings = draft?.last_validation_result?.warnings ?? [];
+  const shouldShowRequestId = requestId && (!error || !error.includes(requestId));
 
   return (
     <div className="w-[700px] border-l border-gray-800 bg-gray-900 flex flex-col shrink-0">
@@ -620,10 +626,10 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
               </div>
             </div>
           )}
-          {error && (
+          {error && panelState === "LOADED" && (
             <div className="mt-3 p-2 bg-red-900/20 border border-red-700 rounded text-xs">
               <p className="text-red-300">{error}</p>
-              {requestId && (<p className="text-red-400 mt-1 font-mono">Request ID: {requestId}</p>)}
+              {shouldShowRequestId && (<p className="text-red-400 mt-1 font-mono">Request ID: {requestId}</p>)}
             </div>
           )}
         </div>
@@ -650,7 +656,7 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
           <div className="text-center py-8">
             <div className="text-red-300 mb-2">Failed to load draft</div>
             {error && <p className="text-xs text-gray-400">{error}</p>}
-            {requestId && <p className="text-xs text-gray-500 mt-1 font-mono">Request ID: {requestId}</p>}
+            {shouldShowRequestId && <p className="text-xs text-gray-500 mt-1 font-mono">Request ID: {requestId}</p>}
           </div>
         )}
         
@@ -681,6 +687,48 @@ export default function IssueDraftPanel({ sessionId, refreshKey, onDraftUpdated 
         {panelState === "LOADED" && draft && !viewDraft && (
           <div className="text-xs text-yellow-300 bg-yellow-900/20 border border-yellow-700 rounded p-2">
             Draft loaded but issue content is missing.
+          </div>
+        )}
+        {panelState === "LOADED" && draft && (validationErrors.length > 0 || validationWarnings.length > 0) && (
+          <div className="space-y-2">
+            {validationErrors.length > 0 && (
+              <div className="bg-red-900/10 border border-red-700 rounded">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs text-red-300"
+                  onClick={() => setShowErrors(!showErrors)}
+                >
+                  <span className="font-medium">Errors ({validationErrors.length})</span>
+                  <span className="text-red-400">{showErrors ? "Hide" : "Show"}</span>
+                </button>
+                {showErrors && (
+                  <ul className="px-4 pb-3 space-y-1 text-xs text-red-200 list-disc list-inside">
+                    {validationErrors.map((err, idx) => (
+                      <li key={`${err.code}-${idx}`}>{err.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {validationWarnings.length > 0 && (
+              <div className="bg-yellow-900/10 border border-yellow-700 rounded">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs text-yellow-300"
+                  onClick={() => setShowWarnings(!showWarnings)}
+                >
+                  <span className="font-medium">Warnings ({validationWarnings.length})</span>
+                  <span className="text-yellow-400">{showWarnings ? "Hide" : "Show"}</span>
+                </button>
+                {showWarnings && (
+                  <ul className="px-4 pb-3 space-y-1 text-xs text-yellow-200 list-disc list-inside">
+                    {validationWarnings.map((warn, idx) => (
+                      <li key={`${warn.code}-${idx}`}>{warn.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         )}
         {panelState === "LOADED" && viewDraft && (

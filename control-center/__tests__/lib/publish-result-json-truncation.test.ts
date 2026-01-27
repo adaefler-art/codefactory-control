@@ -27,7 +27,9 @@ describe('truncateResultJson', () => {
 
   it('should not truncate objects exactly at the limit', () => {
     // Create an object that's exactly 32KB when serialized
-    const largeString = 'x'.repeat(32768 - 4); // subtract for the JSON structure
+    const maxBytes = 32768;
+    const overhead = Buffer.byteLength(JSON.stringify({ data: '' }), 'utf8');
+    const largeString = 'x'.repeat(Math.max(0, maxBytes - overhead));
     const data = { data: largeString };
     const result = truncateResultJson(data);
     

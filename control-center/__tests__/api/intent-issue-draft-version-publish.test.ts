@@ -4,7 +4,7 @@
  * Tests guard order: 401 → 409 → 403 → 404/400/500
  */
 
-import { POST } from '../../../app/api/intent/sessions/[id]/issue-draft/versions/publish/route';
+import { POST } from '@/api/intent/sessions/[id]/issue-draft/versions/publish/route';
 import { NextRequest } from 'next/server';
 
 // Mock dependencies
@@ -30,8 +30,15 @@ describe('POST /api/intent/sessions/[id]/issue-draft/versions/publish', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Reset environment variables
-    delete process.env.ISSUE_DRAFT_VERSION_PUBLISHING_ENABLED;
+    process.env.ISSUE_DRAFT_VERSION_PUBLISHING_ENABLED = 'true';
     delete process.env.AFU9_ADMIN_SUBS;
+    process.env.ENVIRONMENT = 'development';
+    const { getDeploymentEnv } = require('@/lib/utils/deployment-env');
+    getDeploymentEnv.mockReturnValue('development');
+  });
+
+  afterEach(() => {
+    delete process.env.ENVIRONMENT;
   });
 
   describe('Guard 1: Authentication (401)', () => {
@@ -78,9 +85,18 @@ describe('POST /api/intent/sessions/[id]/issue-draft/versions/publish', () => {
   });
 
   describe('Guard 2: Production block (409)', () => {
+    beforeEach(() => {
+      process.env.ENVIRONMENT = 'production';
+    });
+
+    afterEach(() => {
+      process.env.ENVIRONMENT = 'development';
+    });
+
     it('should return 409 in production when publishing not enabled', async () => {
       const { getDeploymentEnv } = require('@/lib/utils/deployment-env');
       getDeploymentEnv.mockReturnValue('production');
+      delete process.env.ISSUE_DRAFT_VERSION_PUBLISHING_ENABLED;
       
       const request = new NextRequest('http://localhost:3000/api/intent/sessions/test/issue-draft/versions/publish', {
         method: 'POST',
@@ -254,7 +270,7 @@ describe('POST /api/intent/sessions/[id]/issue-draft/versions/publish', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toContain('owner');
+      expect(data.details).toContain('owner');
     });
 
     it('should return 400 when repo is missing', async () => {
@@ -274,7 +290,7 @@ describe('POST /api/intent/sessions/[id]/issue-draft/versions/publish', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toContain('repo');
+      expect(data.details).toContain('repo');
     });
 
     it('should return 400 when both version_id and issue_set_id are missing', async () => {
@@ -294,7 +310,7 @@ describe('POST /api/intent/sessions/[id]/issue-draft/versions/publish', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toContain('version_id');
+      expect(data.details).toContain('version_id');
     });
 
     it('should return 400 when owner format is invalid', async () => {

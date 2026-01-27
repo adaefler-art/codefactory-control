@@ -69,6 +69,12 @@ const SEED_ENTRIES: SmokeKeySeedEntry[] = [
     is_regex: true,
     description: 'AFU9 loop issue events (E9.1 smoke)',
   },
+  {
+    route_pattern: '/api/ops/db/migrations',
+    method: 'GET',
+    is_regex: false,
+    description: 'Migration parity gate (CI deploy)',
+  },
 ];
 
 function getStageLabel(request: NextRequest): 'staging' | 'prod' | 'unknown' {

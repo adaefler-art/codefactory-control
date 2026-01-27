@@ -91,9 +91,9 @@ describe('status-mapping utility', () => {
       expect(statuses).not.toContain(LegacyStatus.FAILED);
     });
 
-    it('should return exactly 8 statuses', () => {
+    it('should return all canonical statuses', () => {
       const statuses = getCanonicalStatuses();
-      expect(statuses).toHaveLength(8);
+      expect(statuses).toHaveLength(Object.values(Afu9IssueStatus).length);
     });
   });
 
