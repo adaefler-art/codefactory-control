@@ -391,7 +391,10 @@ describe('GET /api/lawbook/active - Get Active Lawbook', () => {
 
 describe('Lawbook Hash Determinism', () => {
   test('array order normalization produces same hash', () => {
+    const fixedCreatedAt = '2026-01-01T00:00:00.000Z';
+
     const lawbook1 = createMinimalLawbook({
+      createdAt: fixedCreatedAt,
       remediation: {
         enabled: true,
         allowedPlaybooks: ['A', 'B', 'C'],
@@ -400,6 +403,7 @@ describe('Lawbook Hash Determinism', () => {
     });
 
     const lawbook2 = createMinimalLawbook({
+      createdAt: fixedCreatedAt,
       remediation: {
         enabled: true,
         allowedPlaybooks: ['C', 'A', 'B'], // Different order

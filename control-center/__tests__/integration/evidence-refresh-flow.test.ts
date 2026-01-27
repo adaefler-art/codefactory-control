@@ -22,9 +22,15 @@ describe('Evidence Refresh Integration', () => {
 
   beforeAll(() => {
     // In a real integration test, this would connect to a test database
+    const mockQuery = jest.fn();
+    const mockClient = {
+      query: mockQuery,
+      release: jest.fn(),
+    };
+
     pool = {
-      query: jest.fn(),
-      connect: jest.fn(),
+      query: mockQuery,
+      connect: jest.fn().mockResolvedValue(mockClient),
     } as unknown as Pool;
     dao = getRunsDAO(pool);
   });

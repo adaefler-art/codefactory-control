@@ -4,7 +4,7 @@
  * Verifies that API endpoints block write operations when ENABLE_PROD=false
  */
 
-import { isProdEnabled, isWriteAllowedInProd, getProdDisabledReason } from '../../src/lib/utils/prod-control';
+import { isProdEnabled, isWriteAllowedInProd, getProdDisabledReason } from '@/lib/utils/prod-control';
 
 describe('Production Control - Issue 3', () => {
   const originalEnv = process.env.ENABLE_PROD;

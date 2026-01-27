@@ -113,6 +113,16 @@ if (typeof globalThis.Request === 'undefined') {
 			return this.body;
 		}
 
+		async formData() {
+			if (typeof globalThis.FormData !== 'undefined' && this.body instanceof globalThis.FormData) {
+				return this.body;
+			}
+			if (typeof globalThis.FormData !== 'undefined') {
+				return new globalThis.FormData();
+			}
+			return null;
+		}
+
 		clone() {
 			return new MinimalRequest(this.url, {
 				method: this.method,
@@ -140,6 +150,16 @@ if (typeof globalThis.Response === 'undefined') {
 				return JSON.parse(this.body);
 			}
 			return this.body;
+		}
+
+		async text() {
+			if (this.body === null || this.body === undefined) return '';
+			if (typeof this.body === 'string') return this.body;
+			try {
+				return JSON.stringify(this.body);
+			} catch {
+				return String(this.body);
+			}
 		}
 
 		static json(data, init = undefined) {

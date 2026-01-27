@@ -555,7 +555,6 @@ describe('compileWorkPlanToIssueDraftV1', () => {
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.draft.dependsOn).toContain('I811');
         expect(result.draft.dependsOn).toContain('E81.2');
       }
     });

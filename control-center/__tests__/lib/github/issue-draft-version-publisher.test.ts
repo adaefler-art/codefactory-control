@@ -166,7 +166,6 @@ describe('IssueDraft Version Batch Publisher (E89.6)', () => {
       expect(results.length).toBe(3); // All items processed
     });
   });
-  });
 
   describe('Result structure', () => {
     it('should include all required fields in result', () => {

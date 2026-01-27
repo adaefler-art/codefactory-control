@@ -1,5 +1,6 @@
 /** @jest-environment node */
 
+import { NextRequest } from 'next/server';
 import { POST as selfPropelPost } from '../../app/api/issues/[id]/self-propel/route';
 
 describe('Self-propelling safety guards', () => {
@@ -29,6 +30,8 @@ describe('Self-propelling safety guards', () => {
   it('fails readiness when enabled but workflow artifact is missing', async () => {
     process.env.AFU9_ENABLE_SELF_PROPELLING = 'true';
     process.env.DATABASE_ENABLED = 'false';
+    process.env.AFU9_STAGE = 'development';
+    process.env.SERVICE_READ_TOKEN = 'test-token';
 
     jest.resetModules();
     jest.doMock('fs', () => {
@@ -40,7 +43,7 @@ describe('Self-propelling safety guards', () => {
     });
 
     const { GET: readyGet } = await import('../../app/api/ready/route');
-    const res = await readyGet();
+    const res = await readyGet(new NextRequest('http://localhost/api/ready'));
 
     expect(res.status).toBe(503);
 

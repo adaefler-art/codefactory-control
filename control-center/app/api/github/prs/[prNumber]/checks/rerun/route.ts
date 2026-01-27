@@ -89,7 +89,7 @@ export async function POST(
     }
 
     // Validate input
-    const input = JobRerunInputSchema.parse({
+    let input = JobRerunInputSchema.parse({
       owner: body.owner,
       repo: body.repo,
       prNumber,
@@ -108,6 +108,7 @@ export async function POST(
 
     // E87.2: Automation Policy Enforcement
     const targetIdentifier = `${input.owner}/${input.repo}#${prNumber}`;
+    const deployEnv = process.env.DEPLOY_ENV;
     const policyContext: PolicyEvaluationContext = {
       requestId,
       actionType: 'rerun_checks',
@@ -161,7 +162,6 @@ export async function POST(
     const registry = await registryService.getActiveRegistry(repository);
 
     // Fail-closed: if no registry exists in production, block by default
-    const deployEnv = process.env.DEPLOY_ENV;
     if (!registry && (deployEnv === 'prod' || deployEnv === 'production')) {
       logger.warn('Repository not in registry (production blocked)', {
         repository,

@@ -90,8 +90,12 @@ describe('Playbook API Routes', () => {
         createdAt: '2023-12-30T11:59:00Z',
       });
 
+      const headers = new Headers();
+      headers.set('x-afu9-sub', 'test-user');
+
       const request = new NextRequest('http://localhost/api/playbooks/post-deploy-verify/run?env=stage', {
         method: 'POST',
+        headers,
         body: JSON.stringify({ variables: { DEPLOY_URL: 'https://stage.example.com' } }),
       });
 
@@ -105,8 +109,12 @@ describe('Playbook API Routes', () => {
     });
 
     test('rejects invalid environment parameter', async () => {
+      const headers = new Headers();
+      headers.set('x-afu9-sub', 'test-user');
+
       const request = new NextRequest('http://localhost/api/playbooks/post-deploy-verify/run?env=invalid', {
         method: 'POST',
+        headers,
       });
 
       const response = await runPlaybook(request);
@@ -117,8 +125,12 @@ describe('Playbook API Routes', () => {
     });
 
     test('requires environment parameter', async () => {
+      const headers = new Headers();
+      headers.set('x-afu9-sub', 'test-user');
+
       const request = new NextRequest('http://localhost/api/playbooks/post-deploy-verify/run', {
         method: 'POST',
+        headers,
       });
 
       const response = await runPlaybook(request);
@@ -145,6 +157,7 @@ describe('Playbook API Routes', () => {
 
       const headers = new Headers();
       headers.set('x-request-id', 'test-123');
+      headers.set('x-afu9-sub', 'test-user');
 
       const request = new NextRequest('http://localhost/api/playbooks/post-deploy-verify/run?env=stage', {
         method: 'POST',

@@ -286,7 +286,7 @@ describe('GET /api/intent/context-packs/[id]', () => {
       }
     );
 
-    const response = await downloadContextPack(request, { params: Promise.resolve({ id: 'nonexistent' }) });
+    const response = await downloadContextPack(request, { params: { id: 'nonexistent' } });
     const body = await response.json();
 
     expect(response.status).toBe(404);

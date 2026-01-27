@@ -96,7 +96,7 @@ export const POST = withApi(async (request: NextRequest) => {
   if (!parseResult.success) {
     // Map Zod errors to deterministic error format
     // Sort by path for stability
-    const errors = parseResult.error.errors
+    const errors = parseResult.error.issues
       .map(err => ({
         path: err.path.join('.') || '$',
         message: err.message,

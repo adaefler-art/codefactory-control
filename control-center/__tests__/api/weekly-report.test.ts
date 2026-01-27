@@ -39,7 +39,7 @@ describe('Weekly Report Export API', () => {
       
       expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data.error.code).toBe('UNAUTHORIZED');
+      expect(data.code).toBe('UNAUTHORIZED');
     });
 
     it('should return 403 when user is not admin', async () => {
@@ -52,7 +52,7 @@ describe('Weekly Report Export API', () => {
       
       expect(response.status).toBe(403);
       const data = await response.json();
-      expect(data.error.code).toBe('FORBIDDEN');
+      expect(data.code).toBe('FORBIDDEN');
     });
 
     it('should return 403 when AFU9_ADMIN_SUBS is empty', async () => {
@@ -80,7 +80,7 @@ describe('Weekly Report Export API', () => {
       
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain('Invalid query parameters');
+      expect(data.error).toContain('Invalid query parameters');
     });
 
     it('should reject invalid format parameter', async () => {

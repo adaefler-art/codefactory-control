@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       return errorResponse('Invalid query parameters', {
         status: 400,
         requestId,
-        details: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
+        details: validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
       });
     }
     

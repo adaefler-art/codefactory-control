@@ -17,12 +17,81 @@ import {
   createLawbookVersion,
   activateLawbookVersion,
 } from '@/lib/db/lawbook';
+import { createMinimalLawbook } from '@/lawbook/schema';
 import type { LawbookV1 } from '@/lawbook/schema';
+
+const buildTestLawbook = (lawbookVersion: string): LawbookV1 =>
+  createMinimalLawbook({ lawbookVersion });
+
+const mockLawbookStore = new Map<string, LawbookV1>();
+let activeLawbookId: string | null = null;
+
+const resetLawbookStore = () => {
+  mockLawbookStore.clear();
+  activeLawbookId = null;
+};
+
+jest.mock('@/lib/db/lawbook', () => ({
+  createLawbookVersion: jest.fn(async (lawbook: LawbookV1) => {
+    const id = `${lawbook.lawbookVersion}-id`;
+    if (!mockLawbookStore.has(id)) {
+      mockLawbookStore.set(id, lawbook);
+    }
+    return {
+      success: true,
+      data: {
+        id,
+        lawbook_id: lawbook.lawbookId,
+        lawbook_version: lawbook.lawbookVersion,
+        lawbook_json: lawbook,
+      },
+      isExisting: false,
+    };
+  }),
+  activateLawbookVersion: jest.fn(async (versionId: string) => {
+    activeLawbookId = versionId;
+    return {
+      success: true,
+      data: {
+        id: versionId,
+        lawbook_id: 'AFU9-LAWBOOK',
+        active_lawbook_version_id: versionId,
+      },
+    };
+  }),
+  getActiveLawbook: jest.fn(async () => {
+    if (!activeLawbookId) {
+      return {
+        success: false,
+        notConfigured: true,
+        error: 'No active lawbook configured',
+      };
+    }
+    const lawbook = mockLawbookStore.get(activeLawbookId);
+    if (!lawbook) {
+      return {
+        success: false,
+        error: 'Active lawbook not found',
+      };
+    }
+    return {
+      success: true,
+      data: {
+        id: activeLawbookId,
+        lawbook_id: lawbook.lawbookId,
+        lawbook_version: lawbook.lawbookVersion,
+        lawbook_json: lawbook,
+      },
+    };
+  }),
+}));
 
 describe('Lawbook Version Helper (E79.3 / I793)', () => {
   beforeEach(() => {
     // Clear cache before each test
     clearLawbookVersionCache();
+    resetLawbookStore();
+    jest.clearAllMocks();
   });
 
   describe('getActiveLawbookVersion', () => {
@@ -30,19 +99,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create a test lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-test',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-test');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       expect(createResult.success).toBe(true);
@@ -74,19 +131,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-cached',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-cached');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -114,19 +159,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-ttl-test',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-ttl-test');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -148,19 +181,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-required',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-required');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -211,19 +232,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-attach',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-attach');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -279,19 +288,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-stats',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-stats');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -311,19 +308,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate first lawbook version
-      const lawbook1: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v1.0.0',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const lawbook1 = buildTestLawbook('v1.0.0');
 
       const createResult1 = await createLawbookVersion(lawbook1, 'admin', pool);
       await activateLawbookVersion(createResult1.data!.id, 'admin', pool);
@@ -338,19 +323,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       expect(stats.version).toBe('v1.0.0');
 
       // Create and activate second lawbook version
-      const lawbook2: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2.0.0',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 3,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const lawbook2 = buildTestLawbook('v2.0.0');
 
       const createResult2 = await createLawbookVersion(lawbook2, 'admin', pool);
       await activateLawbookVersion(createResult2.data!.id, 'admin', pool);
@@ -376,19 +349,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v1.0.0-force',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v1.0.0-force');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -408,19 +369,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       const pool = getPool();
       
       // Create and activate a lawbook
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-determinism',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-determinism');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -455,19 +404,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       expect(incident.lawbookVersion).toBeNull();
       
       // Now activate a lawbook and ingest another incident
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-incident',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-incident');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);
@@ -495,19 +432,7 @@ describe('Lawbook Version Helper (E79.3 / I793)', () => {
       }).rejects.toThrow();
 
       // Configure lawbook and retry
-      const testLawbook: LawbookV1 = {
-        version: '1.0.0',
-        lawbookId: 'AFU9-LAWBOOK',
-        lawbookVersion: 'v2025.01.05-remediation',
-        modules: [],
-        parameters: {},
-        guardrails: {
-          maxConcurrentDeploys: 2,
-          maxDeployRetries: 3,
-          requiredApprovers: 1,
-          autoRollbackEnabled: true,
-        },
-      };
+      const testLawbook = buildTestLawbook('v2025.01.05-remediation');
 
       const createResult = await createLawbookVersion(testLawbook, 'admin', pool);
       await activateLawbookVersion(createResult.data!.id, 'admin', pool);

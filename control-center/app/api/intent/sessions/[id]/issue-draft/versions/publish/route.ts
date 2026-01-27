@@ -196,7 +196,7 @@ export async function POST(
     
     // P1.3: Deterministic resolver - check for draft and committed version
     // If no specific version_id provided, use auto-resolve mode
-    const autoResolve = !version_id;
+    const autoResolve = !version_id && !issue_set_id;
     
     if (autoResolve) {
       // Step 1: Check if draft exists for session

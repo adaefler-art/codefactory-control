@@ -140,7 +140,8 @@ async function calculateHSH(
   `;
   
   const result = await pool.query(query, [periodStart, periodEnd]);
-  const count = parseInt(result.rows[0].touchpoint_count, 10);
+  const rawCount = result.rows[0]?.touchpoint_count ?? '0';
+  const count = parseInt(rawCount, 10);
   
   return count * HOURS_PER_TOUCHPOINT;
 }
@@ -165,7 +166,8 @@ async function calculateDCU(
   `;
   
   const result = await pool.query(query, [periodStart, periodEnd, environment || null]);
-  return parseInt(result.rows[0].deploy_count, 10);
+  const rawCount = result.rows[0]?.deploy_count ?? '0';
+  return parseInt(rawCount, 10);
 }
 
 /**

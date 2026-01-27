@@ -16,7 +16,7 @@ import {
   parseLawbook,
   safeParseLawbook,
   createMinimalLawbook,
-} from '../../../src/lawbook/schema';
+} from '@/lawbook/schema';
 
 describe('Lawbook Schema - Automation Policy', () => {
   describe('AutomationPolicyActionSchema', () => {
@@ -316,7 +316,9 @@ describe('Lawbook Schema - Automation Policy', () => {
     });
 
     it('should compute identical hash for equivalent lawbooks (determinism)', () => {
+      const fixedCreatedAt = '2026-01-01T00:00:00.000Z';
       const lawbook1 = createMinimalLawbook({
+        createdAt: fixedCreatedAt,
         automationPolicy: {
           enforcementMode: 'strict',
           policies: [
@@ -332,6 +334,7 @@ describe('Lawbook Schema - Automation Policy', () => {
       });
 
       const lawbook2 = createMinimalLawbook({
+        createdAt: fixedCreatedAt,
         automationPolicy: {
           enforcementMode: 'strict',
           policies: [

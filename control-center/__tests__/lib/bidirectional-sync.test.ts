@@ -37,7 +37,14 @@ describe('BidirectionalSyncEngine', () => {
     } as any;
 
     // Mock state machine loader
-    const { loadStateMachineSpec, isTransitionAllowed, getTransition, checkPreconditions } = require('../../src/lib/state-machine/loader');
+    const {
+      loadStateMachineSpec,
+      isTransitionAllowed,
+      getTransition,
+      checkPreconditions,
+      mapGitHubStatusToAfu9,
+      getGitHubLabelsForStatus,
+    } = require('../../src/lib/state-machine/loader');
     
     const mockTransitions = new Map([
       ['MERGE_READY_to_DONE', {
@@ -131,6 +138,22 @@ describe('BidirectionalSyncEngine', () => {
         }
       }
       return { met: missing.length === 0, missing };
+    });
+
+    mapGitHubStatusToAfu9.mockImplementation((spec: any, value: string, source: string) => {
+      if (source === 'labels') {
+        return spec.githubMapping.github_to_afu9_state.labels[value] || null;
+      }
+      return null;
+    });
+
+    getGitHubLabelsForStatus.mockImplementation((spec: any, status: string) => {
+      const mapping = spec.githubMapping.afu9_to_github_labels[status];
+      if (!mapping) return null;
+      return {
+        primary: mapping.primary_label,
+        additional: mapping.additional_labels || [],
+      };
     });
 
     syncEngine = new BidirectionalSyncEngine(pool, octokit);

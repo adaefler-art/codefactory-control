@@ -96,7 +96,7 @@ export type Verify = z.infer<typeof VerifySchema>;
  * - E81.x (e.g., E81.1, E81.2)
  * - CID:<identifier> (e.g., CID:E81.1, CID:I811)
  */
-const CANONICAL_ID_PATTERN = /^(I8\d{2}|E81\.\d+|CID:(I8\d{2}|E81\.\d+))$/;
+const CANONICAL_ID_PATTERN = /^(I8\d{2}|E81\.\d+|CID:(I8\d{2}|E81\.\d+|TBD))$/;
 
 /**
  * Canonical ID validator with format enforcement

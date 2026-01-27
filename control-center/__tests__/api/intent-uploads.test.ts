@@ -4,8 +4,8 @@
  */
 
 import { NextRequest } from 'next/server';
-import { POST, GET } from '@/app/api/intent/sessions/[id]/uploads/route';
-import { DELETE } from '@/app/api/intent/sessions/[id]/uploads/[uploadId]/route';
+import { POST, GET } from '@/api/intent/sessions/[id]/uploads/route';
+import { DELETE } from '@/api/intent/sessions/[id]/uploads/[uploadId]/route';
 import { getPool } from '@/lib/db';
 import { validateUpload, calculateSHA256 } from '@/lib/upload-storage-service';
 

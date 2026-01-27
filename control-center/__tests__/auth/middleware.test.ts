@@ -12,6 +12,125 @@ import { shouldAllowUnauthenticatedGithubStatusEndpoint } from '../../src/lib/au
 import * as smokeAllowlist from '../../src/lib/db/smokeKeyAllowlist';
 import { middleware } from '../../proxy';
 
+jest.mock('../../src/lib/db/smokeKeyAllowlist', () => {
+  const actual = jest.requireActual('../../src/lib/db/smokeKeyAllowlist');
+  return {
+    ...actual,
+    getActiveAllowlist: jest.fn(),
+  };
+});
+
+const defaultAllowlist: smokeAllowlist.SmokeKeyAllowlistEntry[] = [
+  {
+    id: 1,
+    route_pattern: '/api/timeline/chain',
+    method: 'GET',
+    is_regex: false,
+    description: 'Timeline chain smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 2,
+    route_pattern: '/api/intent/sessions',
+    method: 'POST',
+    is_regex: false,
+    description: 'Intent sessions smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 3,
+    route_pattern: '^/api/intent/sessions/[^/]+/messages$',
+    method: 'POST',
+    is_regex: true,
+    description: 'Intent session messages smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 4,
+    route_pattern: '/api/issues',
+    method: 'GET',
+    is_regex: false,
+    description: 'Issues list smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 5,
+    route_pattern: '/api/ops/issues/sync',
+    method: 'POST',
+    is_regex: false,
+    description: 'Ops issues sync smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 6,
+    route_pattern: '/api/issues/sync',
+    method: 'POST',
+    is_regex: false,
+    description: 'Issues sync smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 7,
+    route_pattern: '/api/integrations/github/ingest/issue',
+    method: 'POST',
+    is_regex: false,
+    description: 'GitHub ingest smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+  {
+    id: 8,
+    route_pattern: '/api/afu9/s1s3/issues/pick',
+    method: 'POST',
+    is_regex: false,
+    description: 'S1S3 pick smoke bypass',
+    added_by: 'test',
+    added_at: new Date(0).toISOString(),
+    removed_by: null,
+    removed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+];
+
+const mockGetActiveAllowlist = smokeAllowlist.getActiveAllowlist as jest.MockedFunction<
+  typeof smokeAllowlist.getActiveAllowlist
+>;
+
 describe('Middleware Authentication Logic', () => {
   beforeEach(() => {
     process.env.AFU9_AUTH_COOKIE = 'afu9_id';
@@ -19,6 +138,7 @@ describe('Middleware Authentication Logic', () => {
     delete process.env.AFU9_PUBLIC_STATUS_ENDPOINTS;
     delete process.env.AFU9_SMOKE_KEY;
     delete process.env.SERVICE_READ_TOKEN;
+    mockGetActiveAllowlist.mockResolvedValue({ success: true, data: defaultAllowlist });
   });
 
   afterEach(() => {
@@ -546,9 +666,7 @@ describe('Middleware Authentication Logic', () => {
 
     test('stage + correct key + allowlisted POST /api/afu9/s1s3/issues/pick => bypass active', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
-      const allowlistSpy = jest
-        .spyOn(smokeAllowlist, 'getActiveAllowlist')
-        .mockResolvedValue({ success: true, data: [allowlistedEntry] });
+      mockGetActiveAllowlist.mockResolvedValue({ success: true, data: [allowlistedEntry] });
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(0);
 
       const request = makeRequest({
@@ -563,15 +681,12 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-bypass')).toBe('1');
       expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('1');
 
-      allowlistSpy.mockRestore();
       nowSpy.mockRestore();
     });
 
     test('stage + correct key + NOT allowlisted => still 401', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
-      const allowlistSpy = jest
-        .spyOn(smokeAllowlist, 'getActiveAllowlist')
-        .mockResolvedValue({ success: true, data: [] });
+      mockGetActiveAllowlist.mockResolvedValue({ success: true, data: [] });
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(60000);
 
       const request = makeRequest({
@@ -586,15 +701,12 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-bypass')).toBe('0');
       expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('0');
 
-      allowlistSpy.mockRestore();
       nowSpy.mockRestore();
     });
 
     test('stage + correct key + allowlist lookup failure => 401 with allowlist error header', async () => {
       process.env.AFU9_SMOKE_KEY = 'secret';
-      const allowlistSpy = jest
-        .spyOn(smokeAllowlist, 'getActiveAllowlist')
-        .mockResolvedValue({ success: false, error: 'DB down' });
+      mockGetActiveAllowlist.mockResolvedValue({ success: false, error: 'DB down' });
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(120000);
 
       const request = makeRequest({
@@ -609,7 +721,6 @@ describe('Middleware Authentication Logic', () => {
       expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('0');
       expect(response.headers.get('x-afu9-smoke-allowlist-error')).toBe('db_unreachable');
 
-      allowlistSpy.mockRestore();
       nowSpy.mockRestore();
     });
   });

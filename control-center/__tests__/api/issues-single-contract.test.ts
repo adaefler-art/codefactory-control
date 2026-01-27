@@ -21,6 +21,11 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
 describe('GET /api/issues/[id] contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.SERVICE_READ_TOKEN = 'test-service-token';
+  });
+
+  afterEach(() => {
+    delete process.env.SERVICE_READ_TOKEN;
   });
 
   test('returns a single Issue object with `id`', async () => {
@@ -45,7 +50,9 @@ describe('GET /api/issues/[id] contract', () => {
 
     getAfu9IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
-    const req = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
+    const req = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+      headers: { 'x-afu9-service-token': 'test-service-token' },
+    });
     const res = await getIssue(req, {
       params: { id: mockIssue.id },
     });
@@ -82,7 +89,9 @@ describe('GET /api/issues/[id] contract', () => {
       },
     });
 
-    const req = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
+    const req = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000', {
+      headers: { 'x-afu9-service-token': 'test-service-token' },
+    });
     const res = await getIssue(req, {
       params: { id: '123e4567-e89b-12d3-a456-426614174000' },
     });

@@ -338,7 +338,7 @@ export function shouldRetry(
         delayMs = calculateRateLimitDelay(
           rateLimitInfo.reset,
           rateLimitInfo.retryAfter,
-          config.maxDelayMs
+          Number.MAX_SAFE_INTEGER
         );
       } else {
         // Fallback to exponential backoff if rate limit info not available

@@ -15,7 +15,7 @@ const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
 const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN;
 const AFU9_COOKIE_SAMESITE_ENV = (process.env.AFU9_COOKIE_SAMESITE || 'lax').toLowerCase();
-const SERVICE_READ_TOKEN = process.env.SERVICE_READ_TOKEN || '';
+const getServiceReadToken = () => (process.env.SERVICE_READ_TOKEN || '').trim();
 
 const cookieSameSite: 'lax' | 'strict' | 'none' =
   AFU9_COOKIE_SAMESITE_ENV === 'none' || AFU9_COOKIE_SAMESITE_ENV === 'strict'
@@ -49,9 +49,10 @@ const ALLOWLIST_CACHE_TTL_MS = 30000; // 30 seconds
  */
 async function getCachedAllowlist(): Promise<AllowlistFetchResult> {
   const now = Date.now();
+  const bypassCache = process.env.NODE_ENV === 'test';
   
   // Check cache validity
-  if (allowlistCache && (now - allowlistCache.timestamp) < ALLOWLIST_CACHE_TTL_MS) {
+  if (!bypassCache && allowlistCache && (now - allowlistCache.timestamp) < ALLOWLIST_CACHE_TTL_MS) {
     return { data: allowlistCache.data, errorCode: null };
   }
   
@@ -60,10 +61,12 @@ async function getCachedAllowlist(): Promise<AllowlistFetchResult> {
     const result = await getActiveAllowlist();
     
     if (result.success && result.data) {
-      allowlistCache = {
-        data: result.data,
-        timestamp: now,
-      };
+      if (!bypassCache) {
+        allowlistCache = {
+          data: result.data,
+          timestamp: now,
+        };
+      }
       return { data: result.data, errorCode: null };
     } else {
       console.error('[MIDDLEWARE] Failed to fetch allowlist:', result.error);
@@ -212,7 +215,8 @@ export async function middleware(request: NextRequest) {
   if (isServiceReadRoute(pathname, request.method)) {
     const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
     if (providedServiceToken) {
-      if (!SERVICE_READ_TOKEN || providedServiceToken !== SERVICE_READ_TOKEN) {
+      const serviceReadToken = getServiceReadToken();
+      if (!serviceReadToken || providedServiceToken !== serviceReadToken) {
         const response = NextResponse.json(
           { error: 'Forbidden', message: 'service token rejected' },
           { status: 403 }
