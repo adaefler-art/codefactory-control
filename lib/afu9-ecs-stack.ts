@@ -132,6 +132,12 @@ export interface Afu9EcsStackProps extends cdk.StackProps {
   stageTargetGroup?: elbv2.ApplicationTargetGroup;
 
   /**
+   * Skip creating stack outputs/exports (useful for migration to avoid export name collisions)
+   * @default false
+   */
+  skipExports?: boolean;
+
+  /**
    * Enable database integration
    * When false: no DB secrets, no IAM grants, app reports database:not_configured
    * When true: DB secret ARN required, IAM grants added, app connects to DB
@@ -331,6 +337,7 @@ export class Afu9EcsStack extends cdk.Stack {
       cpu = DEFAULT_TASK_CPU,
       memoryLimitMiB = DEFAULT_TASK_MEMORY_MIB,
     } = props;
+    const skipExports = props.skipExports === true;
 
     const { environment, domainName, enableDatabase, dbSecretArn, dbSecretName, createStagingService } = resolveEcsConfig(this, props);
     this.domainName = domainName;
@@ -1173,91 +1180,92 @@ export class Afu9EcsStack extends cdk.Stack {
     // ========================================
     // Stack Outputs
     // ========================================
-
-    new cdk.CfnOutput(this, 'ClusterName', {
-      value: this.cluster.clusterName,
-      description: 'ECS cluster name',
-      exportName: 'Afu9ClusterName',
-    });
-
-    new cdk.CfnOutput(this, 'ClusterArn', {
-      value: this.cluster.clusterArn,
-      description: 'ECS cluster ARN',
-      exportName: 'Afu9ClusterArn',
-    });
-
-    new cdk.CfnOutput(this, 'ServiceName', {
-      value: this.service.serviceName,
-      description: 'ECS service name',
-      exportName: 'Afu9ServiceName',
-    });
-
-    if (this.stageService) {
-      new cdk.CfnOutput(this, 'StageServiceName', {
-        value: this.stageService.serviceName,
-        description: 'ECS staging service name',
-        exportName: 'Afu9StageServiceName',
+    if (!skipExports) {
+      new cdk.CfnOutput(this, 'ClusterName', {
+        value: this.cluster.clusterName,
+        description: 'ECS cluster name',
+        exportName: 'Afu9ClusterName',
       });
 
-      new cdk.CfnOutput(this, 'StageServiceArn', {
-        value: this.stageService.serviceArn,
-        description: 'ECS staging service ARN',
-        exportName: 'Afu9StageServiceArn',
+      new cdk.CfnOutput(this, 'ClusterArn', {
+        value: this.cluster.clusterArn,
+        description: 'ECS cluster ARN',
+        exportName: 'Afu9ClusterArn',
+      });
+
+      new cdk.CfnOutput(this, 'ServiceName', {
+        value: this.service.serviceName,
+        description: 'ECS service name',
+        exportName: 'Afu9ServiceName',
+      });
+
+      if (this.stageService) {
+        new cdk.CfnOutput(this, 'StageServiceName', {
+          value: this.stageService.serviceName,
+          description: 'ECS staging service name',
+          exportName: 'Afu9StageServiceName',
+        });
+
+        new cdk.CfnOutput(this, 'StageServiceArn', {
+          value: this.stageService.serviceArn,
+          description: 'ECS staging service ARN',
+          exportName: 'Afu9StageServiceArn',
+        });
+      }
+
+      new cdk.CfnOutput(this, 'ServiceArn', {
+        value: this.service.serviceArn,
+        description: 'ECS service ARN',
+        exportName: 'Afu9ServiceArn',
+      });
+
+      new cdk.CfnOutput(this, 'TaskDefinitionArn', {
+        value: taskDefinition.taskDefinitionArn,
+        description: 'ECS task definition ARN',
+        exportName: 'Afu9TaskDefinitionArn',
+      });
+
+      new cdk.CfnOutput(this, 'EcrControlCenterRepo', {
+        value: this.controlCenterRepo.repositoryUri,
+        description: 'ECR repository URI for Control Center',
+        exportName: 'Afu9EcrControlCenterRepo',
+      });
+
+      new cdk.CfnOutput(this, 'EcrMcpGithubRepo', {
+        value: this.mcpGithubRepo.repositoryUri,
+        description: 'ECR repository URI for MCP GitHub Server',
+        exportName: 'Afu9EcrMcpGithubRepo',
+      });
+
+      new cdk.CfnOutput(this, 'EcrMcpDeployRepo', {
+        value: this.mcpDeployRepo.repositoryUri,
+        description: 'ECR repository URI for MCP Deploy Server',
+        exportName: 'Afu9EcrMcpDeployRepo',
+      });
+
+      new cdk.CfnOutput(this, 'EcrMcpObservabilityRepo', {
+        value: this.mcpObservabilityRepo.repositoryUri,
+        description: 'ECR repository URI for MCP Observability Server',
+        exportName: 'Afu9EcrMcpObservabilityRepo',
+      });
+
+      new cdk.CfnOutput(this, 'EcrMcpRunnerRepo', {
+        value: this.mcpRunnerRepo.repositoryUri,
+        description: 'ECR repository URI for MCP Runner Server',
+        exportName: 'Afu9EcrMcpRunnerRepo',
+      });
+
+      new cdk.CfnOutput(this, 'TaskRoleArn', {
+        value: taskRole.roleArn,
+        description: 'IAM task role ARN',
+        exportName: 'Afu9TaskRoleArn',
+      });
+
+      new cdk.CfnOutput(this, 'TaskExecutionRoleArn', {
+        value: taskExecutionRole.roleArn,
+        description: 'IAM task execution role ARN',
+        exportName: 'Afu9TaskExecutionRoleArn',
       });
     }
-
-    new cdk.CfnOutput(this, 'ServiceArn', {
-      value: this.service.serviceArn,
-      description: 'ECS service ARN',
-      exportName: 'Afu9ServiceArn',
-    });
-
-    new cdk.CfnOutput(this, 'TaskDefinitionArn', {
-      value: taskDefinition.taskDefinitionArn,
-      description: 'ECS task definition ARN',
-      exportName: 'Afu9TaskDefinitionArn',
-    });
-
-    new cdk.CfnOutput(this, 'EcrControlCenterRepo', {
-      value: this.controlCenterRepo.repositoryUri,
-      description: 'ECR repository URI for Control Center',
-      exportName: 'Afu9EcrControlCenterRepo',
-    });
-
-    new cdk.CfnOutput(this, 'EcrMcpGithubRepo', {
-      value: this.mcpGithubRepo.repositoryUri,
-      description: 'ECR repository URI for MCP GitHub Server',
-      exportName: 'Afu9EcrMcpGithubRepo',
-    });
-
-    new cdk.CfnOutput(this, 'EcrMcpDeployRepo', {
-      value: this.mcpDeployRepo.repositoryUri,
-      description: 'ECR repository URI for MCP Deploy Server',
-      exportName: 'Afu9EcrMcpDeployRepo',
-    });
-
-    new cdk.CfnOutput(this, 'EcrMcpObservabilityRepo', {
-      value: this.mcpObservabilityRepo.repositoryUri,
-      description: 'ECR repository URI for MCP Observability Server',
-      exportName: 'Afu9EcrMcpObservabilityRepo',
-    });
-
-    new cdk.CfnOutput(this, 'EcrMcpRunnerRepo', {
-      value: this.mcpRunnerRepo.repositoryUri,
-      description: 'ECR repository URI for MCP Runner Server',
-      exportName: 'Afu9EcrMcpRunnerRepo',
-    });
-
-    new cdk.CfnOutput(this, 'TaskRoleArn', {
-      value: taskRole.roleArn,
-      description: 'IAM task role ARN',
-      exportName: 'Afu9TaskRoleArn',
-    });
-
-    new cdk.CfnOutput(this, 'TaskExecutionRoleArn', {
-      value: taskExecutionRole.roleArn,
-      description: 'IAM task execution role ARN',
-      exportName: 'Afu9TaskExecutionRoleArn',
-    });
   }
 }
