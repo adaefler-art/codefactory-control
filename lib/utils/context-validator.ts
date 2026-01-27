@@ -56,6 +56,16 @@ export const CANONICAL_CONTEXT_KEYS: Record<string, ContextKeyDef> = {
     description: 'Enable Low-Cost Pause Mode for PROD (sets desiredCount=0, disables routing)',
     default: false,
   },
+  'afu9-keep-single-exports': {
+    type: 'boolean',
+    description: 'Keep legacy single-environment export names for backward compatibility',
+    default: false,
+  },
+  'afu9-skip-ecs-exports': {
+    type: 'boolean',
+    description: 'Skip creating ECS stack CloudFormation exports (for migration/parallel stacks)',
+    default: false,
+  },
 
   // DNS and domain configuration
   'afu9-domain': {

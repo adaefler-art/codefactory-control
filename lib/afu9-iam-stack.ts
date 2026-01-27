@@ -556,9 +556,16 @@ export class Afu9IamStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['iam:PassRole'],
         resources: [
-          // Scope to AFU-9 ECS task roles only
+          // Legacy/Production roles (single-env and shared-cluster deployments)
           `arn:aws:iam::${this.account}:role/afu9-ecs-task-role`,
           `arn:aws:iam::${this.account}:role/afu9-ecs-task-execution-role`,
+          // Prod-suffixed roles (environment-specific naming convention)
+          `arn:aws:iam::${this.account}:role/afu9-ecs-task-role-prod`,
+          `arn:aws:iam::${this.account}:role/afu9-ecs-task-execution-role-prod`,
+          // CDK-generated staging roles (Afu9EcsStageStack creates roles with CDK suffixes)
+          // Pattern covers: Afu9EcsStageStack-TaskRole<hash> and Afu9EcsStageStack-TaskExecutionRole<hash>
+          `arn:aws:iam::${this.account}:role/Afu9EcsStageStack-TaskRole*`,
+          `arn:aws:iam::${this.account}:role/Afu9EcsStageStack-TaskExecutionRole*`,
         ],
         conditions: {
           StringEquals: {
