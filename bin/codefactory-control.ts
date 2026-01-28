@@ -198,7 +198,9 @@ if (multiEnvEnabled) {
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: stageTargetGroup,
     enableDatabase,
-    dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
+    // Use dbSecretName to avoid Fn::ImportValue cross-stack dependency drift.
+    // The ECS stack will use fromSecretNameV2() which is rotation-safe.
+    dbSecretName: enableDatabase ? 'afu9/database' : undefined,
     environment: 'stage',
     imageTag: 'stage-latest',
     desiredCount: 1,
@@ -215,7 +217,9 @@ if (multiEnvEnabled) {
     ecsSecurityGroup: networkStack.ecsSecurityGroup,
     targetGroup: prodTargetGroup,
     enableDatabase,
-    dbSecretArn: enableDatabase && databaseStack ? databaseStack.dbSecret.secretArn : undefined,
+    // Use dbSecretName to avoid Fn::ImportValue cross-stack dependency drift.
+    // The ECS stack will use fromSecretNameV2() which is rotation-safe.
+    dbSecretName: enableDatabase ? 'afu9/database' : undefined,
     environment: 'prod',
     imageTag: 'prod-latest',
     // Low-Cost Pause Mode: Set desiredCount=0 when prodPaused=true
