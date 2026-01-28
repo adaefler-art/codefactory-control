@@ -156,7 +156,8 @@ describe('Ready Endpoint Contract', () => {
 
     expect(response.status).toBe(503);
     expect(body.ok).toBe(false);
-    expect(body.missing).toContain('AFU9_STAGE');
+    // Check for AFU9_STAGE or its fallback label
+    expect(body.missing.some((m: string) => m.includes('AFU9_STAGE'))).toBe(true);
     expect(body.missing).toContain('SERVICE_READ_TOKEN');
   });
 
