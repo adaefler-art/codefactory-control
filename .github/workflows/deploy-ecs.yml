@@ -1485,25 +1485,27 @@ jobs:
               Write-Host "Gate response:"
               $response | ConvertTo-Json -Depth 5 | Write-Host
 
-              # Check for required tables
-              $tableNames = @()
-              if ($response.tables) {
-                $tableNames = $response.tables | ForEach-Object { $_.table_name }
-              }
-
-              $requiredTables = @("issues", "smoke_key_allowlist")
-              $missingTables = $requiredTables | Where-Object { $_ -notin $tableNames }
-
-              if ($missingTables.Count -eq 0) {
-                Write-Host "✅ All required tables present: $($requiredTables -join ', ')"
+              # Use the API's built-in requiredTablesCheck instead of custom table lookup
+              # The API validates: intent_issue_drafts, intent_issue_sets (core tables)
+              if ($response.requiredTablesCheck -and $response.requiredTablesCheck.missingTables.Count -eq 0) {
+                Write-Host "✅ All required tables present: $($response.requiredTablesCheck.requiredTables -join ', ')"
                 exit 0
-              } else {
+              } elseif ($response.requiredTablesCheck) {
+                $missingTables = $response.requiredTablesCheck.missingTables
                 Write-Warning "Missing tables (attempt $attempt/$maxRetries): $($missingTables -join ', ')"
                 if ($attempt -lt $maxRetries) {
                   Start-Sleep -Seconds $retryDelaySeconds
                   continue
                 }
                 Write-Error "❌ Required tables missing after $maxRetries attempts: $($missingTables -join ', ')"
+                exit 1
+              } else {
+                Write-Warning "No requiredTablesCheck in response (attempt $attempt/$maxRetries)"
+                if ($attempt -lt $maxRetries) {
+                  Start-Sleep -Seconds $retryDelaySeconds
+                  continue
+                }
+                Write-Error "❌ Post-deploy gate failed: requiredTablesCheck not available"
                 exit 1
               }
             } catch {
