@@ -6,6 +6,11 @@
  * Links PR to GitHub issue.
  * Logs S3 step event for audit trail.
  * 
+ * Idempotent behavior:
+ * - If issue is in PR_CREATED or IMPLEMENTING state with PR info, returns existing PR
+ * - If branch already exists, skips branch creation
+ * - If no commits between branches, returns error without creating PR
+ * 
  * Request body:
  * {
  *   baseBranch?: string (default: "main"),
@@ -90,12 +95,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return errorResponse('Invalid issue state', {
         status: 400,
         requestId,
-        details: `Issue must be in SPEC_READY or PR_CREATED state. Current: ${issue.status}`,
+        details: `Issue must be in SPEC_READY, IMPLEMENTING, or PR_CREATED state. Current: ${issue.status}`,
       });
     }
 
     // Idempotent: If PR already created, return existing PR info
-    if (issue.status === S1S3IssueStatus.PR_CREATED && issue.pr_number && issue.pr_url && issue.branch_name) {
+    if ((issue.status === S1S3IssueStatus.PR_CREATED || issue.status === S1S3IssueStatus.IMPLEMENTING) && issue.pr_number && issue.pr_url && issue.branch_name) {
       console.log('[S3] PR already exists, returning existing info:', {
         requestId,
         issue_id: issue.id,
@@ -259,7 +264,7 @@ Closes #${issue.github_issue_number}
         basehead: `${baseBranch}...${branchName}`,
       });
 
-      if (comparison.data.total_commits === 0 && comparison.data.status === 'identical') {
+      if (comparison.data.status === 'identical') {
         // No commits between branches - cannot create PR
         console.warn('[S3] No commits between branches:', {
           requestId,
