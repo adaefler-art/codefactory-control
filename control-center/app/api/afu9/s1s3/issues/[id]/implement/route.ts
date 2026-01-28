@@ -6,6 +6,11 @@
  * Links PR to GitHub issue.
  * Logs S3 step event for audit trail.
  * 
+ * Idempotent behavior:
+ * - If issue is in PR_CREATED or IMPLEMENTING state with PR info, returns existing PR
+ * - If branch already exists, skips branch creation
+ * - If no commits between branches, returns error without creating PR
+ * 
  * Request body:
  * {
  *   baseBranch?: string (default: "main"),
@@ -86,12 +91,39 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const issue = issueResult.data;
 
     // Check if issue has spec ready
-    if (issue.status !== S1S3IssueStatus.SPEC_READY && issue.status !== S1S3IssueStatus.IMPLEMENTING) {
+    if (issue.status !== S1S3IssueStatus.SPEC_READY && issue.status !== S1S3IssueStatus.IMPLEMENTING && issue.status !== S1S3IssueStatus.PR_CREATED) {
       return errorResponse('Invalid issue state', {
         status: 400,
         requestId,
-        details: `Issue must be in SPEC_READY state. Current: ${issue.status}`,
+        details: `Issue must be in SPEC_READY, IMPLEMENTING, or PR_CREATED state. Current: ${issue.status}`,
       });
+    }
+
+    // Idempotent: If PR already created, return existing PR info
+    if ((issue.status === S1S3IssueStatus.PR_CREATED || issue.status === S1S3IssueStatus.IMPLEMENTING) && issue.pr_number && issue.pr_url && issue.branch_name) {
+      console.log('[S3] PR already exists, returning existing info:', {
+        requestId,
+        issue_id: issue.id,
+        pr_number: issue.pr_number,
+        pr_url: issue.pr_url,
+        branch_name: issue.branch_name,
+      });
+
+      return jsonResponse(
+        {
+          issue: issue,
+          pr: {
+            number: issue.pr_number,
+            url: issue.pr_url,
+            branch: issue.branch_name,
+          },
+          message: 'PR already exists (idempotent)',
+        },
+        {
+          status: 200,
+          requestId,
+        }
+      );
     }
 
     // Parse repo
@@ -158,20 +190,42 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       const baseSha = baseRef.object.sha;
 
-      // Create new branch
-      await octokit.rest.git.createRef({
-        owner: repoOwner,
-        repo: repoName,
-        ref: `refs/heads/${branchName}`,
-        sha: baseSha,
-      });
+      // Check if branch already exists (idempotent)
+      let branchExists = false;
+      try {
+        await octokit.rest.git.getRef({
+          owner: repoOwner,
+          repo: repoName,
+          ref: `heads/${branchName}`,
+        });
+        branchExists = true;
+        console.log('[S3] Branch already exists:', {
+          requestId,
+          branch: branchName,
+        });
+      } catch (error) {
+        if (error && typeof error === 'object' && 'status' in error && error.status !== 404) {
+          throw error;
+        }
+        // Branch doesn't exist, we'll create it
+      }
 
-      console.log('[S3] Branch created:', {
-        requestId,
-        branch: branchName,
-        base: baseBranch,
-        sha: baseSha,
-      });
+      // Create new branch if it doesn't exist
+      if (!branchExists) {
+        await octokit.rest.git.createRef({
+          owner: repoOwner,
+          repo: repoName,
+          ref: `refs/heads/${branchName}`,
+          sha: baseSha,
+        });
+
+        console.log('[S3] Branch created:', {
+          requestId,
+          branch: branchName,
+          base: baseBranch,
+          sha: baseSha,
+        });
+      }
 
       // Generate PR title and body
       const finalPrTitle = prTitle || `Issue #${issue.github_issue_number}: Implementation`;
@@ -202,6 +256,52 @@ ${
 
 Closes #${issue.github_issue_number}
 `.trim();
+
+      // Check if there are commits between base and head before creating PR
+      const comparison = await octokit.rest.repos.compareCommitsWithBasehead({
+        owner: repoOwner,
+        repo: repoName,
+        basehead: `${baseBranch}...${branchName}`,
+      });
+
+      if (comparison.data.status === 'identical') {
+        // No commits between branches - cannot create PR
+        console.warn('[S3] No commits between branches:', {
+          requestId,
+          base: baseBranch,
+          head: branchName,
+        });
+
+        // Update run status to FAILED
+        await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, 'No commits between base and head branch');
+
+        // Create step event - FAILED
+        await createS1S3RunStep(pool, {
+          run_id: run.id,
+          step_id: 'S3',
+          step_name: 'Create Branch and PR',
+          status: S1S3StepStatus.FAILED,
+          error_message: 'No commits between base and head branch',
+          evidence_refs: {
+            issue_id: issue.id,
+            branch_name: branchName,
+            base_branch: baseBranch,
+            request_id: requestId,
+          },
+        });
+
+        return errorResponse('No commits between base and head branch', {
+          status: 400,
+          requestId,
+          details: `Branch ${branchName} has no commits compared to ${baseBranch}. Cannot create PR.`,
+        });
+      }
+
+      console.log('[S3] Commits found between branches:', {
+        requestId,
+        total_commits: comparison.data.total_commits,
+        ahead_by: comparison.data.ahead_by,
+      });
 
       // Create pull request
       const { data: pr } = await octokit.rest.pulls.create({
