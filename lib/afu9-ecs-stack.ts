@@ -255,12 +255,14 @@ function resolveEcsConfig(scope: Construct, props: Afu9EcsStackProps): ResolvedE
     }
   }
 
-  // Resolution priority: props > correct context key > legacy context key > default (false)
+  // Resolution priority: props > correct context key > legacy context key > default (true)
+  // Default is TRUE because database connectivity is the expected production configuration.
+  // To disable: pass enableDatabase=false in props or -c afu9-enable-database=false
   const enableDatabase =
     toOptionalBoolean(props.enableDatabase) ??
     toOptionalBoolean(ctxEnableDbCorrect) ??
     toOptionalBoolean(ctxEnableDbLegacy) ??
-    false;
+    true;
 
   const providedDbSecretArn = props.dbSecretArn ?? ctxDbSecretArn;
   const dbSecretName = props.dbSecretName ?? ctxDbSecretName;
