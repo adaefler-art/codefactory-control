@@ -75,14 +75,15 @@ export async function GET(request: NextRequest) {
   const missing: string[] = [];
   const invalid: string[] = [];
 
-  const requiredStage = process.env.AFU9_STAGE;
+  // AFU9_STAGE with fallback to DEPLOY_ENV or ENVIRONMENT (CDK uses these)
+  const requiredStage = process.env.AFU9_STAGE || process.env.DEPLOY_ENV || process.env.ENVIRONMENT;
   const serviceReadToken = process.env.SERVICE_READ_TOKEN;
   const intentEnabled = process.env.AFU9_INTENT_ENABLED === 'true';
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
   const databaseEnabled = process.env.DATABASE_ENABLED === 'true';
 
   if (!requiredStage || !requiredStage.trim()) {
-    missing.push('AFU9_STAGE');
+    missing.push('AFU9_STAGE (or DEPLOY_ENV/ENVIRONMENT)');
   } else {
     const normalizedStage = requiredStage.trim().toLowerCase();
     const allowedStages = ['staging', 'stage', 'prod', 'production', 'dev', 'development'];

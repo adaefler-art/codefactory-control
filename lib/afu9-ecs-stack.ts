@@ -860,6 +860,7 @@ export class Afu9EcsStack extends cdk.Stack {
         environment: {
           NODE_ENV: appNodeEnvValue,
           DEPLOY_ENV: deployEnvValue,
+          AFU9_STAGE: deployEnvValue,
           PORT: '3000',
           ENVIRONMENT: environmentLabel,
           APP_VERSION: appVersion,
