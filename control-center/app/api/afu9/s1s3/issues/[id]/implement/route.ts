@@ -79,18 +79,18 @@ function getErrorStatus(error: unknown): number | undefined {
 
 function getErrorApiMessage(error: unknown): string {
   const responseMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-  return responseMessage || getErrorMessage(error);
+  return responseMessage || '';
 }
 
 function isPullRequestAlreadyExistsError(error: unknown): boolean {
   const status = getErrorStatus(error);
-  const message = getErrorApiMessage(error).toLowerCase();
+  const message = `${getErrorMessage(error)} ${getErrorApiMessage(error)}`.toLowerCase();
   return status === 422 && message.includes('pull request already exists');
 }
 
 function isBranchAlreadyExistsError(error: unknown): boolean {
   const status = getErrorStatus(error);
-  const message = getErrorApiMessage(error).toLowerCase();
+  const message = `${getErrorMessage(error)} ${getErrorApiMessage(error)}`.toLowerCase();
   return status === 422 && message.includes('reference already exists');
 }
 
@@ -107,14 +107,15 @@ function selectLatestPullRequest(prs: PullRequestSummary[]): PullRequestSummary 
     })[0];
 }
 
-async function findExistingPullRequest(params: {
+async function findExistingPr(params: {
   octokit: any;
   owner: string;
   repo: string;
-  head: string;
+  branch: string;
   base: string;
 }): Promise<PullRequestSummary | null> {
-  const { octokit, owner, repo, head, base } = params;
+  const { octokit, owner, repo, branch, base } = params;
+  const head = `${owner}:${branch}`;
 
   const openResult = await octokit.rest.pulls.list({
     owner,
@@ -271,7 +272,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const head = `${repoOwner}:${branchName}`;
 
       let pr: PullRequestSummary | null = null;
-      let reusedExistingPr = false;
+      let evidenceMode: 'created_pr' | 'reused_existing_pr' = 'created_pr';
 
       if (issue.status === S1S3IssueStatus.PR_CREATED && issue.pr_number && issue.pr_url && issue.branch_name) {
         pr = {
@@ -279,7 +280,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           html_url: issue.pr_url,
           created_at: issue.pr_created_at ? new Date(issue.pr_created_at).toISOString() : undefined,
         };
-        reusedExistingPr = true;
+        evidenceMode = 'reused_existing_pr';
       }
 
       if (!pr) {
@@ -319,16 +320,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
           }
         }
 
-        // Generate PR title and body
-        const finalPrTitle = prTitle || `Issue #${issue.github_issue_number}: Implementation`;
+        // Pre-check for existing PR (idempotent)
+        pr = await findExistingPr({
+          octokit,
+          owner: repoOwner,
+          repo: repoName,
+          branch: branchName,
+          base: baseBranch,
+        });
+
+        if (pr) {
+          evidenceMode = 'reused_existing_pr';
+        } else {
+          // Generate PR title and body
+          const finalPrTitle = prTitle || `Issue #${issue.github_issue_number}: Implementation`;
       
-        // Import normalization utility for acceptance criteria
-        const { normalizeAcceptanceCriteria } = await import('@/lib/contracts/s1s3Flow');
-        const acceptanceCriteria = normalizeAcceptanceCriteria(issue.acceptance_criteria);
+          // Import normalization utility for acceptance criteria
+          const { normalizeAcceptanceCriteria } = await import('@/lib/contracts/s1s3Flow');
+          const acceptanceCriteria = normalizeAcceptanceCriteria(issue.acceptance_criteria);
       
-        const finalPrBody =
-          prBody ||
-          `
+          const finalPrBody =
+            prBody ||
+            `
 ## Implementation for Issue #${issue.github_issue_number}
 
 **AFU9 Issue ID:** ${issue.public_id}
@@ -349,90 +362,88 @@ ${
 Closes #${issue.github_issue_number}
 `.trim();
 
-        // Create pull request (reconcile if already exists)
-        try {
-          const { data } = await octokit.rest.pulls.create({
-            owner: repoOwner,
-            repo: repoName,
-            title: finalPrTitle,
-            head: branchName,
-            base: baseBranch,
-            body: finalPrBody,
-          });
-
-          pr = {
-            number: data.number,
-            html_url: data.html_url,
-            created_at: data.created_at,
-            updated_at: data.updated_at,
-          };
-
-          console.log('[S3] PR created:', {
-            requestId,
-            pr_number: data.number,
-            pr_url: data.html_url,
-          });
-        } catch (error) {
-          if (isPullRequestAlreadyExistsError(error)) {
-            console.log('[S3] PR already exists, reconciling:', {
-              requestId,
-              head,
-              base: baseBranch,
-            });
-
-            pr = await findExistingPullRequest({
-              octokit,
+          // Create pull request (race-safe)
+          try {
+            const { data } = await octokit.rest.pulls.create({
               owner: repoOwner,
               repo: repoName,
-              head,
+              title: finalPrTitle,
+              head: branchName,
               base: baseBranch,
+              body: finalPrBody,
             });
 
-            if (!pr) {
-              await createS1S3RunStep(pool, {
-                run_id: run.id,
-                step_id: 'S3',
-                step_name: 'Create Branch and PR',
-                status: S1S3StepStatus.FAILED,
-                error_message: 'PR exists but was not found via GitHub list',
-                evidence_refs: {
-                  issue_id: issue.id,
-                  request_id: requestId,
-                  head,
-                  base_branch: baseBranch,
-                  code: 'S3_PR_EXISTS_BUT_NOT_FOUND',
-                },
+            pr = {
+              number: data.number,
+              html_url: data.html_url,
+              created_at: data.created_at,
+              updated_at: data.updated_at,
+            };
+
+            evidenceMode = 'created_pr';
+
+            console.log('[S3] PR created:', {
+              requestId,
+              pr_number: data.number,
+              pr_url: data.html_url,
+            });
+          } catch (error) {
+            if (isPullRequestAlreadyExistsError(error)) {
+              console.log('[S3] PR already exists (race), reconciling:', {
+                requestId,
+                head,
+                base: baseBranch,
               });
 
-              await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, 'S3_PR_EXISTS_BUT_NOT_FOUND');
+              pr = await findExistingPr({
+                octokit,
+                owner: repoOwner,
+                repo: repoName,
+                branch: branchName,
+                base: baseBranch,
+              });
 
-              return jsonResponse(
-                {
-                  error: 'Pull request already exists but was not found',
-                  code: 'S3_PR_EXISTS_BUT_NOT_FOUND',
-                  evidence: {
+              if (!pr) {
+                await createS1S3RunStep(pool, {
+                  run_id: run.id,
+                  step_id: 'S3',
+                  step_name: 'Create Branch and PR',
+                  status: S1S3StepStatus.FAILED,
+                  error_message: 'PR exists but was not found via GitHub list',
+                  evidence_refs: {
+                    issue_id: issue.id,
+                    request_id: requestId,
                     head,
-                    base: baseBranch,
+                    base_branch: baseBranch,
+                    mode: 'blocked',
+                    code: 'S3_PR_EXISTS_BUT_NOT_FOUND',
                   },
-                  requestId,
-                  timestamp: new Date().toISOString(),
-                },
-                {
-                  status: 409,
-                  requestId,
-                }
-              );
+                });
+
+                await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, 'S3_PR_EXISTS_BUT_NOT_FOUND');
+
+                return jsonResponse(
+                  {
+                    error: 'Pull request already exists but was not found',
+                    code: 'S3_PR_EXISTS_BUT_NOT_FOUND',
+                    evidence: {
+                      head,
+                      base: baseBranch,
+                    },
+                    requestId,
+                    timestamp: new Date().toISOString(),
+                  },
+                  {
+                    status: 409,
+                    requestId,
+                  }
+                );
+              }
+
+              evidenceMode = 'reused_existing_pr';
+            } else {
+              throw error;
             }
-
-            reusedExistingPr = true;
-
-            console.log('[S3] PR reconciled:', {
-              requestId,
-              pr_number: pr.number,
-              pr_url: pr.html_url,
-            });
-          } else {
-            throw error;
           }
         }
       }
@@ -468,13 +479,9 @@ Closes #${issue.github_issue_number}
           branch_name: branchName,
           base_branch: baseBranch,
           request_id: requestId,
-          ...(reusedExistingPr
-            ? {
-                mode: 'reused_existing_pr',
-                head,
-                base: baseBranch,
-              }
-            : {}),
+          mode: evidenceMode,
+          head,
+          base: baseBranch,
         },
       });
 
@@ -494,7 +501,7 @@ Closes #${issue.github_issue_number}
         issue_id: updatedIssue.id,
         run_id: run.id,
         pr_number: pr.number,
-        reused_existing_pr: reusedExistingPr,
+        mode: evidenceMode,
       });
 
       return jsonResponse(
@@ -507,10 +514,10 @@ Closes #${issue.github_issue_number}
             url: pr.html_url,
             branch: branchName,
           },
-          ...(reusedExistingPr ? { message: 'PR already exists (idempotent)' } : {}),
+          ...(evidenceMode === 'reused_existing_pr' ? { message: 'PR already exists (idempotent)' } : {}),
         },
         {
-          status: reusedExistingPr ? 200 : 201,
+          status: evidenceMode === 'reused_existing_pr' ? 200 : 201,
           requestId,
         }
       );
