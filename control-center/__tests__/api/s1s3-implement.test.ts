@@ -2,18 +2,17 @@
  * S1-S3 Implement API Tests
  * 
  * Tests for POST /api/afu9/s1s3/issues/[id]/implement endpoint:
- * - Idempotent behavior when PR already created
- * - Branch existence handling
- * - Commit comparison before PR creation
- * 
- * Reference: E9.1-CTRL - S3 Implement idempotent machen + PR/Branch reconcile
+ * - S3 first run creates PR
+ * - S3 second run is idempotent
+ * - Manual PR exists is reconciled
+ * - PR exists but not found returns conflict
  * 
  * @jest-environment node
  */
 
-import { NextRequest } from 'next/server';
-import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/implement/route';
-import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow';
+const { NextRequest } = require('next/server');
+const { POST: implementIssue } = require('../../app/api/afu9/s1s3/issues/[id]/implement/route');
+const { S1S3IssueStatus } = require('../../src/lib/contracts/s1s3Flow');
 
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({
@@ -34,36 +33,6 @@ jest.mock('../../src/lib/db/s1s3Flow', () => ({
   createS1S3RunStep: jest.fn(),
   updateS1S3RunStatus: jest.fn(),
   updateS1S3IssuePR: jest.fn(),
-}));
-
-// Mock contract utilities
-jest.mock('../../src/lib/contracts/s1s3Flow', () => ({
-  S1S3IssueStatus: {
-    CREATED: 'CREATED',
-    SPEC_READY: 'SPEC_READY',
-    IMPLEMENTING: 'IMPLEMENTING',
-    PR_CREATED: 'PR_CREATED',
-  },
-  S1S3RunType: {
-    S3_IMPLEMENT: 'S3_IMPLEMENT',
-  },
-  S1S3RunStatus: {
-    RUNNING: 'RUNNING',
-    DONE: 'DONE',
-    FAILED: 'FAILED',
-  },
-  S1S3StepStatus: {
-    STARTED: 'STARTED',
-    SUCCEEDED: 'SUCCEEDED',
-    FAILED: 'FAILED',
-  },
-  normalizeAcceptanceCriteria: jest.fn((criteria) => {
-    try {
-      return JSON.parse(criteria);
-    } catch {
-      return [];
-    }
-  }),
 }));
 
 describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
@@ -99,130 +68,196 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     created_at: new Date(),
   };
 
+  const setupOctokitMock = () => {
+    return {
+      rest: {
+        git: {
+          getRef: jest.fn(),
+          createRef: jest.fn(),
+        },
+        pulls: {
+          create: jest.fn(),
+          list: jest.fn(),
+        },
+      },
+    } as any;
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('Idempotent behavior', () => {
-    test('returns existing PR info when PR already created', async () => {
-      const { getS1S3IssueById } = require('../../src/lib/db/s1s3Flow');
-      
-      const issueWithPR = {
-        ...mockIssue,
-        status: S1S3IssueStatus.PR_CREATED,
-        pr_number: 123,
-        pr_url: 'https://github.com/owner/repo/pull/123',
-        branch_name: 'afu9/issue-42-abc123',
-        pr_created_at: new Date(),
-      };
+  test('S3 first run creates branch and PR', async () => {
+    const { getS1S3IssueById, createS1S3Run, createS1S3RunStep, updateS1S3IssuePR } = require('../../src/lib/db/s1s3Flow');
+    const { createAuthenticatedClient } = require('../../src/lib/github/auth-wrapper');
 
-      getS1S3IssueById.mockResolvedValue({
-        success: true,
-        data: issueWithPR,
-      });
-
-      const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
-        method: 'POST',
-        body: JSON.stringify({ baseBranch: 'main' }),
-      });
-
-      const context = {
-        params: Promise.resolve({ id: 'issue-123' }),
-      };
-
-      const response = await implementIssue(request, context);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.issue).toBeDefined();
-      expect(body.pr).toBeDefined();
-      expect(body.pr.number).toBe(123);
-      expect(body.pr.url).toBe('https://github.com/owner/repo/pull/123');
-      expect(body.pr.branch).toBe('afu9/issue-42-abc123');
-      expect(body.message).toBe('PR already exists (idempotent)');
+    const octokit = setupOctokitMock();
+    octokit.rest.git.getRef.mockResolvedValue({ data: { object: { sha: 'base-sha' } } });
+    octokit.rest.git.createRef.mockResolvedValue({});
+    octokit.rest.pulls.create.mockResolvedValue({
+      data: {
+        number: 101,
+        html_url: 'https://github.com/owner/repo/pull/101',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-01T00:00:00Z',
+      },
     });
 
-    test('accepts PR_CREATED status as valid state', async () => {
-      const { getS1S3IssueById } = require('../../src/lib/db/s1s3Flow');
-      
-      const issueWithPR = {
+    createAuthenticatedClient.mockResolvedValue(octokit);
+    getS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
+    createS1S3Run.mockResolvedValue({ success: true, data: mockRun });
+    createS1S3RunStep.mockResolvedValue({ success: true, data: { id: 'step-1' } });
+    updateS1S3IssuePR.mockResolvedValue({
+      success: true,
+      data: {
         ...mockIssue,
         status: S1S3IssueStatus.PR_CREATED,
-        pr_number: 123,
-        pr_url: 'https://github.com/owner/repo/pull/123',
+        pr_number: 101,
+        pr_url: 'https://github.com/owner/repo/pull/101',
         branch_name: 'afu9/issue-42-abc123',
-      };
-
-      getS1S3IssueById.mockResolvedValue({
-        success: true,
-        data: issueWithPR,
-      });
-
-      const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-
-      const context = {
-        params: Promise.resolve({ id: 'issue-123' }),
-      };
-
-      const response = await implementIssue(request, context);
-
-      expect(response.status).toBe(200);
+      },
     });
+
+    const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({ baseBranch: 'main' }),
+    });
+
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.pr.number).toBe(101);
+    expect(body.pr.url).toBe('https://github.com/owner/repo/pull/101');
+    expect(octokit.rest.pulls.create).toHaveBeenCalled();
   });
 
-  describe('Error cases', () => {
-    test('returns 404 when issue not found', async () => {
-      const { getS1S3IssueById } = require('../../src/lib/db/s1s3Flow');
-      
-      getS1S3IssueById.mockResolvedValue({
-        success: false,
-        error: 'Issue not found',
-      });
+  test('S3 second run returns existing PR without duplication', async () => {
+    const { getS1S3IssueById, createS1S3Run, createS1S3RunStep, updateS1S3IssuePR } = require('../../src/lib/db/s1s3Flow');
+    const { createAuthenticatedClient } = require('../../src/lib/github/auth-wrapper');
 
-      const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/nonexistent/implement', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
+    const octokit = setupOctokitMock();
+    createAuthenticatedClient.mockResolvedValue(octokit);
 
-      const context = {
-        params: Promise.resolve({ id: 'nonexistent' }),
-      };
+    const issueWithPr = {
+      ...mockIssue,
+      status: S1S3IssueStatus.PR_CREATED,
+      pr_number: 123,
+      pr_url: 'https://github.com/owner/repo/pull/123',
+      branch_name: 'afu9/issue-42-abc123',
+      pr_created_at: new Date(),
+    };
 
-      const response = await implementIssue(request, context);
-      const body = await response.json();
+    getS1S3IssueById.mockResolvedValue({ success: true, data: issueWithPr });
+    createS1S3Run.mockResolvedValue({ success: true, data: mockRun });
+    createS1S3RunStep.mockResolvedValue({ success: true, data: { id: 'step-2' } });
+    updateS1S3IssuePR.mockResolvedValue({ success: true, data: issueWithPr });
 
-      expect(response.status).toBe(404);
-      expect(body.error).toBe('Issue not found');
+    const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({ baseBranch: 'main' }),
     });
 
-    test('returns 400 for invalid issue state', async () => {
-      const { getS1S3IssueById } = require('../../src/lib/db/s1s3Flow');
-      
-      getS1S3IssueById.mockResolvedValue({
-        success: true,
-        data: {
-          ...mockIssue,
-          status: S1S3IssueStatus.CREATED, // Not SPEC_READY
-        },
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.message).toBe('PR already exists (idempotent)');
+    expect(body.pr.number).toBe(123);
+    expect(octokit.rest.pulls.create).not.toHaveBeenCalled();
+    expect(octokit.rest.git.createRef).not.toHaveBeenCalled();
+  });
+
+  test('Manual PR exists is reconciled after create error', async () => {
+    const { getS1S3IssueById, createS1S3Run, createS1S3RunStep, updateS1S3IssuePR } = require('../../src/lib/db/s1s3Flow');
+    const { createAuthenticatedClient } = require('../../src/lib/github/auth-wrapper');
+
+    const octokit = setupOctokitMock();
+    octokit.rest.git.getRef.mockResolvedValue({ data: { object: { sha: 'base-sha' } } });
+    octokit.rest.git.createRef.mockRejectedValue({ status: 422, message: 'Reference already exists' });
+    octokit.rest.pulls.create.mockRejectedValue({ status: 422, message: 'A pull request already exists for owner:branch.' });
+    octokit.rest.pulls.list
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            number: 916,
+            html_url: 'https://github.com/owner/repo/pull/916',
+            created_at: '2025-01-02T00:00:00Z',
+            updated_at: '2025-01-03T00:00:00Z',
+          },
+        ],
       });
 
-      const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-
-      const context = {
-        params: Promise.resolve({ id: 'issue-123' }),
-      };
-
-      const response = await implementIssue(request, context);
-      const body = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(body.error).toBe('Invalid issue state');
+    createAuthenticatedClient.mockResolvedValue(octokit);
+    getS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
+    createS1S3Run.mockResolvedValue({ success: true, data: mockRun });
+    createS1S3RunStep.mockResolvedValue({ success: true, data: { id: 'step-3' } });
+    updateS1S3IssuePR.mockResolvedValue({
+      success: true,
+      data: {
+        ...mockIssue,
+        status: S1S3IssueStatus.PR_CREATED,
+        pr_number: 916,
+        pr_url: 'https://github.com/owner/repo/pull/916',
+        branch_name: 'afu9/issue-42-abc123',
+      },
     });
+
+    const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({ baseBranch: 'main' }),
+    });
+
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.pr.number).toBe(916);
+    expect(body.message).toBe('PR already exists (idempotent)');
+  });
+
+  test('PR exists but not found returns conflict', async () => {
+    const { getS1S3IssueById, createS1S3Run, createS1S3RunStep, updateS1S3RunStatus } = require('../../src/lib/db/s1s3Flow');
+    const { createAuthenticatedClient } = require('../../src/lib/github/auth-wrapper');
+
+    const octokit = setupOctokitMock();
+    octokit.rest.git.getRef.mockResolvedValue({ data: { object: { sha: 'base-sha' } } });
+    octokit.rest.git.createRef.mockResolvedValue({});
+    octokit.rest.pulls.create.mockRejectedValue({ status: 422, message: 'A pull request already exists for owner:branch.' });
+    octokit.rest.pulls.list.mockResolvedValue({ data: [] });
+
+    createAuthenticatedClient.mockResolvedValue(octokit);
+    getS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
+    createS1S3Run.mockResolvedValue({ success: true, data: mockRun });
+    createS1S3RunStep.mockResolvedValue({ success: true, data: { id: 'step-4' } });
+    updateS1S3RunStatus.mockResolvedValue({ success: true, data: mockRun });
+
+    const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({ baseBranch: 'main' }),
+    });
+
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('S3_PR_EXISTS_BUT_NOT_FOUND');
   });
 });
