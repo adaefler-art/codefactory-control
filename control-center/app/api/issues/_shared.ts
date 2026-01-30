@@ -29,6 +29,7 @@
 import { normalizeOutput } from '@/lib/api/normalize-output';
 import { isAfu9IssueOutput } from '@/lib/contracts/outputContracts';
 import type { Pool } from 'pg';
+import { createHash } from 'crypto';
 import {
   parseIssueId,
   toShortHex8FromUuid,
@@ -48,6 +49,83 @@ import type {
 } from '../../../src/lib/schemas/issueStateModel';
 
 export { type IssueIdentifierKind };
+
+type ServiceTokenSource = 'authorization' | 'x-afu9-service-token' | 'x-service-token';
+type ServiceTokenReason = 'missing' | 'malformed';
+
+export function normalizeServiceToken(value: unknown): string {
+  let token = String(value ?? '').trim();
+
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+
+  token = token.replace(/\r?\n/g, '').trim();
+
+  return token;
+}
+
+export function extractServiceTokenFromHeaders(headers: Headers): {
+  token?: string;
+  source?: ServiceTokenSource;
+  reason?: ServiceTokenReason;
+} {
+  const authHeader = headers.get('authorization');
+  if (authHeader) {
+    const trimmed = authHeader.trim();
+    const match = /^Bearer\s+(.+)$/i.exec(trimmed);
+    if (!match) {
+      return { reason: 'malformed' };
+    }
+    const token = normalizeServiceToken(match[1]);
+    if (!token) {
+      return { reason: 'missing' };
+    }
+    return { token, source: 'authorization' };
+  }
+
+  const headerToken = headers.get('x-afu9-service-token');
+  if (headerToken) {
+    const token = normalizeServiceToken(headerToken);
+    if (!token) {
+      return { reason: 'missing' };
+    }
+    return { token, source: 'x-afu9-service-token' };
+  }
+
+  const fallbackToken = headers.get('x-service-token');
+  if (fallbackToken) {
+    const token = normalizeServiceToken(fallbackToken);
+    if (!token) {
+      return { reason: 'missing' };
+    }
+    return { token, source: 'x-service-token' };
+  }
+
+  return { reason: 'missing' };
+}
+
+export function tokensEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+export function getServiceTokenDebugInfo(received: string, expected: string) {
+  const hash = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 8);
+  return {
+    receivedTokenLen: received.length,
+    expectedTokenLen: expected.length,
+    receivedHashPrefix: hash(received),
+    expectedHashPrefix: hash(expected),
+  };
+}
 
 /**
  * Classify an issue identifier string
