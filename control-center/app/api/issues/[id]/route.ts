@@ -27,7 +27,14 @@ import {
   isValidPriority,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
-import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../_shared';
+import {
+  fetchIssueRowByIdentifier,
+  normalizeIssueForApi,
+  extractServiceTokenFromHeaders,
+  normalizeServiceToken,
+  tokensEqual,
+  getServiceTokenDebugInfo,
+} from '../_shared';
 import { withApi, apiError } from '../../../../src/lib/http/withApi';
 import { normalizeLabels } from '../../../../src/lib/label-utils';
 import { getRequestId } from '@/lib/api/response-helpers';
@@ -47,17 +54,39 @@ export const GET = withApi(async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   const requestId = getRequestId(request);
-  const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
-  const expectedServiceToken = process.env.SERVICE_READ_TOKEN || '';
+  const { token: providedServiceToken, reason: tokenReason } = extractServiceTokenFromHeaders(request.headers);
+  const expectedServiceToken = normalizeServiceToken(process.env.SERVICE_READ_TOKEN || '');
   const isTestEnv = process.env.NODE_ENV === 'test';
   const shouldEnforceServiceToken = !isTestEnv || Boolean(expectedServiceToken);
 
   if (shouldEnforceServiceToken) {
     if (!providedServiceToken) {
-      return apiError('Authentication required', 401, undefined, requestId);
+      if (process.env.DEBUG_SERVICE_AUTH === 'true' && expectedServiceToken) {
+        console.warn('[Issues API] service token missing', {
+          requestId,
+          reason: tokenReason,
+        });
+      }
+      return apiError(
+        'Authentication required',
+        401,
+        tokenReason === 'malformed' ? 'Malformed Authorization header' : 'Missing service token',
+        requestId
+      );
     }
-    if (!expectedServiceToken || providedServiceToken !== expectedServiceToken) {
-      return apiError('service token rejected', 403, undefined, requestId);
+    if (!expectedServiceToken || !tokensEqual(providedServiceToken, expectedServiceToken)) {
+      if (process.env.DEBUG_SERVICE_AUTH === 'true' && expectedServiceToken) {
+        console.warn('[Issues API] service token rejected', {
+          requestId,
+          ...getServiceTokenDebugInfo(providedServiceToken, expectedServiceToken),
+        });
+      }
+      return apiError(
+        'service token rejected',
+        403,
+        expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
+        requestId
+      );
     }
   }
 
