@@ -17,6 +17,11 @@ on:
           - production
           - staging
         default: staging
+      allow_prod:
+        description: "Allow production deploy (must be explicitly true)"
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -35,6 +40,7 @@ concurrency:
 env:
   AWS_REGION: eu-central-1
   DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  ALLOW_PROD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_prod || 'false' }}
 
 jobs:
   build-and-deploy:
@@ -57,6 +63,15 @@ jobs:
           set -euo pipefail
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard production deploy requires explicit allow_prod
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ env.DEPLOY_ENV }}" = "production" ] && [ "${{ env.ALLOW_PROD }}" != "true" ]; then
+            echo "❌ Production deploy blocked: allow_prod=true is required" >&2
+            exit 1
+          fi
 
       - name: Guard AWS_DEPLOY_ROLE_ARN
         shell: bash
