@@ -1,5 +1,7 @@
 # AFU-9 Low-Cost Pause Mode
 
+> **OBSOLETE:** This runbook predates the current runtime policy. Prod is now permanently offline (desiredCount=0) and must not be resumed via low-cost mode. See [AFU-9 Runtime Policy & Service Auth](../architecture/afu9-runtime-policy.md).
+
 **Feature Version:** v0.6  
 **Status:** Production-Ready  
 **Owner:** AFU-9 Team  

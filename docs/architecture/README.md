@@ -4,6 +4,8 @@
 
 AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture) v0.2 is deployed on AWS using a modern, scalable architecture based on the Model Context Protocol (MCP) pattern.
 
+> **📌 Runtime Policy (Single Source of Truth):** See [AFU-9 Runtime Policy & Service Auth](./afu9-runtime-policy.md) for binding cluster/service rules, guardrails, and auth/secrets contracts.
+
 > **📚 Comprehensive Guide**: For a complete architecture overview including AWS components, development workflow integration, and German documentation, see [AFU-9 v0.2 Architektur-Übersicht](./afu9-v0.2-overview.md)
 
 ## Architecture Principles
