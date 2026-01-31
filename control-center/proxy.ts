@@ -15,7 +15,22 @@ const AFU9_UNAUTH_REDIRECT = process.env.AFU9_UNAUTH_REDIRECT || '/login';
 const AFU9_DEBUG_AUTH = (process.env.AFU9_DEBUG_AUTH || '').toLowerCase() === 'true' || process.env.AFU9_DEBUG_AUTH === '1';
 const AFU9_COOKIE_DOMAIN = process.env.AFU9_COOKIE_DOMAIN;
 const AFU9_COOKIE_SAMESITE_ENV = (process.env.AFU9_COOKIE_SAMESITE || 'lax').toLowerCase();
-const getServiceReadToken = () => (process.env.SERVICE_READ_TOKEN || '').trim();
+const normalizeServiceToken = (value: string): string => {
+  let token = value.trim();
+
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+
+  token = token.replace(/\r?\n/g, '').trim();
+
+  return token;
+};
+
+const getServiceReadToken = () => normalizeServiceToken(process.env.SERVICE_READ_TOKEN || '');
 
 const cookieSameSite: 'lax' | 'strict' | 'none' =
   AFU9_COOKIE_SAMESITE_ENV === 'none' || AFU9_COOKIE_SAMESITE_ENV === 'strict'
@@ -213,7 +228,9 @@ export async function middleware(request: NextRequest) {
   };
 
   if (isServiceReadRoute(pathname, request.method)) {
-    const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
+    const providedServiceToken = normalizeServiceToken(
+      request.headers.get('x-afu9-service-token') || ''
+    );
     if (providedServiceToken) {
       const serviceReadToken = getServiceReadToken();
       if (!serviceReadToken || providedServiceToken !== serviceReadToken) {

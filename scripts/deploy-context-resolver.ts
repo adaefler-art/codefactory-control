@@ -56,9 +56,12 @@ export function resolveDeployContext(deployEnv?: string): DeployContext {
     );
   }
 
+  const multiEnvEnabled = process.env.AFU9_MULTI_ENV === 'true';
+  const stagingCluster = multiEnvEnabled ? (process.env.STAGING_ECS_CLUSTER || 'afu9-cluster') : 'afu9-cluster';
+
   const context: DeployContext = {
     environment: canonical,
-    cluster: canonical === 'production' ? 'afu9-cluster' : process.env.STAGING_ECS_CLUSTER || 'afu9-cluster',
+    cluster: canonical === 'production' ? 'afu9-cluster' : stagingCluster,
     service: canonical === 'production' ? 'afu9-control-center' : 'afu9-control-center-staging',
     imageTagPrefix: canonical === 'production' ? 'prod' : 'stage',
     secretsPrefix: canonical === 'production' ? 'afu9' : 'afu9/stage',

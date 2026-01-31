@@ -9,7 +9,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../src/lib/db';
 import { listAfu9Issues, createAfu9Issue } from '../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
-import { normalizeIssueForApi } from './_shared';
+import {
+  normalizeIssueForApi,
+  extractServiceTokenFromHeaders,
+  normalizeServiceToken,
+  tokensEqual,
+  getServiceTokenDebugInfo,
+} from './_shared';
 import {
   Afu9IssueStatus,
   Afu9HandoffState,
@@ -48,22 +54,36 @@ export const revalidate = 0;
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
-  const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
-  const expectedServiceToken = process.env.SERVICE_READ_TOKEN || '';
+  const { token: providedServiceToken, reason: tokenReason } = extractServiceTokenFromHeaders(request.headers);
+  const expectedServiceToken = normalizeServiceToken(process.env.SERVICE_READ_TOKEN || '');
   const isTestEnv = process.env.NODE_ENV === 'test';
   const shouldEnforceServiceToken = !isTestEnv || Boolean(expectedServiceToken);
 
   if (shouldEnforceServiceToken) {
     if (!providedServiceToken) {
+      if (process.env.DEBUG_SERVICE_AUTH === 'true' && expectedServiceToken) {
+        console.warn('[Issues API] service token missing', {
+          requestId,
+          reason: tokenReason,
+        });
+      }
       return errorResponse('Authentication required', {
         status: 401,
         requestId,
+        details: tokenReason === 'malformed' ? 'Malformed Authorization header' : 'Missing service token',
       });
     }
-    if (!expectedServiceToken || providedServiceToken !== expectedServiceToken) {
+    if (!expectedServiceToken || !tokensEqual(providedServiceToken, expectedServiceToken)) {
+      if (process.env.DEBUG_SERVICE_AUTH === 'true' && expectedServiceToken) {
+        console.warn('[Issues API] service token rejected', {
+          requestId,
+          ...getServiceTokenDebugInfo(providedServiceToken, expectedServiceToken),
+        });
+      }
       return errorResponse('service token rejected', {
         status: 403,
         requestId,
+        details: expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
       });
     }
   }
