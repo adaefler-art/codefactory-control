@@ -1,5 +1,7 @@
 # AFU-9 v0.2 Architektur-Übersicht (AWS + MCP)
 
+> **Wichtig (Verbindliche Runtime-Policy):** Für aktuelle, verbindliche Regeln zu Cluster/Services/Guardrails und Service-Auth siehe [AFU-9 Runtime Policy & Service Auth](./afu9-runtime-policy.md). Diese Übersichts-Doku ist ergänzend und darf der Runtime-Policy nicht widersprechen.
+
 ## Überblick
 
 AFU-9 (Autonomous Fabrication Unit – Ninefold Architecture) v0.2 ist eine produktionsreife, autonome Code-Fabrication-Plattform, die auf AWS mit dem Model Context Protocol (MCP) Pattern implementiert ist.

@@ -29,3 +29,5 @@ Evidence documentation (implementation summaries, testing guides, sanity checks)
 ---
 
 ## Technical Documentation
+
+- **[AFU-9 Runtime Policy & Service Auth](architecture/afu9-runtime-policy.md)** — Single source of truth for cluster/service policy and Engine ↔ Control-Center auth.
