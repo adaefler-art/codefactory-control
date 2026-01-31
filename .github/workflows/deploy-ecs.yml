@@ -66,6 +66,7 @@ env:
   AWS_REGION: eu-central-1
   DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
   ALLOW_PROD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_prod || 'false' }}
+  AFU9_MULTI_ENV: ${{ vars.AFU9_MULTI_ENV || 'false' }}
   DOMAIN_NAME: afu-9.com
   MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
   AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
@@ -186,7 +187,8 @@ jobs:
         shell: pwsh
         run: |
           $deployEnv = "${{ env.DEPLOY_ENV }}"
-          $stagingCluster = "${{ vars.STAGING_ECS_CLUSTER }}"
+          $multiEnvEnabled = "${{ env.AFU9_MULTI_ENV }}" -eq 'true'
+          $stagingCluster = if ($multiEnvEnabled) { "${{ vars.STAGING_ECS_CLUSTER }}" } else { 'afu9-cluster' }
           if (-not $stagingCluster) { $stagingCluster = 'afu9-cluster' }
 
           if ($deployEnv -ne 'production' -and $deployEnv -ne 'staging') {
