@@ -23,7 +23,12 @@ on:
         options:
           - production
           - staging
-        default: production
+        default: staging
+      allow_prod:
+        description: "Allow production deploy (must be explicitly true)"
+        required: false
+        type: boolean
+        default: false
       run_migrations:
         description: "Run database migrations (auto: detect by changed files)"
         required: false
@@ -60,6 +65,7 @@ concurrency:
 env:
   AWS_REGION: eu-central-1
   DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'staging' }}
+  ALLOW_PROD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_prod || 'false' }}
   DOMAIN_NAME: afu-9.com
   MANAGE_DNS: ${{ vars.AFU9_MANAGE_DNS || 'false' }}
   AFU9_ENABLE_HTTPS: ${{ vars.AFU9_ENABLE_HTTPS || 'true' }}
@@ -150,6 +156,15 @@ jobs:
       - name: Display trigger context
         run: echo "Triggered by ${{ github.event_name }} on branch ${{ github.ref_name }} @ ${{ github.sha }}"
 
+      - name: Guard production deploy requires explicit allow_prod
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ env.DEPLOY_ENV }}" = "production" ] && [ "${{ env.ALLOW_PROD }}" != "true" ]; then
+            echo "❌ Production deploy blocked: allow_prod=true is required" >&2
+            exit 1
+          fi
+
       - name: Guard production deploys must be from main
         shell: bash
         run: |
@@ -237,6 +252,7 @@ jobs:
           AFU9_ENABLE_HTTPS: ${{ env.AFU9_ENABLE_HTTPS }}
           MANAGE_DNS: ${{ env.MANAGE_DNS }}
           ENABLE_PROD: ${{ vars.ENABLE_PROD || 'false' }}
+          ALLOW_PROD: ${{ env.ALLOW_PROD }}
         run: |
           set -euo pipefail
           echo "🔒 Running Deploy Context Guardrail (E7.0.1)"
