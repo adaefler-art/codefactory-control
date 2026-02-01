@@ -319,9 +319,19 @@ export async function middleware(request: NextRequest) {
   }
 
   // Extract JWT tokens from cookies
-  const idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
-  const accessToken = request.cookies.get(AFU9_ACCESS_COOKIE)?.value;
-  const refreshToken = request.cookies.get(AFU9_REFRESH_COOKIE)?.value;
+  let idToken = request.cookies.get(AFU9_AUTH_COOKIE)?.value;
+  let accessToken = request.cookies.get(AFU9_ACCESS_COOKIE)?.value;
+  let refreshToken = request.cookies.get(AFU9_REFRESH_COOKIE)?.value;
+
+  let verifiedPayload: any | null = null;
+  let verifiedVia: 'id' | 'access' | 'refresh' | null = null;
+  let verifyError: string | null = null;
+
+  const authzHeader = request.headers.get('authorization');
+  const bearerToken =
+    !idToken && !accessToken && !refreshToken && authzHeader
+      ? authzHeader.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+      : undefined;
 
   const redirectToRefresh = () => {
     const original = request.nextUrl.pathname + request.nextUrl.search;
@@ -356,6 +366,24 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+
+  if (!idToken && !accessToken && !refreshToken && bearerToken) {
+    const bearerVerify = await verifyJWT(bearerToken);
+    if (bearerVerify.success) {
+      verifiedPayload = bearerVerify.payload;
+      const tokenUse = (verifiedPayload as any)?.token_use;
+      if (tokenUse === 'access') {
+        verifiedVia = 'access';
+        accessToken = bearerToken;
+      } else {
+        verifiedVia = 'id';
+        idToken = bearerToken;
+        accessToken = bearerToken;
+      }
+    } else {
+      verifyError = bearerVerify.error;
+    }
+  }
 
   // Fail closed: no auth material present
   if (!idToken && !accessToken) {
@@ -395,17 +423,13 @@ export async function middleware(request: NextRequest) {
 
   // Verify tokens using fail-closed helper.
   // Prefer ID token for identity; fall back to access token if needed.
-  let verifiedPayload: any | null = null;
-  let verifiedVia: 'id' | 'access' | 'refresh' | null = null;
-  let verifyError: string | null = null;
-
   function tokenUseOk(tokenUse: unknown, expected: 'id' | 'access'): boolean {
     // Fail-closed on explicit mismatch. If token_use is missing, allow (some JWTs omit it).
     if (!tokenUse) return true;
     return tokenUse === expected;
   }
 
-  if (idToken) {
+  if (!verifiedPayload && idToken) {
     const idVerify = await verifyJWT(idToken);
     if (idVerify.success) {
       if (tokenUseOk((idVerify.payload as any).token_use, 'id')) {

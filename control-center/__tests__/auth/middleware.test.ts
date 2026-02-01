@@ -149,9 +149,15 @@ describe('Middleware Authentication Logic', () => {
     delete process.env.SERVICE_READ_TOKEN;
   });
 
-  function makeRequest(params: { url: string; method?: string; headers?: Record<string, string> }) {
+  function makeRequest(params: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    cookies?: Record<string, string>;
+  }) {
     const url = new URL(params.url);
     const headers = new Headers(params.headers ?? {});
+    const cookieStore = params.cookies ?? {};
 
     return {
       url: url.toString(),
@@ -159,7 +165,10 @@ describe('Middleware Authentication Logic', () => {
       nextUrl: url,
       headers,
       cookies: {
-        get: () => undefined,
+        get: (name: string) => {
+          const value = cookieStore[name];
+          return value ? { value } : undefined;
+        },
       },
     } as any;
   }
@@ -739,6 +748,75 @@ describe('Middleware Authentication Logic', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('x-afu9-smoke-bypass')).toBe('1');
       expect(response.headers.get('x-afu9-smoke-allowlisted')).toBe('0');
+    });
+  });
+
+  describe('Authorization bearer fallback', () => {
+    test('no cookies + valid bearer => allowed', async () => {
+      const verifySpy = jest
+        .spyOn(jwtVerify, 'verifyJWT')
+        .mockResolvedValueOnce({
+          success: true,
+          payload: {
+            sub: 'user-123',
+            token_use: 'id',
+            'cognito:groups': ['afu9-engineer-stage'],
+          } as any,
+        });
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/github/issues?repo=owner/repo',
+        headers: { authorization: 'Bearer valid-token' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(verifySpy).toHaveBeenCalledWith('valid-token');
+
+      verifySpy.mockRestore();
+    });
+
+    test('no cookies + invalid bearer => 401', async () => {
+      const verifySpy = jest
+        .spyOn(jwtVerify, 'verifyJWT')
+        .mockResolvedValueOnce({ success: false, error: 'bad' } as any);
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/github/issues?repo=owner/repo',
+        headers: { authorization: 'Bearer bad-token' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+      expect(verifySpy).toHaveBeenCalledWith('bad-token');
+
+      verifySpy.mockRestore();
+    });
+
+    test('cookies present + bearer => cookie auth wins', async () => {
+      const verifySpy = jest
+        .spyOn(jwtVerify, 'verifyJWT')
+        .mockResolvedValueOnce({
+          success: true,
+          payload: {
+            sub: 'cookie-user',
+            token_use: 'id',
+            'cognito:groups': ['afu9-engineer-stage'],
+          } as any,
+        });
+
+      const request = makeRequest({
+        url: 'https://stage.afu-9.com/api/afu9/github/issues?repo=owner/repo',
+        headers: { authorization: 'Bearer bearer-token' },
+        cookies: { afu9_id: 'cookie-token' },
+      });
+
+      const response = await middleware(request);
+      expect(response.status).toBe(200);
+      expect(verifySpy).toHaveBeenCalledWith('cookie-token');
+      expect(verifySpy).not.toHaveBeenCalledWith('bearer-token');
+
+      verifySpy.mockRestore();
     });
   });
 
