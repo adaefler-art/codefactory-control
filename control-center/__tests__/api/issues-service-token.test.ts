@@ -43,6 +43,17 @@ describe('Issues API service token guard', () => {
       expect(body.error).toBe('Authentication required');
     });
 
+    test('x-afu9-sub allows without service token', async () => {
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({ success: true, data: [] });
+
+      const headers = new Headers({ 'x-afu9-sub': 'user-123' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
+      const res = await getIssues(req);
+
+      expect(res.status).toBe(200);
+    });
+
     test('wrong header returns 403', async () => {
       const headers = new Headers({ 'x-afu9-service-token': 'wrong' });
       const req = new NextRequest('http://localhost/api/issues', { headers });
@@ -73,6 +84,19 @@ describe('Issues API service token guard', () => {
       expect(res.status).toBe(401);
       const body = await res.json();
       expect(body.error).toBe('Authentication required');
+    });
+
+    test('x-afu9-sub allows without service token', async () => {
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      fetchIssueRowByIdentifier.mockResolvedValue({ ok: true, row: { id: 'issue-1' } });
+
+      const headers = new Headers({ 'x-afu9-sub': 'user-123' });
+      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
+      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBe('issue-1');
     });
 
     test('wrong header returns 403', async () => {

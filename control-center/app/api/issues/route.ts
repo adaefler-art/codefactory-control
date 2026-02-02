@@ -48,12 +48,14 @@ export const revalidate = 0;
  */
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
+  const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();
   const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
   const expectedServiceToken = process.env.SERVICE_READ_TOKEN || '';
   const isTestEnv = process.env.NODE_ENV === 'test';
   const shouldEnforceServiceToken = !isTestEnv || Boolean(expectedServiceToken);
 
-  if (shouldEnforceServiceToken) {
+  // Auth model: JWT (middleware sets x-afu9-sub) is primary, service token is fallback.
+  if (!verifiedUserSub && shouldEnforceServiceToken) {
     if (!providedServiceToken) {
       return errorResponse('Authentication required', {
         status: 401,
