@@ -64,6 +64,52 @@ describe('Issues API service token guard', () => {
       expect(body.error).toBe('service token rejected');
     });
 
+    test('accepts Authorization Bearer token', async () => {
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({ success: true, data: [] });
+
+      const headers = new Headers({ Authorization: 'Bearer service-secret' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
+      const res = await getIssues(req);
+
+      expect(res.status).toBe(200);
+    });
+
+    test('accepts x-service-token fallback header', async () => {
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({ success: true, data: [] });
+
+      const headers = new Headers({ 'x-service-token': 'service-secret' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
+      const res = await getIssues(req);
+
+      expect(res.status).toBe(200);
+    });
+
+    test('accepts quoted env token', async () => {
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({ success: true, data: [] });
+
+      process.env.SERVICE_READ_TOKEN = '"service-secret"';
+      const headers = new Headers({ 'x-afu9-service-token': 'service-secret' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
+      const res = await getIssues(req);
+
+      expect(res.status).toBe(200);
+    });
+
+    test('accepts env token with newline', async () => {
+      const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
+      listAfu9Issues.mockResolvedValue({ success: true, data: [] });
+
+      process.env.SERVICE_READ_TOKEN = 'service-secret\n';
+      const headers = new Headers({ 'x-afu9-service-token': 'service-secret' });
+      const req = new NextRequest('http://localhost/api/issues', { headers });
+      const res = await getIssues(req);
+
+      expect(res.status).toBe(200);
+    });
+
     test('correct header returns 200', async () => {
       const { listAfu9Issues } = require('../../src/lib/db/afu9Issues');
       listAfu9Issues.mockResolvedValue({ success: true, data: [] });
@@ -107,6 +153,17 @@ describe('Issues API service token guard', () => {
       expect(res.status).toBe(403);
       const body = await res.json();
       expect(body.error).toBe('service token rejected');
+    });
+
+    test('accepts Authorization Bearer token', async () => {
+      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
+      fetchIssueRowByIdentifier.mockResolvedValue({ ok: true, row: { id: 'issue-1' } });
+
+      const headers = new Headers({ Authorization: 'Bearer service-secret' });
+      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
+      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+
+      expect(res.status).toBe(200);
     });
 
     test('correct header returns 200', async () => {
