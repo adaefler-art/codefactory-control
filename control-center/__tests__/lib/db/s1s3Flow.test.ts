@@ -175,6 +175,52 @@ describe('S1S3 Flow DAO', () => {
     });
   });
 
+  describe('updateS1S3IssueStatus', () => {
+    test('updates issue status successfully for allowed statuses', async () => {
+      const mockRow = {
+        id: 'issue-uuid-1',
+        public_id: 'a1b2c3d4',
+        canonical_id: 'I123',
+        repo_full_name: 'owner/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/owner/repo/issues/42',
+        owner: 'afu9',
+        status: S1S3IssueStatus.IMPLEMENTING,
+        problem: null,
+        scope: null,
+        acceptance_criteria: '[]',
+        notes: null,
+        pr_number: null,
+        pr_url: null,
+        branch_name: null,
+        created_at: new Date('2024-01-01T00:00:00Z'),
+        updated_at: new Date('2024-01-01T01:00:00Z'),
+        spec_ready_at: null,
+        pr_created_at: null,
+      };
+
+      mockQuery.mockResolvedValue({ rows: [mockRow] });
+
+      const result = await updateS1S3IssueStatus(mockPool, 'issue-uuid-1', S1S3IssueStatus.IMPLEMENTING);
+
+      expect(result.success).toBe(true);
+      expect(result.data?.status).toBe(S1S3IssueStatus.IMPLEMENTING);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE afu9_s1s3_issues'),
+        expect.arrayContaining(['issue-uuid-1', S1S3IssueStatus.IMPLEMENTING])
+      );
+    });
+
+    test('blocks direct SPEC_READY status update (E9.2-CONTROL-03)', async () => {
+      const result = await updateS1S3IssueStatus(mockPool, 'issue-uuid-1', S1S3IssueStatus.SPEC_READY);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('SPEC_READY status can only be set via updateS1S3IssueSpec');
+      expect(result.error).toContain('POST /api/afu9/s1s3/issues/[id]/spec');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createS1S3Run', () => {
     test('creates new run', async () => {
       const mockRow = {
