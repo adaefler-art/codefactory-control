@@ -26,7 +26,7 @@
 
 import { NextRequest } from 'next/server';
 import { getPool } from '../../../../src/lib/db';
-import { listAfu9Issues } from '../../../../src/lib/db/afu9Issues';
+import { createAfu9Issue, listAfu9Issues } from '../../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { normalizeIssueForApi } from '../../issues/_shared';
 import {
@@ -34,6 +34,8 @@ import {
   Afu9HandoffState,
   isValidStatus,
   isValidHandoffState,
+  validateAfu9IssueInput,
+  type Afu9IssueInput,
 } from '../../../../src/lib/contracts/afu9Issue';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 
@@ -145,6 +147,126 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /api/afu9/issues] Error listing issues:', error);
     return errorResponse('Failed to list issues', {
+      status: 500,
+      requestId,
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * POST /api/afu9/issues
+ * Create AFU9 issue (AFU9-only, no GitHub side effects)
+ */
+export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request);
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch (error) {
+    return errorResponse('Invalid JSON body', {
+      status: 400,
+      requestId,
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return errorResponse('Invalid request payload', {
+      status: 400,
+      requestId,
+      details: 'Expected JSON object body',
+    });
+  }
+
+  const data = payload as Record<string, unknown>;
+  const title = typeof data.title === 'string' ? data.title.trim() : '';
+  const problem = typeof data.problem === 'string' ? data.problem.trim() : '';
+  const scope = typeof data.scope === 'string' ? data.scope.trim() : '';
+  const notes = typeof data.notes === 'string' ? data.notes.trim() : '';
+  const bodyFromRequest = typeof data.body === 'string' ? data.body.trim() : '';
+  const labelsInput = data.labels;
+
+  const labels = Array.isArray(labelsInput)
+    ? labelsInput.filter((label): label is string => typeof label === 'string' && label.trim().length > 0)
+    : typeof labelsInput === 'string'
+      ? labelsInput.split(',').map((label) => label.trim()).filter(Boolean)
+      : undefined;
+
+  const bodySections: string[] = [];
+  if (problem) bodySections.push(`## Problem\n${problem}`);
+  if (scope) bodySections.push(`## Scope\n${scope}`);
+  if (notes) bodySections.push(`## Notes\n${notes}`);
+
+  const body = bodyFromRequest || (bodySections.length ? bodySections.join('\n\n') : '');
+
+  const issueInput: Afu9IssueInput = {
+    title,
+    body: body || null,
+    labels,
+  };
+
+  const validation = validateAfu9IssueInput(issueInput);
+  if (!validation.valid) {
+    const errors = validation.errors.reduce<Record<string, string[]>>((acc, error) => {
+      if (!acc[error.field]) {
+        acc[error.field] = [];
+      }
+      acc[error.field].push(error.message);
+      return acc;
+    }, {});
+
+    return jsonResponse(
+      {
+        message: 'Validation failed',
+        errors,
+        requestId,
+      },
+      {
+        status: 400,
+        requestId,
+      }
+    );
+  }
+
+  try {
+    const pool = getPool();
+    const created = await createAfu9Issue(pool, issueInput);
+
+    if (!created.success || !created.data) {
+      return errorResponse('Failed to create issue', {
+        status: 500,
+        requestId,
+        details: created.error || 'Unknown database error',
+      });
+    }
+
+    const normalized = normalizeIssueForApi(created.data);
+    const canonicalId = typeof normalized?.canonicalId === 'string'
+      ? normalized.canonicalId
+      : typeof normalized?.publicId === 'string'
+        ? normalized.publicId
+        : null;
+
+    return jsonResponse(
+      {
+        issueId: normalized.id,
+        canonicalId,
+        createdAt: normalized.createdAt,
+      },
+      {
+        status: 201,
+        requestId,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+          Pragma: 'no-cache',
+        },
+      }
+    );
+  } catch (error) {
+    console.error('[API /api/afu9/issues] Error creating issue:', error);
+    return errorResponse('Failed to create issue', {
       status: 500,
       requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
