@@ -21,4 +21,16 @@ Run the contract check from the repo root:
 - PowerShell: `node scripts/verify-contracts.mjs`
 
 ## Contracts
+
+### Core APIs
 - Engine HTTP Contract v1: [engine-api.v1.md](engine-api.v1.md)
+- S1 Pick API Contract v1: [s1-pick-api.v1.md](s1-pick-api.v1.md) *(E9.2-CONTROL-01)*
+
+### Loop Execution
+- Loop API Contract v1: [loop-api.v1.md](loop-api.v1.md)
+- Loop State Machine v1: [loop-state-machine.v1.md](loop-state-machine.v1.md)
+- Loop Timeline Events v1: [loop-timeline-events.v1.md](loop-timeline-events.v1.md)
+
+### Step Executors
+- Step Executor S1 (Pick/Link) v1: [step-executor-s1.v1.md](step-executor-s1.v1.md)
+- Step Executor S3 (Implementation) v1: [step-executor-s3.v1.md](step-executor-s3.v1.md)

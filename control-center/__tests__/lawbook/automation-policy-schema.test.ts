@@ -240,7 +240,9 @@ describe('Lawbook Schema - Automation Policy', () => {
     });
 
     it('should produce identical canonicalization for equivalent lawbooks', () => {
+      const fixedCreatedAt = '2026-01-01T00:00:00.000Z';
       const lawbook1 = createMinimalLawbook({
+        createdAt: fixedCreatedAt,
         automationPolicy: {
           enforcementMode: 'strict',
           policies: [
@@ -263,6 +265,7 @@ describe('Lawbook Schema - Automation Policy', () => {
       });
 
       const lawbook2 = createMinimalLawbook({
+        createdAt: fixedCreatedAt,
         automationPolicy: {
           enforcementMode: 'strict',
           policies: [

@@ -20,6 +20,10 @@ jest.mock('../../src/lib/db/smokeKeyAllowlist', () => {
   };
 });
 
+jest.mock('../../lib/auth/jwt-verify', () => ({
+  verifyJWT: jest.fn(),
+}));
+
 const defaultAllowlist: smokeAllowlist.SmokeKeyAllowlistEntry[] = [
   {
     id: 1,
@@ -753,16 +757,15 @@ describe('Middleware Authentication Logic', () => {
 
   describe('Authorization bearer fallback', () => {
     test('no cookies + valid bearer => allowed', async () => {
-      const verifySpy = jest
-        .spyOn(jwtVerify, 'verifyJWT')
-        .mockResolvedValueOnce({
-          success: true,
-          payload: {
-            sub: 'user-123',
-            token_use: 'id',
-            'cognito:groups': ['afu9-engineer-stage'],
-          } as any,
-        });
+      const verifyMock = jwtVerify.verifyJWT as jest.Mock;
+      verifyMock.mockResolvedValueOnce({
+        success: true,
+        payload: {
+          sub: 'user-123',
+          token_use: 'id',
+          'cognito:groups': ['afu9-engineer-stage'],
+        } as any,
+      });
 
       const request = makeRequest({
         url: 'https://stage.afu-9.com/api/afu9/github/issues?repo=owner/repo',
@@ -771,15 +774,13 @@ describe('Middleware Authentication Logic', () => {
 
       const response = await middleware(request);
       expect(response.status).toBe(200);
-      expect(verifySpy).toHaveBeenCalledWith('valid-token');
-
-      verifySpy.mockRestore();
+      expect(verifyMock).toHaveBeenCalledWith('valid-token');
+      verifyMock.mockReset();
     });
 
     test('no cookies + invalid bearer => 401', async () => {
-      const verifySpy = jest
-        .spyOn(jwtVerify, 'verifyJWT')
-        .mockResolvedValueOnce({ success: false, error: 'bad' } as any);
+      const verifyMock = jwtVerify.verifyJWT as jest.Mock;
+      verifyMock.mockResolvedValueOnce({ success: false, error: 'bad' } as any);
 
       const request = makeRequest({
         url: 'https://stage.afu-9.com/api/afu9/github/issues?repo=owner/repo',
@@ -788,22 +789,20 @@ describe('Middleware Authentication Logic', () => {
 
       const response = await middleware(request);
       expect(response.status).toBe(401);
-      expect(verifySpy).toHaveBeenCalledWith('bad-token');
-
-      verifySpy.mockRestore();
+      expect(verifyMock).toHaveBeenCalledWith('bad-token');
+      verifyMock.mockReset();
     });
 
     test('cookies present + bearer => cookie auth wins', async () => {
-      const verifySpy = jest
-        .spyOn(jwtVerify, 'verifyJWT')
-        .mockResolvedValueOnce({
-          success: true,
-          payload: {
-            sub: 'cookie-user',
-            token_use: 'id',
-            'cognito:groups': ['afu9-engineer-stage'],
-          } as any,
-        });
+      const verifyMock = jwtVerify.verifyJWT as jest.Mock;
+      verifyMock.mockResolvedValueOnce({
+        success: true,
+        payload: {
+          sub: 'cookie-user',
+          token_use: 'id',
+          'cognito:groups': ['afu9-engineer-stage'],
+        } as any,
+      });
 
       const request = makeRequest({
         url: 'https://stage.afu-9.com/api/afu9/github/issues?repo=owner/repo',
@@ -813,10 +812,9 @@ describe('Middleware Authentication Logic', () => {
 
       const response = await middleware(request);
       expect(response.status).toBe(200);
-      expect(verifySpy).toHaveBeenCalledWith('cookie-token');
-      expect(verifySpy).not.toHaveBeenCalledWith('bearer-token');
-
-      verifySpy.mockRestore();
+      expect(verifyMock).toHaveBeenCalledWith('cookie-token');
+      expect(verifyMock).not.toHaveBeenCalledWith('bearer-token');
+      verifyMock.mockReset();
     });
   });
 

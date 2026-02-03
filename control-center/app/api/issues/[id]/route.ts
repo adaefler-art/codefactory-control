@@ -55,8 +55,6 @@ export const GET = withApi(async (
 ) => {
   const requestId = getRequestId(request);
   const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();
-  const providedServiceToken = request.headers.get('x-afu9-service-token')?.trim();
-  const expectedServiceToken = process.env.SERVICE_READ_TOKEN || '';
   const { token: providedServiceToken, reason: tokenReason } = extractServiceTokenFromHeaders(request.headers);
   const expectedServiceToken = normalizeServiceToken(process.env.SERVICE_READ_TOKEN || '');
   const isTestEnv = process.env.NODE_ENV === 'test';

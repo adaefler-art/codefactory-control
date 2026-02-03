@@ -36,13 +36,16 @@ const TEST_VERSION_1 = '2025-12-30.1';
 const TEST_VERSION_2 = '2025-12-30.2';
 const TEST_VERSION_ID_1 = '123e4567-e89b-12d3-a456-426614174001';
 const TEST_VERSION_ID_2 = '123e4567-e89b-12d3-a456-426614174002';
+const TEST_CREATED_AT = '2025-12-30T10:00:00.000Z';
 
 const MOCK_LAWBOOK_1 = createMinimalLawbook({
   lawbookVersion: TEST_VERSION_1,
+  createdAt: TEST_CREATED_AT,
 });
 
 const MOCK_LAWBOOK_2 = createMinimalLawbook({
   lawbookVersion: TEST_VERSION_2,
+  createdAt: TEST_CREATED_AT,
   remediation: {
     enabled: true,
     allowedPlaybooks: ['SAFE_RETRY_RUNNER'],
@@ -159,8 +162,14 @@ describe('POST /api/lawbook/versions - Create Version', () => {
   });
 
   test('same content produces same hash', async () => {
-    const lawbook1 = createMinimalLawbook({ lawbookVersion: '2025-12-30.1' });
-    const lawbook2 = createMinimalLawbook({ lawbookVersion: '2025-12-30.1' });
+    const lawbook1 = createMinimalLawbook({
+      lawbookVersion: '2025-12-30.1',
+      createdAt: TEST_CREATED_AT,
+    });
+    const lawbook2 = createMinimalLawbook({
+      lawbookVersion: '2025-12-30.1',
+      createdAt: TEST_CREATED_AT,
+    });
 
     const hash1 = computeLawbookHash(lawbook1);
     const hash2 = computeLawbookHash(lawbook2);
@@ -169,9 +178,13 @@ describe('POST /api/lawbook/versions - Create Version', () => {
   });
 
   test('different content produces different hash', async () => {
-    const lawbook1 = createMinimalLawbook({ lawbookVersion: '2025-12-30.1' });
-    const lawbook2 = createMinimalLawbook({ 
+    const lawbook1 = createMinimalLawbook({
       lawbookVersion: '2025-12-30.1',
+      createdAt: TEST_CREATED_AT,
+    });
+    const lawbook2 = createMinimalLawbook({
+      lawbookVersion: '2025-12-30.1',
+      createdAt: TEST_CREATED_AT,
       remediation: {
         enabled: false,
         allowedPlaybooks: [],

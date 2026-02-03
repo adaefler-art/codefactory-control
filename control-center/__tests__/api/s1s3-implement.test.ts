@@ -10,16 +10,16 @@
  * @jest-environment node
  */
 
-import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/implement/route.js';
-import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow.js';
-import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper.js';
+import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/implement/route';
+import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow';
+import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper';
 import {
   getS1S3IssueById,
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
   updateS1S3IssuePR,
-} from '../../src/lib/db/s1s3Flow.js';
+} from '../../src/lib/db/s1s3Flow';
 
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({
