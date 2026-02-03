@@ -13,15 +13,15 @@
  * @jest-environment node
  */
 
-import { POST as pickIssue } from '../../app/api/afu9/s1s3/issues/pick/route.js';
-import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper.js';
+import { POST as pickIssue } from '../../app/api/afu9/s1s3/issues/pick/route';
+import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper';
 import {
   upsertS1S3Issue,
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
-} from '../../src/lib/db/s1s3Flow.js';
-import { S1S3IssueStatus, S1S3RunType, S1S3RunStatus, S1S3StepStatus } from '../../src/lib/contracts/s1s3Flow.js';
+} from '../../src/lib/db/s1s3Flow';
+import { S1S3IssueStatus, S1S3RunType, S1S3RunStatus, S1S3StepStatus } from '../../src/lib/contracts/s1s3Flow';
 
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({
@@ -59,8 +59,8 @@ describe('POST /api/afu9/s1s3/issues/pick - E9.2-CONTROL-01', () => {
     owner: 'afu9',
     canonical_id: 'E92.1',
     status: S1S3IssueStatus.CREATED,
-    created_at: new Date(),
-    updated_at: new Date(),
+    created_at: new Date('2026-02-03T16:52:44.676Z').toISOString(),
+    updated_at: new Date('2026-02-03T16:52:44.676Z').toISOString(),
   };
 
   const mockRun = {
@@ -70,8 +70,8 @@ describe('POST /api/afu9/s1s3/issues/pick - E9.2-CONTROL-01', () => {
     request_id: 'req-123',
     actor: 'afu9',
     status: S1S3RunStatus.RUNNING,
-    created_at: new Date(),
-    updated_at: new Date(),
+    created_at: '2026-02-03T16:52:44.676Z',
+    updated_at: '2026-02-03T16:52:44.676Z',
   };
 
   const mockStep = {
@@ -88,7 +88,7 @@ describe('POST /api/afu9/s1s3/issues/pick - E9.2-CONTROL-01', () => {
       afu9_public_id: 'AFU9-001',
       request_id: 'req-123',
     },
-    created_at: new Date(),
+    created_at: '2026-02-03T16:52:44.676Z',
   };
 
   const mockGithubIssue = {

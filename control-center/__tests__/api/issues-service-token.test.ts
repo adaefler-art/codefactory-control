@@ -18,10 +18,14 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   listAfu9Issues: jest.fn(),
 }));
 
-jest.mock('../../app/api/issues/_shared', () => ({
-  fetchIssueRowByIdentifier: jest.fn(),
-  normalizeIssueForApi: jest.fn(() => ({ id: 'issue-1' })),
-}));
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  return {
+    ...actual,
+    fetchIssueRowByIdentifier: jest.fn(),
+    normalizeIssueForApi: jest.fn(() => ({ id: 'issue-1' })),
+  };
+});
 
 describe('Issues API service token guard', () => {
   beforeEach(() => {
