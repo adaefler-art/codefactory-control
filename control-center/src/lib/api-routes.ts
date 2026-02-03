@@ -101,11 +101,15 @@ export const API_ROUTES = {
     activeCheck: '/api/issues/active-check',
   },
 
-  // AFU-9 Runs (I201.x series)
+  // AFU-9 Runs (I201.x series) and S1-S3 Flow
   afu9: {
     runs: {
       start: (issueId: string) => `/api/afu9/issues/${issueId}/runs/start`,
       evidenceRefresh: (runId: string) => `/api/afu9/runs/${runId}/evidence/refresh`,
+    },
+    s1s3: {
+      // E9.2-CONTROL-01: Canonical S1 Pick Endpoint
+      pick: '/api/afu9/s1s3/issues/pick',
     },
   },
 
