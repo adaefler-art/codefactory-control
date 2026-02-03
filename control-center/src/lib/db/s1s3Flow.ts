@@ -213,6 +213,10 @@ export async function listS1S3Issues(
 
 /**
  * Update S1-S3 issue status
+ * 
+ * IMPORTANT: This function enforces strict state transition control.
+ * - SPEC_READY can ONLY be set via updateS1S3IssueSpec (S2 endpoint)
+ * - This ensures deterministic, controlled spec transitions per E9.2-CONTROL-03
  */
 export async function updateS1S3IssueStatus(
   pool: Pool,
@@ -227,6 +231,15 @@ export async function updateS1S3IssueStatus(
   }
 ): Promise<OperationResult<S1S3IssueRow>> {
   try {
+    // E9.2-CONTROL-03: Guard against direct SPEC_READY status updates
+    // SPEC_READY must only be set through updateS1S3IssueSpec (spec endpoint)
+    if (status === S1S3IssueStatus.SPEC_READY) {
+      return {
+        success: false,
+        error: 'SPEC_READY status can only be set via updateS1S3IssueSpec function (spec endpoint). Use POST /api/afu9/s1s3/issues/[id]/spec instead.',
+      };
+    }
+
     const updates: string[] = ['status = $2', 'updated_at = NOW()'];
     const params: any[] = [id, status];
     let paramIndex = 3;
@@ -277,6 +290,17 @@ export async function updateS1S3IssueStatus(
 
 /**
  * Update S1-S3 issue spec fields
+ * 
+ * IMPORTANT: This is the ONLY function that can set SPEC_READY status.
+ * Per E9.2-CONTROL-03, SPEC_READY must be set deterministically through
+ * the spec endpoint only. Direct status updates to SPEC_READY are blocked
+ * via updateS1S3IssueStatus guard.
+ * 
+ * This function:
+ * 1. Validates acceptance criteria exists (at least 1 required)
+ * 2. Updates spec fields (problem, scope, acceptance_criteria, notes)
+ * 3. Sets status to SPEC_READY
+ * 4. Sets spec_ready_at timestamp
  */
 export async function updateS1S3IssueSpec(
   pool: Pool,
