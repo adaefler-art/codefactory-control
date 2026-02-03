@@ -273,6 +273,11 @@ export function normalizeIssueForApi(input: unknown): any {
   const githubLastSyncedAt = toIsoOrNull(normalized?.githubIssueLastSyncAt ?? normalized?.github_issue_last_sync_at);
   const githubSyncError = normalized?.githubSyncError ?? normalized?.github_sync_error ?? null;
 
+  // E61.3: Extract GitHub handoff mirror metadata
+  const handoffAt = toIsoOrNull(normalized?.handoffAt ?? normalized?.handoff_at);
+  const handoffError = normalized?.handoffError ?? normalized?.handoff_error ?? null;
+  const githubRepo = normalized?.githubRepo ?? normalized?.github_repo ?? null;
+
   // I2: Compute effectiveStatus server-side using canonical helpers
   const effectiveStatus = computeEffectiveStatus({
     localStatus,
@@ -364,6 +369,11 @@ export function normalizeIssueForApi(input: unknown): any {
     effectiveStatus,
     githubLastSyncedAt,
     githubSyncError,
+
+    // E61.3: GitHub handoff mirror metadata (camelCase)
+    handoffAt,
+    handoffError,
+    githubRepo,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
@@ -388,6 +398,11 @@ export function normalizeIssueForApi(input: unknown): any {
   api.effective_status = effectiveStatus;
   api.github_last_synced_at = githubLastSyncedAt;
   api.github_sync_error = githubSyncError;
+
+  // E61.3: GitHub handoff mirror metadata snake_case aliases
+  api.handoff_at = handoffAt;
+  api.handoff_error = handoffError;
+  api.github_repo = githubRepo;
 
   return api;
 }

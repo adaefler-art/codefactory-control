@@ -50,6 +50,13 @@ interface Issue {
   githubSyncError?: string | null;
   github_sync_error?: string | null;
   github_last_synced_at?: string | null;
+  // E61.3: GitHub handoff mirror metadata
+  handoffAt?: string | null;
+  handoff_at?: string | null;
+  handoffError?: string | null;
+  handoff_error?: string | null;
+  githubRepo?: string | null;
+  github_repo?: string | null;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
