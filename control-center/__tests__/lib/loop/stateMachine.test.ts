@@ -235,7 +235,7 @@ describe('E9.1-CTRL-4: Loop State Machine v1', () => {
       expect(result.blockerMessage).toContain('terminal state');
     });
 
-    test('should return no step for IMPLEMENTING_PREP state', () => {
+    test('should allow S4 for IMPLEMENTING_PREP state', () => {
       const issue: IssueData = {
         id: 'test-id',
         status: IssueState.IMPLEMENTING_PREP,
@@ -244,9 +244,23 @@ describe('E9.1-CTRL-4: Loop State Machine v1', () => {
 
       const result = resolveNextStep(issue);
 
+      expect(result.step).toBe(LoopStep.S4_REVIEW);
+      expect(result.blocked).toBe(false);
+      expect(result.blockerCode).toBeUndefined();
+    });
+
+    test('should return no step for REVIEW_READY state', () => {
+      const issue: IssueData = {
+        id: 'test-id',
+        status: IssueState.REVIEW_READY,
+        github_url: 'https://github.com/org/repo/issues/123',
+      };
+
+      const result = resolveNextStep(issue);
+
       expect(result.step).toBeNull();
       expect(result.blocked).toBe(false);
-      expect(result.blockerMessage).toContain('already in implementing prep');
+      expect(result.blockerMessage).toContain('already in review ready');
     });
   });
 
@@ -291,14 +305,21 @@ describe('E9.1-CTRL-4: Loop State Machine v1', () => {
       );
     });
 
-    test('should allow IMPLEMENTING_PREP → DONE transition', () => {
-      expect(isValidTransition(IssueState.IMPLEMENTING_PREP, IssueState.DONE)).toBe(true);
+    test('should allow IMPLEMENTING_PREP → REVIEW_READY transition', () => {
+      expect(isValidTransition(IssueState.IMPLEMENTING_PREP, IssueState.REVIEW_READY)).toBe(
+        true
+      );
+    });
+
+    test('should allow REVIEW_READY → DONE transition', () => {
+      expect(isValidTransition(IssueState.REVIEW_READY, IssueState.DONE)).toBe(true);
     });
 
     test('should allow any non-terminal → HOLD transition', () => {
       expect(isValidTransition(IssueState.CREATED, IssueState.HOLD)).toBe(true);
       expect(isValidTransition(IssueState.SPEC_READY, IssueState.HOLD)).toBe(true);
       expect(isValidTransition(IssueState.IMPLEMENTING_PREP, IssueState.HOLD)).toBe(true);
+      expect(isValidTransition(IssueState.REVIEW_READY, IssueState.HOLD)).toBe(true);
     });
 
     test('should not allow self-transitions', () => {
