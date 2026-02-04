@@ -16,6 +16,7 @@ export enum IssueEvidenceType {
   CR_BINDING_RECEIPT = 'CR_BINDING_RECEIPT',
   CP_ASSIGNMENT_RECEIPT = 'CP_ASSIGNMENT_RECEIPT',
   STATE_TRANSITION_RECEIPT = 'STATE_TRANSITION_RECEIPT',
+  CHECKS_SNAPSHOT_RECEIPT = 'CHECKS_SNAPSHOT_RECEIPT',
 }
 
 /**
@@ -91,6 +92,24 @@ export interface CpAssignmentReceiptData {
   assigned_at: string;
   assigned_by: string;
   assignment_reason?: string;
+}
+
+/**
+ * Checks Snapshot Receipt Evidence Data
+ * Structured data for CHECKS_SNAPSHOT_RECEIPT evidence type
+ * E9.3-CTRL-02: Links to checks_snapshots table
+ */
+export interface ChecksSnapshotReceiptData {
+  snapshot_id: string;
+  repo_owner: string;
+  repo_name: string;
+  ref: string;
+  snapshot_hash: string;
+  total_checks: number;
+  failed_checks: number;
+  pending_checks: number;
+  captured_at: string;
+  gate_step?: 'S4' | 'S5';
 }
 
 /**
