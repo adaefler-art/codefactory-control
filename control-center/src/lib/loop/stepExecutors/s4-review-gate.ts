@@ -304,13 +304,18 @@ export async function executeS4(
           checksStatus: gateDecision.checksStatus,
           snapshotId: snapshotResult.snapshot.id,
         },
-      } as any, // eventData allows extra properties for context
+      } as Record<string, any>, // Extended event data with gate decision context
     });
+
+    // Map gate decision block reason to BlockerCode enum
+    const blockerCode = gateDecision.blockReason && BlockerCode[gateDecision.blockReason as keyof typeof BlockerCode]
+      ? BlockerCode[gateDecision.blockReason as keyof typeof BlockerCode]
+      : BlockerCode.GATE_DECISION_FAILED;
     
     return {
       success: false,
       blocked: true,
-      blockerCode: (BlockerCode as any)[gateDecision.blockReason || 'GATE_DECISION_FAILED'],
+      blockerCode,
       blockerMessage,
       stateBefore,
       stateAfter: stateBefore,
@@ -336,7 +341,7 @@ export async function executeS4(
         checksStatus: gateDecision.checksStatus,
         snapshotId: snapshotResult.snapshot.id,
       },
-    } as any, // eventData allows extra properties for context
+    } as Record<string, any>, // Extended event data with gate decision context
   });
   
   logger.info('S4 review-intent recorded with gate decision', {
