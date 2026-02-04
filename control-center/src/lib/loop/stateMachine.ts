@@ -1,10 +1,10 @@
 /**
- * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01)
+ * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01, E9.3-CTRL-04)
  * 
- * Pure deterministic resolver for S1-S4 step transitions with explicit blocker codes.
+ * Pure deterministic resolver for S1-S5 step transitions with explicit blocker codes.
  * 
  * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, REVIEW_READY, HOLD, DONE
- * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate)
+ * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate), S5 (Merge)
  * 
  * This module implements a fail-closed, no-ambiguity state machine that returns
  * precise blocker codes instead of generic "unknown" errors.
@@ -32,16 +32,24 @@ export enum BlockerCode {
   SNAPSHOT_FETCH_FAILED = 'SNAPSHOT_FETCH_FAILED',
   PR_FETCH_FAILED = 'PR_FETCH_FAILED',
   GATE_DECISION_FAILED = 'GATE_DECISION_FAILED',
+  // S5 Merge blocker codes (E9.3-CTRL-04)
+  NO_PR_LINKED = 'NO_PR_LINKED',
+  PR_NOT_FOUND = 'PR_NOT_FOUND',
+  PR_ALREADY_MERGED = 'PR_ALREADY_MERGED',
+  PR_CLOSED = 'PR_CLOSED',
+  MERGE_CONFLICT = 'MERGE_CONFLICT',
+  MERGE_FAILED = 'MERGE_FAILED',
 }
 
 /**
- * State machine steps (S1-S4)
+ * State machine steps (S1-S5)
  */
 export enum LoopStep {
   S1_PICK_ISSUE = 'S1_PICK_ISSUE',
   S2_SPEC_READY = 'S2_SPEC_READY',
   S3_IMPLEMENT_PREP = 'S3_IMPLEMENT_PREP',
   S4_REVIEW = 'S4_REVIEW',
+  S5_MERGE = 'S5_MERGE',
 }
 
 /**
@@ -95,6 +103,8 @@ export interface StepResolution {
  * - S1 (Pick Issue): Always available for CREATED state with GitHub link
  * - S2 (Spec Ready): Available when draft is valid and committed
  * - S3 (Implement Prep): Available when in SPEC_READY state
+ * - S4 (Review Gate): Available when in IMPLEMENTING_PREP state
+ * - S5 (Merge): Available when in REVIEW_READY state
  * - HOLD/DONE: Terminal states, no next step
  * 
  * @param issue - Issue data from database
@@ -246,12 +256,12 @@ export function resolveNextStep(
     };
   }
 
-  // State: REVIEW_READY → Already in review, no next loop step
+  // State: REVIEW_READY → Check for S5 (Merge)
   if (status === IssueState.REVIEW_READY) {
+    // S5 can proceed from REVIEW_READY (after review gate passes)
     return {
-      step: null,
+      step: LoopStep.S5_MERGE,
       blocked: false,
-      blockerMessage: 'Issue is already in review ready state',
     };
   }
 

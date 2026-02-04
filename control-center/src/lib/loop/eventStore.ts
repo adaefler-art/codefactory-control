@@ -29,7 +29,9 @@ export enum LoopEventType {
   STEP_S2_SPEC_READY = 'loop_step_s2_spec_ready',
   STEP_S3_IMPLEMENT_PREP = 'loop_step_s3_implement_prep',
   STEP_S4_REVIEW = 'loop_step_s4_review',
+  STEP_S5_MERGED = 'loop_step_s5_merged',
   REVIEW_REQUESTED = 'loop_review_requested',
+  MERGED = 'loop_merged',
   RUN_BLOCKED = 'loop_run_blocked',
   RUN_FAILED = 'loop_run_failed',
 }

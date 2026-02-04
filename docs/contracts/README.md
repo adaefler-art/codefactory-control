@@ -34,3 +34,8 @@ Run the contract check from the repo root:
 ### Step Executors
 - Step Executor S1 (Pick/Link) v1: [step-executor-s1.v1.md](step-executor-s1.v1.md)
 - Step Executor S3 (Implementation) v1: [step-executor-s3.v1.md](step-executor-s3.v1.md)
+- Step Executor S4 (Review Gate) v1: [step-executor-s4.v1.md](step-executor-s4.v1.md)
+- Step Executor S5 (Merge) v1: [step-executor-s5.v1.md](step-executor-s5.v1.md) *(E9.3-CTRL-04)*
+
+### Gate Decisions
+- S4 Gate Decision v1: [s4-gate-decision.v1.md](s4-gate-decision.v1.md) *(E9.3-CTRL-03)*
