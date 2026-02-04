@@ -8,9 +8,13 @@
  */
 
 import { Pool } from 'pg';
-import { IssueState, LoopStep } from '../stateMachine';
+import { IssueState, LoopStep, BlockerCode } from '../stateMachine';
 import { getLoopEventStore, LoopEventType } from '../eventStore';
 import { logger } from '@/lib/logger';
+import type { StepContext, StepExecutionResult } from './s1-pick-issue';
+
+// Re-export types for convenience
+export type { StepContext, StepExecutionResult };
 
 /**
  * Blocker codes specific to S4 execution
@@ -24,61 +28,6 @@ export enum S4BlockerCode {
 }
 
 /**
- * Issue data required for S4 execution
- */
-export interface IssueForS4 {
-  id: string;
-  status: string;
-  github_url?: string | null;
-  pr_url?: string | null;
-}
-
-/**
- * Parameters for S4 execution
- */
-export interface ExecuteS4Params {
-  issue: IssueForS4;
-  runId: string;
-  requestId: string;
-  mode: 'execute' | 'dryRun';
-}
-
-/**
- * Successful S4 execution result
- */
-export interface S4ExecutionResult {
-  success: true;
-  runId: string;
-  step: 'S4_REVIEW';
-  stateBefore: string;
-  stateAfter: string;
-  reviewIntent: {
-    eventId: string;
-    prUrl: string;
-    reviewers?: string[];
-  };
-  durationMs: number;
-}
-
-/**
- * Blocked S4 execution result
- */
-export interface S4BlockedResult {
-  success: false;
-  blocked: true;
-  blockerCode: S4BlockerCode;
-  blockerMessage: string;
-  runId: string;
-  step: 'S4_REVIEW';
-  stateBefore: string;
-}
-
-/**
- * S4 execution result (success or blocked)
- */
-export type S4Result = S4ExecutionResult | S4BlockedResult;
-
-/**
  * Execute S4 (Review Gate) step
  * 
  * Validates that issue is ready for review, records explicit review-intent,
@@ -89,25 +38,39 @@ export type S4Result = S4ExecutionResult | S4BlockedResult;
  * - Blocks if PR is closed/merged
  * - Blocks if no GitHub link
  * 
- * @param params - Execution parameters
+ * @param pool - PostgreSQL connection pool
+ * @param ctx - Execution context
  * @returns S4 execution result
  */
 export async function executeS4(
   pool: Pool,
-  params: ExecuteS4Params
-): Promise<S4Result> {
-  const { issue, runId, requestId, mode } = params;
+  ctx: StepContext
+): Promise<StepExecutionResult> {
   const startTime = Date.now();
   
   const eventStore = getLoopEventStore(pool);
   
   logger.info('Executing S4 (Review Gate)', {
-    issueId: issue.id,
-    runId,
-    requestId,
-    mode,
-    currentStatus: issue.status,
+    issueId: ctx.issueId,
+    runId: ctx.runId,
+    requestId: ctx.requestId,
+    mode: ctx.mode,
   }, 'S4Executor');
+  
+  // Fetch issue from database
+  const issueResult = await pool.query(
+    `SELECT id, status, github_url, pr_url
+     FROM afu9_issues
+     WHERE id = $1`,
+    [ctx.issueId]
+  );
+
+  if (issueResult.rows.length === 0) {
+    throw new Error(`Issue not found: ${ctx.issueId}`);
+  }
+
+  const issue = issueResult.rows[0];
+  const stateBefore = issue.status;
   
   // Validation Step 1: Check issue is in correct state
   if (issue.status !== IssueState.IMPLEMENTING_PREP) {
@@ -116,17 +79,18 @@ export async function executeS4(
       issueId: issue.id,
       expectedState: IssueState.IMPLEMENTING_PREP,
       actualState: issue.status,
-      runId,
+      runId: ctx.runId,
     }, 'S4Executor');
     
     return {
       success: false,
       blocked: true,
-      blockerCode: S4BlockerCode.NO_PR_LINKED, // Use generic blocker for state issues
+      blockerCode: BlockerCode.INVARIANT_VIOLATION,
       blockerMessage,
-      runId,
-      step: 'S4_REVIEW',
-      stateBefore: issue.status,
+      stateBefore,
+      stateAfter: stateBefore,
+      fieldsChanged: [],
+      message: blockerMessage,
     };
   }
   
@@ -135,17 +99,18 @@ export async function executeS4(
     const blockerMessage = 'S4 requires GitHub issue link';
     logger.warn('S4 blocked: No GitHub link', {
       issueId: issue.id,
-      runId,
+      runId: ctx.runId,
     }, 'S4Executor');
     
     return {
       success: false,
       blocked: true,
-      blockerCode: S4BlockerCode.NO_GITHUB_LINK,
+      blockerCode: BlockerCode.NO_GITHUB_LINK,
       blockerMessage,
-      runId,
-      step: 'S4_REVIEW',
-      stateBefore: issue.status,
+      stateBefore,
+      stateAfter: stateBefore,
+      fieldsChanged: [],
+      message: blockerMessage,
     };
   }
   
@@ -154,51 +119,48 @@ export async function executeS4(
     const blockerMessage = 'S4 requires PR to be linked to issue';
     logger.warn('S4 blocked: No PR linked', {
       issueId: issue.id,
-      runId,
+      runId: ctx.runId,
     }, 'S4Executor');
     
     return {
       success: false,
       blocked: true,
-      blockerCode: S4BlockerCode.NO_PR_LINKED,
+      blockerCode: BlockerCode.NO_GITHUB_LINK, // Use existing blocker code
       blockerMessage,
-      runId,
-      step: 'S4_REVIEW',
-      stateBefore: issue.status,
+      stateBefore,
+      stateAfter: stateBefore,
+      fieldsChanged: [],
+      message: blockerMessage,
     };
   }
   
   // Dry-run mode: Skip state modifications, only validate
-  if (mode === 'dryRun') {
+  if (ctx.mode === 'dryRun') {
     logger.info('S4 dry-run completed (validation only)', {
       issueId: issue.id,
-      runId,
+      runId: ctx.runId,
     }, 'S4Executor');
     
     return {
       success: true,
-      runId,
-      step: 'S4_REVIEW',
-      stateBefore: issue.status,
+      blocked: false,
+      stateBefore,
       stateAfter: IssueState.REVIEW_READY,
-      reviewIntent: {
-        eventId: 'dry-run-event-id',
-        prUrl: issue.pr_url,
-      },
-      durationMs: Date.now() - startTime,
+      fieldsChanged: ['status'],
+      message: 'S4 validation passed (dry-run)',
     };
   }
   
   // Record review-intent event
   const reviewIntentEvent = await eventStore.createEvent({
     issueId: issue.id,
-    runId,
+    runId: ctx.runId,
     eventType: LoopEventType.REVIEW_REQUESTED,
     eventData: {
-      runId,
+      runId: ctx.runId,
       step: LoopStep.S4_REVIEW,
       stateBefore: issue.status,
-      requestId,
+      requestId: ctx.requestId,
       prUrl: issue.pr_url,
     },
   });
@@ -207,7 +169,7 @@ export async function executeS4(
     issueId: issue.id,
     eventId: reviewIntentEvent.id,
     prUrl: issue.pr_url,
-    runId,
+    runId: ctx.runId,
   }, 'S4Executor');
   
   // Transition state to REVIEW_READY
@@ -222,7 +184,7 @@ export async function executeS4(
   if (updateResult.rowCount === 0) {
     logger.error('Failed to update issue state to REVIEW_READY', {
       issueId: issue.id,
-      runId,
+      runId: ctx.runId,
     }, 'S4Executor');
     
     throw new Error('Failed to update issue state');
@@ -232,8 +194,8 @@ export async function executeS4(
   
   logger.info('S4 (Review Gate) completed successfully', {
     issueId: issue.id,
-    runId,
-    stateBefore: issue.status,
+    runId: ctx.runId,
+    stateBefore,
     stateAfter: IssueState.REVIEW_READY,
     eventId: reviewIntentEvent.id,
     durationMs,
@@ -241,14 +203,10 @@ export async function executeS4(
   
   return {
     success: true,
-    runId,
-    step: 'S4_REVIEW',
-    stateBefore: issue.status,
+    blocked: false,
+    stateBefore,
     stateAfter: IssueState.REVIEW_READY,
-    reviewIntent: {
-      eventId: reviewIntentEvent.id,
-      prUrl: issue.pr_url,
-    },
-    durationMs,
+    fieldsChanged: ['status'],
+    message: `S4 completed: Transitioned to REVIEW_READY, review-intent recorded (event ${reviewIntentEvent.id})`,
   };
 }

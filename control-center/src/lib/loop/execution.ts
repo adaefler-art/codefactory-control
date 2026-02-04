@@ -277,9 +277,10 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
       } else if (stepResolution.step === LoopStep.S4_REVIEW) {
         stepNumber = 4;
         stepResult = await executeS4(pool, {
-          issue,
+          issueId,
           runId: run.id,
           requestId,
+          actor,
           mode,
         });
       } else {
