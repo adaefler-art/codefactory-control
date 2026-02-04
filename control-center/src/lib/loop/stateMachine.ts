@@ -39,10 +39,13 @@ export enum BlockerCode {
   PR_CLOSED = 'PR_CLOSED',
   MERGE_CONFLICT = 'MERGE_CONFLICT',
   MERGE_FAILED = 'MERGE_FAILED',
+  // S6 Deployment Observation blocker codes (E9.3-CTRL-05)
+  PR_NOT_MERGED = 'PR_NOT_MERGED',
+  GITHUB_API_ERROR = 'GITHUB_API_ERROR',
 }
 
 /**
- * State machine steps (S1-S5)
+ * State machine steps (S1-S6)
  */
 export enum LoopStep {
   S1_PICK_ISSUE = 'S1_PICK_ISSUE',
@@ -50,6 +53,7 @@ export enum LoopStep {
   S3_IMPLEMENT_PREP = 'S3_IMPLEMENT_PREP',
   S4_REVIEW = 'S4_REVIEW',
   S5_MERGE = 'S5_MERGE',
+  S6_DEPLOYMENT_OBSERVE = 'S6_DEPLOYMENT_OBSERVE',
 }
 
 /**
