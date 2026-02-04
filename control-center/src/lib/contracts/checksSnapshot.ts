@@ -14,6 +14,7 @@
  */
 
 import { z } from 'zod';
+import crypto from 'crypto';
 
 // ========================================
 // Check Entry Schema
@@ -169,9 +170,6 @@ export function calculateSnapshotHash(
     })),
   });
 
-  // Use crypto.subtle or similar for SHA-256 in browser/Node.js
-  // For now, we'll use a simple hash approach
-  const crypto = require('crypto');
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 

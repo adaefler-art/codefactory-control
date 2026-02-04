@@ -364,6 +364,7 @@ export async function demonstrateFailClosed(pool: Pool): Promise<void> {
   ];
 
   for (const testCase of testCases) {
+    const now = new Date().toISOString();
     const mockSnapshot = {
       id: '00000000-0000-0000-0000-000000000000',
       run_id: null,
@@ -371,12 +372,12 @@ export async function demonstrateFailClosed(pool: Pool): Promise<void> {
       repo_owner: 'test',
       repo_name: 'test',
       ref: 'test',
-      captured_at: new Date().toISOString(),
+      captured_at: now,
       checks: [],
       snapshot_hash: 'test',
       request_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
       ...testCase.snapshot,
     };
 

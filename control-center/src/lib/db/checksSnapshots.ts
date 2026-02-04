@@ -26,6 +26,7 @@ export interface OperationResult<T = ChecksSnapshotRow> {
   data?: T;
   error?: string;
   rowCount?: number;
+  is_existing?: boolean; // True if returned existing snapshot (idempotent)
 }
 
 /**
@@ -93,6 +94,7 @@ export async function createChecksSnapshot(
           created_at: row.created_at.toString(),
           updated_at: row.updated_at.toString(),
         },
+        is_existing: true,
       };
     }
 
@@ -144,6 +146,7 @@ export async function createChecksSnapshot(
         created_at: row.created_at.toString(),
         updated_at: row.updated_at.toString(),
       },
+      is_existing: false,
     };
   } catch (error) {
     console.error('[ChecksSnapshots] Create snapshot failed:', {

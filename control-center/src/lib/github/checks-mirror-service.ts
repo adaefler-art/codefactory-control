@@ -209,12 +209,13 @@ export async function captureChecksSnapshot(
       total_checks: result.data.total_checks,
       failed_checks: result.data.failed_checks,
       pending_checks: result.data.pending_checks,
+      is_existing: result.is_existing,
     }, 'ChecksMirrorService');
 
     return {
       success: true,
       snapshot: result.data,
-      is_existing: false, // Note: DB layer returns existing if hash matches
+      is_existing: result.is_existing || false,
     };
   } catch (error) {
     logger.error('Failed to capture checks snapshot', {
