@@ -1,5 +1,6 @@
 import { Octokit } from 'octokit';
-import { createAuthenticatedClient } from "./github/auth-wrapper";
+import { createAuthenticatedClient, GitHubAuthError } from "./github/auth-wrapper";
+import { RepoAccessDeniedError } from './github/policy';
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
 const GITHUB_REPO = process.env.GITHUB_REPO || "codefactory-control";
@@ -79,6 +80,14 @@ export interface UpdateIssueResult {
 }
 
 /**
+ * Result from finding a GitHub issue by marker
+ */
+export interface FindIssueResult {
+  html_url: string;
+  number: number;
+}
+
+/**
  * Create an authenticated Octokit instance using GitHub App authentication
  * E71.1: Now enforces repo access policy via auth-wrapper
  */
@@ -113,6 +122,9 @@ export async function createIssue(params: CreateIssueParams): Promise<CreateIssu
       number: issue.number,
     };
   } catch (error) {
+    if (error instanceof RepoAccessDeniedError || error instanceof GitHubAuthError) {
+      throw error;
+    }
     console.error("Error creating GitHub issue:", {
       error: error instanceof Error ? error.message : String(error),
       owner: GITHUB_OWNER,
@@ -183,6 +195,9 @@ export async function updateIssue(params: UpdateIssueParams): Promise<UpdateIssu
       number: issue.number,
     };
   } catch (error) {
+    if (error instanceof RepoAccessDeniedError || error instanceof GitHubAuthError) {
+      throw error;
+    }
     console.error("Error updating GitHub issue:", {
       error: error instanceof Error ? error.message : String(error),
       number: params.number,
@@ -203,6 +218,51 @@ export async function updateIssue(params: UpdateIssueParams): Promise<UpdateIssu
     }
     
     throw new Error(`GitHub-Fehler: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
+  }
+}
+
+/**
+ * Find an existing GitHub issue by marker text in the body
+ * Used for idempotent handoff recovery.
+ */
+export async function findIssueByMarker(params: {
+  owner?: string;
+  repo?: string;
+  marker: string;
+}): Promise<FindIssueResult | null> {
+  const owner = params.owner || GITHUB_OWNER;
+  const repo = params.repo || GITHUB_REPO;
+
+  try {
+    const octokit = await createAuthenticatedOctokit(owner, repo);
+    const query = `repo:${owner}/${repo} "${params.marker}" in:body type:issue`;
+
+    const { data } = await octokit.rest.search.issuesAndPullRequests({
+      q: query,
+      per_page: 5,
+    });
+
+    const match = data.items.find((item) => !('pull_request' in item));
+    if (!match) {
+      return null;
+    }
+
+    return {
+      html_url: match.html_url,
+      number: match.number,
+    };
+  } catch (error) {
+    if (error instanceof RepoAccessDeniedError || error instanceof GitHubAuthError) {
+      throw error;
+    }
+
+    console.error("Error searching GitHub issues:", {
+      error: error instanceof Error ? error.message : String(error),
+      owner,
+      repo,
+    });
+
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
 

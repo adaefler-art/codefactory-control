@@ -9,19 +9,22 @@
  * - Accepts both UUID (canonical) and 8-hex publicId (display)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import {
   updateAfu9Issue,
+  getAfu9IssueByCanonicalId,
 } from '../../../../../src/lib/db/afu9Issues';
 import {
   Afu9HandoffState,
   Afu9IssueStatus,
 } from '../../../../../src/lib/contracts/afu9Issue';
-import { createIssue, updateIssue } from '../../../../../src/lib/github';
+import { createIssue, updateIssue, findIssueByMarker } from '../../../../../src/lib/github';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
 import { validateAndNormalizeLabelsForHandoff } from '../../../../../src/lib/label-utils';
+import { errorResponse, getRequestId, jsonResponse } from '@/lib/api/response-helpers';
+import { RepoAccessDeniedError } from '@/lib/github/policy';
 
 const GITHUB_OWNER = process.env.GITHUB_OWNER || "adaefler-art";
 const GITHUB_REPO = process.env.GITHUB_REPO || "codefactory-control";
@@ -52,11 +55,55 @@ export async function POST(
 ) {
   try {
     const pool = getPool();
+    const requestId = getRequestId(request);
     const { id } = await params;
 
-    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    let body: Record<string, unknown> | null = null;
+    try {
+      const parsed = await request.json();
+      if (parsed && typeof parsed === 'object') {
+        body = parsed as Record<string, unknown>;
+      }
+    } catch {
+      body = null;
+    }
+
+    const bodyIssueId = typeof body?.issue_id === 'string' ? body.issue_id : undefined;
+    const bodyCanonicalId = typeof body?.canonical_id === 'string' ? body.canonical_id : undefined;
+    const lookupId = bodyIssueId || id;
+
+    let resolved = await fetchIssueRowByIdentifier(pool, lookupId);
+    if (!resolved.ok && resolved.status === 400) {
+      const canonicalCandidate = bodyCanonicalId || lookupId;
+      if (canonicalCandidate) {
+        const canonicalResult = await getAfu9IssueByCanonicalId(pool, canonicalCandidate);
+        if (canonicalResult.success && canonicalResult.data) {
+          resolved = { ok: true as const, status: 200 as const, row: canonicalResult.data };
+        } else {
+          const message = typeof canonicalResult.error === 'string' ? canonicalResult.error : '';
+          const isNotFound = message.toLowerCase().includes('not found');
+          return errorResponse(isNotFound ? 'Issue not found' : 'Invalid issue identifier format', {
+            status: isNotFound ? 404 : 400,
+            requestId,
+            details: isNotFound
+              ? `canonical_id: ${canonicalCandidate}`
+              : 'Identifier must be a valid UUID v4, 8-hex publicId, or canonicalId',
+            code: isNotFound ? 'ISSUE_NOT_FOUND' : 'INVALID_ID',
+          });
+        }
+      }
+    }
+
     if (!resolved.ok) {
-      return NextResponse.json(resolved.body, { status: resolved.status });
+      return errorResponse(
+        resolved.body?.error ? String(resolved.body.error) : 'Issue lookup failed',
+        {
+          status: resolved.status,
+          requestId,
+          details: resolved.body?.details ? String(resolved.body.details) : undefined,
+          code: resolved.status === 404 ? 'ISSUE_NOT_FOUND' : 'INVALID_ID',
+        }
+      );
     }
 
     const issue = resolved.row as any;
@@ -64,26 +111,24 @@ export async function POST(
 
     // Invariant: Require title for handoff
     if (!issue.title || issue.title.trim().length === 0) {
-      return NextResponse.json(
-        { 
-          error: 'Cannot handoff issue without a title',
-          details: 'Handoff requires a non-empty title. Please set a title before handing off to GitHub.',
-        },
-        { status: 400 }
-      );
+      return errorResponse('Cannot handoff issue without a title', {
+        status: 400,
+        requestId,
+        details: 'Handoff requires a non-empty title. Please set a title before handing off to GitHub.',
+        code: 'INVALID_ID',
+      });
     }
 
     // Invariant: SYNCED/SYNCHRONIZED handoff_state cannot occur with CREATED status
     if (issue.status === Afu9IssueStatus.CREATED && 
         (issue.handoff_state === Afu9HandoffState.SYNCED || 
          issue.handoff_state === Afu9HandoffState.SYNCHRONIZED)) {
-      return NextResponse.json(
-        {
-          error: 'Invalid state combination',
-          details: 'Issue with status CREATED cannot have handoff_state SYNCED/SYNCHRONIZED. This violates lifecycle invariants.',
-        },
-        { status: 400 }
-      );
+      return errorResponse('Invalid state combination', {
+        status: 400,
+        requestId,
+        details: 'Issue with status CREATED cannot have handoff_state SYNCED/SYNCHRONIZED. This violates lifecycle invariants.',
+        code: 'INVALID_ID',
+      });
     }
 
     // E61.3: Determine if this is an update (idempotent) or create (new)
@@ -107,7 +152,7 @@ export async function POST(
       if (isDebugApiEnabled()) {
         responseBody.contextTrace = await buildContextTrace(request);
       }
-      return NextResponse.json(responseBody);
+      return jsonResponse(responseBody, { requestId });
     }
 
     // Mark as PENDING before attempting GitHub operation
@@ -118,13 +163,12 @@ export async function POST(
     });
 
     if (!pendingResult.success) {
-      return NextResponse.json(
-        {
-          error: 'Failed to update handoff state to PENDING',
-          details: pendingResult.error,
-        },
-        { status: 500 }
-      );
+      return errorResponse('Failed to update handoff state to PENDING', {
+        status: 500,
+        requestId,
+        details: pendingResult.error,
+        code: 'INTERNAL_ERROR',
+      });
     }
 
     try {
@@ -167,6 +211,7 @@ export async function POST(
       }
 
       let githubIssue: { number: number; html_url: string };
+      let recoveredFromMarker = false;
 
       // E61.3: Idempotency - UPDATE if github_issue_number exists, CREATE otherwise
       if (isUpdate) {
@@ -178,17 +223,28 @@ export async function POST(
           labels: githubLabels,
         });
       } else {
+        const recovered = await findIssueByMarker({
+          owner: GITHUB_OWNER,
+          repo: GITHUB_REPO,
+          marker: idempotencyKey,
+        });
+
+        if (recovered) {
+          githubIssue = recovered;
+          recoveredFromMarker = true;
+        } else {
         // CREATE new GitHub issue
         githubIssue = await createIssue({
           title: issue.title,
           body: githubBody,
           labels: githubLabels,
         });
+        }
       }
 
       // Update AFU9 issue with GitHub details and sync metadata
       const syncedResult = await updateAfu9Issue(pool, internalId, {
-        handoff_state: targetState,
+        handoff_state: recoveredFromMarker ? Afu9HandoffState.SYNCED : targetState,
         github_issue_number: githubIssue.number,
         github_url: githubIssue.html_url,
         github_repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
@@ -210,14 +266,14 @@ export async function POST(
           }
         );
 
-        return NextResponse.json(
+        return errorResponse(
+          `Partial handoff failure: GitHub issue ${isUpdate ? 'updated' : 'created'} but failed to update AFU9 issue`,
           {
-            error: `Partial handoff failure: GitHub issue ${isUpdate ? 'updated' : 'created'} but failed to update AFU9 issue`,
+            status: 500,
+            requestId,
             details: syncedResult.error,
-            github_url: githubIssue.html_url,
-            github_issue_number: githubIssue.number,
-          },
-          { status: 500 }
+            code: 'PARTIAL_FAILURE',
+          }
         );
       }
 
@@ -234,11 +290,25 @@ export async function POST(
       if (isDebugApiEnabled()) {
         responseBody.contextTrace = await buildContextTrace(request);
       }
-      return NextResponse.json(responseBody);
+      return jsonResponse(responseBody, { requestId });
     } catch (githubError) {
       // GitHub creation/update failed - update handoff_state to FAILED
       const errorMessage =
         githubError instanceof Error ? githubError.message : String(githubError);
+
+      if (githubError instanceof RepoAccessDeniedError) {
+        await updateAfu9Issue(pool, internalId, {
+          handoff_state: Afu9HandoffState.FAILED,
+          handoff_error: errorMessage,
+        });
+
+        return errorResponse('Repository access denied', {
+          status: 403,
+          requestId,
+          details: errorMessage,
+          code: 'POLICY_DENIED',
+        });
+      }
 
       // Log full error for debugging
       console.error('[API /api/issues/[id]/handoff] GitHub issue operation failed:', {
@@ -257,23 +327,41 @@ export async function POST(
         handoff_error: errorMessage,
       });
 
-      return NextResponse.json(
-        {
-          error: `Failed to ${isUpdate ? 'update' : 'create'} GitHub issue`,
-          details: errorMessage,
-          handoff_state: Afu9HandoffState.FAILED,
-        },
-        { status: 500 }
-      );
+      const isRateLimit = errorMessage.toLowerCase().includes('rate limit') || errorMessage.toLowerCase().includes('api-limit');
+      const isAuthError = errorMessage.toLowerCase().includes('authentication failed');
+
+      if (isRateLimit) {
+        return jsonResponse(
+          {
+            error: `Failed to ${isUpdate ? 'update' : 'create'} GitHub issue`,
+            details: errorMessage,
+            code: 'TRANSIENT',
+            retry_after: 60,
+          },
+          {
+            status: 429,
+            requestId,
+            headers: {
+              'retry-after': '60',
+            },
+          }
+        );
+      }
+
+      return errorResponse(`Failed to ${isUpdate ? 'update' : 'create'} GitHub issue`, {
+        status: isAuthError ? 401 : 500,
+        requestId,
+        details: errorMessage,
+        code: isAuthError ? 'AUTH_REQUIRED' : 'INTERNAL_ERROR',
+      });
     }
   } catch (error) {
     console.error('[API /api/issues/[id]/handoff] Error during handoff:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to handoff issue',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return errorResponse('Failed to handoff issue', {
+      status: 500,
+      requestId: getRequestId(request),
+      details: error instanceof Error ? error.message : 'Unknown error',
+      code: 'INTERNAL_ERROR',
+    });
   }
 }
