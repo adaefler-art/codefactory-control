@@ -374,7 +374,7 @@ Required test cases:
    - No status records → is_authentic = false
    - SHA mismatch → is_authentic = false
 
-3. **PR FAIL conditions:**
+3. **Blocked conditions:**
    - No PR linked → Blocked with NO_PR_LINKED
    - PR not merged → Blocked with PR_NOT_MERGED
 
