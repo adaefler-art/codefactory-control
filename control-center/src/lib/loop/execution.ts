@@ -3,6 +3,7 @@
  * 
  * E9.1-CTRL-1: Core loop execution logic
  * E9.1-CTRL-2: Run persistence with loop_runs and loop_run_steps
+ * E9.3-CTRL-01: S4 Review Gate integration
  * 
  * Handles the execution of individual steps within a loop for AFU-9 issues.
  * Persists run records for success, blocked, and failure cases.
@@ -15,6 +16,7 @@ import { getLoopLockManager, LockConflictError } from './lock';
 import { resolveNextStep, LoopStep } from './stateMachine';
 import { executeS1 } from './stepExecutors/s1-pick-issue';
 import { executeS2 } from './stepExecutors/s2-spec-gate';
+import { executeS4 } from './stepExecutors/s4-review-gate';
 import { getLoopEventStore, LoopEventType } from './eventStore';
 
 /**
@@ -270,6 +272,14 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
           runId: run.id,
           requestId,
           actor,
+          mode,
+        });
+      } else if (stepResolution.step === LoopStep.S4_REVIEW) {
+        stepNumber = 4;
+        stepResult = await executeS4(pool, {
+          issue,
+          runId: run.id,
+          requestId,
           mode,
         });
       } else {
