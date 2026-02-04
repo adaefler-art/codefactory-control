@@ -1,10 +1,10 @@
 /**
- * AFU-9 Loop State Machine v1 (E9.1-CTRL-4)
+ * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01)
  * 
- * Pure deterministic resolver for S1-S3 step transitions with explicit blocker codes.
+ * Pure deterministic resolver for S1-S4 step transitions with explicit blocker codes.
  * 
- * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, HOLD, DONE
- * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep)
+ * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, REVIEW_READY, HOLD, DONE
+ * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate)
  * 
  * This module implements a fail-closed, no-ambiguity state machine that returns
  * precise blocker codes instead of generic "unknown" errors.
@@ -25,12 +25,13 @@ export enum BlockerCode {
 }
 
 /**
- * State machine steps (S1-S3)
+ * State machine steps (S1-S4)
  */
 export enum LoopStep {
   S1_PICK_ISSUE = 'S1_PICK_ISSUE',
   S2_SPEC_READY = 'S2_SPEC_READY',
   S3_IMPLEMENT_PREP = 'S3_IMPLEMENT_PREP',
+  S4_REVIEW = 'S4_REVIEW',
 }
 
 /**
@@ -40,6 +41,7 @@ export enum IssueState {
   CREATED = 'CREATED',
   SPEC_READY = 'SPEC_READY',
   IMPLEMENTING_PREP = 'IMPLEMENTING_PREP',
+  REVIEW_READY = 'REVIEW_READY',
   HOLD = 'HOLD',
   DONE = 'DONE',
 }
@@ -225,12 +227,21 @@ export function resolveNextStep(
     };
   }
 
-  // State: IMPLEMENTING_PREP → Already in prep, no next loop step
+  // State: IMPLEMENTING_PREP → Check for S4 (Review Gate)
   if (status === IssueState.IMPLEMENTING_PREP) {
+    // S4 can proceed directly from IMPLEMENTING_PREP
+    return {
+      step: LoopStep.S4_REVIEW,
+      blocked: false,
+    };
+  }
+
+  // State: REVIEW_READY → Already in review, no next loop step
+  if (status === IssueState.REVIEW_READY) {
     return {
       step: null,
       blocked: false,
-      blockerMessage: 'Issue is already in implementing prep state',
+      blockerMessage: 'Issue is already in review ready state',
     };
   }
 
@@ -265,7 +276,8 @@ export function isValidTransition(fromState: IssueState, toState: IssueState): b
   const validTransitions: Record<IssueState, IssueState[]> = {
     [IssueState.CREATED]: [IssueState.SPEC_READY, IssueState.HOLD],
     [IssueState.SPEC_READY]: [IssueState.IMPLEMENTING_PREP, IssueState.HOLD],
-    [IssueState.IMPLEMENTING_PREP]: [IssueState.DONE, IssueState.HOLD],
+    [IssueState.IMPLEMENTING_PREP]: [IssueState.REVIEW_READY, IssueState.HOLD],
+    [IssueState.REVIEW_READY]: [IssueState.DONE, IssueState.HOLD],
     [IssueState.HOLD]: [], // Terminal
     [IssueState.DONE]: [], // Terminal
   };

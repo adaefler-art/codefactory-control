@@ -28,6 +28,8 @@ export enum LoopEventType {
   STEP_S1_COMPLETED = 'loop_step_s1_completed',
   STEP_S2_SPEC_READY = 'loop_step_s2_spec_ready',
   STEP_S3_IMPLEMENT_PREP = 'loop_step_s3_implement_prep',
+  STEP_S4_REVIEW = 'loop_step_s4_review',
+  REVIEW_REQUESTED = 'loop_review_requested',
   RUN_BLOCKED = 'loop_run_blocked',
   RUN_FAILED = 'loop_run_failed',
 }
@@ -42,6 +44,8 @@ export interface LoopEventPayload {
   stateAfter?: string;
   blockerCode?: string;
   requestId: string;
+  prUrl?: string;  // For review-related events
+  reviewers?: string[];  // For review-related events
 }
 
 /**
@@ -206,7 +210,7 @@ export class LoopEventStore {
     }
 
     // Check for prohibited fields (allowlist enforcement)
-    const allowedFields = ['runId', 'step', 'stateBefore', 'stateAfter', 'blockerCode', 'requestId'];
+    const allowedFields = ['runId', 'step', 'stateBefore', 'stateAfter', 'blockerCode', 'requestId', 'prUrl', 'reviewers'];
     const providedFields = Object.keys(payload);
     const extraFields = providedFields.filter(field => !allowedFields.includes(field));
 
