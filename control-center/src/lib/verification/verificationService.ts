@@ -391,9 +391,25 @@ export async function linkEvidence(
 
 /**
  * Calculate deterministic hash of evidence for integrity and idempotency
+ * 
+ * Uses JSON.stringify with sorted keys to ensure deterministic serialization
  */
 function calculateEvidenceHash(evidence: VerificationEvidence): string {
-  // Sort keys to ensure deterministic serialization
-  const normalized = JSON.stringify(evidence, Object.keys(evidence).sort());
+  // Deep sort all keys for deterministic serialization
+  function sortKeys(obj: any): any {
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(sortKeys);
+    }
+    const sorted: Record<string, any> = {};
+    Object.keys(obj).sort().forEach(key => {
+      sorted[key] = sortKeys(obj[key]);
+    });
+    return sorted;
+  }
+  
+  const normalized = JSON.stringify(sortKeys(evidence));
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
