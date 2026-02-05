@@ -20,7 +20,7 @@ import { executeS5 } from '@/lib/loop/stepExecutors/s5-merge';
 import { logger } from '@/lib/logger';
 import { getLoopRunStore } from '@/lib/loop/runStore';
 import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
-import { getControlResponseHeaders, resolveIssueIdentifier } from '@/app/api/issues/_shared';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../../../issues/_shared';
 
 type RouteContext = {
   params: Promise<{

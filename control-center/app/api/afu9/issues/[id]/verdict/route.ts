@@ -33,7 +33,7 @@ import { getAfu9IssueById } from '@/lib/db/afu9Issues';
 import { validateVerdictInput } from '@/lib/contracts/verdict';
 import { applyVerdict } from '@/lib/services/verdictService';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
-import { getControlResponseHeaders, resolveIssueIdentifier } from '@/app/api/issues/_shared';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../../../issues/_shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

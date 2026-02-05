@@ -29,7 +29,7 @@ import { Afu9IssueStatus } from '@/lib/contracts/afu9Issue';
 import { IssueTimelineEventType, ActorType } from '@/lib/contracts/issueTimeline';
 import { v4 as uuidv4 } from 'uuid';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
-import { getControlResponseHeaders, resolveIssueIdentifier } from '@/app/api/issues/_shared';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../../../../issues/_shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
