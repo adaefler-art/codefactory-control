@@ -374,6 +374,10 @@ export function normalizeIssueForApi(input: unknown): any {
     handoffAt,
     handoffError,
     githubRepo,
+    // UI compatibility: mirror -> S1 stored refs
+    repository: githubRepo ?? null,
+    repoFullName: githubRepo ?? null,
+    issueNumber: contractData.github_issue_number ?? null,
   };
 
   // Backwards-compatible snake_case aliases used by existing UI/components.
