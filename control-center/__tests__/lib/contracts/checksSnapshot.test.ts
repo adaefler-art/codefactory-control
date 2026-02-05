@@ -192,6 +192,7 @@ describe('Checks Snapshot Contracts', () => {
       const result = validateSnapshotInput(input);
 
       expect(result.valid).toBe(false);
+      expect(typeof result.error).toBe('string');
     });
   });
 

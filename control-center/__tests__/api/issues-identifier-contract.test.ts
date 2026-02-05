@@ -225,6 +225,15 @@ describe('Issue #3: Identifier Consistency Contract', () => {
         error: 'Issue not found',
       });
 
+      process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+      process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+      const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as any);
+
       const req = new NextRequest('http://localhost/api/issues/a1b2c3d4-5678-90ab-cdef-1234567890ab');
       const res = await getIssue(req, {
         params: { id: 'a1b2c3d4-5678-90ab-cdef-1234567890ab' },
@@ -232,7 +241,15 @@ describe('Issue #3: Identifier Consistency Contract', () => {
 
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body).toHaveProperty('error', 'Issue not found');
+      expect(body).toMatchObject({
+        errorCode: 'issue_not_found',
+        issueId: 'a1b2c3d4-5678-90ab-cdef-1234567890ab',
+        lookupStore: 'control',
+      });
+
+      fetchMock.mockRestore();
+      delete process.env.ENGINE_BASE_URL;
+      delete process.env.ENGINE_SERVICE_TOKEN;
     });
 
     test('returns 404 when 8-hex publicId not found', async () => {
@@ -242,6 +259,15 @@ describe('Issue #3: Identifier Consistency Contract', () => {
         error: 'Issue not found: a1b2c3d4',
       });
 
+      process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+      process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+      const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as any);
+
       const req = new NextRequest('http://localhost/api/issues/a1b2c3d4');
       const res = await getIssue(req, {
         params: { id: 'a1b2c3d4' },
@@ -249,7 +275,15 @@ describe('Issue #3: Identifier Consistency Contract', () => {
 
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body).toHaveProperty('error', 'Issue not found');
+      expect(body).toMatchObject({
+        errorCode: 'issue_not_found',
+        issueId: 'a1b2c3d4',
+        lookupStore: 'control',
+      });
+
+      fetchMock.mockRestore();
+      delete process.env.ENGINE_BASE_URL;
+      delete process.env.ENGINE_SERVICE_TOKEN;
     });
   });
 

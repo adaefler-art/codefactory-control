@@ -107,6 +107,15 @@ describe('GET /api/issues/[id] - ID format support', () => {
       error: 'Issue not found',
     });
 
+    process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+    process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+    const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as any);
+
     const req = new NextRequest('http://localhost/api/issues/c300abd8-1234-5678-90ab-cdef12345678');
     const res = await GET(req, {
       params: { id: 'c300abd8-1234-5678-90ab-cdef12345678' },
@@ -120,6 +129,10 @@ describe('GET /api/issues/[id] - ID format support', () => {
       lookupStore: 'control',
     });
     expect(res.headers.get('x-afu9-request-id')).toBeTruthy();
+
+    fetchMock.mockRestore();
+    delete process.env.ENGINE_BASE_URL;
+    delete process.env.ENGINE_SERVICE_TOKEN;
   });
 
   test('returns 404 when issue not found (shortId)', async () => {
@@ -128,6 +141,15 @@ describe('GET /api/issues/[id] - ID format support', () => {
       success: false,
       error: 'Issue not found: c300abd8',
     });
+
+    process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+    process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+    const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as any);
 
     const req = new NextRequest('http://localhost/api/issues/c300abd8');
     const res = await GET(req, {
@@ -142,6 +164,10 @@ describe('GET /api/issues/[id] - ID format support', () => {
       lookupStore: 'control',
     });
     expect(res.headers.get('x-afu9-request-id')).toBeTruthy();
+
+    fetchMock.mockRestore();
+    delete process.env.ENGINE_BASE_URL;
+    delete process.env.ENGINE_SERVICE_TOKEN;
   });
 
   test('falls back to engine and persists issue', async () => {

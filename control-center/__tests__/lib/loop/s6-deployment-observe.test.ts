@@ -45,6 +45,7 @@ describe('S6 Step Executor: Deployment Observation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockQuery.mockReset();
     (authWrapper.createAuthenticatedClient as jest.Mock).mockResolvedValue(mockOctokit);
   });
 
@@ -249,7 +250,7 @@ describe('S6 Step Executor: Deployment Observation', () => {
       // Verify timeline event was logged
       expect(mockQuery).toHaveBeenCalledTimes(2);
       const timelineCall = mockQuery.mock.calls[1];
-      expect(timelineCall[0]).toContain('INSERT INTO issue_timeline');
+      expect(timelineCall[0]).toContain('INSERT INTO loop_events');
     });
 
     test('should succeed when no deployments are found', async () => {

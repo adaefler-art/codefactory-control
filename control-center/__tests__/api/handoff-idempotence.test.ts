@@ -17,6 +17,7 @@ jest.mock('../../src/lib/db', () => ({
 jest.mock('../../src/lib/github', () => ({
   createIssue: jest.fn(),
   updateIssue: jest.fn(),
+  findIssueByMarker: jest.fn(),
 }));
 
 jest.mock('../../src/lib/db/afu9Issues', () => ({
@@ -375,7 +376,7 @@ describe('E61.3: Idempotent GitHub Handoff', () => {
         params: Promise.resolve({ id: '123' }),
       });
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(429);
       const body = await response.json();
       
       // Should update state to FAILED with error message

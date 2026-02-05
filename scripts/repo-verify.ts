@@ -30,6 +30,7 @@ import { execSync } from 'child_process';
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CONTROL_CENTER_DIR = path.join(REPO_ROOT, 'control-center');
 const API_ROUTES_DIR = path.join(CONTROL_CENTER_DIR, 'app', 'api');
+const API_ROUTES_FILE = path.join(CONTROL_CENTER_DIR, 'src', 'lib', 'api-routes.ts');
 const LIB_DIR = path.join(REPO_ROOT, 'lib');
 
 const FORBIDDEN_PATHS = [
@@ -140,6 +141,20 @@ const EXCLUDED_TEST_PATTERNS = [
   '__test',
 ];
 
+// Routes that are called externally (webhooks, callbacks, health checks, etc.)
+// and may not have internal client references
+const EXTERNALLY_CALLED_ROUTES = [
+  '/api/webhooks/github',           // GitHub webhook receiver
+  '/api/webhooks/slack',            // Slack webhook receiver
+  '/api/auth/callback',             // OAuth callback endpoint
+  '/api/auth/github/callback',      // GitHub OAuth callback
+  '/api/health',                    // Health check endpoint (monitoring)
+  '/api/ready',                     // Readiness probe (K8s/ECS)
+  '/api/build-info',                // Build metadata endpoint
+  '/api/metrics',                   // Prometheus/monitoring metrics
+  '/api/webhooks/events/[id]',      // Webhook event retrieval (external polling)
+];
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -159,6 +174,11 @@ interface FetchCall {
 interface ValidationResult {
   passed: boolean;
   errors: string[];
+}
+
+interface CleanupReport {
+  orphanedRegistryPaths: string[];
+  unregisteredRoutes: RouteInfo[];
 }
 
 // ============================================================================
@@ -350,6 +370,80 @@ function discoverApiRoutes(): RouteInfo[] {
   return routes;
 }
 
+function normalizeApiPath(rawPath: string): string | null {
+  let apiPath = rawPath.split('?')[0];
+  apiPath = apiPath.replace(/\$\{[^}]*\}/g, '[dynamic]');
+  apiPath = apiPath.replace(/([^/])\[dynamic\]/g, '$1');
+  apiPath = apiPath.trim();
+
+  if (!apiPath) return null;
+
+  if (apiPath === '/api/') {
+    apiPath = '/api';
+  }
+
+  if (apiPath.endsWith('/') && apiPath !== '/api') {
+    apiPath = apiPath.slice(0, -1);
+  }
+
+  return apiPath;
+}
+
+function computeUnreferencedRoutes(
+  routes: RouteInfo[],
+  calls: FetchCall[],
+  registryPaths: string[]
+): RouteInfo[] {
+  return routes.filter((route) => {
+    const isReferenced =
+      calls.some((call) => matchesRoute(call.apiPath, route.apiPath)) ||
+      registryPaths.some((path) => matchesRoute(path, route.apiPath));
+
+    return !isReferenced;
+  });
+}
+
+function computeCleanupReport(
+  routes: RouteInfo[],
+  calls: FetchCall[],
+  registryPaths: string[],
+  externallyCalledRoutes: string[] = []
+): CleanupReport {
+  const orphanedRegistryPaths = registryPaths.filter(
+    (path) => !routes.some((route) => matchesRoute(path, route.apiPath))
+  );
+
+  const unregisteredRoutes = computeUnreferencedRoutes(routes, calls, registryPaths).filter(
+    (route) => !externallyCalledRoutes.includes(route.apiPath)
+  );
+
+  return {
+    orphanedRegistryPaths: [...orphanedRegistryPaths].sort((a, b) => a.localeCompare(b)),
+    unregisteredRoutes: [...unregisteredRoutes].sort((a, b) => a.apiPath.localeCompare(b.apiPath)),
+  };
+}
+
+/**
+ * Scan API route registry definitions for canonical /api/** paths
+ */
+function discoverApiRouteRegistryPaths(): string[] {
+  if (!fs.existsSync(API_ROUTES_FILE)) return [];
+
+  const content = fs.readFileSync(API_ROUTES_FILE, 'utf-8');
+  const matches = new Set<string>();
+  const pattern = /['"`](\/api\/[^'"`]*)['"`]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(content)) !== null) {
+    const normalized = normalizeApiPath(match[1]);
+    if (normalized) {
+      matches.add(normalized);
+    }
+  }
+
+  return Array.from(matches);
+}
+
 /**
  * Scan control-center for client-side fetch calls to /api/**
  */
@@ -377,24 +471,8 @@ function discoverFetchCalls(): FetchCall[] {
         let match;
 
         while ((match = pattern.exec(line)) !== null) {
-          let apiPath = match[1];
-
-          // Remove query parameters first
-          apiPath = apiPath.split('?')[0];
-          
-          // For template expressions, replace ${...} with a placeholder for dynamic segments
-          // This allows /api/issues/${id} to match /api/issues/[id]
-          apiPath = apiPath.replace(/\$\{[^}]*\}/g, '[dynamic]');
-          
-          apiPath = apiPath.trim();
-          
-          // Remove trailing slash if present (but not for /api/ root)
-          if (apiPath.endsWith('/') && apiPath !== '/api/') {
-            apiPath = apiPath.slice(0, -1);
-          }
-
-          // Skip if path is empty after cleanup
-          if (!apiPath || apiPath === '/api/') continue;
+          const apiPath = normalizeApiPath(match[1]);
+          if (!apiPath || apiPath === '/api') continue;
 
           calls.push({
             filePath,
@@ -697,45 +775,23 @@ function checkUnreferencedRoutes(): ValidationResult {
 
   const routes = discoverApiRoutes();
   const calls = discoverFetchCalls();
+  const registryPaths = discoverApiRouteRegistryPaths();
   const errors: string[] = [];
-  const unreferencedRoutes: RouteInfo[] = [];
+  const unreferencedRoutes = computeUnreferencedRoutes(routes, calls, registryPaths);
 
-  // Routes that are called externally (webhooks, callbacks, health checks, etc.) 
-  // and may not have internal client references
-  const EXTERNALLY_CALLED_ROUTES = [
-    '/api/webhooks/github',           // GitHub webhook receiver
-    '/api/webhooks/slack',            // Slack webhook receiver
-    '/api/auth/callback',             // OAuth callback endpoint
-    '/api/auth/github/callback',      // GitHub OAuth callback
-    '/api/health',                    // Health check endpoint (monitoring)
-    '/api/ready',                     // Readiness probe (K8s/ECS)
-    '/api/build-info',                // Build metadata endpoint
-    '/api/metrics',                   // Prometheus/monitoring metrics
-    '/api/webhooks/events/[id]',      // Webhook event retrieval (external polling)
-  ];
-
-  for (const route of routes) {
-    // Skip externally called routes
-    if (EXTERNALLY_CALLED_ROUTES.includes(route.apiPath)) {
-      continue;
-    }
-
-    // Check if route is referenced by any client call
-    const isReferenced = calls.some((call) => matchesRoute(call.apiPath, route.apiPath));
-
-    if (!isReferenced) {
-      unreferencedRoutes.push(route);
-    }
-  }
+  const filteredUnreferenced = unreferencedRoutes.filter(
+    (route) => !EXTERNALLY_CALLED_ROUTES.includes(route.apiPath)
+  );
 
   console.log(`   Found ${routes.length} API routes`);
   console.log(`   Found ${calls.length} client fetch calls`);
-  console.log(`   Found ${unreferencedRoutes.length} unreferenced routes`);
+  console.log(`   Found ${registryPaths.length} registry route definitions`);
+  console.log(`   Found ${filteredUnreferenced.length} unreferenced routes`);
 
-  if (unreferencedRoutes.length > 0) {
+  if (filteredUnreferenced.length > 0) {
     errors.push(
-      `\nFound ${unreferencedRoutes.length} unreferenced API route(s):\n` +
-      unreferencedRoutes.map((r) => {
+      `\nFound ${filteredUnreferenced.length} unreferenced API route(s):\n` +
+      filteredUnreferenced.map((r) => {
         const relativePath = path.relative(REPO_ROOT, r.filePath);
         return `  - ${r.apiPath}\n    File: ${relativePath}`;
       }).join('\n') +
@@ -748,12 +804,54 @@ function checkUnreferencedRoutes(): ValidationResult {
       `  - OR add to EXTERNALLY_CALLED_ROUTES if intentionally external`
     );
 
-    console.log(`   ⚠️  Unreferenced Routes Check WARNING (${unreferencedRoutes.length} routes)`);
+    console.log(`   ⚠️  Unreferenced Routes Check WARNING (${filteredUnreferenced.length} routes)`);
     // Return as warning (passed: true) but with errors for logging
     return { passed: true, errors };
   }
 
   console.log('   ✅ Unreferenced Routes Check PASSED');
+  return { passed: true, errors: [] };
+}
+
+// ============================================================================
+// API Route Cleanup Report (informational)
+// ============================================================================
+
+/**
+ * Report registry drift and unregistered routes (informational only)
+ */
+function checkApiRouteCleanupReport(): ValidationResult {
+  console.log('🔍 Running API Route Cleanup Report...');
+
+  const routes = discoverApiRoutes();
+  const calls = discoverFetchCalls();
+  const registryPaths = discoverApiRouteRegistryPaths();
+  const report = computeCleanupReport(
+    routes,
+    calls,
+    registryPaths,
+    EXTERNALLY_CALLED_ROUTES
+  );
+
+  console.log(`   Orphaned registry entries: ${report.orphanedRegistryPaths.length}`);
+  if (report.orphanedRegistryPaths.length > 0) {
+    console.log('   Orphaned registry paths (no matching route.ts):');
+    report.orphanedRegistryPaths.forEach((apiPath) => {
+      console.log(`     - ${apiPath}`);
+    });
+  }
+
+  console.log(`   Unregistered & unreferenced routes: ${report.unregisteredRoutes.length}`);
+  if (report.unregisteredRoutes.length > 0) {
+    console.log('   Unregistered routes (no client call and not in registry):');
+    report.unregisteredRoutes.forEach((route) => {
+      const relativePath = path.relative(REPO_ROOT, route.filePath);
+      console.log(`     - ${route.apiPath}`);
+      console.log(`       File: ${relativePath}`);
+    });
+  }
+
+  console.log('   ✅ API Route Cleanup Report generated');
   return { passed: true, errors: [] };
 }
 
@@ -1498,6 +1596,7 @@ async function main() {
     checkSecretFiles(),        // I661 security check
     checkEmptyFolders(),
     checkUnreferencedRoutes(),
+    checkApiRouteCleanupReport(),
     checkDeployEcsWorkflowInvariants(),
     checkEcsResourceSanity(),
     checkMixedScope(),
@@ -1555,7 +1654,16 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('Fatal error running repo verification:', error);
-  process.exit(2);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Fatal error running repo verification:', error);
+    process.exit(2);
+  });
+}
+
+export {
+  computeCleanupReport,
+  computeUnreferencedRoutes,
+  matchesRoute,
+  normalizeApiPath,
+};

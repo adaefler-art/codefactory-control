@@ -27,6 +27,7 @@ jest.mock('../../src/lib/db', () => ({
 // Mock the GitHub module
 jest.mock('../../src/lib/github', () => ({
   createIssue: jest.fn(),
+  findIssueByMarker: jest.fn(),
 }));
 
 // Mock database helpers

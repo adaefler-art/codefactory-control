@@ -147,6 +147,15 @@ describe('Regression: Issue Detail API UUID Read', () => {
       error: 'Issue not found',
     });
 
+    process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+    process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+    const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as any);
+
     const request = new NextRequest(`http://localhost/api/issues/${nonExistentUuid}`);
     const response = await getIssue(request, {
       params: Promise.resolve({ id: nonExistentUuid }),
@@ -155,7 +164,15 @@ describe('Regression: Issue Detail API UUID Read', () => {
     expect(response.status).toBe(404);
     
     const body = await response.json();
-    expect(body.error).toContain('not found');
+    expect(body).toMatchObject({
+      errorCode: 'issue_not_found',
+      issueId: nonExistentUuid,
+      lookupStore: 'control',
+    });
+
+    fetchMock.mockRestore();
+    delete process.env.ENGINE_BASE_URL;
+    delete process.env.ENGINE_SERVICE_TOKEN;
   });
 
   test('should return 400 for invalid UUID format', async () => {

@@ -208,9 +208,13 @@ export function validateSnapshotInput(input: unknown): {
     return { valid: true, data };
   } catch (error) {
     if (error instanceof z.ZodError) {
+      const issues = Array.isArray((error as z.ZodError).errors) && (error as z.ZodError).errors.length > 0
+        ? (error as z.ZodError).errors
+        : (error as z.ZodError).issues || [];
+
       return { 
         valid: false, 
-        error: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '),
+        error: issues.map(e => `${e.path.join('.')}: ${e.message}`).join('; ') || 'Invalid snapshot input',
       };
     }
     return { valid: false, error: String(error) };

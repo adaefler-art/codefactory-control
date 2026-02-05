@@ -15,6 +15,7 @@ jest.mock('../../src/lib/db', () => ({
 
 jest.mock('../../src/lib/github', () => ({
   createIssue: jest.fn(),
+  findIssueByMarker: jest.fn(),
 }));
 
 jest.mock('../../src/lib/db/afu9Issues', () => ({
