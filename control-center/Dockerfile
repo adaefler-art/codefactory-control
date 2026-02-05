@@ -52,7 +52,7 @@ COPY control-center/ ./
 RUN node prebuild.js
 
 RUN set -eu; \
-    __NEXT_PREVIEW_MODE_ID="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";const b=crypto.createHash("sha256").update("preview-id:"+seed).digest();process.stdout.write(b.subarray(0,16).toString("base64"));')"; \
+    __NEXT_PREVIEW_MODE_ID="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";const b=crypto.createHash("sha256").update("preview-id:"+seed).digest().subarray(0,16);process.stdout.write(b.toString("base64"));')"; \
     __NEXT_PREVIEW_MODE_SIGNING_KEY="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";const b=crypto.createHash("sha256").update("preview-sign:"+seed).digest();process.stdout.write(b.toString("base64"));')"; \
     __NEXT_PREVIEW_MODE_ENCRYPTION_KEY="$(node -e 'const crypto=require("crypto");const seed=process.env.BUILD_COMMIT_HASH||"local";const b=crypto.createHash("sha256").update("preview-enc:"+seed).digest();process.stdout.write(b.toString("base64"));')"; \
     export __NEXT_PREVIEW_MODE_ID __NEXT_PREVIEW_MODE_SIGNING_KEY __NEXT_PREVIEW_MODE_ENCRYPTION_KEY; \
