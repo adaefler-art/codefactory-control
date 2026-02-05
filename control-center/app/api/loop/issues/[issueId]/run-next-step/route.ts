@@ -126,7 +126,7 @@ export async function POST(
         errorResponse,
         { 
           status: getHttpStatusForErrorCode('INVALID_REQUEST'),
-          headers: { 'x-request-id': requestId }
+          headers: responseHeaders,
         }
       );
     }

@@ -310,7 +310,7 @@ export default function IssueDetailPage({
     setLoopActionMessage(null);
 
     try {
-      const response = await fetch(API_ROUTES.loop.runNextStep(id), {
+      const response = await fetch(API_ROUTES.loop.issues.runNextStep(id), {
         method: 'POST',
         credentials: 'include',
         headers: {
