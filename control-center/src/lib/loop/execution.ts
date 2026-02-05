@@ -19,6 +19,8 @@ import { executeS2 } from './stepExecutors/s2-spec-gate';
 import { executeS4 } from './stepExecutors/s4-review-gate';
 import { executeS5 } from './stepExecutors/s5-merge';
 import { executeS6 } from './stepExecutors/s6-deployment-observe';
+import { executeS8Close } from './stepExecutors/s8-close';
+import { executeS9Remediate } from './stepExecutors/s9-remediate';
 import { getLoopEventStore, LoopEventType } from './eventStore';
 
 /**
@@ -303,6 +305,41 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
           actor,
           mode,
         });
+      } else if (stepResolution.step === LoopStep.S8_CLOSE) {
+        stepNumber = 8;
+        stepResult = await executeS8Close(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+      } else if (stepResolution.step === LoopStep.S9_REMEDIATE) {
+        // S9 (Remediate) requires explicit remediation reason from caller
+        // This step is not executed automatically via run-next-step
+        // It must be invoked via a dedicated API endpoint (e.g., POST /api/loop/issues/[id]/remediate)
+        // with explicit remediation parameters
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
+        
+        await runStore.updateRunStatus(run.id, {
+          status: 'completed',
+          completedAt,
+          durationMs,
+          metadata: {
+            message: `S9 (Remediate) requires explicit invocation with remediation reason. Use dedicated remediation API endpoint.`,
+            step: LoopStep.S9_REMEDIATE,
+          },
+        });
+        
+        response = {
+          schemaVersion: LOOP_SCHEMA_VERSION,
+          requestId,
+          issueId,
+          runId: run.id,
+          loopStatus: 'blocked',
+          message: `S9 (Remediate) requires explicit remediation reason. Use dedicated API: POST /api/loop/issues/${issueId}/remediate`,
+        };
       } else {
         // Step not yet implemented
         const completedAt = new Date();
