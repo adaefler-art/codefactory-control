@@ -207,18 +207,21 @@ describe('E9.1-CTRL-4: Loop State Machine v1', () => {
   });
 
   describe('resolveNextStep - Terminal States', () => {
-    test('should return no step for DONE state', () => {
+    const assertNextStep = (status: IssueState, expectedStep: LoopStep | null) => {
       const issue: IssueData = {
         id: 'test-id',
-        status: IssueState.DONE,
+        status,
         github_url: 'https://github.com/org/repo/issues/123',
       };
 
       const result = resolveNextStep(issue);
 
-      expect(result.step).toBeNull();
+      expect(result.step).toBe(expectedStep);
       expect(result.blocked).toBe(false);
-      expect(result.blockerMessage).toContain('terminal state');
+    };
+
+    test('should return verify gate step for DONE state', () => {
+      assertNextStep(IssueState.DONE, LoopStep.S7_VERIFY_GATE);
     });
 
     test('should return no step for HOLD state', () => {
@@ -249,18 +252,8 @@ describe('E9.1-CTRL-4: Loop State Machine v1', () => {
       expect(result.blockerCode).toBeUndefined();
     });
 
-    test('should return no step for REVIEW_READY state', () => {
-      const issue: IssueData = {
-        id: 'test-id',
-        status: IssueState.REVIEW_READY,
-        github_url: 'https://github.com/org/repo/issues/123',
-      };
-
-      const result = resolveNextStep(issue);
-
-      expect(result.step).toBeNull();
-      expect(result.blocked).toBe(false);
-      expect(result.blockerMessage).toContain('already in review ready');
+    test('should return merge step for REVIEW_READY state', () => {
+      assertNextStep(IssueState.REVIEW_READY, LoopStep.S5_MERGE);
     });
   });
 

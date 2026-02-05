@@ -110,8 +110,9 @@ export async function executeS6(
     }, 'S6Executor');
     
     // Log blocked event
-    await eventStore.logEvent({
+    await eventStore.createEvent({
       issueId: issue.id,
+      runId: ctx.runId,
       eventType: LoopEventType.RUN_BLOCKED,
       eventData: {
         runId: ctx.runId,
@@ -119,7 +120,6 @@ export async function executeS6(
         stateBefore,
         stateAfter: stateBefore,
         blockerCode: BlockerCode.NO_PR_LINKED,
-        blockerMessage: message,
         requestId: ctx.requestId,
       },
     });
@@ -181,8 +181,9 @@ export async function executeS6(
       }, 'S6Executor');
       
       // Log blocked event
-      await eventStore.logEvent({
+      await eventStore.createEvent({
         issueId: issue.id,
+        runId: ctx.runId,
         eventType: LoopEventType.RUN_BLOCKED,
         eventData: {
           runId: ctx.runId,
@@ -190,7 +191,6 @@ export async function executeS6(
           stateBefore,
           stateAfter: stateBefore,
           blockerCode: BlockerCode.PR_NOT_MERGED,
-          blockerMessage: message,
           requestId: ctx.requestId,
         },
       });
@@ -306,8 +306,9 @@ export async function executeS6(
   }
   
   // Log deployment observation event
-  const eventId = await eventStore.logEvent({
+  const event = await eventStore.createEvent({
     issueId: issue.id,
+    runId: ctx.runId,
     eventType: LoopEventType.DEPLOYMENT_OBSERVED,
     eventData: {
       runId: ctx.runId,
@@ -315,15 +316,6 @@ export async function executeS6(
       stateBefore,
       stateAfter: stateBefore,
       requestId: ctx.requestId,
-      deploymentsFound: observationResult.deploymentsFound,
-      deployments: observationResult.observations.map(obs => ({
-        deploymentId: obs.github_deployment_id,
-        environment: obs.environment,
-        sha: obs.sha,
-        targetUrl: obs.target_url,
-        isAuthentic: obs.is_authentic,
-        createdAt: obs.created_at,
-      })),
     },
   });
   
@@ -347,6 +339,6 @@ export async function executeS6(
     stateAfter: stateBefore,  // S6 does not change state
     fieldsChanged: [],
     message,
-    eventId,
+    eventId: event?.id,
   };
 }

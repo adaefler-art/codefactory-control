@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getPool } from '@/lib/db';
 import { updateS1S3IssueSpec } from '@/lib/db/s1s3Flow';
 import { getRequestId } from '@/lib/api/response-helpers';
+import { ensureIssueInControl } from '../../../../../../issues/_shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -62,6 +63,19 @@ export async function POST(
       issueId,
       lookupTarget: 'control',
       route: `POST ${request.nextUrl.pathname}`,
+    });
+  }
+
+  const ensured = await ensureIssueInControl(issueId, requestId);
+  if (!ensured.ok) {
+    const fallbackBody = ensured.body ?? {
+      errorCode: 'issue_lookup_failed',
+      issueId,
+      requestId,
+    };
+    return buildResponse(ensured.status, requestId, {
+      ...fallbackBody,
+      requestId,
     });
   }
 

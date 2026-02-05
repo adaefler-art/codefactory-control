@@ -194,13 +194,14 @@ export async function POST(
           handoff_error: labelError instanceof Error ? labelError.message : String(labelError),
         });
         
-        return NextResponse.json(
+        return jsonResponse(
           {
             error: 'Invalid labels for GitHub handoff',
             details: labelError instanceof Error ? labelError.message : String(labelError),
             invalidLabels: issue.labels,
+            requestId,
           },
-          { status: 400 }
+          { status: 400, requestId }
         );
       }
 
@@ -337,6 +338,9 @@ export async function POST(
             details: errorMessage,
             code: 'TRANSIENT',
             retry_after: 60,
+            handoff_state: Afu9HandoffState.FAILED,
+            requestId,
+            timestamp: new Date().toISOString(),
           },
           {
             status: 429,
@@ -348,12 +352,20 @@ export async function POST(
         );
       }
 
-      return errorResponse(`Failed to ${isUpdate ? 'update' : 'create'} GitHub issue`, {
-        status: isAuthError ? 401 : 500,
-        requestId,
-        details: errorMessage,
-        code: isAuthError ? 'AUTH_REQUIRED' : 'INTERNAL_ERROR',
-      });
+      return jsonResponse(
+        {
+          error: `Failed to ${isUpdate ? 'update' : 'create'} GitHub issue`,
+          details: errorMessage,
+          code: isAuthError ? 'AUTH_REQUIRED' : 'INTERNAL_ERROR',
+          handoff_state: Afu9HandoffState.FAILED,
+          requestId,
+          timestamp: new Date().toISOString(),
+        },
+        {
+          status: isAuthError ? 401 : 500,
+          requestId,
+        }
+      );
     }
   } catch (error) {
     console.error('[API /api/issues/[id]/handoff] Error during handoff:', error);

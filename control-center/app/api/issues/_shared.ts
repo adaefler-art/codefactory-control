@@ -36,9 +36,17 @@ import {
   type IssueIdentifierKind,
 } from '../../../src/lib/contracts/ids';
 import { toIsoStringOrNull } from '../../../src/lib/contracts/dates';
+import { getPool } from '../../../src/lib/db';
+import {
+  Afu9IssueInput,
+  Afu9IssueStatus,
+  isValidPriority,
+  isValidStatus,
+} from '../../../src/lib/contracts/afu9Issue';
 import {
   getAfu9IssueById,
   getAfu9IssueByPublicId,
+  upsertAfu9IssueFromEngine,
 } from '../../../src/lib/db/afu9Issues';
 import { computeEffectiveStatus } from '../../../src/lib/issues/stateModel';
 import type {
@@ -409,4 +417,179 @@ export function normalizeIssueForApi(input: unknown): any {
   api.github_repo = githubRepo;
 
   return api;
+}
+
+function getStringField(input: Record<string, unknown>, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((entry) => typeof entry === 'string') as string[];
+  return items.length > 0 ? items : undefined;
+}
+
+function normalizeEngineBaseUrl(raw?: string | null): string | null {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed.replace(/\/$/, '');
+}
+
+async function fetchIssueFromEngine(
+  issueId: string,
+  requestId: string
+): Promise<
+  | { ok: true; issue: Record<string, unknown> | null }
+  | { ok: false; status: number; message: string }
+> {
+  const engineBaseUrl = normalizeEngineBaseUrl(
+    process.env.ENGINE_BASE_URL || process.env.ENGINE_URL
+  );
+  const engineToken = process.env.AFU9_SERVICE_TOKEN || process.env.ENGINE_SERVICE_TOKEN || '';
+
+  const url = `${engineBaseUrl}/api/issues/${encodeURIComponent(issueId)}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'x-afu9-service-token': engineToken,
+      'x-request-id': requestId,
+    },
+  });
+
+  if (response.status === 404) {
+    return { ok: true, issue: null };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      message: 'Engine issue lookup failed',
+    };
+  }
+
+  try {
+    const issue = (await response.json()) as Record<string, unknown>;
+    return { ok: true, issue };
+  } catch {
+    return {
+      ok: false,
+      status: 502,
+      message: 'Engine issue lookup invalid JSON',
+    };
+  }
+}
+
+function mapEngineIssueToInput(issue: Record<string, unknown>): Afu9IssueInput | null {
+  const title = getStringField(issue, 'title') || getStringField(issue, 'summary');
+  if (!title) return null;
+
+  const statusValue = getStringField(issue, 'status');
+  const priorityValue = getStringField(issue, 'priority');
+
+  return {
+    title,
+    body: getStringField(issue, 'body') ?? null,
+    labels: toStringArray(issue.labels),
+    priority: priorityValue && isValidPriority(priorityValue) ? priorityValue : null,
+    assignee: getStringField(issue, 'assignee') ?? null,
+    status: statusValue && isValidStatus(statusValue) ? statusValue : Afu9IssueStatus.CREATED,
+    canonical_id: getStringField(issue, 'canonicalId') || getStringField(issue, 'canonical_id') || null,
+    github_issue_number:
+      typeof issue.githubIssueNumber === 'number'
+        ? issue.githubIssueNumber
+        : typeof issue.github_issue_number === 'number'
+          ? issue.github_issue_number
+          : null,
+    github_url: getStringField(issue, 'githubUrl') || getStringField(issue, 'github_url') || null,
+    source: 'engine',
+  };
+}
+
+export type EnsureIssueResult =
+  | { ok: true; issue: Record<string, unknown>; source: 'control' | 'engine' }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+export async function ensureIssueInControl(
+  issueId: string,
+  requestId: string
+): Promise<EnsureIssueResult> {
+  const pool = getPool();
+  const resolved = await fetchIssueRowByIdentifier(pool, issueId);
+
+  if (resolved.ok) {
+    return { ok: true, issue: resolved.row as Record<string, unknown>, source: 'control' };
+  }
+
+  if (resolved.status !== 404) {
+    return { ok: false, status: resolved.status, body: resolved.body };
+  }
+
+  const missingEnvs: string[] = [];
+  const engineBaseUrl = normalizeEngineBaseUrl(
+    process.env.ENGINE_BASE_URL || process.env.ENGINE_URL
+  );
+  const engineToken = (process.env.AFU9_SERVICE_TOKEN || process.env.ENGINE_SERVICE_TOKEN || '').trim();
+
+  if (!engineBaseUrl) {
+    missingEnvs.push('ENGINE_BASE_URL', 'ENGINE_URL');
+  }
+  if (!engineToken) {
+    missingEnvs.push('AFU9_SERVICE_TOKEN', 'ENGINE_SERVICE_TOKEN');
+  }
+
+  if (missingEnvs.length > 0) {
+    return {
+      ok: false,
+      status: 500,
+      body: {
+        errorCode: 'engine_misconfigured',
+        issueId,
+        missingEnvs,
+        requestId,
+      },
+    };
+  }
+
+  const engineLookup = await fetchIssueFromEngine(issueId, requestId);
+  if (engineLookup.ok && engineLookup.issue) {
+    const mappedInput = mapEngineIssueToInput(engineLookup.issue);
+    if (mappedInput) {
+      const upsertResult = await upsertAfu9IssueFromEngine(pool, issueId, mappedInput);
+      if (upsertResult.success && upsertResult.data) {
+        return {
+          ok: true,
+          issue: upsertResult.data as Record<string, unknown>,
+          source: 'engine',
+        };
+      }
+    }
+  }
+
+  if (!engineLookup.ok) {
+    return {
+      ok: false,
+      status: 502,
+      body: {
+        errorCode: 'engine_lookup_failed',
+        issueId,
+        lookupStore: 'engine',
+        requestId,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    status: 404,
+    body: {
+      errorCode: 'issue_not_found',
+      issueId,
+      lookupStore: 'control',
+      requestId,
+    },
+  };
 }

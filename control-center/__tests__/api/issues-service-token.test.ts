@@ -24,6 +24,7 @@ jest.mock('../../app/api/issues/_shared', () => {
     ...actual,
     fetchIssueRowByIdentifier: jest.fn(),
     normalizeIssueForApi: jest.fn(() => ({ id: 'issue-1' })),
+    ensureIssueInControl: jest.fn(),
   };
 });
 
@@ -127,9 +128,11 @@ describe('Issues API service token guard', () => {
   });
 
   describe('GET /api/issues/[id]', () => {
+    const validIssueId = '123e4567-e89b-12d3-a456-426614174000';
+
     test('missing header returns 401', async () => {
-      const req = new NextRequest('http://localhost/api/issues/ISS-001');
-      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+      const req = new NextRequest(`http://localhost/api/issues/${validIssueId}`);
+      const res = await getIssue(req, { params: Promise.resolve({ id: validIssueId }) });
 
       expect(res.status).toBe(401);
       const body = await res.json();
@@ -137,12 +140,12 @@ describe('Issues API service token guard', () => {
     });
 
     test('x-afu9-sub allows without service token', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
-      fetchIssueRowByIdentifier.mockResolvedValue({ ok: true, row: { id: 'issue-1' } });
+      const { ensureIssueInControl } = require('../../app/api/issues/_shared');
+      ensureIssueInControl.mockResolvedValue({ ok: true, issue: { id: 'issue-1' }, source: 'control' });
 
       const headers = new Headers({ 'x-afu9-sub': 'user-123' });
-      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
-      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+      const req = new NextRequest(`http://localhost/api/issues/${validIssueId}`, { headers });
+      const res = await getIssue(req, { params: Promise.resolve({ id: validIssueId }) });
 
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -151,8 +154,8 @@ describe('Issues API service token guard', () => {
 
     test('wrong header returns 403', async () => {
       const headers = new Headers({ 'x-afu9-service-token': 'wrong' });
-      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
-      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+      const req = new NextRequest(`http://localhost/api/issues/${validIssueId}`, { headers });
+      const res = await getIssue(req, { params: Promise.resolve({ id: validIssueId }) });
 
       expect(res.status).toBe(403);
       const body = await res.json();
@@ -160,23 +163,23 @@ describe('Issues API service token guard', () => {
     });
 
     test('accepts Authorization Bearer token', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
-      fetchIssueRowByIdentifier.mockResolvedValue({ ok: true, row: { id: 'issue-1' } });
+      const { ensureIssueInControl } = require('../../app/api/issues/_shared');
+      ensureIssueInControl.mockResolvedValue({ ok: true, issue: { id: 'issue-1' }, source: 'control' });
 
       const headers = new Headers({ Authorization: 'Bearer service-secret' });
-      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
-      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+      const req = new NextRequest(`http://localhost/api/issues/${validIssueId}`, { headers });
+      const res = await getIssue(req, { params: Promise.resolve({ id: validIssueId }) });
 
       expect(res.status).toBe(200);
     });
 
     test('correct header returns 200', async () => {
-      const { fetchIssueRowByIdentifier } = require('../../app/api/issues/_shared');
-      fetchIssueRowByIdentifier.mockResolvedValue({ ok: true, row: { id: 'issue-1' } });
+      const { ensureIssueInControl } = require('../../app/api/issues/_shared');
+      ensureIssueInControl.mockResolvedValue({ ok: true, issue: { id: 'issue-1' }, source: 'control' });
 
       const headers = new Headers({ 'x-afu9-service-token': 'service-secret' });
-      const req = new NextRequest('http://localhost/api/issues/ISS-001', { headers });
-      const res = await getIssue(req, { params: Promise.resolve({ id: 'ISS-001' }) });
+      const req = new NextRequest(`http://localhost/api/issues/${validIssueId}`, { headers });
+      const res = await getIssue(req, { params: Promise.resolve({ id: validIssueId }) });
 
       expect(res.status).toBe(200);
       const body = await res.json();

@@ -32,6 +32,7 @@ jest.mock('../../src/lib/db', () => ({
 jest.mock('../../src/lib/github', () => ({
   createIssue: jest.fn(),
   updateIssue: jest.fn(),
+  findIssueByMarker: jest.fn(),
 }));
 
 // Mock database helpers
@@ -279,6 +280,15 @@ describe('AFU9 Issues API', () => {
         error: 'Issue not found',
       });
 
+      process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+      process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+      const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as any);
+
       const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
       const response = await getIssue(request, {
         params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
@@ -286,7 +296,15 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(404);
-      expect(body.error).toContain('not found');
+      expect(body).toMatchObject({
+        errorCode: 'issue_not_found',
+        issueId: '123e4567-e89b-12d3-a456-426614174000',
+        lookupStore: 'control',
+      });
+
+      fetchMock.mockRestore();
+      delete process.env.ENGINE_BASE_URL;
+      delete process.env.ENGINE_SERVICE_TOKEN;
     });
   });
 
@@ -772,7 +790,7 @@ describe('AFU9 Issues API', () => {
       });
       const body = await response.json();
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(429);
       expect(body.error).toContain('Failed to create GitHub issue');
       expect(body.handoff_state).toBe(Afu9HandoffState.FAILED);
     });

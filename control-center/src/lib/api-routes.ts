@@ -3,6 +3,12 @@
  * 
  * This file defines all canonical API routes as TypeScript constants
  * to enforce type-safe route usage and prevent hardcoded strings.
+ *
+ * Registry contract (keep in sync with control-center/app/api):
+ * - Add every new API route here if it is called indirectly or dynamically.
+ * - repo:verify treats registry entries as intended references.
+ * - If a route is removed or moved, update this registry or cleanup report will flag it.
+ * - The goal is explicit, audited intent for the API surface.
  * 
  * Usage:
  * ```typescript
@@ -43,6 +49,20 @@ export const API_ROUTES = {
     deps: '/api/deps/ready',
   },
 
+  // MCP
+  mcp: {
+    config: '/api/mcp/config',
+    verify: '/api/mcp/verify',
+  },
+
+  // Diagnostics
+  diagnostics: {
+    smokeKey: {
+      allowlist: '/api/diagnostics/smoke-key/allowlist',
+      seedAllowlist: '/api/diagnostics/smoke-key/allowlist/seed',
+    },
+  },
+
   // Webhooks (Canonical)
   webhooks: {
     github: '/api/webhooks/github', // ✅ Canonical
@@ -56,6 +76,20 @@ export const API_ROUTES = {
   github: {
     status: {
       sync: '/api/github/status/sync',
+    },
+    issues: {
+      assignCopilot: (issueNumber: string) => `/api/github/issues/${issueNumber}/assign-copilot`,
+    },
+    prs: {
+      checks: {
+        prompt: (prNumber: string) => `/api/github/prs/${prNumber}/checks/prompt`,
+        rerun: (prNumber: string) => `/api/github/prs/${prNumber}/checks/rerun`,
+        stopDecision: (prNumber: string) => `/api/github/prs/${prNumber}/checks/stop-decision`,
+        triage: (prNumber: string) => `/api/github/prs/${prNumber}/checks/triage`,
+      },
+      collectSummary: (prNumber: string) => `/api/github/prs/${prNumber}/collect-summary`,
+      merge: (prNumber: string) => `/api/github/prs/${prNumber}/merge`,
+      requestReviewAndWait: (prNumber: string) => `/api/github/prs/${prNumber}/request-review-and-wait`,
     },
   },
 
@@ -82,6 +116,23 @@ export const API_ROUTES = {
     paused: '/api/executions/paused',
   },
 
+  // Approvals
+  approvals: {
+    list: '/api/approvals',
+  },
+
+  // Audit
+  audit: {
+    crGithub: '/api/audit/cr-github',
+  },
+
+  // Automation
+  automation: {
+    policy: {
+      evaluate: '/api/automation/policy/evaluate',
+    },
+  },
+
   // AFU-9 Issues
   issues: {
     list: '/api/issues',
@@ -101,15 +152,58 @@ export const API_ROUTES = {
     activeCheck: '/api/issues/active-check',
   },
 
+  // Loop
+  loop: {
+    issues: {
+      events: (issueId: string) => `/api/loop/issues/${issueId}/events`,
+      runNextStep: (issueId: string) => `/api/loop/issues/${issueId}/run-next-step`,
+    },
+  },
+
   // AFU-9 Runs (I201.x series) and S1-S3 Flow
   afu9: {
+    github: {
+      issues: '/api/afu9/github/issues',
+    },
+    issues: {
+      list: '/api/afu9/issues',
+      get: (id: string) => `/api/afu9/issues/${id}`,
+      merge: (id: string) => `/api/afu9/issues/${id}/merge`,
+      verdict: (id: string) => `/api/afu9/issues/${id}/verdict`,
+    },
     runs: {
       start: (issueId: string) => `/api/afu9/issues/${issueId}/runs/start`,
       evidenceRefresh: (runId: string) => `/api/afu9/runs/${runId}/evidence/refresh`,
+      verify: (runId: string) => `/api/afu9/runs/${runId}/verify`,
     },
     s1s3: {
       // E9.2-CONTROL-01: Canonical S1 Pick Endpoint
       pick: '/api/afu9/s1s3/issues/pick',
+      issues: {
+        list: '/api/afu9/s1s3/issues',
+        implement: (id: string) => `/api/afu9/s1s3/issues/${id}/implement`,
+        spec: (id: string) => `/api/afu9/s1s3/issues/${id}/spec`,
+      },
+      prs: {
+        checks: (prNumber: string) => `/api/afu9/s1s3/prs/${prNumber}/checks`,
+      },
+    },
+    timeline: '/api/afu9/timeline',
+  },
+
+  // Control (AFU-9)
+  control: {
+    afu9: {
+      s1: {
+        issues: {
+          spec: (issueId: string) => `/api/control/afu9/s1/issues/${issueId}/spec`,
+        },
+      },
+      s1s3: {
+        issues: {
+          spec: (id: string) => `/api/control/afu9/s1s3/issues/${id}/spec`,
+        },
+      },
     },
   },
 
@@ -136,10 +230,20 @@ export const API_ROUTES = {
         previewSetDone: '/api/ops/db/issues/preview-set-done',
         setDone: '/api/ops/db/issues/set-done',
       },
+      migrationParity: '/api/ops/db/migration-parity',
     },
     issues: {
       sync: '/api/ops/issues/sync',
     },
+    reports: {
+      weekly: '/api/ops/reports/weekly',
+    },
+  },
+
+  // KPIs
+  kpis: {
+    list: '/api/kpis',
+    recompute: '/api/kpis/recompute',
   },
 
   // Admin (staging-only where noted)
@@ -157,6 +261,17 @@ export const API_ROUTES = {
       get: (slug: string) => `/api/admin/runbooks/${slug}`,
     },
     activity: '/api/admin/activity',
+    diagnoseMirrorStatus: '/api/admin/diagnose-mirror-status',
+    smokeKey: {
+      allowlist: '/api/admin/smoke-key/allowlist',
+    },
+  },
+
+  // Drift
+  drift: {
+    applySuggestion: '/api/drift/apply-suggestion',
+    audit: (issueId: string) => `/api/drift/audit/${issueId}`,
+    detect: (issueId: string) => `/api/drift/detect/${issueId}`,
   },
 
   // Playbooks
@@ -265,6 +380,32 @@ export const API_ROUTES = {
     alarms: '/api/observability/alarms',
   },
 
+  // Outcomes
+  outcomes: {
+    list: '/api/outcomes',
+    get: (id: string) => `/api/outcomes/${id}`,
+    generate: '/api/outcomes/generate',
+  },
+
+  // Remediation
+  remediation: {
+    runs: {
+      audit: (id: string) => `/api/remediation/runs/${id}/audit`,
+      export: (id: string) => `/api/remediation/runs/${id}/export`,
+    },
+  },
+
+  // Touchpoints
+  touchpoints: {
+    list: '/api/touchpoints',
+  },
+
+  // Tuning
+  tuning: {
+    list: '/api/tuning',
+    generate: '/api/tuning/generate',
+  },
+
   // Versioned APIs - v1
   v1: {
     kpi: {
@@ -302,8 +443,25 @@ export const API_ROUTES = {
 
   // Integrations
   integrations: {
+    afu9: {
+      ingest: {
+        run: '/api/integrations/afu9/ingest/run',
+      },
+    },
     github: {
       status: '/api/integrations/github/status',
+      ingest: {
+        issue: '/api/integrations/github/ingest/issue',
+      },
+      listTree: '/api/integrations/github/list-tree',
+      readFile: '/api/integrations/github/read-file',
+      runner: {
+        dispatch: '/api/integrations/github/runner/dispatch',
+        ingest: '/api/integrations/github/runner/ingest',
+        poll: '/api/integrations/github/runner/poll',
+      },
+      searchCode: '/api/integrations/github/search-code',
+      smoke: '/api/integrations/github/smoke',
     },
   },
 
@@ -316,11 +474,13 @@ export const API_ROUTES = {
       }
       return `/api/timeline/chain?${params.toString()}`;
     },
+    unified: '/api/timeline/unified',
   },
 
   // INTENT Console (E73.1, E73.3, E73.4, E74.3, E81.2, E81.3, E89.5, E89.7, V09-I01, V09-I04)
   intent: {
     status: '/api/intent/status',
+    capabilities: '/api/intent/capabilities',
     sessions: {
       list: '/api/intent/sessions',
       create: '/api/intent/sessions',
@@ -332,6 +492,17 @@ export const API_ROUTES = {
       contextPack: (id: string) => `/api/intent/sessions/${id}/context-pack`,
       contextPacks: (id: string) => `/api/intent/sessions/${id}/context-packs`,
       publishBatches: (id: string) => `/api/intent/sessions/${id}/publish-batches`, // E89.7
+      crCommit: (id: string) => `/api/intent/sessions/${id}/cr/commit`,
+      crVersions: (id: string) => `/api/intent/sessions/${id}/cr/versions`,
+      githubIssue: (id: string) => `/api/intent/sessions/${id}/github-issue`,
+      issueSet: {
+        list: (id: string) => `/api/intent/sessions/${id}/issue-set`,
+        generate: (id: string) => `/api/intent/sessions/${id}/issue-set/generate`,
+        commit: (id: string) => `/api/intent/sessions/${id}/issue-set/commit`,
+        publishExecute: (id: string) => `/api/intent/sessions/${id}/issue-set/publish/execute`,
+      },
+      uploads: (id: string) => `/api/intent/sessions/${id}/uploads`,
+      upload: (id: string, uploadId: string) => `/api/intent/sessions/${id}/uploads/${uploadId}`,
     },
     messages: {
       create: (sessionId: string) => `/api/intent/sessions/${sessionId}/messages`,
@@ -344,6 +515,10 @@ export const API_ROUTES = {
       get: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
       save: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr`,
       validate: (sessionId: string) => `/api/intent/sessions/${sessionId}/cr/validate`,
+      diff: '/api/intent/cr/diff',
+      versions: {
+        get: (versionId: string) => `/api/intent/cr/versions/${versionId}`,
+      },
     },
     // Issue Draft routes (E81.2, E81.3, I907)
     issueDraft: {
@@ -353,9 +528,14 @@ export const API_ROUTES = {
       commit: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/commit`,
       versions: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions`,
       publish: (sessionId: string) => `/api/intent/sessions/${sessionId}/issue-draft/versions/publish`, // I907
+      preview: '/api/intent/issue-draft/preview',
     },
     issues: {
       create: (sessionId: string) => `/api/intent/sessions/${sessionId}/issues/create`,
+      bindCr: (id: string) => `/api/intent/issues/${id}/bind-cr`,
+      evidence: (id: string) => `/api/intent/issues/${id}/evidence`,
+      publish: (id: string) => `/api/intent/issues/${id}/publish`,
+      timeline: (id: string) => `/api/intent/issues/${id}/timeline`,
     },
   },
 } as const;
