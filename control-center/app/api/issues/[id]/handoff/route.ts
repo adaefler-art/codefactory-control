@@ -21,7 +21,7 @@ import {
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { createIssue, updateIssue, findIssueByMarker } from '../../../../../src/lib/github';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
-import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
+import { getControlResponseHeaders, resolveIssueIdentifier, normalizeIssueForApi } from '../../_shared';
 import { validateAndNormalizeLabelsForHandoff } from '../../../../../src/lib/label-utils';
 import { errorResponse, getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 import { RepoAccessDeniedError } from '@/lib/github/policy';
@@ -56,6 +56,7 @@ export async function POST(
   try {
     const pool = getPool();
     const requestId = getRequestId(request);
+    const responseHeaders = getControlResponseHeaders(requestId);
     const { id } = await params;
 
     let body: Record<string, unknown> | null = null;
@@ -72,41 +73,48 @@ export async function POST(
     const bodyCanonicalId = typeof body?.canonical_id === 'string' ? body.canonical_id : undefined;
     const lookupId = bodyIssueId || id;
 
-    let resolved = await fetchIssueRowByIdentifier(pool, lookupId);
-    if (!resolved.ok && resolved.status === 400) {
-      const canonicalCandidate = bodyCanonicalId || lookupId;
-      if (canonicalCandidate) {
-        const canonicalResult = await getAfu9IssueByCanonicalId(pool, canonicalCandidate);
+    let issue: any | null = null;
+    const resolved = await resolveIssueIdentifier(lookupId, requestId);
+    if (!resolved.ok) {
+      if (resolved.body.errorCode === 'invalid_issue_identifier' && bodyCanonicalId) {
+        const canonicalResult = await getAfu9IssueByCanonicalId(pool, bodyCanonicalId);
         if (canonicalResult.success && canonicalResult.data) {
-          resolved = { ok: true as const, status: 200 as const, row: canonicalResult.data };
+          issue = canonicalResult.data as any;
         } else {
           const message = typeof canonicalResult.error === 'string' ? canonicalResult.error : '';
           const isNotFound = message.toLowerCase().includes('not found');
-          return errorResponse(isNotFound ? 'Issue not found' : 'Invalid issue identifier format', {
-            status: isNotFound ? 404 : 400,
-            requestId,
-            details: isNotFound
-              ? `canonical_id: ${canonicalCandidate}`
-              : 'Identifier must be a valid UUID v4, 8-hex publicId, or canonicalId',
-            code: isNotFound ? 'ISSUE_NOT_FOUND' : 'INVALID_ID',
-          });
+          return jsonResponse(
+            {
+              errorCode: isNotFound ? 'issue_not_found' : 'invalid_issue_identifier',
+              issueId: bodyCanonicalId,
+              requestId,
+              lookupStore: 'control',
+            },
+            { status: isNotFound ? 404 : 400, requestId, headers: responseHeaders }
+          );
         }
-      }
-    }
-
-    if (!resolved.ok) {
-      return errorResponse(
-        resolved.body?.error ? String(resolved.body.error) : 'Issue lookup failed',
-        {
+      } else {
+        return jsonResponse(resolved.body, {
           status: resolved.status,
           requestId,
-          details: resolved.body?.details ? String(resolved.body.details) : undefined,
-          code: resolved.status === 404 ? 'ISSUE_NOT_FOUND' : 'INVALID_ID',
-        }
-      );
+          headers: responseHeaders,
+        });
+      }
+    } else {
+      issue = resolved.issue as any;
     }
 
-    const issue = resolved.row as any;
+    if (!issue) {
+      return jsonResponse(
+        {
+          errorCode: 'issue_not_found',
+          issueId: lookupId,
+          requestId,
+          lookupStore: 'control',
+        },
+        { status: 404, requestId, headers: responseHeaders }
+      );
+    }
     const internalId = String(issue.id);
 
     // Invariant: Require title for handoff
@@ -116,6 +124,7 @@ export async function POST(
         requestId,
         details: 'Handoff requires a non-empty title. Please set a title before handing off to GitHub.',
         code: 'INVALID_ID',
+        headers: responseHeaders,
       });
     }
 
@@ -128,6 +137,7 @@ export async function POST(
         requestId,
         details: 'Issue with status CREATED cannot have handoff_state SYNCED/SYNCHRONIZED. This violates lifecycle invariants.',
         code: 'INVALID_ID',
+        headers: responseHeaders,
       });
     }
 
@@ -152,7 +162,7 @@ export async function POST(
       if (isDebugApiEnabled()) {
         responseBody.contextTrace = await buildContextTrace(request);
       }
-      return jsonResponse(responseBody, { requestId });
+      return jsonResponse(responseBody, { requestId, headers: responseHeaders });
     }
 
     // Mark as PENDING before attempting GitHub operation
@@ -168,6 +178,7 @@ export async function POST(
         requestId,
         details: pendingResult.error,
         code: 'INTERNAL_ERROR',
+        headers: responseHeaders,
       });
     }
 
@@ -201,7 +212,7 @@ export async function POST(
             invalidLabels: issue.labels,
             requestId,
           },
-          { status: 400, requestId }
+          { status: 400, requestId, headers: responseHeaders }
         );
       }
 
@@ -274,6 +285,7 @@ export async function POST(
             requestId,
             details: syncedResult.error,
             code: 'PARTIAL_FAILURE',
+            headers: responseHeaders,
           }
         );
       }
@@ -291,7 +303,7 @@ export async function POST(
       if (isDebugApiEnabled()) {
         responseBody.contextTrace = await buildContextTrace(request);
       }
-      return jsonResponse(responseBody, { requestId });
+      return jsonResponse(responseBody, { requestId, headers: responseHeaders });
     } catch (githubError) {
       // GitHub creation/update failed - update handoff_state to FAILED
       const errorMessage =
@@ -308,6 +320,7 @@ export async function POST(
           requestId,
           details: errorMessage,
           code: 'POLICY_DENIED',
+          headers: responseHeaders,
         });
       }
 
@@ -346,6 +359,7 @@ export async function POST(
             status: 429,
             requestId,
             headers: {
+              ...responseHeaders,
               'retry-after': '60',
             },
           }
@@ -364,16 +378,19 @@ export async function POST(
         {
           status: isAuthError ? 401 : 500,
           requestId,
+          headers: responseHeaders,
         }
       );
     }
   } catch (error) {
     console.error('[API /api/issues/[id]/handoff] Error during handoff:', error);
+    const requestId = getRequestId(request);
     return errorResponse('Failed to handoff issue', {
       status: 500,
-      requestId: getRequestId(request),
+      requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
       code: 'INTERNAL_ERROR',
+      headers: getControlResponseHeaders(requestId),
     });
   }
 }

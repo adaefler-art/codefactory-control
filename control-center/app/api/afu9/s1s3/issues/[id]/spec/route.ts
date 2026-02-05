@@ -41,15 +41,14 @@ import {
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
-import { ensureIssueInControl } from '../../../../../issues/_shared';
+import { ensureIssueInControl, getControlResponseHeaders } from '../../../../../issues/_shared';
+import { parseIssueId } from '@/lib/contracts/ids';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 const AUTH_PATH = 'control';
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SHORT_HEX_REGEX = /^[0-9a-f]{8}$/i;
 
 function getStringField(record: Record<string, unknown>, ...keys: string[]): string | null {
   for (const key of keys) {
@@ -85,7 +84,8 @@ function deriveRepoFullName(issue: Record<string, unknown>): string | null {
 }
 
 function shouldCheckControlStore(issueId: string): boolean {
-  return UUID_REGEX.test(issueId) || SHORT_HEX_REGEX.test(issueId);
+  const parsed = parseIssueId(issueId);
+  return parsed.isValid && (parsed.kind === 'uuid' || parsed.kind === 'shortHex8');
 }
 
 interface RouteContext {
@@ -101,7 +101,7 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const pool = getPool();
-  const responseHeaders = { 'x-afu9-auth-path': AUTH_PATH };
+  const responseHeaders = getControlResponseHeaders(requestId);
 
   try {
     const { id } = await context.params;
@@ -129,7 +129,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Get existing issue
     let foundBy: 'id' | 'canonicalId' | null = null;
-    let issueResult = await getS1S3IssueById(pool, issueId);
+    const idParsed = parseIssueId(issueId);
+    let issueResult = idParsed.isValid && idParsed.kind === 'uuid'
+      ? await getS1S3IssueById(pool, issueId)
+      : { success: false, error: 'Issue not found' };
     let issue = issueResult.success ? issueResult.data : undefined;
 
     if (issue) {

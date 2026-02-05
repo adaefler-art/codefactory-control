@@ -186,7 +186,10 @@ describe('Regression: Issue Detail API UUID Read', () => {
     expect(response.status).toBe(400);
     
     const body = await response.json();
-    expect(body.error).toContain('Invalid issue ID format');
+    expect(body).toMatchObject({
+      errorCode: 'invalid_issue_identifier',
+      issueId: invalidId,
+    });
   });
 
   test('params must be awaited to access id property', async () => {

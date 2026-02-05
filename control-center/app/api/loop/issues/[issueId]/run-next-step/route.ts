@@ -49,7 +49,11 @@ export async function POST(
   { params }: { params: Promise<{ issueId: string }> }
 ) {
   const requestId = getRequestId(request);
-  const responseHeaders = { 'x-request-id': requestId, 'x-afu9-auth-path': AUTH_PATH };
+  const responseHeaders = {
+    'x-request-id': requestId,
+    'x-afu9-request-id': requestId,
+    'x-afu9-auth-path': AUTH_PATH,
+  };
   
   try {
     // Authentication check
@@ -90,11 +94,24 @@ export async function POST(
 
     const ensured = await ensureIssueInControl(issueId, requestId);
     if (!ensured.ok) {
-      const errorCode = ensured.status === 404 ? 'ISSUE_NOT_FOUND' : 'INTERNAL_ERROR';
+      const isInvalidIdentifier =
+        ensured.status === 400 &&
+        typeof ensured.body?.errorCode === 'string' &&
+        ensured.body.errorCode === 'invalid_issue_identifier';
+      const errorCode = isInvalidIdentifier
+        ? 'INVALID_REQUEST'
+        : ensured.status === 404
+          ? 'ISSUE_NOT_FOUND'
+          : 'INTERNAL_ERROR';
+      const errorMessage = isInvalidIdentifier
+        ? 'Invalid issue identifier'
+        : errorCode === 'ISSUE_NOT_FOUND'
+          ? 'Issue not found'
+          : 'Issue lookup failed';
       const errorResponse: LoopErrorResponse = createLoopError(
         requestId,
         errorCode,
-        errorCode === 'ISSUE_NOT_FOUND' ? 'Issue not found' : 'Issue lookup failed',
+        errorMessage,
         ensured.body
       );
       return NextResponse.json(

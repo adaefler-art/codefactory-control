@@ -14,12 +14,13 @@
  * @jest-environment node
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import { executeS5 } from '@/lib/loop/stepExecutors/s5-merge';
 import { logger } from '@/lib/logger';
-import { v4 as uuidv4 } from 'uuid';
 import { getLoopRunStore } from '@/lib/loop/runStore';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '@/app/api/issues/_shared';
 
 type RouteContext = {
   params: Promise<{
@@ -62,20 +63,25 @@ type RouteContext = {
 export async function POST(
   request: NextRequest,
   context: RouteContext
-): Promise<NextResponse> {
-  const requestId = request.headers.get('x-request-id') || uuidv4();
+)
+{
+  const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
 
   try {
     // Get issue ID from params
     const params = await context.params;
-    const issueId = params.id;
+    const resolved = await resolveIssueIdentifier(params.id, requestId);
 
-    if (!issueId || issueId.trim() === '') {
-      return NextResponse.json(
-        { error: 'Invalid issue ID', code: 'INVALID_ISSUE_ID' },
-        { status: 400, headers: { 'x-request-id': requestId } }
-      );
+    if (!resolved.ok) {
+      return jsonResponse(resolved.body, {
+        status: resolved.status,
+        requestId,
+        headers: responseHeaders,
+      });
     }
+
+    const issueId = resolved.uuid;
 
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -152,7 +158,7 @@ export async function POST(
         }, 'AFU9MergeAPI');
 
         // Return 409 for blocked merge
-        return NextResponse.json(
+        return jsonResponse(
           {
             success: false,
             issueId,
@@ -166,7 +172,11 @@ export async function POST(
             message: stepResult.message,
             requestId,
           },
-          { status: 409, headers: { 'x-request-id': requestId } }
+          {
+            status: 409,
+            requestId,
+            headers: responseHeaders,
+          }
         );
       }
 
@@ -191,7 +201,7 @@ export async function POST(
         requestId,
       }, 'AFU9MergeAPI');
 
-      return NextResponse.json(
+      return jsonResponse(
         {
           success: true,
           issueId,
@@ -202,7 +212,11 @@ export async function POST(
           message: stepResult.message,
           requestId,
         },
-        { status: 200, headers: { 'x-request-id': requestId } }
+        {
+          status: 200,
+          requestId,
+          headers: responseHeaders,
+        }
       );
     } catch (error) {
       // Update run status to failed
@@ -226,25 +240,33 @@ export async function POST(
 
     // Handle specific errors
     if (error instanceof Error && error.message.includes('Issue not found')) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error: 'Issue not found',
           code: 'ISSUE_NOT_FOUND',
           requestId,
         },
-        { status: 404, headers: { 'x-request-id': requestId } }
+        {
+          status: 404,
+          requestId,
+          headers: responseHeaders,
+        }
       );
     }
 
     // Generic error
-    return NextResponse.json(
+    return jsonResponse(
       {
         error: 'Internal server error',
         code: 'INTERNAL_ERROR',
         message: error instanceof Error ? error.message : String(error),
         requestId,
       },
-      { status: 500, headers: { 'x-request-id': requestId } }
+      {
+        status: 500,
+        requestId,
+        headers: responseHeaders,
+      }
     );
   }
 }

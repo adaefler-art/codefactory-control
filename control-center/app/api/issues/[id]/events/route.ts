@@ -13,9 +13,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import { getIssueEvents } from '../../../../../src/lib/db/afu9Issues';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
-import { fetchIssueRowByIdentifier } from '../../_shared';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../_shared';
 import { normalizeOutput } from '@/lib/api/normalize-output';
 import { isAfu9IssueEventOutput } from '@/lib/contracts/outputContracts';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 
 /**
  * GET /api/issues/[id]/events
@@ -36,13 +37,18 @@ export async function GET(
   try {
     const pool = getPool();
     const { id } = await params;
-
-    const resolved = await fetchIssueRowByIdentifier(pool, id);
+    const requestId = getRequestId(request);
+    const responseHeaders = getControlResponseHeaders(requestId);
+    const resolved = await resolveIssueIdentifier(id, requestId);
     if (!resolved.ok) {
-      return NextResponse.json(resolved.body, { status: resolved.status });
+      return jsonResponse(resolved.body, {
+        status: resolved.status,
+        requestId,
+        headers: responseHeaders,
+      });
     }
 
-    const internalId = (resolved.row as any).id as string;
+    const internalId = resolved.uuid;
 
     // Parse limit parameter
     const searchParams = request.nextUrl.searchParams;
@@ -55,9 +61,9 @@ export async function GET(
     const result = await getIssueEvents(pool, internalId, limit);
 
     if (!result.success) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: 'Failed to get issue events', details: result.error },
-        { status: 500 }
+        { status: 500, requestId, headers: responseHeaders }
       );
     }
 
@@ -96,15 +102,16 @@ export async function GET(
       responseBody.contextTrace = await buildContextTrace(request);
     }
 
-    return NextResponse.json(responseBody);
+    return jsonResponse(responseBody, { requestId, headers: responseHeaders });
   } catch (error) {
     console.error('[API /api/issues/[id]/events] Error getting events:', error);
-    return NextResponse.json(
+    const requestId = getRequestId(request);
+    return jsonResponse(
       {
         error: 'Failed to get issue events',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
-      { status: 500 }
+      { status: 500, requestId, headers: getControlResponseHeaders(requestId) }
     );
   }
 }

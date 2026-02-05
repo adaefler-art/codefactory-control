@@ -29,6 +29,7 @@ import { Afu9IssueStatus } from '@/lib/contracts/afu9Issue';
 import { IssueTimelineEventType, ActorType } from '@/lib/contracts/issueTimeline';
 import { v4 as uuidv4 } from 'uuid';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '@/app/api/issues/_shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -42,11 +43,21 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
   
   try {
     const pool = getPool();
     const dao = getRunsDAO(pool);
-    const { id: issueId } = await params;
+    const { id: rawIssueId } = await params;
+    const resolved = await resolveIssueIdentifier(rawIssueId, requestId);
+    if (!resolved.ok) {
+      return jsonResponse(resolved.body, {
+        status: resolved.status,
+        requestId,
+        headers: responseHeaders,
+      });
+    }
+    const issueId = resolved.uuid;
 
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -59,6 +70,7 @@ export async function POST(
         status: 404,
         requestId,
         details: { issueId },
+        headers: responseHeaders,
       });
     }
 
@@ -119,6 +131,7 @@ export async function POST(
     }, {
       requestId,
       status: 200,
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error('[API /api/afu9/issues/:id/runs/start] Error:', error);
@@ -126,6 +139,7 @@ export async function POST(
       status: 500,
       requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
+      headers: responseHeaders,
     });
   }
 }

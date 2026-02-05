@@ -180,7 +180,8 @@ describe('Issue #3: Identifier Consistency Contract', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body).toHaveProperty('error', 'Invalid issue ID format');
+      expect(body).toHaveProperty('errorCode', 'invalid_issue_identifier');
+      expect(body).toHaveProperty('issueId', 'abc123');
     });
 
     test('returns 400 for invalid format (too long 8-hex)', async () => {
@@ -191,7 +192,8 @@ describe('Issue #3: Identifier Consistency Contract', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body).toHaveProperty('error', 'Invalid issue ID format');
+      expect(body).toHaveProperty('errorCode', 'invalid_issue_identifier');
+      expect(body).toHaveProperty('issueId', 'a1b2c3d4e');
     });
 
     test('returns 400 for invalid format (non-hex chars)', async () => {
@@ -202,7 +204,8 @@ describe('Issue #3: Identifier Consistency Contract', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body).toHaveProperty('error', 'Invalid issue ID format');
+      expect(body).toHaveProperty('errorCode', 'invalid_issue_identifier');
+      expect(body).toHaveProperty('issueId', 'zzzzxxxx');
     });
 
     test('returns 400 for malformed UUID', async () => {
@@ -213,7 +216,8 @@ describe('Issue #3: Identifier Consistency Contract', () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body).toHaveProperty('error', 'Invalid issue ID format');
+      expect(body).toHaveProperty('errorCode', 'invalid_issue_identifier');
+      expect(body).toHaveProperty('issueId', 'not-a-uuid-format');
     });
   });
 

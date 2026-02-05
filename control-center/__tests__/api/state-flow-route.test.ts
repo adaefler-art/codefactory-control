@@ -38,8 +38,8 @@ describe('GET /api/issues/[id]/state-flow', () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.errorCode).toBe('INVALID_ISSUE_ID');
-    expect(data.error).toBe('Invalid issue ID format');
+    expect(data.errorCode).toBe('invalid_issue_identifier');
+    expect(data.issueId).toBe('not-a-uuid');
   });
 
   it('should return 400 with INVALID_ISSUE_ID for empty ID', async () => {
@@ -50,7 +50,7 @@ describe('GET /api/issues/[id]/state-flow', () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.errorCode).toBe('INVALID_ISSUE_ID');
+    expect(data.errorCode).toBe('invalid_issue_identifier');
   });
 
   it('should return 404 for non-existent issue', async () => {

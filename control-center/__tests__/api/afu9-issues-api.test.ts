@@ -270,7 +270,10 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(400);
-      expect(body.error).toContain('Invalid issue ID format');
+      expect(body).toMatchObject({
+        errorCode: 'invalid_issue_identifier',
+        issueId: 'invalid-id',
+      });
     });
 
     test('returns 404 for non-existent issue', async () => {

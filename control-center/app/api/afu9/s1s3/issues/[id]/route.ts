@@ -17,11 +17,13 @@ import { NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import {
   getS1S3IssueById,
+  getS1S3IssueByCanonicalId,
   listS1S3RunsByIssue,
   listS1S3RunSteps,
 } from '@/lib/db/s1s3Flow';
 import { normalizeAcceptanceCriteria, normalizeEvidenceRefs } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { parseIssueId } from '@/app/api/issues/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -50,7 +52,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
 
     // Get issue
-    const issueResult = await getS1S3IssueById(pool, id);
+    const parsedId = parseIssueId(id);
+    const issueResult = parsedId.isUuid
+      ? await getS1S3IssueById(pool, id)
+      : await getS1S3IssueByCanonicalId(pool, id);
     if (!issueResult.success || !issueResult.data) {
       return errorResponse('Issue not found', {
         status: 404,
