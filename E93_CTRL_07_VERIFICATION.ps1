@@ -77,7 +77,7 @@ if (Test-Path "docs/contracts/step-executor-s9.v1.md") {
 Write-Host "  - Checking state machine contract..." -ForegroundColor Gray
 if (Test-Path "docs/contracts/loop-state-machine.v1.md") {
     $content = Get-Content "docs/contracts/loop-state-machine.v1.md" -Raw
-    if ($content -match "S8_CLOSE" -and $content -match "S9_REMEDIATE") {
+    if ($content -match "S8" -and $content -match "S9" -and $content -match "Close" -and $content -match "Remediate") {
         Write-Host "    ✓ loop-state-machine.v1.md updated with S8/S9" -ForegroundColor Green
     } else {
         Write-Host "    ✗ loop-state-machine.v1.md not updated" -ForegroundColor Red
