@@ -27,6 +27,7 @@ import { NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import {
   getS1S3IssueById,
+  getS1S3IssueByCanonicalId,
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params;
+    const issueId = id;
 
     // Parse request body
     const body = await request.json();
@@ -76,13 +78,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     console.log('[S2] Spec ready request:', {
       requestId,
-      issue_id: id,
+      issue_id: issueId,
       ac_count: acceptanceCriteria.length,
     });
 
     // Get existing issue
-    const issueResult = await getS1S3IssueById(pool, id);
-    if (!issueResult.success || !issueResult.data) {
+    let foundBy: 'id' | 'canonicalId' | null = null;
+    let issueResult = await getS1S3IssueById(pool, issueId);
+    let issue = issueResult.success ? issueResult.data : undefined;
+
+    if (issue) {
+      foundBy = 'id';
+    } else {
+      issueResult = await getS1S3IssueByCanonicalId(pool, issueId);
+      issue = issueResult.success ? issueResult.data : undefined;
+      if (issue) foundBy = 'canonicalId';
+    }
+
+    if (!issue) {
+      const pathMatch = request.nextUrl.pathname.match(/\/issues\/([^/]+)\/spec$/);
+      const pathIssueId = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
+      console.warn('[S2] Spec ready issue lookup failed:', {
+        requestId,
+        issue_id: issueId,
+        path_issue_id: pathIssueId,
+        foundBy,
+      });
+
       return errorResponse('Issue not found', {
         status: 404,
         requestId,
@@ -90,7 +112,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const issue = issueResult.data;
+    console.log('[S2] Spec ready issue resolved:', {
+      requestId,
+      issue_id: issue.id,
+      foundBy,
+    });
 
     // Check if issue is in valid state for spec
     if (issue.status !== S1S3IssueStatus.CREATED && issue.status !== S1S3IssueStatus.SPEC_READY) {
