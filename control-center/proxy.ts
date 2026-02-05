@@ -184,6 +184,21 @@ function isServiceReadRoute(pathname: string, method: string): boolean {
   if (/^\/api\/issues\/[^/]+$/.test(pathname)) return true;
   return /^\/api\/afu9\/issues\/[^/]+$/.test(pathname);
 }
+
+function isServiceWriteRoute(pathname: string, method: string): boolean {
+  if (method !== 'POST') return false;
+
+  // POST /api/issues/:id/handoff
+  if (/^\/api\/issues\/[^/]+\/handoff$/.test(pathname)) return true;
+
+  // optional, falls AFU9-Prefix existiert:
+  // if (/^\/api\/afu9\/issues\/[^/]+\/handoff$/.test(pathname)) return true;
+
+  return false;
+}
+
+
+
 /**
  * Proxy (middleware) to protect routes and verify authentication
  * 
@@ -227,28 +242,46 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
-  if (isServiceReadRoute(pathname, request.method)) {
-    const providedServiceToken = normalizeServiceToken(
-      request.headers.get('x-afu9-service-token') || ''
-    );
-    if (providedServiceToken) {
-      const serviceReadToken = getServiceReadToken();
-      if (!serviceReadToken || providedServiceToken !== serviceReadToken) {
-        const response = NextResponse.json(
-          { error: 'Forbidden', message: 'service token rejected' },
-          { status: 403 }
-        );
-        attachRequestId(response, requestId);
-        attachSmokeBypassHeaders(response);
-        logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'service_token_rejected' });
-        return response;
-      }
-      const response = nextWithRequestId();
+  if (
+  isServiceReadRoute(pathname, request.method) ||
+  isServiceWriteRoute(pathname, request.method)
+) {
+  const providedServiceToken = normalizeServiceToken(
+    request.headers.get('x-afu9-service-token') || ''
+  );
+
+  if (providedServiceToken) {
+    const serviceReadToken = getServiceReadToken();
+    if (!serviceReadToken || providedServiceToken !== serviceReadToken) {
+      const response = NextResponse.json(
+        { error: 'Forbidden', message: 'service token rejected' },
+        { status: 403 }
+      );
+      attachRequestId(response, requestId);
       attachSmokeBypassHeaders(response);
-      logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'service_token_allow' });
+      logAuthDecision({
+        requestId,
+        route: pathname,
+        method: request.method,
+        status: 403,
+        reason: 'service_token_rejected',
+      });
       return response;
     }
+
+    const response = nextWithRequestId();
+    attachSmokeBypassHeaders(response);
+    logAuthDecision({
+      requestId,
+      route: pathname,
+      method: request.method,
+      status: response.status,
+      reason: 'service_token_allow',
+    });
+    return response;
   }
+}
+
   // Optional smoke-auth bypass for runtime-configurable allowlist of API endpoints (staging only).
   // I906: Replaced hardcoded allowlist with database-backed runtime configuration.
   // Contract:
