@@ -19,6 +19,8 @@ import { executeS2 } from './stepExecutors/s2-spec-gate';
 import { executeS4 } from './stepExecutors/s4-review-gate';
 import { executeS5 } from './stepExecutors/s5-merge';
 import { executeS6 } from './stepExecutors/s6-deployment-observe';
+import { executeS8Close } from './stepExecutors/s8-close';
+import { executeS9Remediate } from './stepExecutors/s9-remediate';
 import { getLoopEventStore, LoopEventType } from './eventStore';
 
 /**
@@ -302,6 +304,29 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
           requestId,
           actor,
           mode,
+        });
+      } else if (stepResolution.step === LoopStep.S8_CLOSE) {
+        stepNumber = 8;
+        stepResult = await executeS8Close(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+      } else if (stepResolution.step === LoopStep.S9_REMEDIATE) {
+        stepNumber = 9;
+        // For S9, we need remediation reason - use a default for now
+        // In production, this would come from the request or context
+        stepResult = await executeS9Remediate(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        }, {
+          reason: 'Manual remediation request',
+          failedStep: 'N/A',
         });
       } else {
         // Step not yet implemented

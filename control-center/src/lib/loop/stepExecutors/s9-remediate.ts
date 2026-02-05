@@ -14,78 +14,39 @@
  */
 
 import { BlockerCode, LoopStep, IssueState } from '../stateMachine';
-import type { PoolClient } from 'pg';
+import type { Pool } from 'pg';
 
 /**
- * Issue data required for S9 execution
+ * Step execution context
  */
-export interface IssueForS9 {
-  id: string;
-  status: string;
-  github_url?: string | null;
-  pr_url?: string | null;
+export interface StepContext {
+  issueId: string;
+  runId: string;
+  requestId: string;
+  actor: string;
+  mode: 'execute' | 'dryRun';
 }
 
 /**
- * Remediation details
+ * Step execution result
  */
-export interface RemediationDetails {
+export interface StepExecutionResult {
+  blocked: boolean;
+  blockerCode?: string;
+  blockerMessage?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Remediation options (passed via metadata)
+ */
+export interface RemediationOptions {
+  reason: string;
   failedStep?: string;
   blockerCode?: string;
   redVerdict?: boolean;
   failedChecks?: string[];
 }
-
-/**
- * S9 execution parameters
- */
-export interface ExecuteS9Params {
-  issue: IssueForS9;
-  runId: string;
-  requestId: string;
-  mode: 'execute' | 'dryRun';
-  remediationReason: string;
-  remediationDetails?: RemediationDetails;
-  dbClient: PoolClient;
-}
-
-/**
- * S9 success result
- */
-export interface S9SuccessResult {
-  success: true;
-  runId: string;
-  step: string;
-  stateBefore: string;
-  stateAfter: string;
-  remediationRecord: {
-    remediationId: string;
-    reason: string;
-    failedStep?: string;
-    blockerCode?: string;
-    createdAt: string;
-  };
-  durationMs: number;
-}
-
-/**
- * S9 blocked result
- */
-export interface S9BlockedResult {
-  success: false;
-  blocked: true;
-  blockerCode: BlockerCode;
-  blockerMessage: string;
-  runId: string;
-  step: string;
-  stateBefore: string;
-  stateAfter: string;
-}
-
-/**
- * S9 result type
- */
-export type S9Result = S9SuccessResult | S9BlockedResult;
 
 /**
  * Check if a state allows transition to HOLD
@@ -110,58 +71,60 @@ function canTransitionToHold(status: string): boolean {
  * 
  * Places issue on HOLD with explicit remediation tracking.
  * 
- * @param params - Execution parameters
+ * @param pool - Database connection pool
+ * @param ctx - Execution context
+ * @param options - Remediation options (reason, failedStep, etc.)
  * @returns S9 execution result
  */
-export async function executeS9Remediate(params: ExecuteS9Params): Promise<S9Result> {
-  const { issue, runId, requestId, mode, remediationReason, remediationDetails, dbClient } = params;
+export async function executeS9Remediate(
+  pool: Pool,
+  ctx: StepContext,
+  options?: RemediationOptions
+): Promise<StepExecutionResult> {
+  const { issueId, runId, requestId, mode } = ctx;
   const startTime = Date.now();
 
+  console.log('[S9] Executing Remediate', { issueId, runId, mode, options });
+
   // Validate remediation reason is provided
+  const remediationReason = options?.reason || '';
   if (!remediationReason || remediationReason.trim() === '') {
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.NO_REMEDIATION_REASON,
       blockerMessage: 'S9 (Remediate) requires explicit remediation reason',
-      runId,
-      step: LoopStep.S9_REMEDIATE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
+
+  // Fetch issue from database
+  const issueResult = await pool.query(
+    `SELECT id, status, github_url, pr_url
+     FROM afu9_issues
+     WHERE id = $1`,
+    [issueId]
+  );
+
+  if (issueResult.rows.length === 0) {
+    throw new Error(`Issue not found: ${issueId}`);
+  }
+
+  const issue = issueResult.rows[0];
 
   // Check if issue is already CLOSED (immutable)
   if (issue.status === IssueState.CLOSED) {
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.INVALID_STATE_FOR_HOLD,
       blockerMessage: 'Cannot remediate CLOSED issue (immutable)',
-      runId,
-      step: LoopStep.S9_REMEDIATE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 
-  // Check if issue is already on HOLD
-  if (issue.status === IssueState.HOLD) {
-    // Allow creating a new remediation record for already-held issues
-    // This supports tracking multiple remediation attempts
-  }
-
   // Validate state allows transition to HOLD
-  if (!canTransitionToHold(issue.status)) {
+  if (!canTransitionToHold(issue.status) && issue.status !== IssueState.HOLD) {
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.INVALID_STATE_FOR_HOLD,
       blockerMessage: `S9 (Remediate) cannot transition from ${issue.status} to HOLD`,
-      runId,
-      step: LoopStep.S9_REMEDIATE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 
@@ -169,36 +132,34 @@ export async function executeS9Remediate(params: ExecuteS9Params): Promise<S9Res
   if (mode === 'dryRun') {
     const durationMs = Date.now() - startTime;
     return {
-      success: true,
-      runId,
-      step: LoopStep.S9_REMEDIATE,
-      stateBefore: issue.status,
-      stateAfter: IssueState.HOLD,
-      remediationRecord: {
+      blocked: false,
+      metadata: {
+        step: LoopStep.S9_REMEDIATE,
+        stateBefore: issue.status,
+        stateAfter: IssueState.HOLD,
         remediationId: 'dry-run-remediation',
         reason: remediationReason,
-        failedStep: remediationDetails?.failedStep,
-        blockerCode: remediationDetails?.blockerCode,
-        createdAt: new Date().toISOString(),
+        failedStep: options?.failedStep,
+        blockerCode: options?.blockerCode,
+        durationMs,
       },
-      durationMs,
     };
   }
 
   // Execute mode - create remediation record and transition to HOLD
   try {
-    const failedChecks = remediationDetails?.failedChecks || [];
+    const failedChecks = options?.failedChecks || [];
     
     // Call database function to record remediation
-    const remediationResult = await dbClient.query(
+    const remediationResult = await pool.query(
       `SELECT record_remediation($1, $2, $3, $4, $5, $6, $7) as remediation_id`,
       [
-        issue.id,
+        issueId,
         remediationReason,
         runId,
-        remediationDetails?.failedStep || null,
-        remediationDetails?.blockerCode || null,
-        remediationDetails?.redVerdict || false,
+        options?.failedStep || null,
+        options?.blockerCode || null,
+        options?.redVerdict || false,
         failedChecks,
       ]
     );
@@ -210,7 +171,7 @@ export async function executeS9Remediate(params: ExecuteS9Params): Promise<S9Res
     }
 
     // Fetch created remediation record
-    const createdRemediation = await dbClient.query(
+    const createdRemediation = await pool.query(
       `SELECT id, remediation_reason, failed_step, blocker_code, created_at 
        FROM remediation_records 
        WHERE id = $1`,
@@ -221,11 +182,11 @@ export async function executeS9Remediate(params: ExecuteS9Params): Promise<S9Res
     const durationMs = Date.now() - startTime;
 
     // Emit timeline event
-    await dbClient.query(
+    await pool.query(
       `INSERT INTO loop_events (issue_id, run_id, event_type, event_data, occurred_at)
        VALUES ($1, $2, $3, $4, NOW())`,
       [
-        issue.id,
+        issueId,
         runId,
         'issue_held_for_remediation',
         JSON.stringify({
@@ -242,34 +203,32 @@ export async function executeS9Remediate(params: ExecuteS9Params): Promise<S9Res
       ]
     );
 
+    console.log('[S9] Issue placed on HOLD', { issueId, remediationId: remediation.id });
+
     return {
-      success: true,
-      runId,
-      step: LoopStep.S9_REMEDIATE,
-      stateBefore: issue.status,
-      stateAfter: IssueState.HOLD,
-      remediationRecord: {
+      blocked: false,
+      metadata: {
+        step: LoopStep.S9_REMEDIATE,
+        stateBefore: issue.status,
+        stateAfter: IssueState.HOLD,
         remediationId: remediation.id,
         reason: remediation.remediation_reason,
         failedStep: remediation.failed_step,
         blockerCode: remediation.blocker_code,
         createdAt: remediation.created_at,
+        durationMs,
       },
-      durationMs,
     };
   } catch (error) {
     // Handle errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
+    console.error('[S9] Failed to remediate issue', { issueId, error: errorMessage });
+    
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.INVARIANT_VIOLATION,
       blockerMessage: `S9 (Remediate) failed: ${errorMessage}`,
-      runId,
-      step: LoopStep.S9_REMEDIATE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 }

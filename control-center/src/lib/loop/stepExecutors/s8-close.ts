@@ -14,127 +14,91 @@
  */
 
 import { BlockerCode, LoopStep, IssueState } from '../stateMachine';
-import type { PoolClient } from 'pg';
+import type { Pool } from 'pg';
 
 /**
- * Issue data required for S8 execution
+ * Step execution context
  */
-export interface IssueForS8 {
-  id: string;
-  status: string;
-  github_url?: string | null;
-  pr_url?: string | null;
-  merge_sha?: string | null;
-}
-
-/**
- * S8 execution parameters
- */
-export interface ExecuteS8Params {
-  issue: IssueForS8;
+export interface StepContext {
+  issueId: string;
   runId: string;
   requestId: string;
+  actor: string;
   mode: 'execute' | 'dryRun';
-  dbClient: PoolClient;
 }
 
 /**
- * S8 success result
+ * Step execution result
  */
-export interface S8SuccessResult {
-  success: true;
-  runId: string;
-  step: string;
-  stateBefore: string;
-  stateAfter: string;
-  closureRecord: {
-    closureId: string;
-    closedAt: string;
-    verificationVerdictId?: string;
-    closureReason: string;
-  };
-  durationMs: number;
+export interface StepExecutionResult {
+  blocked: boolean;
+  blockerCode?: string;
+  blockerMessage?: string;
+  metadata?: Record<string, unknown>;
 }
-
-/**
- * S8 blocked result
- */
-export interface S8BlockedResult {
-  success: false;
-  blocked: true;
-  blockerCode: BlockerCode;
-  blockerMessage: string;
-  runId: string;
-  step: string;
-  stateBefore: string;
-  stateAfter: string;
-}
-
-/**
- * S8 result type
- */
-export type S8Result = S8SuccessResult | S8BlockedResult;
 
 /**
  * Execute S8: Close step (GREEN path)
  * 
  * Transitions VERIFIED issues to immutable CLOSED state.
  * 
- * @param params - Execution parameters
+ * @param pool - Database connection pool
+ * @param ctx - Execution context
  * @returns S8 execution result
  */
-export async function executeS8Close(params: ExecuteS8Params): Promise<S8Result> {
-  const { issue, runId, requestId, mode, dbClient } = params;
+export async function executeS8Close(pool: Pool, ctx: StepContext): Promise<StepExecutionResult> {
+  const { issueId, runId, requestId, mode } = ctx;
   const startTime = Date.now();
+
+  console.log('[S8] Executing Close', { issueId, runId, mode });
+
+  // Fetch issue from database
+  const issueResult = await pool.query(
+    `SELECT id, status, github_url, pr_url, merge_sha
+     FROM afu9_issues
+     WHERE id = $1`,
+    [issueId]
+  );
+
+  if (issueResult.rows.length === 0) {
+    throw new Error(`Issue not found: ${issueId}`);
+  }
+
+  const issue = issueResult.rows[0];
 
   // Validate issue is in VERIFIED state
   if (issue.status !== IssueState.VERIFIED) {
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.NOT_VERIFIED,
       blockerMessage: `S8 (Close) requires issue to be in VERIFIED state. Current state: ${issue.status}`,
-      runId,
-      step: LoopStep.S8_CLOSE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 
   // Check for GREEN verdict from S7
-  const verdictResult = await dbClient.query(
+  const verdictResult = await pool.query(
     `SELECT id, verdict, evaluated_at 
      FROM verification_verdicts 
      WHERE issue_id = $1 
      ORDER BY evaluated_at DESC 
      LIMIT 1`,
-    [issue.id]
+    [issueId]
   );
 
   if (verdictResult.rows.length === 0) {
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.NO_GREEN_VERDICT,
       blockerMessage: 'S8 (Close) requires a GREEN verification verdict from S7',
-      runId,
-      step: LoopStep.S8_CLOSE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 
   const verdict = verdictResult.rows[0];
   if (verdict.verdict !== 'GREEN') {
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.NO_GREEN_VERDICT,
       blockerMessage: `S8 (Close) requires GREEN verdict. Found: ${verdict.verdict}`,
-      runId,
-      step: LoopStep.S8_CLOSE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 
@@ -142,38 +106,35 @@ export async function executeS8Close(params: ExecuteS8Params): Promise<S8Result>
   if (mode === 'dryRun') {
     const durationMs = Date.now() - startTime;
     return {
-      success: true,
-      runId,
-      step: LoopStep.S8_CLOSE,
-      stateBefore: issue.status,
-      stateAfter: IssueState.CLOSED,
-      closureRecord: {
+      blocked: false,
+      metadata: {
+        step: LoopStep.S8_CLOSE,
+        stateBefore: issue.status,
+        stateAfter: IssueState.CLOSED,
         closureId: 'dry-run-closure',
-        closedAt: new Date().toISOString(),
         verificationVerdictId: verdict.id,
-        closureReason: 'VERIFIED_SUCCESS',
+        durationMs,
       },
-      durationMs,
     };
   }
 
   // Execute mode - create closure record and transition to CLOSED
   try {
     // Call database function to close issue
-    const closureResult = await dbClient.query(
+    const closureResult = await pool.query(
       `SELECT close_issue($1, $2, $3, $4) as closure_id`,
-      [issue.id, runId, verdict.id, 'VERIFIED_SUCCESS']
+      [issueId, runId, verdict.id, 'VERIFIED_SUCCESS']
     );
 
     const closureId = closureResult.rows[0]?.closure_id;
 
     if (!closureId) {
       // Already closed (idempotent)
-      const existingClosure = await dbClient.query(
+      const existingClosure = await pool.query(
         `SELECT id, closed_at, verification_verdict_id, closure_reason 
          FROM issue_closures 
          WHERE issue_id = $1`,
-        [issue.id]
+        [issueId]
       );
 
       if (existingClosure.rows.length > 0) {
@@ -181,18 +142,17 @@ export async function executeS8Close(params: ExecuteS8Params): Promise<S8Result>
         const durationMs = Date.now() - startTime;
         
         return {
-          success: true,
-          runId,
-          step: LoopStep.S8_CLOSE,
-          stateBefore: IssueState.CLOSED,
-          stateAfter: IssueState.CLOSED,
-          closureRecord: {
+          blocked: false,
+          metadata: {
+            step: LoopStep.S8_CLOSE,
+            stateBefore: IssueState.CLOSED,
+            stateAfter: IssueState.CLOSED,
             closureId: existing.id,
             closedAt: existing.closed_at,
             verificationVerdictId: existing.verification_verdict_id,
-            closureReason: existing.closure_reason,
+            idempotent: true,
+            durationMs,
           },
-          durationMs,
         };
       }
 
@@ -200,7 +160,7 @@ export async function executeS8Close(params: ExecuteS8Params): Promise<S8Result>
     }
 
     // Fetch created closure record
-    const createdClosure = await dbClient.query(
+    const createdClosure = await pool.query(
       `SELECT id, closed_at, verification_verdict_id, closure_reason 
        FROM issue_closures 
        WHERE id = $1`,
@@ -211,11 +171,11 @@ export async function executeS8Close(params: ExecuteS8Params): Promise<S8Result>
     const durationMs = Date.now() - startTime;
 
     // Emit timeline event
-    await dbClient.query(
+    await pool.query(
       `INSERT INTO loop_events (issue_id, run_id, event_type, event_data, occurred_at)
        VALUES ($1, $2, $3, $4, NOW())`,
       [
-        issue.id,
+        issueId,
         runId,
         'issue_closed',
         JSON.stringify({
@@ -230,33 +190,31 @@ export async function executeS8Close(params: ExecuteS8Params): Promise<S8Result>
       ]
     );
 
+    console.log('[S8] Issue closed successfully', { issueId, closureId: closure.id });
+
     return {
-      success: true,
-      runId,
-      step: LoopStep.S8_CLOSE,
-      stateBefore: IssueState.VERIFIED,
-      stateAfter: IssueState.CLOSED,
-      closureRecord: {
+      blocked: false,
+      metadata: {
+        step: LoopStep.S8_CLOSE,
+        stateBefore: IssueState.VERIFIED,
+        stateAfter: IssueState.CLOSED,
         closureId: closure.id,
         closedAt: closure.closed_at,
         verificationVerdictId: closure.verification_verdict_id,
         closureReason: closure.closure_reason,
+        durationMs,
       },
-      durationMs,
     };
   } catch (error) {
     // Handle errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
+    console.error('[S8] Failed to close issue', { issueId, error: errorMessage });
+    
     return {
-      success: false,
       blocked: true,
       blockerCode: BlockerCode.INVARIANT_VIOLATION,
       blockerMessage: `S8 (Close) failed: ${errorMessage}`,
-      runId,
-      step: LoopStep.S8_CLOSE,
-      stateBefore: issue.status,
-      stateAfter: issue.status,
     };
   }
 }
