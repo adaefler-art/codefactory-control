@@ -9,13 +9,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { getPool } from '../../../../../src/lib/db';
 import { computeStateFlow, getBlockersForDone } from '../../../../../src/lib/state-flow';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../_shared';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 
 export const dynamic = 'force-dynamic';
-
-const UuidSchema = z.string().uuid();
 
 export async function GET(
   request: NextRequest,
@@ -23,17 +22,18 @@ export async function GET(
 ) {
   // Next.js 15 App Router: params is a Promise
   const { id } = await params;
-
-  // Validate UUID format
-  const parseResult = UuidSchema.safeParse(id);
-  if (!parseResult.success) {
-    return NextResponse.json(
-      { error: 'Invalid issue ID format', errorCode: 'INVALID_ISSUE_ID' },
-      { status: 400 }
-    );
+  const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
+  const resolved = await resolveIssueIdentifier(id, requestId);
+  if (!resolved.ok) {
+    return jsonResponse(resolved.body, {
+      status: resolved.status,
+      requestId,
+      headers: responseHeaders,
+    });
   }
 
-  const issueId = parseResult.data;
+  const issueId = resolved.uuid;
 
   try {
     const pool = getPool();
@@ -53,9 +53,9 @@ export async function GET(
     );
 
     if (result.rows.length === 0) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: 'Issue not found' },
-        { status: 404 }
+        { status: 404, requestId, headers: responseHeaders }
       );
     }
 
@@ -82,19 +82,23 @@ export async function GET(
     // Get blockers for DONE
     const blockersForDone = getBlockersForDone(currentStatus, evidence);
 
-    return NextResponse.json({
-      issueId: issue.id,
-      currentStatus,
-      githubIssueNumber: issue.github_issue_number,
-      githubUrl: issue.github_url,
-      stateFlow,
-      blockersForDone,
-    });
+    return jsonResponse(
+      {
+        issueId: issue.id,
+        currentStatus,
+        githubIssueNumber: issue.github_issue_number,
+        githubUrl: issue.github_url,
+        stateFlow,
+        blockersForDone,
+      },
+      { requestId, headers: responseHeaders }
+    );
   } catch (error) {
     console.error('[GET /api/issues/[id]/state-flow] Error:', error);
-    return NextResponse.json(
+    const requestId = getRequestId(request);
+    return jsonResponse(
       { error: 'Failed to compute state flow' },
-      { status: 500 }
+      { status: 500, requestId, headers: getControlResponseHeaders(requestId) }
     );
   }
 }

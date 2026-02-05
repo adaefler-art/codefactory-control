@@ -58,6 +58,26 @@ import type {
 
 export { type IssueIdentifierKind };
 
+export type ResolvedIssueIdentifier = {
+  ok: true;
+  type: 'uuid' | 'shortid';
+  uuid: string;
+  shortId?: string;
+  issue?: Record<string, unknown>;
+  source: 'control' | 'engine';
+};
+
+export type ResolveIssueIdentifierError = {
+  ok: false;
+  status: number;
+  body: {
+    errorCode: string;
+    issueId: string;
+    lookupStore?: string;
+    requestId: string;
+  };
+};
+
 type ServiceTokenSource = 'authorization' | 'x-afu9-service-token' | 'x-service-token';
 type ServiceTokenReason = 'missing' | 'malformed';
 
@@ -157,6 +177,34 @@ export function classifyIssueIdentifier(value: string): IssueIdentifierKind {
  */
 export function toPublicIdFromUuid(uuid: string): string | null {
   return toShortHex8FromUuid(uuid);
+}
+
+export function getControlResponseHeaders(requestId: string): Record<string, string> {
+  return {
+    'x-afu9-auth-path': 'control',
+    'x-afu9-request-id': requestId,
+  };
+}
+
+function buildIssueIdentifierError(
+  params: {
+    status: number;
+    errorCode: string;
+    issueId: string;
+    requestId: string;
+    lookupStore?: string;
+  }
+): ResolveIssueIdentifierError {
+  return {
+    ok: false,
+    status: params.status,
+    body: {
+      errorCode: params.errorCode,
+      issueId: params.issueId,
+      requestId: params.requestId,
+      lookupStore: params.lookupStore,
+    },
+  };
 }
 
 function toIsoOrNull(value: unknown): string | null {
@@ -509,23 +557,59 @@ function mapEngineIssueToInput(issue: Record<string, unknown>): Afu9IssueInput |
   };
 }
 
-export type EnsureIssueResult =
-  | { ok: true; issue: Record<string, unknown>; source: 'control' | 'engine' }
-  | { ok: false; status: number; body: Record<string, unknown> };
+function extractEngineIssueUuid(issue: Record<string, unknown>): string | null {
+  const candidate =
+    getStringField(issue, 'id') ||
+    getStringField(issue, 'issue_id') ||
+    getStringField(issue, 'issueId');
 
-export async function ensureIssueInControl(
+  if (!candidate) return null;
+  const parsed = parseIssueId(candidate);
+  if (!parsed.isValid || parsed.kind !== 'uuid') {
+    return null;
+  }
+  return parsed.value;
+}
+
+export async function resolveIssueIdentifier(
   issueId: string,
   requestId: string
-): Promise<EnsureIssueResult> {
+): Promise<ResolvedIssueIdentifier | ResolveIssueIdentifierError> {
+  const rawValue = typeof issueId === 'string' ? issueId.trim() : '';
+  const parsed = parseIssueId(rawValue);
+
+  if (!parsed.isValid) {
+    return buildIssueIdentifierError({
+      status: 400,
+      errorCode: 'invalid_issue_identifier',
+      issueId: rawValue || issueId,
+      requestId,
+    });
+  }
+
   const pool = getPool();
-  const resolved = await fetchIssueRowByIdentifier(pool, issueId);
+  const resolved = await fetchIssueRowByIdentifier(pool, rawValue);
 
   if (resolved.ok) {
-    return { ok: true, issue: resolved.row as Record<string, unknown>, source: 'control' };
+    const shortId = parsed.kind === 'shortHex8' ? parsed.value : undefined;
+    return {
+      ok: true,
+      type: parsed.kind === 'uuid' ? 'uuid' : 'shortid',
+      uuid: (resolved.row as Record<string, unknown>).id as string,
+      shortId,
+      issue: resolved.row as Record<string, unknown>,
+      source: 'control',
+    };
   }
 
   if (resolved.status !== 404) {
-    return { ok: false, status: resolved.status, body: resolved.body };
+    return buildIssueIdentifierError({
+      status: resolved.status,
+      errorCode: resolved.status === 400 ? 'invalid_issue_identifier' : 'issue_lookup_failed',
+      issueId: rawValue,
+      requestId,
+      lookupStore: 'control',
+    });
   }
 
   const missingEnvs: string[] = [];
@@ -542,26 +626,37 @@ export async function ensureIssueInControl(
   }
 
   if (missingEnvs.length > 0) {
-    return {
-      ok: false,
+    return buildIssueIdentifierError({
       status: 500,
-      body: {
-        errorCode: 'engine_misconfigured',
-        issueId,
-        missingEnvs,
-        requestId,
-      },
-    };
+      errorCode: 'engine_misconfigured',
+      issueId: rawValue,
+      requestId,
+      lookupStore: 'engine',
+    });
   }
 
-  const engineLookup = await fetchIssueFromEngine(issueId, requestId);
+  const engineLookup = await fetchIssueFromEngine(rawValue, requestId);
   if (engineLookup.ok && engineLookup.issue) {
+    const engineIssueId = extractEngineIssueUuid(engineLookup.issue);
+    if (!engineIssueId) {
+      return buildIssueIdentifierError({
+        status: 502,
+        errorCode: 'engine_lookup_failed',
+        issueId: rawValue,
+        requestId,
+        lookupStore: 'engine',
+      });
+    }
+
     const mappedInput = mapEngineIssueToInput(engineLookup.issue);
     if (mappedInput) {
-      const upsertResult = await upsertAfu9IssueFromEngine(pool, issueId, mappedInput);
+      const upsertResult = await upsertAfu9IssueFromEngine(pool, engineIssueId, mappedInput);
       if (upsertResult.success && upsertResult.data) {
         return {
           ok: true,
+          type: parsed.kind === 'uuid' ? 'uuid' : 'shortid',
+          uuid: engineIssueId,
+          shortId: parsed.kind === 'shortHex8' ? parsed.value : undefined,
           issue: upsertResult.data as Record<string, unknown>,
           source: 'engine',
         };
@@ -570,16 +665,39 @@ export async function ensureIssueInControl(
   }
 
   if (!engineLookup.ok) {
-    return {
-      ok: false,
-      status: 502,
-      body: {
-        errorCode: 'engine_lookup_failed',
-        issueId,
-        lookupStore: 'engine',
-        requestId,
-      },
-    };
+    return buildIssueIdentifierError({
+      status: engineLookup.status,
+      errorCode: 'engine_lookup_failed',
+      issueId: rawValue,
+      requestId,
+      lookupStore: 'engine',
+    });
+  }
+
+  return buildIssueIdentifierError({
+    status: 404,
+    errorCode: 'issue_not_found',
+    issueId: rawValue,
+    requestId,
+    lookupStore: 'control',
+  });
+}
+
+export type EnsureIssueResult =
+  | { ok: true; issue: Record<string, unknown>; source: 'control' | 'engine' }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+export async function ensureIssueInControl(
+  issueId: string,
+  requestId: string
+): Promise<EnsureIssueResult> {
+  const resolution = await resolveIssueIdentifier(issueId, requestId);
+  if (!resolution.ok) {
+    return { ok: false, status: resolution.status, body: resolution.body };
+  }
+
+  if (resolution.issue) {
+    return { ok: true, issue: resolution.issue, source: resolution.source };
   }
 
   return {

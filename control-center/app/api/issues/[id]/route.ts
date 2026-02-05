@@ -35,6 +35,7 @@ import {
   tokensEqual,
   getServiceTokenDebugInfo,
   ensureIssueInControl,
+  resolveIssueIdentifier,
 } from '../_shared';
 import { withApi, apiError } from '../../../../src/lib/http/withApi';
 import { normalizeLabels } from '../../../../src/lib/label-utils';
@@ -57,6 +58,19 @@ function jsonWithHeaders(
 ): NextResponse {
   const response = NextResponse.json(body, { status });
   return withControlHeaders(response, requestId);
+}
+
+function errorWithHeaders(
+  message: string,
+  status: number,
+  requestId: string,
+  details?: string
+): NextResponse {
+  return jsonWithHeaders(
+    details ? { error: message, details } : { error: message },
+    status,
+    requestId
+  );
 }
 
 
@@ -165,13 +179,19 @@ export const PATCH = withApi(async (
 ) => {
   const pool = getPool();
   const { id } = await params;
-
-  const resolved = await fetchIssueRowByIdentifier(pool, id);
-  if (!resolved.ok) {
-    return NextResponse.json(resolved.body, { status: resolved.status });
+  const requestId = getRequestId(request);
+  const resolution = await resolveIssueIdentifier(id, requestId);
+  if (!resolution.ok) {
+    return jsonWithHeaders(resolution.body, resolution.status, requestId);
   }
 
-  const internalId = (resolved.row as any).id as string;
+  const internalId = resolution.uuid;
+  const resolved = resolution.issue
+    ? { ok: true as const, row: resolution.issue }
+    : await fetchIssueRowByIdentifier(pool, internalId);
+  if (!resolved.ok) {
+    return jsonWithHeaders(resolved.body, resolved.status, requestId);
+  }
 
   const body = await request.json();
 
@@ -218,9 +238,10 @@ export const PATCH = withApi(async (
 
   if (body.priority !== undefined) {
     if (body.priority !== null && !isValidPriority(body.priority)) {
-      return apiError(
+      return errorWithHeaders(
         'Invalid priority',
         400,
+        requestId,
         `Priority must be one of: ${Object.values(Afu9IssuePriority).join(', ')} or null`
       );
     }
@@ -229,14 +250,14 @@ export const PATCH = withApi(async (
 
   if (body.assignee !== undefined) {
     if (body.assignee !== null && typeof body.assignee !== 'string') {
-      return apiError('assignee must be a string or null', 400);
+      return errorWithHeaders('assignee must be a string or null', 400, requestId);
     }
     updates.assignee = body.assignee;
   }
 
   // Check if there are any updates
   if (Object.keys(updates).length === 0) {
-    return apiError('No fields to update', 400);
+    return errorWithHeaders('No fields to update', 400, requestId);
   }
 
   // Get current issue state for invariant checking
@@ -252,10 +273,7 @@ export const PATCH = withApi(async (
     if (Object.keys(updates).length > 0) {
       const updateResult = await updateAfu9Issue(pool, internalId, updates);
       if (!updateResult.success) {
-        return NextResponse.json(
-          { error: 'Failed to update issue fields', details: updateResult.error },
-          { status: 500 }
-        );
+        return errorWithHeaders('Failed to update issue fields', 500, requestId, updateResult.error);
       }
     }
 
@@ -271,31 +289,22 @@ export const PATCH = withApi(async (
     if (!transitionResult.success) {
       // Check for invalid transition
       if (transitionResult.error && transitionResult.error.includes('Invalid transition')) {
-        return NextResponse.json(
-          { error: transitionResult.error },
-          { status: 400 }
-        );
+        return errorWithHeaders(transitionResult.error, 400, requestId);
       }
 
       // Check for Single-Active constraint violation
       if (transitionResult.error && transitionResult.error.includes('Single-Active')) {
-        return NextResponse.json(
-          { error: transitionResult.error },
-          { status: 409 } // Conflict
-        );
+        return errorWithHeaders(transitionResult.error, 409, requestId);
       }
 
-      return NextResponse.json(
-        { error: 'Failed to transition issue', details: transitionResult.error },
-        { status: 500 }
-      );
+      return errorWithHeaders('Failed to transition issue', 500, requestId, transitionResult.error);
     }
 
     const responseBody: any = normalizeIssueForApi(transitionResult.data);
     if (isDebugApiEnabled()) {
       responseBody.contextTrace = await buildContextTrace(request);
     }
-    return NextResponse.json(responseBody);
+    return jsonWithHeaders(responseBody, 200, requestId);
   }
 
   // Invariant: SYNCED handoff_state cannot occur with CREATED status
@@ -303,9 +312,10 @@ export const PATCH = withApi(async (
   const finalHandoffState = updates.handoff_state ?? currentIssue.handoff_state;
   
   if (finalStatus === Afu9IssueStatus.CREATED && finalHandoffState === Afu9HandoffState.SYNCED) {
-    return apiError(
+    return errorWithHeaders(
       'Invalid state combination',
       400,
+      requestId,
       'Issue with status CREATED cannot have handoff_state SYNCED. This violates lifecycle invariants.'
     );
   }
@@ -315,31 +325,22 @@ export const PATCH = withApi(async (
 
   if (!result.success) {
     if (result.error && result.error.includes('not found')) {
-      return NextResponse.json(
-        { error: 'Issue not found', id },
-        { status: 404 }
-      );
+      return errorWithHeaders('Issue not found', 404, requestId);
     }
 
     // Check for Single-Active constraint violation
     if (result.error && result.error.includes('Single-Active')) {
-      return NextResponse.json(
-        { error: result.error },
-        { status: 409 } // Conflict
-      );
+      return errorWithHeaders(result.error, 409, requestId);
     }
 
-    return NextResponse.json(
-      { error: 'Failed to update issue', details: result.error },
-      { status: 500 }
-    );
+    return errorWithHeaders('Failed to update issue', 500, requestId, result.error);
   }
 
   const responseBody: any = normalizeIssueForApi(result.data);
   if (isDebugApiEnabled()) {
     responseBody.contextTrace = await buildContextTrace(request);
   }
-  return NextResponse.json(responseBody);
+  return jsonWithHeaders(responseBody, 200, requestId);
 });
 
 /**
@@ -360,13 +361,13 @@ export const DELETE = withApi(async (
 ) => {
   const pool = getPool();
   const { id } = await params;
-
-  const resolved = await fetchIssueRowByIdentifier(pool, id);
-  if (!resolved.ok) {
-    return NextResponse.json(resolved.body, { status: resolved.status });
+  const requestId = getRequestId(request);
+  const resolution = await resolveIssueIdentifier(id, requestId);
+  if (!resolution.ok) {
+    return jsonWithHeaders(resolution.body, resolution.status, requestId);
   }
 
-  const internalId = (resolved.row as any).id as string;
+  const internalId = resolution.uuid;
 
   // Perform soft delete
   const result = await softDeleteAfu9Issue(pool, internalId);
@@ -374,24 +375,15 @@ export const DELETE = withApi(async (
   if (!result.success) {
     // Check if it's a guardrail violation
     if (result.error && result.error.includes('deletion only allowed')) {
-      return NextResponse.json(
-        { error: result.error },
-        { status: 403 } // Forbidden
-      );
+      return errorWithHeaders(result.error, 403, requestId);
     }
 
     if (result.error && result.error.includes('not found')) {
-      return NextResponse.json(
-        { error: 'Issue not found', id },
-        { status: 404 }
-      );
+      return errorWithHeaders('Issue not found', 404, requestId);
     }
 
-    return NextResponse.json(
-      { error: 'Failed to delete issue', details: result.error },
-      { status: 500 }
-    );
+    return errorWithHeaders('Failed to delete issue', 500, requestId, result.error);
   }
 
-  return NextResponse.json({ success: true, id: internalId }, { status: 200 });
+  return jsonWithHeaders({ success: true, id: internalId }, 200, requestId);
 });

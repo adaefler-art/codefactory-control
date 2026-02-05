@@ -20,6 +20,8 @@ import {
   handleValidationError 
 } from '../../../../../src/lib/api/errors';
 import { ZodError } from 'zod';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../_shared';
 
 /**
  * GET /api/issues/[id]/runs
@@ -34,22 +36,40 @@ export const GET = withApi(async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
+    const requestId = getRequestId(request);
+    const responseHeaders = getControlResponseHeaders(requestId);
     const pool = getPool();
     const dao = getRunsDAO(pool);
     const { id: issueId } = await params;
+    const resolved = await resolveIssueIdentifier(issueId, requestId);
+    if (!resolved.ok) {
+      return jsonResponse(resolved.body, {
+        status: resolved.status,
+        requestId,
+        headers: responseHeaders,
+      });
+    }
 
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-    const runs = await dao.listRunsByIssue(issueId, limit, offset);
+    const runs = await dao.listRunsByIssue(resolved.uuid, limit, offset);
 
-    return NextResponse.json({
-      runs,
-      total: runs.length, // Simple approximation; could query total count if needed
-    });
+    return jsonResponse(
+      {
+        runs,
+        total: runs.length, // Simple approximation; could query total count if needed
+      },
+      { requestId, headers: responseHeaders }
+    );
   } catch (error) {
-    return handleApiError(error);
+    const requestId = getRequestId(request);
+    const response = handleApiError(error);
+    response.headers.set('x-request-id', requestId);
+    response.headers.set('x-afu9-request-id', requestId);
+    response.headers.set('x-afu9-auth-path', 'control');
+    return response;
   }
 });
 
@@ -68,9 +88,19 @@ export const POST = withApi(async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
+    const requestId = getRequestId(request);
+    const responseHeaders = getControlResponseHeaders(requestId);
     const pool = getPool();
     const runnerService = getRunnerService(pool);
     const { id: issueId } = await params;
+    const resolved = await resolveIssueIdentifier(issueId, requestId);
+    if (!resolved.ok) {
+      return jsonResponse(resolved.body, {
+        status: resolved.status,
+        requestId,
+        headers: responseHeaders,
+      });
+    }
 
     const body = await request.json();
     const { playbookId, spec: customSpec, title, autoExecute = true } = body;
@@ -81,7 +111,11 @@ export const POST = withApi(async (
       // Load spec from playbook
       const playbook = await runnerService.getPlaybook(playbookId);
       if (!playbook) {
-        return playbookNotFoundError(playbookId);
+        const response = playbookNotFoundError(playbookId);
+        response.headers.set('x-afu9-request-id', requestId);
+        response.headers.set('x-afu9-auth-path', 'control');
+        response.headers.set('x-request-id', requestId);
+        return response;
       }
       spec = { ...playbook.spec };
       if (title) {
@@ -93,20 +127,28 @@ export const POST = withApi(async (
         spec = RunSpecSchema.parse(customSpec);
       } catch (error) {
         if (error instanceof ZodError) {
-          return handleValidationError(error);
+          const response = handleValidationError(error);
+          response.headers.set('x-afu9-request-id', requestId);
+          response.headers.set('x-afu9-auth-path', 'control');
+          response.headers.set('x-request-id', requestId);
+          return response;
         }
         throw error;
       }
     } else {
-      return jsonError(
+      const response = jsonError(
         400,
         RunsErrorCode.VALIDATION_ERROR,
         'Either playbookId or spec must be provided'
       );
+      response.headers.set('x-afu9-request-id', requestId);
+      response.headers.set('x-afu9-auth-path', 'control');
+      response.headers.set('x-request-id', requestId);
+      return response;
     }
 
     // Create run
-    const runId = await runnerService.createRun(spec, issueId, playbookId, undefined);
+    const runId = await runnerService.createRun(spec, resolved.uuid, playbookId, undefined);
 
     // Execute if requested
     if (autoExecute) {
@@ -119,11 +161,19 @@ export const POST = withApi(async (
       });
     }
 
-    return NextResponse.json({
-      runId,
-      status: autoExecute ? 'executing' : 'created',
-    });
+    return jsonResponse(
+      {
+        runId,
+        status: autoExecute ? 'executing' : 'created',
+      },
+      { requestId, headers: responseHeaders }
+    );
   } catch (error) {
-    return handleApiError(error);
+    const requestId = getRequestId(request);
+    const response = handleApiError(error);
+    response.headers.set('x-request-id', requestId);
+    response.headers.set('x-afu9-request-id', requestId);
+    response.headers.set('x-afu9-auth-path', 'control');
+    return response;
   }
 });

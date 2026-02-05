@@ -28,6 +28,7 @@ const AUTH_PATH = 'control';
 function buildResponse(requestId: string, status: number, body: Record<string, unknown>): NextResponse {
   const response = NextResponse.json(body, { status });
   response.headers.set('x-request-id', requestId);
+  response.headers.set('x-afu9-request-id', requestId);
   response.headers.set('x-afu9-auth-path', AUTH_PATH);
   return response;
 }

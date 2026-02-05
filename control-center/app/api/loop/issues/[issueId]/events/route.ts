@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getLoopEventStore } from '@/lib/loop/eventStore';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders, resolveIssueIdentifier } from '../../../../issues/_shared';
 
 const SCHEMA_VERSION = 'loop.events.v1';
 const MAX_LIMIT = 200;
@@ -20,7 +22,17 @@ export async function GET(
   context: { params: Promise<{ issueId: string }> }
 ): Promise<NextResponse> {
   try {
+    const requestId = getRequestId(request);
     const { issueId } = await context.params;
+    const responseHeaders = getControlResponseHeaders(requestId);
+
+    const resolved = await resolveIssueIdentifier(issueId, requestId);
+    if (!resolved.ok) {
+      return jsonResponse(
+        resolved.body,
+        { status: resolved.status, requestId, headers: responseHeaders }
+      );
+    }
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
@@ -35,7 +47,7 @@ export async function GET(
 
     // Validate pagination parameters
     if (isNaN(limit) || limit < 1) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           schemaVersion: SCHEMA_VERSION,
           error: {
@@ -43,12 +55,12 @@ export async function GET(
             message: 'limit must be a positive integer',
           },
         },
-        { status: 400 }
+        { status: 400, requestId, headers: responseHeaders }
       );
     }
 
     if (isNaN(offset) || offset < 0) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           schemaVersion: SCHEMA_VERSION,
           error: {
@@ -56,7 +68,7 @@ export async function GET(
             message: 'offset must be a non-negative integer',
           },
         },
-        { status: 400 }
+        { status: 400, requestId, headers: responseHeaders }
       );
     }
 
@@ -65,8 +77,8 @@ export async function GET(
 
     // Get events and total count
     const [events, total] = await Promise.all([
-      eventStore.getEventsByIssue(issueId, limit, offset),
-      eventStore.countEventsByIssue(issueId),
+      eventStore.getEventsByIssue(resolved.uuid, limit, offset),
+      eventStore.countEventsByIssue(resolved.uuid),
     ]);
 
     // Transform events to API response format
@@ -79,18 +91,22 @@ export async function GET(
       occurredAt: event.occurred_at.toISOString(),
     }));
 
-    return NextResponse.json({
-      schemaVersion: SCHEMA_VERSION,
-      issueId,
-      events: formattedEvents,
-      total,
-      limit,
-      offset,
-    });
+    return jsonResponse(
+      {
+        schemaVersion: SCHEMA_VERSION,
+        issueId: resolved.uuid,
+        events: formattedEvents,
+        total,
+        limit,
+        offset,
+      },
+      { requestId, headers: responseHeaders }
+    );
   } catch (error) {
     console.error('[API] Error fetching loop events', error);
 
-    return NextResponse.json(
+    const requestId = getRequestId(request);
+    return jsonResponse(
       {
         schemaVersion: SCHEMA_VERSION,
         error: {
@@ -98,7 +114,7 @@ export async function GET(
           message: error instanceof Error ? error.message : 'Internal server error',
         },
       },
-      { status: 500 }
+      { status: 500, requestId, headers: getControlResponseHeaders(requestId) }
     );
   }
 }

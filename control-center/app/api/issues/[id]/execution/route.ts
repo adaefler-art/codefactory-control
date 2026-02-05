@@ -14,9 +14,10 @@ import { getPool } from '../../../../../src/lib/db';
 import { updateAfu9Issue } from '../../../../../src/lib/db/afu9Issues';
 import { Afu9ExecutionState } from '../../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
-import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
-import { withApi, apiError } from '../../../../../src/lib/http/withApi';
+import { getControlResponseHeaders, resolveIssueIdentifier, normalizeIssueForApi } from '../../_shared';
+import { withApi } from '../../../../../src/lib/http/withApi';
 import { normalizeOutput } from '@/lib/api/normalize-output';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 
 /**
  * GET /api/issues/[id]/execution
@@ -32,13 +33,18 @@ export const GET = withApi(async (
 ) => {
   const pool = getPool();
   const { id } = await params;
-
-  const resolved = await fetchIssueRowByIdentifier(pool, id);
+  const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
+  const resolved = await resolveIssueIdentifier(id, requestId);
   if (!resolved.ok) {
-    return NextResponse.json(resolved.body, { status: resolved.status });
+    return jsonResponse(resolved.body, {
+      status: resolved.status,
+      requestId,
+      headers: responseHeaders,
+    });
   }
 
-  const issue = resolved.row as any;
+  const issue = resolved.issue as any;
   
   // Normalize to ensure timestamps are ISO strings
   const normalized = normalizeOutput(issue);
@@ -56,7 +62,7 @@ export const GET = withApi(async (
     responseBody.contextTrace = await buildContextTrace(request);
   }
 
-  return NextResponse.json(responseBody);
+  return jsonResponse(responseBody, { requestId, headers: responseHeaders });
 });
 
 /**
@@ -77,18 +83,26 @@ export const POST = withApi(async (
 ) => {
   const pool = getPool();
   const { id } = await params;
-
-  const resolved = await fetchIssueRowByIdentifier(pool, id);
+  const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
+  const resolved = await resolveIssueIdentifier(id, requestId);
   if (!resolved.ok) {
-    return NextResponse.json(resolved.body, { status: resolved.status });
+    return jsonResponse(resolved.body, {
+      status: resolved.status,
+      requestId,
+      headers: responseHeaders,
+    });
   }
 
-  const internalId = (resolved.row as any).id as string;
-  const currentIssue = resolved.row as any;
+  const internalId = resolved.uuid;
+  const currentIssue = resolved.issue as any;
   const body = await request.json();
 
   if (!body.action || typeof body.action !== 'string') {
-    return apiError('action is required and must be a string', 400);
+    return jsonResponse(
+      { error: 'action is required and must be a string' },
+      { status: 400, requestId, headers: responseHeaders }
+    );
   }
 
   const action = body.action;
@@ -101,17 +115,21 @@ export const POST = withApi(async (
     case 'start':
       // Only allow starting from IDLE or FAILED state
       if (currentExecutionState === 'RUNNING') {
-        return apiError(
-          'Cannot start execution: already running',
-          409,
-          'Current state is RUNNING. Complete or fail the current execution first.'
+        return jsonResponse(
+          {
+            error: 'Cannot start execution: already running',
+            details: 'Current state is RUNNING. Complete or fail the current execution first.',
+          },
+          { status: 409, requestId, headers: responseHeaders }
         );
       }
       if (currentExecutionState === 'DONE') {
-        return apiError(
-          'Cannot start execution: already completed',
-          409,
-          'Current state is DONE. Reset to IDLE first if you want to re-execute.'
+        return jsonResponse(
+          {
+            error: 'Cannot start execution: already completed',
+            details: 'Current state is DONE. Reset to IDLE first if you want to re-execute.',
+          },
+          { status: 409, requestId, headers: responseHeaders }
         );
       }
       updates = {
@@ -125,10 +143,12 @@ export const POST = withApi(async (
     case 'complete':
       // Only allow completing from RUNNING state
       if (currentExecutionState !== 'RUNNING') {
-        return apiError(
-          'Cannot complete execution: not running',
-          409,
-          `Current state is ${currentExecutionState}. Only RUNNING executions can be completed.`
+        return jsonResponse(
+          {
+            error: 'Cannot complete execution: not running',
+            details: `Current state is ${currentExecutionState}. Only RUNNING executions can be completed.`,
+          },
+          { status: 409, requestId, headers: responseHeaders }
         );
       }
       updates = {
@@ -141,10 +161,12 @@ export const POST = withApi(async (
     case 'fail':
       // Only allow failing from RUNNING state
       if (currentExecutionState !== 'RUNNING') {
-        return apiError(
-          'Cannot fail execution: not running',
-          409,
-          `Current state is ${currentExecutionState}. Only RUNNING executions can be failed.`
+        return jsonResponse(
+          {
+            error: 'Cannot fail execution: not running',
+            details: `Current state is ${currentExecutionState}. Only RUNNING executions can be failed.`,
+          },
+          { status: 409, requestId, headers: responseHeaders }
         );
       }
       updates = {
@@ -157,10 +179,12 @@ export const POST = withApi(async (
     case 'reset':
       // Can reset from any state except RUNNING
       if (currentExecutionState === 'RUNNING') {
-        return apiError(
-          'Cannot reset execution: currently running',
-          409,
-          'Complete or fail the running execution before resetting.'
+        return jsonResponse(
+          {
+            error: 'Cannot reset execution: currently running',
+            details: 'Complete or fail the running execution before resetting.',
+          },
+          { status: 409, requestId, headers: responseHeaders }
         );
       }
       updates = {
@@ -172,10 +196,12 @@ export const POST = withApi(async (
       break;
 
     default:
-      return apiError(
-        'Invalid action',
-        400,
-        'Action must be one of: start, complete, fail, reset'
+      return jsonResponse(
+        {
+          error: 'Invalid action',
+          details: 'Action must be one of: start, complete, fail, reset',
+        },
+        { status: 400, requestId, headers: responseHeaders }
       );
   }
 
@@ -183,15 +209,15 @@ export const POST = withApi(async (
 
   if (!result.success) {
     if (result.error && result.error.includes('not found')) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: 'Issue not found', id },
-        { status: 404 }
+        { status: 404, requestId, headers: responseHeaders }
       );
     }
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: 'Failed to update execution state', details: result.error },
-      { status: 500 }
+      { status: 500, requestId, headers: responseHeaders }
     );
   }
 
@@ -199,5 +225,5 @@ export const POST = withApi(async (
   if (isDebugApiEnabled()) {
     responseBody.contextTrace = await buildContextTrace(request);
   }
-  return NextResponse.json(responseBody);
+  return jsonResponse(responseBody, { requestId, headers: responseHeaders });
 });

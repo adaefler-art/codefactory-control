@@ -97,7 +97,8 @@ describe('GET /api/issues/[id] - ID format support', () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body).toHaveProperty('error', 'Invalid issue ID format');
+    expect(body).toHaveProperty('errorCode', 'invalid_issue_identifier');
+    expect(body).toHaveProperty('issueId', 'invalid-id');
   });
 
   test('returns 404 when issue not found (UUID)', async () => {

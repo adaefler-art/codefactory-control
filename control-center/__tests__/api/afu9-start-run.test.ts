@@ -30,6 +30,7 @@ const mockIssue = {
 };
 
 const mockGetAfu9IssueById = jest.fn();
+const mockGetAfu9IssueByPublicId = jest.fn();
 const mockUpdateAfu9Issue = jest.fn();
 const mockLogTimelineEvent = jest.fn();
 
@@ -52,6 +53,7 @@ jest.mock('../../src/lib/db/afu9Runs', () => ({
 // Mock afu9Issues
 jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueById: (...args: unknown[]) => mockGetAfu9IssueById(...args),
+  getAfu9IssueByPublicId: (...args: unknown[]) => mockGetAfu9IssueByPublicId(...args),
   updateAfu9Issue: (...args: unknown[]) => mockUpdateAfu9Issue(...args),
 }));
 
@@ -236,6 +238,43 @@ describe('POST /api/afu9/issues/:issueId/runs/start', () => {
           type: 'manual',
         }),
       })
+    );
+  });
+
+  test('accepts shortId and resolves to UUID', async () => {
+    const shortId = 'a1b2c3d4';
+    const resolvedUuid = 'a1b2c3d4-5678-4abc-9def-0123456789ab';
+    const resolvedIssue = {
+      ...mockIssue,
+      id: resolvedUuid,
+    };
+
+    mockGetAfu9IssueByPublicId.mockResolvedValue({
+      success: true,
+      data: resolvedIssue,
+    });
+    mockGetAfu9IssueById.mockResolvedValue({
+      success: true,
+      data: resolvedIssue,
+    });
+
+    const request = new NextRequest(`http://localhost/api/afu9/issues/${shortId}/runs/start`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    const params = Promise.resolve({ id: shortId });
+    const response = await startRun(request, { params });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.issueId).toBe(resolvedUuid);
+    expect(mockGetAfu9IssueByPublicId).toHaveBeenCalledWith(expect.anything(), shortId);
+    expect(mockRunsDAO.createRun).toHaveBeenCalledWith(
+      'mock-run-id-123',
+      expect.anything(),
+      resolvedUuid,
+      undefined,
+      undefined
     );
   });
 });
