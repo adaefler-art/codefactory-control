@@ -1,12 +1,12 @@
-# Loop State Machine v1 Contract (E9.1-CTRL-4, E9.3-CTRL-06)
+# Loop State Machine v1 Contract (E9.1-CTRL-4, E9.3-CTRL-06, E9.3-CTRL-07)
 
-**Version:** v1.1  
+**Version:** v1.2  
 **Status:** Active  
-**Issue:** E9.1-CTRL-4, E9.3-CTRL-06  
+**Issue:** E9.1-CTRL-4, E9.3-CTRL-06, E9.3-CTRL-07  
 
 ## Overview
 
-The Loop State Machine v1 provides deterministic, fail-closed state resolution for AFU-9 issue lifecycle management. It implements steps S1-S7 with explicit blocker codes instead of ambiguous "unknown" errors.
+The Loop State Machine v1 provides deterministic, fail-closed state resolution for AFU-9 issue lifecycle management. It implements steps S1-S9 with explicit blocker codes instead of ambiguous "unknown" errors.
 
 ## States
 
@@ -16,13 +16,14 @@ The state machine operates on the following issue states:
 - **SPEC_READY** - Specification is complete and validated
 - **IMPLEMENTING_PREP** - Ready for implementation
 - **REVIEW_READY** - Ready for review (after S4 gate)
-- **HOLD** - Terminal state, work paused
+- **HOLD** - Terminal state, work paused (requires manual intervention)
 - **DONE** - Work completed, awaiting verification
-- **VERIFIED** - Terminal state, deployment verified (after S7)
+- **VERIFIED** - Deployment verified (after S7 GREEN verdict)
+- **CLOSED** - Immutable terminal state, issue successfully closed (after S8)
 
 ## Steps
 
-The state machine defines seven execution steps:
+The state machine defines nine execution steps:
 
 - **S1: Pick Issue** - Initial step to select and prepare an issue
 - **S2: Spec Ready** - Validate and finalize specification
@@ -31,6 +32,8 @@ The state machine defines seven execution steps:
 - **S5: Merge** - Merge approved PR
 - **S6: Deployment Observe** - Observe deployment
 - **S7: Verify Gate** - Explicit verification of deployment success (E9.3-CTRL-06)
+- **S8: Close** - Close verified issue immutably (GREEN path, E9.3-CTRL-07)
+- **S9: Remediate** - Place issue on HOLD with explicit reason (RED path, E9.3-CTRL-07)
 
 ## Blocker Codes
 
@@ -49,18 +52,25 @@ When progression is blocked, the state machine returns explicit codes:
 | `INVALID_EVIDENCE` | Evidence schema invalid for S7 |
 | `STALE_EVIDENCE` | Evidence too old for S7 |
 | `NO_DEPLOYMENT_OBSERVATIONS` | No S6 observations found for S7 |
+| `NOT_VERIFIED` | Issue must be in VERIFIED state for S8 |
+| `NO_GREEN_VERDICT` | No GREEN verdict found for S8 |
+| `INVALID_STATE_FOR_HOLD` | Current state doesn't allow HOLD transition |
+| `NO_REMEDIATION_REASON` | Remediation reason required for S9 |
+| `ALREADY_ON_HOLD` | Issue is already on HOLD |
 
 ## State Transitions
 
 Valid state transitions:
 
 ```
-CREATED → SPEC_READY → IMPLEMENTING_PREP → REVIEW_READY → DONE → VERIFIED
-   ↓           ↓              ↓                ↓           ↓
-  HOLD        HOLD           HOLD             HOLD        HOLD
+CREATED → SPEC_READY → IMPLEMENTING_PREP → REVIEW_READY → DONE → VERIFIED → CLOSED
+   ↓           ↓              ↓                ↓           ↓         ↓
+  HOLD        HOLD           HOLD             HOLD        HOLD      HOLD (S9)
 ```
 
-Terminal states (HOLD, VERIFIED) cannot transition to other states.
+Terminal states:
+- **CLOSED** - Immutable, no transitions allowed (S8 only)
+- **HOLD** - Requires manual intervention to exit (S9 records remediation)
 
 ## Resolution Rules
 
@@ -112,6 +122,33 @@ Terminal states (HOLD, VERIFIED) cannot transition to other states.
 - `NO_DEPLOYMENT_OBSERVATIONS` - if no S6 observations found
 
 **Next State:** Transitions to `VERIFIED` (GREEN) or `HOLD` (RED)
+
+### S8 (Close)
+
+**Preconditions:**
+- Issue state: `VERIFIED`
+- S7 verdict: Must be GREEN
+- No active locks
+
+**Blockers:**
+- `NOT_VERIFIED` - if issue is not in VERIFIED state
+- `NO_GREEN_VERDICT` - if no GREEN verdict from S7
+
+**Next State:** Transitions to `CLOSED` (immutable, terminal)
+
+### S9 (Remediate)
+
+**Preconditions:**
+- Issue state: Any state except CLOSED
+- Remediation reason: Must be provided and non-empty
+- No active locks
+
+**Blockers:**
+- `INVALID_STATE_FOR_HOLD` - if state doesn't allow HOLD (e.g., CLOSED)
+- `NO_REMEDIATION_REASON` - if remediation reason is empty
+- `ALREADY_ON_HOLD` - informational, creates new remediation record
+
+**Next State:** Transitions to `HOLD` (requires manual intervention to exit)
 
 ## API: resolveNextStep
 
@@ -288,12 +325,15 @@ The state machine resolver is a pure function and can be:
 
 ## Version History
 
+- **v1.2** (2026-02-05): Added S8 Close and S9 Remediate steps, CLOSED state (E9.3-CTRL-07)
 - **v1.1** (2026-02-05): Added S7 Verify Gate step and VERIFIED state (E9.3-CTRL-06)
 - **v1.0** (2026-01-21): Initial implementation with S1-S3 steps and explicit blocker codes (E9.1-CTRL-4)
 
 ## Related Contracts
 
 - [Loop API v1](./loop-api.v1.md) - Loop execution API
+- [Step Executor S8 v1](./step-executor-s8.v1.md) - S8 Close step
+- [Step Executor S9 v1](./step-executor-s9.v1.md) - S9 Remediate step
 - [AFU-9 Issue Lifecycle](./afu9-issue-lifecycle.md) - Overall issue lifecycle
 
 ## Source of Truth

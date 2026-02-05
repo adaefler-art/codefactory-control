@@ -1,10 +1,10 @@
 /**
- * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01, E9.3-CTRL-04, E9.3-CTRL-06)
+ * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01, E9.3-CTRL-04, E9.3-CTRL-06, E9.3-CTRL-07)
  * 
- * Pure deterministic resolver for S1-S7 step transitions with explicit blocker codes.
+ * Pure deterministic resolver for S1-S9 step transitions with explicit blocker codes.
  * 
- * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, REVIEW_READY, HOLD, DONE, VERIFIED
- * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate), S5 (Merge), S6 (Deployment Observe), S7 (Verify Gate)
+ * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, REVIEW_READY, HOLD, DONE, VERIFIED, CLOSED
+ * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate), S5 (Merge), S6 (Deployment Observe), S7 (Verify Gate), S8 (Close), S9 (Remediate)
  * 
  * This module implements a fail-closed, no-ambiguity state machine that returns
  * precise blocker codes instead of generic "unknown" errors.
@@ -47,10 +47,17 @@ export enum BlockerCode {
   INVALID_EVIDENCE = 'INVALID_EVIDENCE',
   STALE_EVIDENCE = 'STALE_EVIDENCE',
   NO_DEPLOYMENT_OBSERVATIONS = 'NO_DEPLOYMENT_OBSERVATIONS',
+  // S8 Close blocker codes (E9.3-CTRL-07)
+  NOT_VERIFIED = 'NOT_VERIFIED',
+  NO_GREEN_VERDICT = 'NO_GREEN_VERDICT',
+  // S9 Remediate blocker codes (E9.3-CTRL-07)
+  INVALID_STATE_FOR_HOLD = 'INVALID_STATE_FOR_HOLD',
+  NO_REMEDIATION_REASON = 'NO_REMEDIATION_REASON',
+  ALREADY_ON_HOLD = 'ALREADY_ON_HOLD',
 }
 
 /**
- * State machine steps (S1-S7)
+ * State machine steps (S1-S9)
  */
 export enum LoopStep {
   S1_PICK_ISSUE = 'S1_PICK_ISSUE',
@@ -60,6 +67,8 @@ export enum LoopStep {
   S5_MERGE = 'S5_MERGE',
   S6_DEPLOYMENT_OBSERVE = 'S6_DEPLOYMENT_OBSERVE',
   S7_VERIFY_GATE = 'S7_VERIFY_GATE',
+  S8_CLOSE = 'S8_CLOSE',
+  S9_REMEDIATE = 'S9_REMEDIATE',
 }
 
 /**
@@ -73,6 +82,7 @@ export enum IssueState {
   HOLD = 'HOLD',
   DONE = 'DONE',
   VERIFIED = 'VERIFIED',
+  CLOSED = 'CLOSED',
 }
 
 /**
@@ -138,8 +148,26 @@ export function resolveNextStep(
 
   const status = issue.status as IssueState;
 
-  // Terminal states - no next step available
-  if (status === IssueState.VERIFIED || status === IssueState.HOLD) {
+  // Terminal state: CLOSED - no next step available
+  if (status === IssueState.CLOSED) {
+    return {
+      step: null,
+      blocked: false,
+      blockerMessage: `Issue is in terminal state: ${status}`,
+    };
+  }
+
+  // State: VERIFIED → Check for S8 (Close)
+  if (status === IssueState.VERIFIED) {
+    // S8 can proceed from VERIFIED (after S7 GREEN verdict)
+    return {
+      step: LoopStep.S8_CLOSE,
+      blocked: false,
+    };
+  }
+
+  // State: HOLD - terminal state, no next step available
+  if (status === IssueState.HOLD) {
     return {
       step: null,
       blocked: false,
@@ -308,7 +336,7 @@ export function isValidTransition(fromState: IssueState, toState: IssueState): b
   }
 
   // Terminal states cannot transition out
-  if (fromState === IssueState.VERIFIED || fromState === IssueState.HOLD) {
+  if (fromState === IssueState.CLOSED || fromState === IssueState.HOLD) {
     return false;
   }
 
@@ -319,8 +347,9 @@ export function isValidTransition(fromState: IssueState, toState: IssueState): b
     [IssueState.IMPLEMENTING_PREP]: [IssueState.REVIEW_READY, IssueState.HOLD],
     [IssueState.REVIEW_READY]: [IssueState.DONE, IssueState.HOLD],
     [IssueState.DONE]: [IssueState.VERIFIED, IssueState.HOLD],
-    [IssueState.HOLD]: [], // Terminal
-    [IssueState.VERIFIED]: [], // Terminal
+    [IssueState.VERIFIED]: [IssueState.CLOSED], // S8 only
+    [IssueState.HOLD]: [], // Terminal (requires manual intervention to exit)
+    [IssueState.CLOSED]: [], // Terminal (immutable)
   };
 
   return validTransitions[fromState]?.includes(toState) || false;
