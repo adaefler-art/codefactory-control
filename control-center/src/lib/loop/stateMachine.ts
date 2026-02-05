@@ -1,10 +1,10 @@
 /**
- * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01, E9.3-CTRL-04)
+ * AFU-9 Loop State Machine v1 (E9.1-CTRL-4, E9.3-CTRL-01, E9.3-CTRL-04, E9.3-CTRL-06)
  * 
- * Pure deterministic resolver for S1-S5 step transitions with explicit blocker codes.
+ * Pure deterministic resolver for S1-S7 step transitions with explicit blocker codes.
  * 
- * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, REVIEW_READY, HOLD, DONE
- * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate), S5 (Merge)
+ * States: CREATED, SPEC_READY, IMPLEMENTING_PREP, REVIEW_READY, HOLD, DONE, VERIFIED
+ * Steps: S1 (Pick Issue), S2 (Spec Ready), S3 (Implement Prep), S4 (Review Gate), S5 (Merge), S6 (Deployment Observe), S7 (Verify Gate)
  * 
  * This module implements a fail-closed, no-ambiguity state machine that returns
  * precise blocker codes instead of generic "unknown" errors.
@@ -42,10 +42,15 @@ export enum BlockerCode {
   // S6 Deployment Observation blocker codes (E9.3-CTRL-05)
   PR_NOT_MERGED = 'PR_NOT_MERGED',
   GITHUB_API_ERROR = 'GITHUB_API_ERROR',
+  // S7 Verify Gate blocker codes (E9.3-CTRL-06)
+  NO_EVIDENCE = 'NO_EVIDENCE',
+  INVALID_EVIDENCE = 'INVALID_EVIDENCE',
+  STALE_EVIDENCE = 'STALE_EVIDENCE',
+  NO_DEPLOYMENT_OBSERVATIONS = 'NO_DEPLOYMENT_OBSERVATIONS',
 }
 
 /**
- * State machine steps (S1-S6)
+ * State machine steps (S1-S7)
  */
 export enum LoopStep {
   S1_PICK_ISSUE = 'S1_PICK_ISSUE',
@@ -54,6 +59,7 @@ export enum LoopStep {
   S4_REVIEW = 'S4_REVIEW',
   S5_MERGE = 'S5_MERGE',
   S6_DEPLOYMENT_OBSERVE = 'S6_DEPLOYMENT_OBSERVE',
+  S7_VERIFY_GATE = 'S7_VERIFY_GATE',
 }
 
 /**
@@ -66,6 +72,7 @@ export enum IssueState {
   REVIEW_READY = 'REVIEW_READY',
   HOLD = 'HOLD',
   DONE = 'DONE',
+  VERIFIED = 'VERIFIED',
 }
 
 /**
@@ -132,11 +139,20 @@ export function resolveNextStep(
   const status = issue.status as IssueState;
 
   // Terminal states - no next step available
-  if (status === IssueState.DONE || status === IssueState.HOLD) {
+  if (status === IssueState.VERIFIED || status === IssueState.HOLD) {
     return {
       step: null,
       blocked: false,
       blockerMessage: `Issue is in terminal state: ${status}`,
+    };
+  }
+
+  // State: DONE → Check for S7 (Verify Gate)
+  if (status === IssueState.DONE) {
+    // S7 can proceed from DONE (after deployment observation)
+    return {
+      step: LoopStep.S7_VERIFY_GATE,
+      blocked: false,
     };
   }
 
@@ -292,7 +308,7 @@ export function isValidTransition(fromState: IssueState, toState: IssueState): b
   }
 
   // Terminal states cannot transition out
-  if (fromState === IssueState.DONE || fromState === IssueState.HOLD) {
+  if (fromState === IssueState.VERIFIED || fromState === IssueState.HOLD) {
     return false;
   }
 
@@ -302,8 +318,9 @@ export function isValidTransition(fromState: IssueState, toState: IssueState): b
     [IssueState.SPEC_READY]: [IssueState.IMPLEMENTING_PREP, IssueState.HOLD],
     [IssueState.IMPLEMENTING_PREP]: [IssueState.REVIEW_READY, IssueState.HOLD],
     [IssueState.REVIEW_READY]: [IssueState.DONE, IssueState.HOLD],
+    [IssueState.DONE]: [IssueState.VERIFIED, IssueState.HOLD],
     [IssueState.HOLD]: [], // Terminal
-    [IssueState.DONE]: [], // Terminal
+    [IssueState.VERIFIED]: [], // Terminal
   };
 
   return validTransitions[fromState]?.includes(toState) || false;
