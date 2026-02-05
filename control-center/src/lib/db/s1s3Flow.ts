@@ -138,6 +138,33 @@ export async function getS1S3IssueById(
 }
 
 /**
+ * Get S1-S3 issue by canonical ID
+ */
+export async function getS1S3IssueByCanonicalId(
+  pool: Pool,
+  canonicalId: string
+): Promise<OperationResult<S1S3IssueRow>> {
+  try {
+    const result = await pool.query<S1S3IssueRow>(
+      'SELECT * FROM afu9_s1s3_issues WHERE canonical_id = $1',
+      [canonicalId]
+    );
+
+    if (result.rows.length === 0) {
+      return { success: false, error: 'Issue not found' };
+    }
+
+    return { success: true, data: result.rows[0] };
+  } catch (error) {
+    console.error('[S1S3 DAO] Get issue by canonical ID failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
  * Get S1-S3 issue by GitHub issue
  */
 export async function getS1S3IssueByGitHub(
