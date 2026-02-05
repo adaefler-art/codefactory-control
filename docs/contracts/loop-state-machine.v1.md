@@ -1,12 +1,12 @@
-# Loop State Machine v1 Contract (E9.1-CTRL-4)
+# Loop State Machine v1 Contract (E9.1-CTRL-4, E9.3-CTRL-06)
 
-**Version:** v1.0  
+**Version:** v1.1  
 **Status:** Active  
-**Issue:** E9.1-CTRL-4  
+**Issue:** E9.1-CTRL-4, E9.3-CTRL-06  
 
 ## Overview
 
-The Loop State Machine v1 provides deterministic, fail-closed state resolution for AFU-9 issue lifecycle management. It implements steps S1-S3 with explicit blocker codes instead of ambiguous "unknown" errors.
+The Loop State Machine v1 provides deterministic, fail-closed state resolution for AFU-9 issue lifecycle management. It implements steps S1-S7 with explicit blocker codes instead of ambiguous "unknown" errors.
 
 ## States
 
@@ -15,16 +15,22 @@ The state machine operates on the following issue states:
 - **CREATED** - Initial state, issue created but no work started
 - **SPEC_READY** - Specification is complete and validated
 - **IMPLEMENTING_PREP** - Ready for implementation
+- **REVIEW_READY** - Ready for review (after S4 gate)
 - **HOLD** - Terminal state, work paused
-- **DONE** - Terminal state, work completed
+- **DONE** - Work completed, awaiting verification
+- **VERIFIED** - Terminal state, deployment verified (after S7)
 
 ## Steps
 
-The state machine defines three execution steps:
+The state machine defines seven execution steps:
 
 - **S1: Pick Issue** - Initial step to select and prepare an issue
 - **S2: Spec Ready** - Validate and finalize specification
 - **S3: Implement Prep** - Prepare for implementation
+- **S4: Review Gate** - Code review gate
+- **S5: Merge** - Merge approved PR
+- **S6: Deployment Observe** - Observe deployment
+- **S7: Verify Gate** - Explicit verification of deployment success (E9.3-CTRL-06)
 
 ## Blocker Codes
 
@@ -39,18 +45,22 @@ When progression is blocked, the state machine returns explicit codes:
 | `LOCKED` | Issue is locked by another process |
 | `UNKNOWN_STATE` | Issue is in an unknown or invalid state |
 | `INVARIANT_VIOLATION` | State machine invariant violated |
+| `NO_EVIDENCE` | No evidence provided for S7 verification |
+| `INVALID_EVIDENCE` | Evidence schema invalid for S7 |
+| `STALE_EVIDENCE` | Evidence too old for S7 |
+| `NO_DEPLOYMENT_OBSERVATIONS` | No S6 observations found for S7 |
 
 ## State Transitions
 
 Valid state transitions:
 
 ```
-CREATED → SPEC_READY → IMPLEMENTING_PREP → DONE
-   ↓           ↓              ↓
-  HOLD        HOLD           HOLD
+CREATED → SPEC_READY → IMPLEMENTING_PREP → REVIEW_READY → DONE → VERIFIED
+   ↓           ↓              ↓                ↓           ↓
+  HOLD        HOLD           HOLD             HOLD        HOLD
 ```
 
-Terminal states (HOLD, DONE) cannot transition to other states.
+Terminal states (HOLD, VERIFIED) cannot transition to other states.
 
 ## Resolution Rules
 
@@ -88,6 +98,20 @@ Terminal states (HOLD, DONE) cannot transition to other states.
 **Blockers:** None (if preconditions met)
 
 **Next State:** Transitions to `IMPLEMENTING_PREP`
+
+### S7 (Verify Gate)
+
+**Preconditions:**
+- Issue state: `DONE`
+- Evidence: Must be provided with deployment observations
+
+**Blockers:**
+- `NO_EVIDENCE` - if no evidence provided
+- `INVALID_EVIDENCE` - if evidence schema invalid
+- `STALE_EVIDENCE` - if evidence too old
+- `NO_DEPLOYMENT_OBSERVATIONS` - if no S6 observations found
+
+**Next State:** Transitions to `VERIFIED` (GREEN) or `HOLD` (RED)
 
 ## API: resolveNextStep
 
@@ -264,6 +288,7 @@ The state machine resolver is a pure function and can be:
 
 ## Version History
 
+- **v1.1** (2026-02-05): Added S7 Verify Gate step and VERIFIED state (E9.3-CTRL-06)
 - **v1.0** (2026-01-21): Initial implementation with S1-S3 steps and explicit blocker codes (E9.1-CTRL-4)
 
 ## Related Contracts
