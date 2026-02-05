@@ -30,8 +30,10 @@ export enum LoopEventType {
   STEP_S3_IMPLEMENT_PREP = 'loop_step_s3_implement_prep',
   STEP_S4_REVIEW = 'loop_step_s4_review',
   STEP_S5_MERGED = 'loop_step_s5_merged',
+  STEP_S6_DEPLOYMENT_OBSERVED = 'loop_step_s6_deployment_observed',
   REVIEW_REQUESTED = 'loop_review_requested',
   MERGED = 'loop_merged',
+  DEPLOYMENT_OBSERVED = 'deployment_observed',
   RUN_BLOCKED = 'loop_run_blocked',
   RUN_FAILED = 'loop_run_failed',
 }
