@@ -1,9 +1,44 @@
 name: Dispatch Smoke Test
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Control-center base URL"
+        required: false
+        default: "https://stage.afu-9.com"
+      repo:
+        description: "GitHub repo (owner/repo)"
+        required: false
+        default: "adaefler-art/codefactory-staging-test"
+      issue_number:
+        description: "GitHub issue number"
+        required: true
+      user_id:
+        description: "User id for audit trail"
+        required: false
+        default: "smoke-test-user"
+      skip_implement:
+        description: "Skip S3 implement step"
+        required: false
+        default: "false"
 
 jobs:
-  echo:
+  v093-guardrail:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "dispatch-ok"
+      - uses: actions/checkout@v4
+      - name: Run v0.9.3 smoke guardrail
+        shell: pwsh
+        env:
+          AFU9_SMOKE_KEY: ${{ secrets.AFU9_SMOKE_KEY }}
+          AFU9_SMOKE_BASE_URL: ${{ inputs.base_url }}
+          AFU9_SMOKE_REPO: ${{ inputs.repo }}
+          AFU9_SMOKE_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          AFU9_SMOKE_USER_ID: ${{ inputs.user_id }}
+        run: |
+          if ("${{ inputs.skip_implement }}" -eq "true") {
+            ./scripts/smoke-v093-guardrail.ps1 -SkipImplement
+          } else {
+            ./scripts/smoke-v093-guardrail.ps1
+          }
