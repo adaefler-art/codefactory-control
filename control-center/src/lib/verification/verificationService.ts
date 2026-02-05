@@ -14,7 +14,7 @@
 
 import { Pool } from 'pg';
 import crypto from 'crypto';
-import { createUnifiedTimelineEvent } from '@/lib/db/unifiedTimelineEvents';
+import { logTimelineEvent } from '@/lib/db/issueTimeline';
 
 /**
  * Verification Evidence Schema
@@ -333,7 +333,7 @@ export async function storeVerdict(
       );
 
       // Log timeline event
-      await createUnifiedTimelineEvent(client, {
+      await logTimelineEvent(client, {
         issue_id: params.issueId,
         event_type: 'verification_completed',
         event_data: {
@@ -345,9 +345,6 @@ export async function storeVerdict(
           rationale: params.rationale,
           evaluationRules: params.evaluationRules,
           ...(params.failedChecks.length > 0 ? { failedChecks: params.failedChecks } : {}),
-        },
-        metadata: {
-          requestId: params.requestId,
         },
       });
     }
