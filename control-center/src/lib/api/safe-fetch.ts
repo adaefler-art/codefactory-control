@@ -3,6 +3,8 @@
  * Prevents "Unexpected JSON end" errors by checking response status before parsing
  */
 
+import { updateAuthStateFromResponse } from '../auth/auth-state';
+
 // Error messages
 const ERROR_MESSAGES = {
   JSON_PARSE_FAILED: 'Antwort konnte nicht als JSON verarbeitet werden',
@@ -28,6 +30,7 @@ function isResponseLike(value: unknown): value is Response {
 }
 
 async function parseJsonResponse<T = unknown>(response: Response): Promise<T> {
+  updateAuthStateFromResponse(response);
   const headerGet = (name: string): string | null => {
     const headers: any = (response as any)?.headers;
     if (headers && typeof headers.get === 'function') {

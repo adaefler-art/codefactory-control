@@ -6,6 +6,7 @@ import { shouldAllowUnauthenticatedGithubStatusEndpoint } from './src/lib/auth/p
 import { getEffectiveHostname } from './src/lib/http/effective-hostname';
 import { extractSmokeKeyFromEnv, normalizeSmokeKeyCandidate, smokeKeysMatchConstantTime } from './src/lib/auth/smokeKey';
 import { getActiveAllowlist, isRouteAllowed, type SmokeKeyAllowlistEntry } from './src/lib/db/smokeKeyAllowlist';
+import { AUTH_STATE_HEADER, type AuthState } from './src/lib/auth/auth-state';
 
 // Environment configuration for cookies and redirects
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -133,6 +134,11 @@ function attachRequestId(response: NextResponse, requestId: string): NextRespons
   return response;
 }
 
+function setAuthStateHeader(response: NextResponse, state: AuthState): NextResponse {
+  response.headers.set(AUTH_STATE_HEADER, state);
+  return response;
+}
+
 function clearCookie(response: NextResponse, name: string) {
   response.cookies.set(name, '', {
     httpOnly: true,
@@ -234,11 +240,14 @@ export async function middleware(request: NextRequest) {
     return response;
   };
 
-  const nextWithRequestId = () => {
+  const nextWithRequestId = (authState?: AuthState) => {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-request-id', requestId);
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set('x-request-id', requestId);
+    if (authState) {
+      response.headers.set(AUTH_STATE_HEADER, authState);
+    }
     return response;
   };
 
@@ -258,6 +267,7 @@ export async function middleware(request: NextRequest) {
         { status: 403 }
       );
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, 'forbidden');
       attachSmokeBypassHeaders(response);
       logAuthDecision({
         requestId,
@@ -269,7 +279,7 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    const response = nextWithRequestId();
+    const response = nextWithRequestId('service');
     attachSmokeBypassHeaders(response);
     logAuthDecision({
       requestId,
@@ -305,6 +315,7 @@ export async function middleware(request: NextRequest) {
 
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set('x-request-id', requestId);
+    setAuthStateHeader(response, 'smoke');
     response.headers.set('x-afu9-smoke-auth-used', '1');
     attachSmokeBypassHeaders(response);
     return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
@@ -333,6 +344,7 @@ export async function middleware(request: NextRequest) {
 
       const response = NextResponse.next({ request: { headers: requestHeaders } });
       response.headers.set('x-request-id', requestId);
+      setAuthStateHeader(response, 'smoke');
       response.headers.set('x-afu9-smoke-auth-used', '1');
       attachSmokeBypassHeaders(response);
       return maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
@@ -342,11 +354,11 @@ export async function middleware(request: NextRequest) {
   // STAGING-only ops endpoint: allow unauthenticated GET for status checks.
   // Middleware runs bundled; do not rely on runtime env vars here. Gate strictly by hostname.
   if (shouldAllowUnauthenticatedGithubStatusEndpoint({ method: request.method, pathname, hostname })) {
-    return nextWithRequestId();
+    return nextWithRequestId('public');
   }
 
   if (isPublicRoute(pathname)) {
-    const response = nextWithRequestId();
+    const response = nextWithRequestId('public');
     attachSmokeBypassHeaders(response);
     return response;
   }
@@ -377,7 +389,8 @@ export async function middleware(request: NextRequest) {
     }
     response.headers.set('cache-control', 'no-store, max-age=0');
     response.headers.set('pragma', 'no-cache');
-    return attachRequestId(response, requestId);
+    attachRequestId(response, requestId);
+    return setAuthStateHeader(response, 'refresh-required');
   };
   // (Cognito refresh tokens are typically opaque and cannot be verified in middleware.)
   if (!idToken && !accessToken && refreshToken) {
@@ -441,6 +454,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, 'unauthenticated');
       attachSmokeBypassHeaders(response);
       maybeAttachSmokeDebugHeaders(response, request, detectedStage, isStagingHost);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_missing' });
@@ -449,6 +463,7 @@ export async function middleware(request: NextRequest) {
       // UI routes: redirect to unauth page
       const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, 'unauthenticated');
       logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_missing_redirect' });
       return response;
     }
@@ -513,6 +528,7 @@ export async function middleware(request: NextRequest) {
         { status: 401 }
       );
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, refreshToken ? 'refresh-required' : 'invalid');
       attachSmokeBypassHeaders(response);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 401, reason: 'auth_invalid_or_expired' });
       return response;
@@ -520,6 +536,7 @@ export async function middleware(request: NextRequest) {
       // UI routes: if refresh cookie is present, try refresh flow; otherwise clear cookies and redirect.
       if (refreshToken) {
         const response = redirectToRefresh();
+        setAuthStateHeader(response, 'refresh-required');
         logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_invalid_refresh_redirect' });
         return response;
       }
@@ -529,6 +546,7 @@ export async function middleware(request: NextRequest) {
       clearCookie(response, AFU9_ACCESS_COOKIE);
       clearCookie(response, AFU9_REFRESH_COOKIE);
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, 'invalid');
       logAuthDecision({ requestId, route: pathname, method: request.method, status: response.status, reason: 'auth_invalid_redirect' });
       return response;
     }
@@ -578,6 +596,7 @@ export async function middleware(request: NextRequest) {
         { status: 403 }
       );
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, 'forbidden');
       attachSmokeBypassHeaders(response);
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'stage_access_denied' });
       return response;
@@ -587,6 +606,7 @@ export async function middleware(request: NextRequest) {
         status: 403,
       });
       attachRequestId(response, requestId);
+      setAuthStateHeader(response, 'forbidden');
       logAuthDecision({ requestId, route: pathname, method: request.method, status: 403, reason: 'stage_access_denied_redirect' });
       return response;
     }
@@ -615,6 +635,7 @@ export async function middleware(request: NextRequest) {
   
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('x-request-id', requestId);
+  setAuthStateHeader(response, 'authenticated');
   attachSmokeBypassHeaders(response);
 
   return response;

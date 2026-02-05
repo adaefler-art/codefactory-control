@@ -21,6 +21,7 @@
 import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { getDeploymentEnv } from '@/lib/utils/deployment-env';
+import { AUTH_STATE_HEADER } from '@/lib/auth/auth-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -51,19 +52,21 @@ export async function GET(request: NextRequest) {
   // AUTH CHECK (401-first): Verify x-afu9-sub header from middleware
   const userId = request.headers.get('x-afu9-sub');
   if (!userId || !userId.trim()) {
-    return errorResponse('Unauthorized', {
+    const response = errorResponse('Unauthorized', {
       status: 401,
       requestId,
       code: 'UNAUTHORIZED',
       details: 'Authentication required - no verified user context',
     });
+    response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
+    return response;
   }
 
   // Check admin status (fail-closed, no 403 on this read-only endpoint)
   const isAdmin = isAdminUser(userId);
   const deploymentEnv = getDeploymentEnv();
 
-  return jsonResponse(
+  const response = jsonResponse(
     {
       sub: userId,
       isAdmin,
@@ -76,4 +79,6 @@ export async function GET(request: NextRequest) {
       },
     }
   );
+  response.headers.set(AUTH_STATE_HEADER, 'authenticated');
+  return response;
 }

@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import { verifyJWT } from '../../../../lib/auth/jwt-verify';
 import { randomUUID } from 'crypto';
+import { AUTH_STATE_HEADER } from '@/lib/auth/auth-state';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
       // User is authenticated, redirect to dashboard or redirectTo param
       const redirectTo = request.nextUrl.searchParams.get('redirectTo') || '/dashboard';
       const response = NextResponse.redirect(new URL(redirectTo, request.url));
+      response.headers.set(AUTH_STATE_HEADER, 'authenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'GET', status: response.status, reason: 'already_authenticated_redirect' });
       return response;
@@ -83,6 +85,7 @@ export async function GET(request: NextRequest) {
 
   // Not authenticated, redirect to unauth page
   const response = NextResponse.redirect(AFU9_UNAUTH_REDIRECT);
+  response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
   attachRequestId(response, requestId);
   logAuthRoute({ requestId, route: '/api/auth/login', method: 'GET', status: response.status, reason: 'unauth_redirect' });
   return response;
@@ -132,6 +135,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 400, reason: 'missing_credentials' });
       return response;
@@ -151,6 +155,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 500, reason: 'cognito_misconfigured' });
       return response;
@@ -182,6 +187,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 401 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'auth_failed_no_result' });
       return response;
@@ -200,6 +206,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 401 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'auth_failed_missing_tokens' });
       return response;
@@ -223,6 +230,7 @@ export async function POST(request: NextRequest) {
         message: 'Login successful',
       });
     }
+    response.headers.set(AUTH_STATE_HEADER, 'authenticated');
 
     // Set HttpOnly cookies for auth.
     // Defaults are safe for same-origin use; optional env toggles allow cross-subdomain deployments.
@@ -274,6 +282,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 401 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'not_authorized' });
       return response;
@@ -288,6 +297,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 401 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'user_not_found' });
       return response;
@@ -302,6 +312,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 401 }
       );
+      response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
       attachRequestId(response, requestId);
       logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 401, reason: 'user_not_confirmed' });
       return response;
@@ -316,6 +327,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+    response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
     attachRequestId(response, requestId);
     logAuthRoute({ requestId, route: '/api/auth/login', method: 'POST', status: 500, reason: 'unhandled_error' });
     return response;
