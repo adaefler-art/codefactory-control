@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { setAuthState, updateAuthStateFromResponse } from '@/lib/auth/auth-state';
+import { API_ROUTES } from '@/lib/api-routes';
 
 function safeRedirectTo(value: string | null): string {
   if (!value) return '/dashboard';
@@ -20,7 +22,7 @@ export default function RefreshClient() {
 
     const run = async () => {
       try {
-        const res = await fetch('/api/auth/refresh', {
+        const res = await fetch(API_ROUTES.auth.refresh, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -31,15 +33,20 @@ export default function RefreshClient() {
           cache: 'no-store',
         });
 
+        updateAuthStateFromResponse(res);
+
         if (!res.ok) {
           setStatus('failed');
+          setAuthState('unauthenticated');
           router.replace('/login');
           return;
         }
 
+        setAuthState('authenticated');
         router.replace(redirectTo);
       } catch {
         setStatus('failed');
+        setAuthState('unauthenticated');
         router.replace('/login');
       }
     };

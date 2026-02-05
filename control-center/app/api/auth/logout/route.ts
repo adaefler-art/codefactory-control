@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { AUTH_STATE_HEADER } from '@/lib/auth/auth-state';
 
 // Environment configuration
 const AFU9_AUTH_COOKIE = process.env.AFU9_AUTH_COOKIE || 'afu9_id';
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
       message: 'Logout successful',
     });
   }
+  response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
 
   // Clear all authentication cookies
   clearCookie(response, AFU9_AUTH_COOKIE);
@@ -105,6 +107,7 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId();
   // Create redirect response
   const response = NextResponse.redirect(new URL(AFU9_UNAUTH_REDIRECT, request.url));
+  response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
 
   // Clear all authentication cookies
   clearCookie(response, AFU9_AUTH_COOKIE);

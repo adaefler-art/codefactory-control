@@ -5,6 +5,7 @@ import {
   InitiateAuthCommandInput,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { randomUUID } from 'crypto';
+import { AUTH_STATE_HEADER } from '@/lib/auth/auth-state';
 
 // Environment configuration
 const COGNITO_REGION = process.env.COGNITO_REGION || 'eu-central-1';
@@ -210,6 +211,7 @@ export async function GET(_request: NextRequest) {
     requestId,
     timestamp: new Date().toISOString(),
   }, { status: 405 });
+  response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
   response.headers.set('allow', 'POST');
   applyNoStore(response);
   applyDebugHeaders(response);
@@ -241,6 +243,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = NextResponse.json(body, { status: 403 });
+    response.headers.set(AUTH_STATE_HEADER, 'forbidden');
     applyNoStore(response);
     applyDebugHeaders(response);
     attachRequestId(response, requestId);
@@ -255,6 +258,7 @@ export async function POST(request: NextRequest) {
       requestId,
       timestamp: new Date().toISOString(),
     }, { status: 401 });
+    response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
     applyNoStore(response);
     applyDebugHeaders(response);
     attachRequestId(response, requestId);
@@ -265,6 +269,7 @@ export async function POST(request: NextRequest) {
   try {
     const tokens = await refreshTokens(refreshToken);
     const response = NextResponse.json({ message: 'Token refreshed' });
+    response.headers.set(AUTH_STATE_HEADER, 'authenticated');
     setAuthCookies(response, tokens);
     applyNoStore(response);
     applyDebugHeaders(response);
@@ -278,6 +283,7 @@ export async function POST(request: NextRequest) {
       requestId,
       timestamp: new Date().toISOString(),
     }, { status: 401 });
+    response.headers.set(AUTH_STATE_HEADER, 'unauthenticated');
     clearAuthCookies(response);
     applyNoStore(response);
     applyDebugHeaders(response);

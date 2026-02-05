@@ -85,6 +85,7 @@ export function errorResponse(
     details?: string;
     code?: string;
     timestamp?: string;
+    headers?: Record<string, string>;
   }
 ): NextResponse<ErrorResponseData> {
   const responseData: ErrorResponseData = {
@@ -107,5 +108,6 @@ export function errorResponse(
   return jsonResponse(responseData, {
     status: options?.status ?? 500,
     requestId: options?.requestId,
+    headers: options?.headers,
   });
 }

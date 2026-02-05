@@ -5,6 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import DeployStatusBadge from "./DeployStatusBadge";
 import { API_ROUTES } from "@/lib/api-routes";
+import {
+  type AuthState,
+  getAuthState,
+  setAuthState,
+  subscribeAuthState,
+  updateAuthStateFromResponse,
+} from "@/lib/auth/auth-state";
 
 type WhoamiData = {
   sub: string;
@@ -16,6 +23,7 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [whoami, setWhoami] = useState<WhoamiData | null>(null);
+  const [authState, setAuthStateValue] = useState<AuthState>(() => getAuthState());
 
   const navItems = [
     { href: "/intent", label: "INTENT" },
@@ -29,6 +37,11 @@ export default function Navigation() {
   ];
 
   useEffect(() => {
+    const unsubscribe = subscribeAuthState(setAuthStateValue);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
     const loadWhoami = async () => {
       try {
@@ -36,6 +49,7 @@ export default function Navigation() {
           credentials: 'include',
           cache: 'no-store',
         });
+        updateAuthStateFromResponse(res);
         if (!mounted) return;
         if (!res.ok) {
           setWhoami(null);
@@ -54,7 +68,49 @@ export default function Navigation() {
     };
   }, []);
 
-  const showCostControl = whoami?.isAdmin && whoami?.deploymentEnv === 'staging';
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetch(API_ROUTES.ops.whoami, {
+          credentials: 'include',
+          cache: 'no-store',
+        })
+          .then((res) => {
+            updateAuthStateFromResponse(res);
+            return res.ok ? res.json() : null;
+          })
+          .then((data) => {
+            if (data && typeof data === 'object' && 'sub' in data) {
+              setWhoami(data as WhoamiData);
+            } else if (data === null) {
+              setWhoami(null);
+            }
+          })
+          .catch(() => {
+            // Keep previous state on transient network errors.
+          });
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const showCostControl = authState === 'authenticated' && whoami?.isAdmin && whoami?.deploymentEnv === 'staging';
+  const isAuthenticated = authState === 'authenticated';
+  const authStateLabel: Record<AuthState, string> = {
+    authenticated: 'Session active',
+    unauthenticated: 'Logged out',
+    'refresh-required': 'Refresh required',
+    invalid: 'Session expired',
+    forbidden: 'Access denied',
+    public: 'Public',
+    service: 'Service',
+    smoke: 'Smoke',
+    unknown: 'Auth unknown',
+  };
+  const authStateClass = isAuthenticated
+    ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+    : 'bg-amber-900/30 text-amber-200 border-amber-700/50';
 
   const isActive = (href: string) => {
     return pathname === href;
@@ -67,10 +123,12 @@ export default function Navigation() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
       });
+      setAuthState('unauthenticated');
       // Redirect to login page
       router.push("/login");
     } catch (error) {
       console.error("Logout error:", error);
+      setAuthState('unauthenticated');
       // Redirect anyway
       router.push("/login");
     }
@@ -123,12 +181,27 @@ export default function Navigation() {
                 Cost Control
               </Link>
             )}
-            <button
-              onClick={handleLogout}
-              className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-red-900/30 hover:text-red-200 transition-colors"
+            <span
+              className={`ml-2 rounded-full border px-3 py-1 text-xs font-semibold ${authStateClass}`}
+              aria-live="polite"
             >
-              Abmelden
-            </button>
+              {authStateLabel[authState]}
+            </span>
+            {isAuthenticated ? (
+              <button
+                onClick={handleLogout}
+                className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-red-900/30 hover:text-red-200 transition-colors"
+              >
+                Abmelden
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="ml-2 px-4 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-gray-800 hover:text-white transition-colors"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       </div>

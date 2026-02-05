@@ -20,7 +20,17 @@ import {
   Afu9IssueStatus,
 } from '../../../../../src/lib/contracts/afu9Issue';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
-import { fetchIssueRowByIdentifier, normalizeIssueForApi } from '../../_shared';
+import { getRequestId } from '@/lib/api/response-helpers';
+import { ensureIssueInControl, normalizeIssueForApi } from '../../_shared';
+
+const AUTH_PATH = 'control';
+
+function buildResponse(requestId: string, status: number, body: Record<string, unknown>): NextResponse {
+  const response = NextResponse.json(body, { status });
+  response.headers.set('x-request-id', requestId);
+  response.headers.set('x-afu9-auth-path', AUTH_PATH);
+  return response;
+}
 
 /**
  * POST /api/issues/[id]/activate
@@ -39,26 +49,33 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const requestId = getRequestId(request);
   try {
     const pool = getPool();
     const { id } = await params;
 
-    const resolved = await fetchIssueRowByIdentifier(pool, id);
-    if (!resolved.ok) {
-      return NextResponse.json(resolved.body, { status: resolved.status });
+    const ensured = await ensureIssueInControl(id, requestId);
+    if (!ensured.ok) {
+      const fallbackBody = ensured.body ?? { error: 'Issue lookup failed' };
+      return buildResponse(requestId, ensured.status, {
+        ...fallbackBody,
+        requestId,
+      });
     }
 
-    const issue = resolved.row as any;
+    const issue = ensured.issue as any;
     const internalId = String(issue.id);
 
     // Invariant: Require title for activation
     if (!issue.title || issue.title.trim().length === 0) {
-      return NextResponse.json(
+      return buildResponse(
+        requestId,
+        400,
         { 
           error: 'Cannot activate issue without a title',
           details: 'Activation requires a non-empty title. Please set a title before activating.',
+          requestId,
         },
-        { status: 400 }
       );
     }
 
@@ -71,18 +88,20 @@ export async function POST(
       if (isDebugApiEnabled()) {
         responseBody.contextTrace = await buildContextTrace(request);
       }
-      return NextResponse.json(responseBody);
+      return buildResponse(requestId, 200, responseBody);
     }
 
     // E61.2: Check if another issue is already active
     const activeIssueResult = await getActiveIssue(pool);
     if (!activeIssueResult.success) {
-      return NextResponse.json(
+      return buildResponse(
+        requestId,
+        500,
         {
           error: 'Failed to check active issue',
           details: activeIssueResult.error,
+          requestId,
         },
-        { status: 500 }
       );
     }
 
@@ -90,7 +109,9 @@ export async function POST(
 
     // E61.2: Return 409 CONFLICT if another issue is already active
     if (currentActiveIssue && currentActiveIssue.id !== internalId) {
-      return NextResponse.json(
+      return buildResponse(
+        requestId,
+        409,
         {
           error: 'Another issue is already active',
           details: `Issue ${currentActiveIssue.id.substring(0, 8)} ("${currentActiveIssue.title}") is already active (SPEC_READY). Only one issue can be active at a time.`,
@@ -100,8 +121,8 @@ export async function POST(
             title: currentActiveIssue.title,
             status: currentActiveIssue.status,
           },
+          requestId,
         },
-        { status: 409 }
       );
     }
 
@@ -118,16 +139,14 @@ export async function POST(
     if (!transitionResult.success) {
       // Check for invalid transition
       if (transitionResult.error && transitionResult.error.includes('Invalid transition')) {
-        return NextResponse.json(
-          { error: transitionResult.error },
-          { status: 400 }
-        );
+        return buildResponse(requestId, 400, { error: transitionResult.error, requestId });
       }
       
-      return NextResponse.json(
-        { error: 'Failed to activate issue', details: transitionResult.error },
-        { status: 500 }
-      );
+      return buildResponse(requestId, 500, {
+        error: 'Failed to activate issue',
+        details: transitionResult.error,
+        requestId,
+      });
     }
 
     // E61.2: Update activated_at and activated_by fields (non-status fields)
@@ -137,10 +156,11 @@ export async function POST(
     });
 
     if (!activateResult.success) {
-      return NextResponse.json(
-        { error: 'Failed to set activation metadata', details: activateResult.error },
-        { status: 500 }
-      );
+      return buildResponse(requestId, 500, {
+        error: 'Failed to set activation metadata',
+        details: activateResult.error,
+        requestId,
+      });
     }
 
     const responseBody: any = {
@@ -152,15 +172,13 @@ export async function POST(
       responseBody.contextTrace = await buildContextTrace(request);
     }
 
-    return NextResponse.json(responseBody);
+    return buildResponse(requestId, 200, responseBody);
   } catch (error) {
     console.error('[API /api/issues/[id]/activate] Error activating issue:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to activate issue',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return buildResponse(requestId, 500, {
+      error: 'Failed to activate issue',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      requestId,
+    });
   }
 }
