@@ -17,6 +17,7 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   getAfu9IssueById: jest.fn(),
   getAfu9IssueByPublicId: jest.fn(),
   updateAfu9Issue: jest.fn(),
+  upsertAfu9IssueFromEngine: jest.fn(),
 }));
 
 describe('GET /api/issues/[id] - ID format support', () => {
@@ -113,7 +114,12 @@ describe('GET /api/issues/[id] - ID format support', () => {
 
     expect(res.status).toBe(404);
     const body = await res.json();
-    expect(body).toHaveProperty('error', 'Issue not found');
+    expect(body).toMatchObject({
+      errorCode: 'issue_not_found',
+      issueId: 'c300abd8-1234-5678-90ab-cdef12345678',
+      lookupStore: 'control',
+    });
+    expect(res.headers.get('x-afu9-request-id')).toBeTruthy();
   });
 
   test('returns 404 when issue not found (shortId)', async () => {
@@ -130,7 +136,46 @@ describe('GET /api/issues/[id] - ID format support', () => {
 
     expect(res.status).toBe(404);
     const body = await res.json();
-    expect(body).toHaveProperty('error', 'Issue not found');
+    expect(body).toMatchObject({
+      errorCode: 'issue_not_found',
+      issueId: 'c300abd8',
+      lookupStore: 'control',
+    });
+    expect(res.headers.get('x-afu9-request-id')).toBeTruthy();
+  });
+
+  test('falls back to engine and persists issue', async () => {
+    const { getAfu9IssueById, upsertAfu9IssueFromEngine } = require('../../src/lib/db/afu9Issues');
+    getAfu9IssueById.mockResolvedValue({ success: false, error: 'Issue not found' });
+    upsertAfu9IssueFromEngine.mockResolvedValue({ success: true, data: mockIssue });
+
+    process.env.ENGINE_BASE_URL = 'https://engine.example.com';
+    process.env.ENGINE_SERVICE_TOKEN = 'engine-token';
+
+    const fetchMock = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: mockIssue.id,
+        title: mockIssue.title,
+        status: mockIssue.status,
+        labels: [],
+      }),
+    } as any);
+
+    const req = new NextRequest(`http://localhost/api/issues/${mockIssue.id}`);
+    const res = await GET(req, {
+      params: { id: mockIssue.id },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty('id', mockIssue.id);
+    expect(upsertAfu9IssueFromEngine).toHaveBeenCalled();
+
+    fetchMock.mockRestore();
+    delete process.env.ENGINE_BASE_URL;
+    delete process.env.ENGINE_SERVICE_TOKEN;
   });
 
   test('returns structured error with requestId on unhandled error', async () => {

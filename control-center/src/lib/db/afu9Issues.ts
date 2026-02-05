@@ -162,6 +162,107 @@ export async function createAfu9Issue(
 }
 
 /**
+ * Upsert an AFU9 issue from Engine source with explicit ID
+ *
+ * Ensures Control store contains Engine issues (idempotent on id).
+ */
+export async function upsertAfu9IssueFromEngine(
+  pool: Pool,
+  issueId: string,
+  input: Afu9IssueInput
+): Promise<OperationResult> {
+  const sanitized = sanitizeAfu9IssueInput(input);
+
+  if (sanitized.status === Afu9IssueStatus.SPEC_READY) {
+    const canSetActive = await canSetIssueActive(pool, issueId);
+    if (!canSetActive.success) {
+      return {
+        success: false,
+        error: canSetActive.error,
+      };
+    }
+  }
+
+  try {
+    const params = [issueId, ...buildIssueInsertParams(sanitized)];
+    const result = await pool.query<Afu9IssueRow>(
+      `INSERT INTO afu9_issues (
+        id,
+        title, body, status, labels, priority, assignee, source,
+        handoff_state, github_issue_number, github_url, last_error, activated_at, activated_by,
+        execution_state, execution_started_at, execution_completed_at, execution_output,
+        handoff_at, handoff_error, github_repo, github_issue_last_sync_at,
+        github_status_raw, github_status_updated_at, status_source, github_mirror_status, github_sync_error,
+        source_session_id, current_draft_id, active_cr_id, github_synced_at, kpi_context, publish_batch_id, publish_request_id, canonical_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+      ON CONFLICT (id)
+      DO UPDATE SET
+        title = EXCLUDED.title,
+        body = EXCLUDED.body,
+        status = EXCLUDED.status,
+        labels = EXCLUDED.labels,
+        priority = EXCLUDED.priority,
+        assignee = EXCLUDED.assignee,
+        source = EXCLUDED.source,
+        handoff_state = EXCLUDED.handoff_state,
+        github_issue_number = EXCLUDED.github_issue_number,
+        github_url = EXCLUDED.github_url,
+        last_error = EXCLUDED.last_error,
+        activated_at = EXCLUDED.activated_at,
+        activated_by = EXCLUDED.activated_by,
+        execution_state = EXCLUDED.execution_state,
+        execution_started_at = EXCLUDED.execution_started_at,
+        execution_completed_at = EXCLUDED.execution_completed_at,
+        execution_output = EXCLUDED.execution_output,
+        handoff_at = EXCLUDED.handoff_at,
+        handoff_error = EXCLUDED.handoff_error,
+        github_repo = EXCLUDED.github_repo,
+        github_issue_last_sync_at = EXCLUDED.github_issue_last_sync_at,
+        github_status_raw = EXCLUDED.github_status_raw,
+        github_status_updated_at = EXCLUDED.github_status_updated_at,
+        status_source = EXCLUDED.status_source,
+        github_mirror_status = EXCLUDED.github_mirror_status,
+        github_sync_error = EXCLUDED.github_sync_error,
+        source_session_id = EXCLUDED.source_session_id,
+        current_draft_id = EXCLUDED.current_draft_id,
+        active_cr_id = EXCLUDED.active_cr_id,
+        github_synced_at = EXCLUDED.github_synced_at,
+        kpi_context = EXCLUDED.kpi_context,
+        publish_batch_id = EXCLUDED.publish_batch_id,
+        publish_request_id = EXCLUDED.publish_request_id,
+        canonical_id = EXCLUDED.canonical_id,
+        updated_at = NOW()
+      RETURNING *`,
+      params
+    );
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: 'No row returned from upsert',
+      };
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+    };
+  } catch (error) {
+    console.error('[afu9Issues] Upsert from engine failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      issueId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Database operation failed',
+    };
+  }
+}
+
+/**
  * Get an AFU9 issue by ID (canonical UUID)
  * 
  * @param pool - PostgreSQL connection pool

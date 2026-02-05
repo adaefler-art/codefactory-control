@@ -18,6 +18,7 @@ import {
   updateAfu9Issue,
   softDeleteAfu9Issue,
   transitionIssue,
+  upsertAfu9IssueFromEngine,
 } from '../../../../src/lib/db/afu9Issues';
 import {
   Afu9IssueStatus,
@@ -38,6 +39,132 @@ import {
 import { withApi, apiError } from '../../../../src/lib/http/withApi';
 import { normalizeLabels } from '../../../../src/lib/label-utils';
 import { getRequestId } from '@/lib/api/response-helpers';
+
+const AUTH_PATH_HEADER = 'x-afu9-auth-path';
+const REQUEST_ID_HEADER = 'x-afu9-request-id';
+
+function withControlHeaders(response: NextResponse, requestId: string): NextResponse {
+  response.headers.set('x-request-id', requestId);
+  response.headers.set(REQUEST_ID_HEADER, requestId);
+  response.headers.set(AUTH_PATH_HEADER, 'control');
+  return response;
+}
+
+function jsonWithHeaders(
+  body: Record<string, unknown>,
+  status: number,
+  requestId: string
+): NextResponse {
+  const response = NextResponse.json(body, { status });
+  return withControlHeaders(response, requestId);
+}
+
+function issueNotFoundResponse(issueId: string, requestId: string): NextResponse {
+  return jsonWithHeaders(
+    {
+      errorCode: 'issue_not_found',
+      issueId,
+      lookupStore: 'control',
+      requestId,
+    },
+    404,
+    requestId
+  );
+}
+
+function getStringField(input: Record<string, unknown>, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((entry) => typeof entry === 'string') as string[];
+  return items.length > 0 ? items : undefined;
+}
+
+function normalizeEngineBaseUrl(raw?: string | null): string | null {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed.replace(/\/$/, '');
+}
+
+async function fetchIssueFromEngine(
+  issueId: string,
+  requestId: string
+): Promise<
+  | { ok: true; issue: Record<string, unknown> | null }
+  | { ok: false; status: number; message: string }
+> {
+  const engineBaseUrl = normalizeEngineBaseUrl(
+    process.env.ENGINE_BASE_URL || process.env.ENGINE_URL
+  );
+  const engineToken = process.env.AFU9_SERVICE_TOKEN || process.env.ENGINE_SERVICE_TOKEN || '';
+
+  if (!engineBaseUrl || !engineToken) {
+    return { ok: true, issue: null };
+  }
+
+  const url = `${engineBaseUrl}/api/issues/${encodeURIComponent(issueId)}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'x-afu9-service-token': engineToken,
+      'x-request-id': requestId,
+    },
+  });
+
+  if (response.status === 404) {
+    return { ok: true, issue: null };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      message: 'Engine issue lookup failed',
+    };
+  }
+
+  try {
+    const issue = (await response.json()) as Record<string, unknown>;
+    return { ok: true, issue };
+  } catch {
+    return {
+      ok: false,
+      status: 502,
+      message: 'Engine issue lookup invalid JSON',
+    };
+  }
+}
+
+function mapEngineIssueToInput(issue: Record<string, unknown>) {
+  const title = getStringField(issue, 'title') || getStringField(issue, 'summary');
+  if (!title) return null;
+
+  const statusValue = getStringField(issue, 'status');
+  const priorityValue = getStringField(issue, 'priority');
+
+  return {
+    title,
+    body: getStringField(issue, 'body') ?? null,
+    labels: toStringArray(issue.labels),
+    priority: priorityValue && isValidPriority(priorityValue) ? priorityValue : null,
+    assignee: getStringField(issue, 'assignee') ?? null,
+    status: statusValue && isValidStatus(statusValue) ? statusValue : Afu9IssueStatus.CREATED,
+    canonical_id: getStringField(issue, 'canonicalId') || getStringField(issue, 'canonical_id') || null,
+    github_issue_number:
+      typeof issue.githubIssueNumber === 'number'
+        ? issue.githubIssueNumber
+        : typeof issue.github_issue_number === 'number'
+          ? issue.github_issue_number
+          : null,
+    github_url: getStringField(issue, 'githubUrl') || getStringField(issue, 'github_url') || null,
+    source: 'engine',
+  };
+}
 
 /**
  * GET /api/issues/[id]
@@ -106,14 +233,54 @@ export const GET = withApi(async (
 
   const resolved = await fetchIssueRowByIdentifier(pool, id);
   if (!resolved.ok) {
-    return NextResponse.json(resolved.body, { status: resolved.status });
+    if (resolved.status === 404) {
+      const engineLookup = await fetchIssueFromEngine(id, requestId);
+      if (engineLookup.ok && engineLookup.issue) {
+        const mappedInput = mapEngineIssueToInput(engineLookup.issue);
+        if (mappedInput) {
+          const upsertResult = await upsertAfu9IssueFromEngine(pool, id, mappedInput);
+          if (upsertResult.success && upsertResult.data) {
+            const normalizedIssue = normalizeIssueForApi(upsertResult.data);
+            const responseBody: Record<string, unknown> = normalizedIssue;
+            if (isDebugApiEnabled()) {
+              responseBody.contextTrace = await buildContextTrace(request);
+            }
+            return jsonWithHeaders(responseBody, 200, requestId);
+          }
+        }
+      }
+
+      if (!engineLookup.ok) {
+        return jsonWithHeaders(
+          {
+            errorCode: 'engine_lookup_failed',
+            issueId: id,
+            lookupStore: 'engine',
+            requestId,
+          },
+          502,
+          requestId
+        );
+      }
+
+      return issueNotFoundResponse(id, requestId);
+    }
+
+    return jsonWithHeaders(
+      {
+        ...resolved.body,
+        requestId,
+      },
+      resolved.status,
+      requestId
+    );
   }
 
   const responseBody: any = normalizeIssueForApi(resolved.row);
   if (isDebugApiEnabled()) {
     responseBody.contextTrace = await buildContextTrace(request);
   }
-  return NextResponse.json(responseBody);
+  return jsonWithHeaders(responseBody, 200, requestId);
 });
 
 /**
