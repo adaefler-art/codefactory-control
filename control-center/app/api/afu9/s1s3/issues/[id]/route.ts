@@ -23,7 +23,7 @@ import {
 } from '@/lib/db/s1s3Flow';
 import { normalizeAcceptanceCriteria, normalizeEvidenceRefs } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
-import { parseIssueId } from '@/app/api/issues/_shared';
+import { parseIssueId } from '@/lib/contracts/ids';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
