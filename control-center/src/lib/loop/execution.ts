@@ -18,6 +18,7 @@ import { executeS1 } from './stepExecutors/s1-pick-issue';
 import { executeS2 } from './stepExecutors/s2-spec-gate';
 import { executeS4 } from './stepExecutors/s4-review-gate';
 import { executeS5 } from './stepExecutors/s5-merge';
+import { executeS6 } from './stepExecutors/s6-deployment-observe';
 import { getLoopEventStore, LoopEventType } from './eventStore';
 
 /**
@@ -287,6 +288,15 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
       } else if (stepResolution.step === LoopStep.S5_MERGE) {
         stepNumber = 5;
         stepResult = await executeS5(pool, {
+          issueId,
+          runId: run.id,
+          requestId,
+          actor,
+          mode,
+        });
+      } else if (stepResolution.step === LoopStep.S6_DEPLOYMENT_OBSERVE) {
+        stepNumber = 6;
+        stepResult = await executeS6(pool, {
           issueId,
           runId: run.id,
           requestId,
