@@ -13,7 +13,12 @@ describe('repo-verify route registry contract', () => {
       },
     ];
 
-    const calls = [];
+    const calls: Array<{
+      filePath: string;
+      lineNumber: number;
+      apiPath: string;
+      rawCall: string;
+    }> = [];
     const registryPaths = ['/api/alpha'];
 
     const unreferenced = computeUnreferencedRoutes(routes, calls, registryPaths);
@@ -29,7 +34,12 @@ describe('repo-verify route registry contract', () => {
       },
     ];
 
-    const calls = [];
+    const calls: Array<{
+      filePath: string;
+      lineNumber: number;
+      apiPath: string;
+      rawCall: string;
+    }> = [];
     const registryPaths: string[] = [];
 
     const unreferenced = computeUnreferencedRoutes(routes, calls, registryPaths);
@@ -40,7 +50,12 @@ describe('repo-verify route registry contract', () => {
 
   test('reports orphaned registry entries deterministically', () => {
     const routes: Array<{ filePath: string; apiPath: string }> = [];
-    const calls = [];
+    const calls: Array<{
+      filePath: string;
+      lineNumber: number;
+      apiPath: string;
+      rawCall: string;
+    }> = [];
     const registryPaths = ['/api/missing', '/api/alpha'];
 
     const report = computeCleanupReport(routes, calls, registryPaths);
