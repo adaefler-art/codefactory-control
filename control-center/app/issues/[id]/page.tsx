@@ -92,6 +92,28 @@ interface ActivityEvent {
   created_by: string | null;
 }
 
+interface LoopNextStepResponse {
+  schemaVersion: string;
+  requestId: string;
+  issueId: string;
+  runId: string;
+  loopStatus: 'active' | 'completed' | 'failed' | 'paused' | 'blocked';
+  message?: string;
+  stepExecuted?: {
+    stepNumber: number;
+    stepType: string;
+    status: string;
+    startedAt: string;
+    completedAt?: string;
+    durationMs?: number;
+  };
+  nextStep?: {
+    stepNumber: number;
+    stepType: string;
+    estimatedDurationMs?: number;
+  };
+}
+
 export default function IssueDetailPage({
   params,
 }: {
@@ -151,6 +173,25 @@ export default function IssueDetailPage({
   const [isActivating, setIsActivating] = useState(false);
   const [isHandingOff, setIsHandingOff] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [loopActionMessage, setLoopActionMessage] = useState<string | null>(null);
+  const [loopActionError, setLoopActionError] = useState<string | null>(null);
+  const [loopActionResult, setLoopActionResult] = useState<LoopNextStepResponse | null>(null);
+  const [loopIsRunning, setLoopIsRunning] = useState(false);
+
+  const loopSteps = useMemo(
+    () => [
+      { key: 'S1', label: 'S1 Pick Issue', detail: 'Link GitHub issue' },
+      { key: 'S2', label: 'S2 Spec Ready', detail: 'Persist acceptance criteria' },
+      { key: 'S3', label: 'S3 Implement Prep', detail: 'Prepare implementation' },
+      { key: 'S4', label: 'S4 Review Gate', detail: 'Review checks and approvals' },
+      { key: 'S5', label: 'S5 Merge', detail: 'Merge PR to main' },
+      { key: 'S6', label: 'S6 Deployment Observe', detail: 'Observe deployment signals' },
+      { key: 'S7', label: 'S7 Verify Gate', detail: 'Verify green verdict' },
+      { key: 'S8', label: 'S8 Close', detail: 'Close verified issue' },
+      { key: 'S9', label: 'S9 Remediate', detail: 'Move to HOLD with reason' },
+    ],
+    []
+  );
 
   useEffect(() => {
     // Fetch gate: never fetch if the route param is missing/undefined.
@@ -259,6 +300,33 @@ export default function IssueDetailPage({
     } catch (err) {
       console.error("Error checking active issue:", err);
       return null;
+    }
+  };
+
+  const handleRunNextStep = async (mode: 'execute' | 'dryRun') => {
+    if (!hasId) return;
+    setLoopIsRunning(true);
+    setLoopActionError(null);
+    setLoopActionMessage(null);
+
+    try {
+      const response = await fetch(API_ROUTES.loop.runNextStep(id), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mode }),
+      });
+
+      const data = await safeFetch<LoopNextStepResponse>(response);
+      setLoopActionResult(data);
+      setLoopActionMessage(data.message || `Loop step ${mode} completed`);
+    } catch (err) {
+      console.error('[Loop] Failed to run next step:', err);
+      setLoopActionError(formatErrorMessage(err));
+    } finally {
+      setLoopIsRunning(false);
     }
   };
 
@@ -1205,6 +1273,79 @@ export default function IssueDetailPage({
 
         {/* Runs Section */}
         <RunsSection issueId={id} />
+
+        {/* Loop Actions */}
+        <div className="mt-6 bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-gray-800/30 border-b border-gray-800">
+            <h3 className="text-lg font-semibold text-purple-400">Loop Actions</h3>
+            <p className="text-sm text-gray-400 mt-1">S1-S9 workflow control and visibility</p>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => handleRunNextStep('execute')}
+                disabled={loopIsRunning}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium disabled:opacity-60"
+              >
+                {loopIsRunning ? 'Running...' : 'Run Next Step'}
+              </button>
+              <button
+                onClick={() => handleRunNextStep('dryRun')}
+                disabled={loopIsRunning}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md text-sm font-medium disabled:opacity-60"
+              >
+                Dry Run Next Step
+              </button>
+            </div>
+
+            {loopActionMessage && (
+              <div className="bg-emerald-900/20 border border-emerald-700 rounded-lg p-3 text-sm text-emerald-200">
+                {loopActionMessage}
+              </div>
+            )}
+
+            {loopActionError && (
+              <div className="bg-red-900/20 border border-red-700 rounded-lg p-3 text-sm text-red-200">
+                {loopActionError}
+              </div>
+            )}
+
+            {loopActionResult && (
+              <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4 text-sm text-gray-200">
+                <div className="flex flex-wrap gap-3">
+                  <span>Run: {loopActionResult.runId}</span>
+                  <span>Status: {loopActionResult.loopStatus}</span>
+                  <span>Request: {loopActionResult.requestId}</span>
+                </div>
+                {loopActionResult.stepExecuted && (
+                  <div className="mt-2 text-xs text-gray-300">
+                    Step {loopActionResult.stepExecuted.stepNumber} ({loopActionResult.stepExecuted.stepType}) completed
+                  </div>
+                )}
+                {loopActionResult.nextStep && (
+                  <div className="mt-1 text-xs text-gray-400">
+                    Next step: {loopActionResult.nextStep.stepNumber} ({loopActionResult.nextStep.stepType})
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid gap-2 md:grid-cols-2">
+              {loopSteps.map((step) => (
+                <div
+                  key={step.key}
+                  className="flex items-start justify-between gap-3 px-3 py-2 bg-gray-800/40 border border-gray-700 rounded-md"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-gray-200">{step.label}</div>
+                    <div className="text-xs text-gray-400">{step.detail}</div>
+                  </div>
+                  <div className="text-xs text-gray-500">Visible</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* State Flow Viewer - E85.3 */}
         <div className="mt-6">

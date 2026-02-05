@@ -25,8 +25,10 @@ import {
 } from '@/lib/loop/schemas';
 import { runNextStep } from '@/lib/loop/execution';
 import { LockConflictError } from '@/lib/loop/lock';
+import { ensureIssueInControl } from '../../../../issues/_shared';
 
 export const dynamic = 'force-dynamic';
+const AUTH_PATH = 'control';
 
 /**
  * Check if user is authorized (based on AFU9_ADMIN_SUBS env var)
@@ -47,6 +49,7 @@ export async function POST(
   { params }: { params: Promise<{ issueId: string }> }
 ) {
   const requestId = getRequestId(request);
+  const responseHeaders = { 'x-request-id': requestId, 'x-afu9-auth-path': AUTH_PATH };
   
   try {
     // Authentication check
@@ -62,7 +65,7 @@ export async function POST(
         errorResponse,
         { 
           status: getHttpStatusForErrorCode('UNAUTHORIZED'),
-          headers: { 'x-request-id': requestId }
+          headers: responseHeaders,
         }
       );
     }
@@ -80,10 +83,30 @@ export async function POST(
         errorResponse,
         { 
           status: getHttpStatusForErrorCode('INVALID_REQUEST'),
-          headers: { 'x-request-id': requestId }
+          headers: responseHeaders,
         }
       );
     }
+
+    const ensured = await ensureIssueInControl(issueId, requestId);
+    if (!ensured.ok) {
+      const errorCode = ensured.status === 404 ? 'ISSUE_NOT_FOUND' : 'INTERNAL_ERROR';
+      const errorResponse: LoopErrorResponse = createLoopError(
+        requestId,
+        errorCode,
+        errorCode === 'ISSUE_NOT_FOUND' ? 'Issue not found' : 'Issue lookup failed',
+        ensured.body
+      );
+      return NextResponse.json(
+        errorResponse,
+        {
+          status: getHttpStatusForErrorCode(errorCode),
+          headers: responseHeaders,
+        }
+      );
+    }
+
+    const resolvedIssueId = typeof ensured.issue?.id === 'string' ? ensured.issue.id : issueId;
     
     // Parse and validate request body
     let requestBody = {};
@@ -128,7 +151,7 @@ export async function POST(
         errorResponse,
         { 
           status: getHttpStatusForErrorCode('INVALID_REQUEST'),
-          headers: { 'x-request-id': requestId }
+          headers: responseHeaders,
         }
       );
     }
@@ -138,7 +161,7 @@ export async function POST(
     
     // Execute the next step via the single function call
     const result: RunNextStepResponse = await runNextStep({
-      issueId,
+      issueId: resolvedIssueId,
       mode,
       actor,
       requestId,
@@ -149,7 +172,7 @@ export async function POST(
       result,
       {
         status: 200,
-        headers: { 'x-request-id': requestId }
+        headers: responseHeaders,
       }
     );
     
@@ -173,7 +196,7 @@ export async function POST(
         errorResponse,
         { 
           status: getHttpStatusForErrorCode('LOOP_CONFLICT'),
-          headers: { 'x-request-id': requestId }
+          headers: responseHeaders,
         }
       );
     }
@@ -205,7 +228,7 @@ export async function POST(
       errorResponse,
       { 
         status: getHttpStatusForErrorCode(errorCode),
-        headers: { 'x-request-id': requestId }
+        headers: responseHeaders,
       }
     );
   }

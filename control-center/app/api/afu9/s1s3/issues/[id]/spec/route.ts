@@ -32,6 +32,7 @@ import {
   createS1S3RunStep,
   updateS1S3RunStatus,
   updateS1S3IssueSpec,
+  upsertS1S3Issue,
 } from '@/lib/db/s1s3Flow';
 import {
   S1S3IssueStatus,
@@ -40,10 +41,52 @@ import {
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { ensureIssueInControl } from '../../../../../issues/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+const AUTH_PATH = 'control';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHORT_HEX_REGEX = /^[0-9a-f]{8}$/i;
+
+function getStringField(record: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function getNumberField(record: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function deriveRepoFullName(issue: Record<string, unknown>): string | null {
+  const repoField = getStringField(issue, 'github_repo', 'githubRepo');
+  if (repoField && repoField.includes('/')) {
+    return repoField;
+  }
+
+  const url = getStringField(issue, 'github_url', 'githubUrl');
+  if (!url) return null;
+
+  const match = url.match(/github\.com\/([^/]+\/[^/]+)(?:\/|$)/i);
+  return match?.[1] ?? null;
+}
+
+function shouldCheckControlStore(issueId: string): boolean {
+  return UUID_REGEX.test(issueId) || SHORT_HEX_REGEX.test(issueId);
+}
 
 interface RouteContext {
   params: Promise<{
@@ -58,6 +101,7 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const pool = getPool();
+  const responseHeaders = { 'x-afu9-auth-path': AUTH_PATH };
 
   try {
     const { id } = await context.params;
@@ -73,6 +117,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 400,
         requestId,
         details: 'acceptanceCriteria must be a non-empty array of strings',
+        headers: responseHeaders,
       });
     }
 
@@ -96,6 +141,55 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (!issue) {
+      if (shouldCheckControlStore(issueId)) {
+        const ensured = await ensureIssueInControl(issueId, requestId);
+        if (ensured.ok) {
+          const controlIssue = ensured.issue;
+          const repoFullName = deriveRepoFullName(controlIssue);
+          const issueNumber = getNumberField(controlIssue, 'github_issue_number', 'githubIssueNumber');
+          const githubUrl = getStringField(controlIssue, 'github_url', 'githubUrl');
+
+          if (!repoFullName || !issueNumber || !githubUrl) {
+            return errorResponse('Issue missing GitHub metadata for spec', {
+              status: 409,
+              requestId,
+              details: 'github_repo/github_url and github_issue_number are required to seed S1S3 issue',
+              headers: responseHeaders,
+            });
+          }
+
+          const seedResult = await upsertS1S3Issue(pool, {
+            repo_full_name: repoFullName,
+            github_issue_number: issueNumber,
+            github_issue_url: githubUrl,
+            owner: getStringField(controlIssue, 'assignee') || 'afu9',
+            canonical_id: getStringField(controlIssue, 'canonical_id', 'canonicalId') || undefined,
+            status: S1S3IssueStatus.CREATED,
+          });
+
+          if (!seedResult.success || !seedResult.data) {
+            return errorResponse('Failed to seed S1S3 issue', {
+              status: 500,
+              requestId,
+              details: seedResult.error,
+              headers: responseHeaders,
+            });
+          }
+
+          issue = seedResult.data;
+          foundBy = 'seeded';
+        } else if (ensured.status !== 404) {
+          return errorResponse('Control lookup failed', {
+            status: ensured.status,
+            requestId,
+            details: ensured.body?.errorCode ? String(ensured.body.errorCode) : 'Control lookup failed',
+            headers: responseHeaders,
+          });
+        }
+      }
+    }
+
+    if (!issue) {
       const pathMatch = request.nextUrl.pathname.match(/\/issues\/([^/]+)\/spec$/);
       const pathIssueId = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
       console.warn('[S2] Spec ready issue lookup failed:', {
@@ -109,6 +203,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 404,
         requestId,
         details: issueResult.error,
+        headers: responseHeaders,
       });
     }
 
@@ -124,6 +219,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 400,
         requestId,
         details: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
+        headers: responseHeaders,
       });
     }
 
@@ -141,6 +237,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         requestId,
         details: runResult.error,
+        headers: responseHeaders,
       });
     }
 
@@ -172,6 +269,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         requestId,
         details: updateResult.error,
+        headers: responseHeaders,
       });
     }
 
@@ -205,6 +303,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         requestId,
         details: stepResult.error,
+        headers: responseHeaders,
       });
     }
 
@@ -225,6 +324,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
       {
         requestId,
+        headers: responseHeaders,
       }
     );
   } catch (error) {
@@ -233,6 +333,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       status: 500,
       requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
+      headers: responseHeaders,
     });
   }
 }
