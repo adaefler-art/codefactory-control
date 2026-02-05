@@ -315,19 +315,31 @@ export async function runNextStep(params: RunNextStepParams): Promise<RunNextSte
           mode,
         });
       } else if (stepResolution.step === LoopStep.S9_REMEDIATE) {
-        stepNumber = 9;
-        // For S9, we need remediation reason - use a default for now
-        // In production, this would come from the request or context
-        stepResult = await executeS9Remediate(pool, {
+        // S9 (Remediate) requires explicit remediation reason from caller
+        // This step is not executed automatically via run-next-step
+        // It must be invoked via a dedicated API endpoint (e.g., POST /api/loop/issues/[id]/remediate)
+        // with explicit remediation parameters
+        const completedAt = new Date();
+        const durationMs = completedAt.getTime() - startedAt.getTime();
+        
+        await runStore.updateRunStatus(run.id, {
+          status: 'completed',
+          completedAt,
+          durationMs,
+          metadata: {
+            message: `S9 (Remediate) requires explicit invocation with remediation reason. Use dedicated remediation API endpoint.`,
+            step: LoopStep.S9_REMEDIATE,
+          },
+        });
+        
+        response = {
+          schemaVersion: LOOP_SCHEMA_VERSION,
+          requestId,
           issueId,
           runId: run.id,
-          requestId,
-          actor,
-          mode,
-        }, {
-          reason: 'Manual remediation request',
-          failedStep: 'N/A',
-        });
+          loopStatus: 'blocked',
+          message: `S9 (Remediate) requires explicit remediation reason. Use dedicated API: POST /api/loop/issues/${issueId}/remediate`,
+        };
       } else {
         // Step not yet implemented
         const completedAt = new Date();

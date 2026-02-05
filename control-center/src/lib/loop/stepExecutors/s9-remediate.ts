@@ -50,20 +50,29 @@ export interface RemediationOptions {
 
 /**
  * Check if a state allows transition to HOLD
+ * 
+ * Note: Includes states from afu9_issues constraint that are not in IssueState enum
+ * These are intermediate states in the issue lifecycle
  */
 function canTransitionToHold(status: string): boolean {
-  const allowedStates = [
+  // Core IssueState enum values that allow HOLD
+  const coreStates = [
     IssueState.CREATED,
     IssueState.SPEC_READY,
     IssueState.IMPLEMENTING_PREP,
     IssueState.REVIEW_READY,
     IssueState.DONE,
+  ];
+  
+  // Additional states from afu9_issues constraint (not in IssueState enum)
+  // These exist in the database schema but are not part of the loop state machine
+  const extendedStates = [
     'DRAFT_READY',
     'VERSION_COMMITTED',
     'CR_BOUND',
   ];
   
-  return allowedStates.includes(status as IssueState);
+  return coreStates.includes(status as IssueState) || extendedStates.includes(status);
 }
 
 /**

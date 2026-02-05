@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS issue_closures (
   issue_id UUID NOT NULL REFERENCES afu9_issues(id) ON DELETE CASCADE,
   run_id UUID NOT NULL,
   closed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  verification_verdict_id UUID REFERENCES verification_verdicts(id) ON DELETE SET NULL,
+  verification_verdict_id UUID REFERENCES verification_verdicts(id) ON DELETE RESTRICT,
   closure_reason TEXT NOT NULL DEFAULT 'VERIFIED_SUCCESS',
   
   -- Immutability: One closure per issue (prevents re-closure)
