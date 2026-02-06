@@ -50,7 +50,8 @@ COMMENT ON TABLE navigation_items IS
 -- ============================================================================
 -- Seed default navigation items
 -- ============================================================================
--- Insert default navigation items for all roles
+-- Insert default navigation items for all roles (wildcard '*')
+-- These items are visible to all users regardless of role
 INSERT INTO navigation_items (role, href, label, position, enabled) VALUES
   ('*', '/intent', 'INTENT', 0, true),
   ('*', '/timeline', 'Timeline', 1, true),
@@ -61,14 +62,9 @@ INSERT INTO navigation_items (role, href, label, position, enabled) VALUES
   ('*', '/settings', 'Settings', 6, true)
 ON CONFLICT DO NOTHING;
 
--- Admin-specific navigation items
+-- Admin-specific navigation items (role = 'admin')
+-- These are additional items only visible to admins
+-- The application layer merges these with wildcard items when displaying navigation
 INSERT INTO navigation_items (role, href, label, position, enabled) VALUES
-  ('admin', '/intent', 'INTENT', 0, true),
-  ('admin', '/timeline', 'Timeline', 1, true),
-  ('admin', '/issues', 'Issues', 2, true),
-  ('admin', '/incidents', 'Incidents', 3, true),
-  ('admin', '/lawbook', 'Lawbook', 4, true),
-  ('admin', '/operate', 'Operate', 5, true),
-  ('admin', '/admin/lawbook', 'Admin', 6, true),
-  ('admin', '/settings', 'Settings', 7, true)
+  ('admin', '/admin/lawbook', 'Admin', 7, true)
 ON CONFLICT DO NOTHING;
