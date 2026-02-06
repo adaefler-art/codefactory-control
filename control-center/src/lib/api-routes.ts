@@ -265,6 +265,10 @@ export const API_ROUTES = {
     smokeKey: {
       allowlist: '/api/admin/smoke-key/allowlist',
     },
+    navigation: {
+      get: (role: string) => `/api/admin/navigation/${role}`,
+      update: (role: string) => `/api/admin/navigation/${role}`,
+    },
   },
 
   // Drift
