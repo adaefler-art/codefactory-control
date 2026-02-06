@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { getRequestId as extractRequestId } from '../api/response-helpers';
+import { getRequestId as extractRequestId, getRouteHeaderValue } from '../api/response-helpers';
 
 /**
  * Structured API error response
@@ -100,6 +100,8 @@ export function withApi<T = any>(
     
     const logger = options?.logger ?? defaultLogger;
 
+    const routeHeaderValue = getRouteHeaderValue(request);
+
     try {
       // Execute the handler
       const response = await handler(request, context);
@@ -107,6 +109,14 @@ export function withApi<T = any>(
       // Ensure x-request-id header is set on the response
       if (!response.headers.has('x-request-id')) {
         response.headers.set('x-request-id', requestId);
+      }
+
+      if (!response.headers.has('x-afu9-handler')) {
+        response.headers.set('x-afu9-handler', 'control');
+      }
+
+      if (!response.headers.has('x-afu9-route')) {
+        response.headers.set('x-afu9-route', routeHeaderValue);
       }
       
       return response;
@@ -143,6 +153,8 @@ export function withApi<T = any>(
       // Return structured JSON error with request-id header
       const errorResponse = NextResponse.json<ApiErrorResponse>(baseError, { status: 500 });
       errorResponse.headers.set('x-request-id', requestId);
+      errorResponse.headers.set('x-afu9-handler', 'control');
+      errorResponse.headers.set('x-afu9-route', routeHeaderValue);
       return errorResponse;
     }
   };

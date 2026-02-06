@@ -40,7 +40,7 @@ import {
   S1S3RunStatus,
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
-import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { parseIssueId } from '@/lib/contracts/ids';
 
@@ -96,7 +96,8 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const pool = getPool();
-  const responseHeaders = getControlResponseHeaders(requestId);
+  const routeHeaderValue = getRouteHeaderValue(request);
+  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
 
   try {
     const { id } = await context.params;
@@ -195,12 +196,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
         foundBy,
       });
 
-      return errorResponse('Issue not found', {
-        status: 404,
-        requestId,
-        details: issueResult.error,
-        headers: responseHeaders,
-      });
+      return jsonResponse(
+        {
+          errorCode: 'issue_not_found',
+          issueId,
+          requestId,
+          lookupStore: 'control',
+        },
+        {
+          status: 404,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
 
     console.log('[S2] Spec ready issue resolved:', {

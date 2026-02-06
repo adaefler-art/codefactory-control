@@ -10,6 +10,11 @@ import { randomUUID } from 'crypto';
 
 type HeadersLike = { get(name: string): string | null | undefined };
 type RequestLike = { headers?: HeadersLike };
+type RouteLikeRequest = {
+  method?: string;
+  nextUrl?: { pathname?: string } | null;
+  url?: string;
+};
 
 /**
  * Extract or generate request ID from the request
@@ -33,6 +38,24 @@ export function getRequestId(request?: RequestLike): string {
 export function withRequestId(response: NextResponse, requestId: string): NextResponse {
   response.headers.set('x-request-id', requestId);
   return response;
+}
+
+/**
+ * Build a stable route header value even when nextUrl is unavailable.
+ */
+export function getRouteHeaderValue(request: RouteLikeRequest): string {
+  const method = request?.method || 'GET';
+  let pathname = request?.nextUrl?.pathname;
+
+  if (!pathname && request?.url) {
+    try {
+      pathname = new URL(request.url).pathname;
+    } catch {
+      pathname = undefined;
+    }
+  }
+
+  return `${method} ${pathname || 'unknown'}`;
 }
 
 /**
