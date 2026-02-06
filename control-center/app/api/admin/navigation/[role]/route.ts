@@ -10,6 +10,7 @@
 
 import { NextRequest } from 'next/server';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getPool } from '@/lib/db';
 import {
   getNavigationItemsByRole,
   updateNavigationItems,
@@ -92,7 +93,8 @@ export async function GET(
   }
 
   try {
-    const items = await getNavigationItemsByRole(role);
+    const pool = getPool();
+    const items = await getNavigationItemsByRole(pool, role);
 
     return jsonResponse(
       {
@@ -214,7 +216,8 @@ export async function PUT(
   }
 
   try {
-    const updatedItems = await updateNavigationItems(role, items as NavigationItemInput[]);
+    const pool = getPool();
+    const updatedItems = await updateNavigationItems(pool, role, items as NavigationItemInput[]);
 
     return jsonResponse(
       {

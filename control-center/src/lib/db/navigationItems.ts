@@ -3,7 +3,7 @@
  * V09-I01: Navigation Management
  */
 
-import { createPgClient } from './client';
+import { Pool } from 'pg';
 
 export interface NavigationItem {
   id: string;
@@ -30,21 +30,17 @@ export interface NavigationItemInput {
  * Returns items for the role + items for all roles (*)
  */
 export async function getNavigationItems(
+  pool: Pool,
   role: 'admin' | 'user' | 'guest'
 ): Promise<NavigationItem[]> {
-  const client = await createPgClient();
-  try {
-    const result = await client.query<NavigationItem>(
-      `SELECT id, role, href, label, position, enabled, icon, created_at, updated_at
-       FROM navigation_items
-       WHERE (role = $1 OR role = '*') AND enabled = true
-       ORDER BY position ASC`,
-      [role]
-    );
-    return result.rows;
-  } finally {
-    await client.end();
-  }
+  const result = await pool.query<NavigationItem>(
+    `SELECT id, role, href, label, position, enabled, icon, created_at, updated_at
+     FROM navigation_items
+     WHERE (role = $1 OR role = '*') AND enabled = true
+     ORDER BY position ASC`,
+    [role]
+  );
+  return result.rows;
 }
 
 /**
@@ -52,21 +48,17 @@ export async function getNavigationItems(
  * Returns only items for the specified role (not wildcard items)
  */
 export async function getNavigationItemsByRole(
+  pool: Pool,
   role: 'admin' | 'user' | 'guest' | '*'
 ): Promise<NavigationItem[]> {
-  const client = await createPgClient();
-  try {
-    const result = await client.query<NavigationItem>(
-      `SELECT id, role, href, label, position, enabled, icon, created_at, updated_at
-       FROM navigation_items
-       WHERE role = $1
-       ORDER BY position ASC`,
-      [role]
-    );
-    return result.rows;
-  } finally {
-    await client.end();
-  }
+  const result = await pool.query<NavigationItem>(
+    `SELECT id, role, href, label, position, enabled, icon, created_at, updated_at
+     FROM navigation_items
+     WHERE role = $1
+     ORDER BY position ASC`,
+    [role]
+  );
+  return result.rows;
 }
 
 /**
@@ -74,15 +66,15 @@ export async function getNavigationItemsByRole(
  * Replaces all items for the role with the provided items
  */
 export async function updateNavigationItems(
+  pool: Pool,
   role: 'admin' | 'user' | 'guest' | '*',
   items: NavigationItemInput[]
 ): Promise<NavigationItem[]> {
-  const client = await createPgClient();
-  try {
-    await client.query('BEGIN');
+  await pool.query('BEGIN');
 
+  try {
     // Delete existing items for this role
-    await client.query(
+    await pool.query(
       'DELETE FROM navigation_items WHERE role = $1',
       [role]
     );
@@ -90,7 +82,7 @@ export async function updateNavigationItems(
     // Insert new items
     const insertedItems: NavigationItem[] = [];
     for (const item of items) {
-      const result = await client.query<NavigationItem>(
+      const result = await pool.query<NavigationItem>(
         `INSERT INTO navigation_items (role, href, label, position, enabled, icon)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, role, href, label, position, enabled, icon, created_at, updated_at`,
@@ -99,13 +91,11 @@ export async function updateNavigationItems(
       insertedItems.push(result.rows[0]);
     }
 
-    await client.query('COMMIT');
+    await pool.query('COMMIT');
     return insertedItems;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await pool.query('ROLLBACK');
     throw error;
-  } finally {
-    await client.end();
   }
 }
 
@@ -113,34 +103,25 @@ export async function updateNavigationItems(
  * Create a single navigation item
  */
 export async function createNavigationItem(
+  pool: Pool,
   role: 'admin' | 'user' | 'guest' | '*',
   item: NavigationItemInput
 ): Promise<NavigationItem> {
-  const client = await createPgClient();
-  try {
-    const result = await client.query<NavigationItem>(
-      `INSERT INTO navigation_items (role, href, label, position, enabled, icon)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, role, href, label, position, enabled, icon, created_at, updated_at`,
-      [role, item.href, item.label, item.position, item.enabled ?? true, item.icon ?? null]
-    );
-    return result.rows[0];
-  } finally {
-    await client.end();
-  }
+  const result = await pool.query<NavigationItem>(
+    `INSERT INTO navigation_items (role, href, label, position, enabled, icon)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, role, href, label, position, enabled, icon, created_at, updated_at`,
+    [role, item.href, item.label, item.position, item.enabled ?? true, item.icon ?? null]
+  );
+  return result.rows[0];
 }
 
 /**
  * Delete a navigation item by ID
  */
-export async function deleteNavigationItem(id: string): Promise<void> {
-  const client = await createPgClient();
-  try {
-    await client.query(
-      'DELETE FROM navigation_items WHERE id = $1',
-      [id]
-    );
-  } finally {
-    await client.end();
-  }
+export async function deleteNavigationItem(pool: Pool, id: string): Promise<void> {
+  await pool.query(
+    'DELETE FROM navigation_items WHERE id = $1',
+    [id]
+  );
 }
