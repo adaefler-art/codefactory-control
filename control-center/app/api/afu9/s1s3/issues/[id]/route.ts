@@ -25,6 +25,7 @@ import { normalizeAcceptanceCriteria, normalizeEvidenceRefs } from '@/lib/contra
 import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { parseIssueId } from '@/lib/contracts/ids';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../issues/_shared';
+import { buildAfu9ScopeHeaders } from '../../../s1s9/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,13 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const routeHeaderValue = getRouteHeaderValue(request);
-  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
+  const responseHeaders = {
+    ...getControlResponseHeaders(requestId, routeHeaderValue),
+    ...buildAfu9ScopeHeaders({
+      requestedScope: 's1s3',
+      resolvedScope: 's1s3',
+    }),
+  };
   const pool = getPool();
 
   try {
@@ -83,7 +90,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
         {
           status: 404,
           requestId,
-          headers: responseHeaders,
+          headers: {
+            ...responseHeaders,
+            'x-afu9-error-code': 'issue_not_found',
+          },
         }
       );
     }

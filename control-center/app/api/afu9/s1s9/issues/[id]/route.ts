@@ -10,10 +10,14 @@ interface RouteContext {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+	const { id } = await context.params;
+
 	return withAfu9ScopeFallback({
 		primary: () => getS1S9Issue(request, context),
 		fallback: () => getS1S3Issue(request, context),
 		primaryScope: 's1s9',
 		fallbackScope: 's1s3',
+		requestedScope: 's1s9',
+		issueId: id,
 	});
 }

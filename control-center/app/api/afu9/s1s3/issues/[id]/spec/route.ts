@@ -43,6 +43,7 @@ import {
 import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { parseIssueId } from '@/lib/contracts/ids';
+import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -97,7 +98,44 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const pool = getPool();
   const routeHeaderValue = getRouteHeaderValue(request);
-  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
+  const responseHeaders = {
+    ...getControlResponseHeaders(requestId, routeHeaderValue),
+    ...buildAfu9ScopeHeaders({
+      requestedScope: 's1s3',
+      resolvedScope: 's1s3',
+    }),
+  };
+  const handlerName = 'control';
+
+  const respondWithSpecError = (params: {
+    status: number;
+    errorCode: string;
+    messageSafe: string;
+    upstreamStatus?: number;
+    upstreamErrorCode?: string;
+  }) => {
+    return jsonResponse(
+      {
+        errorCode: params.errorCode,
+        messageSafe: params.messageSafe,
+        requestId,
+        handler: handlerName,
+        route: routeHeaderValue,
+        scopeRequested: 's1s3',
+        scopeResolved: 's1s3',
+        upstreamStatus: params.upstreamStatus,
+        upstreamErrorCode: params.upstreamErrorCode,
+      },
+      {
+        status: params.status,
+        requestId,
+        headers: {
+          ...responseHeaders,
+          'x-afu9-error-code': params.errorCode,
+        },
+      }
+    );
+  };
 
   try {
     const { id } = await context.params;
@@ -112,7 +150,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return jsonResponse(resolved.body, {
           status: resolved.status,
           requestId,
-          headers: responseHeaders,
+          headers: {
+            ...responseHeaders,
+            'x-afu9-error-code': resolved.body.errorCode,
+          },
         });
       }
       resolvedIssueId = resolved.uuid;
@@ -120,16 +161,31 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Parse request body
-    const body = await request.json();
-    const { problem, scope, acceptanceCriteria, notes } = body;
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return respondWithSpecError({
+        status: 400,
+        errorCode: 'invalid_spec_body',
+        messageSafe: 'Invalid request body',
+      });
+    }
+
+    const problem = typeof body.problem === 'string' ? body.problem : undefined;
+    const scope = typeof body.scope === 'string' ? body.scope : undefined;
+    const notes = typeof body.notes === 'string' ? body.notes : undefined;
+    const acceptanceCriteriaRaw = body.acceptanceCriteria;
+    const acceptanceCriteria = Array.isArray(acceptanceCriteriaRaw)
+      ? acceptanceCriteriaRaw.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : null;
 
     // Validate acceptance criteria (required for SPEC_READY)
-    if (!acceptanceCriteria || !Array.isArray(acceptanceCriteria) || acceptanceCriteria.length === 0) {
-      return errorResponse('Acceptance criteria required', {
+    if (!acceptanceCriteria || acceptanceCriteria.length === 0) {
+      return respondWithSpecError({
         status: 400,
-        requestId,
-        details: 'acceptanceCriteria must be a non-empty array of strings',
-        headers: responseHeaders,
+        errorCode: 'invalid_acceptance_criteria',
+        messageSafe: 'Acceptance criteria required',
       });
     }
 
@@ -155,11 +211,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const githubUrl = getStringField(controlIssue, 'github_url', 'githubUrl');
 
         if (!repoFullName || !issueNumber || !githubUrl) {
-          return errorResponse('Issue missing GitHub metadata for spec', {
+          return respondWithSpecError({
             status: 409,
-            requestId,
-            details: 'github_repo/github_url and github_issue_number are required to seed S1S3 issue',
-            headers: responseHeaders,
+            errorCode: 'issue_metadata_missing',
+            messageSafe: 'Issue missing GitHub metadata for spec',
           });
         }
 
@@ -173,11 +228,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
 
         if (!seedResult.success || !seedResult.data) {
-          return errorResponse('Failed to seed S1S3 issue', {
+          return respondWithSpecError({
             status: 500,
-            requestId,
-            details: seedResult.error,
-            headers: responseHeaders,
+            errorCode: 'spec_update_failed',
+            messageSafe: 'Failed to seed S1S3 issue',
           });
         }
 
@@ -206,7 +260,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         {
           status: 404,
           requestId,
-          headers: responseHeaders,
+          headers: {
+            ...responseHeaders,
+            'x-afu9-error-code': 'issue_not_found',
+          },
         }
       );
     }
@@ -219,11 +276,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Check if issue is in valid state for spec
     if (issue.status !== S1S3IssueStatus.CREATED && issue.status !== S1S3IssueStatus.SPEC_READY) {
-      return errorResponse('Invalid issue state', {
-        status: 400,
-        requestId,
-        details: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
-        headers: responseHeaders,
+      return respondWithSpecError({
+        status: 409,
+        errorCode: 'invalid_issue_state',
+        messageSafe: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
       });
     }
 
@@ -237,11 +293,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (!runResult.success || !runResult.data) {
-      return errorResponse('Failed to create run record', {
+      return respondWithSpecError({
         status: 500,
-        requestId,
-        details: runResult.error,
-        headers: responseHeaders,
+        errorCode: 'spec_update_failed',
+        messageSafe: 'Failed to create run record',
       });
     }
 
@@ -269,11 +324,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (!updateResult.success || !updateResult.data) {
-      return errorResponse('Failed to update issue', {
+      return respondWithSpecError({
         status: 500,
-        requestId,
-        details: updateResult.error,
-        headers: responseHeaders,
+        errorCode: 'spec_update_failed',
+        messageSafe: 'Failed to update issue',
       });
     }
 
@@ -303,11 +357,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (!stepResult.success || !stepResult.data) {
-      return errorResponse('Failed to create step event', {
+      return respondWithSpecError({
         status: 500,
-        requestId,
-        details: stepResult.error,
-        headers: responseHeaders,
+        errorCode: 'spec_update_failed',
+        messageSafe: 'Failed to create step event',
       });
     }
 
@@ -333,11 +386,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   } catch (error) {
     console.error('[API /api/afu9/s1s3/issues/[id]/spec] Error setting spec:', error);
-    return errorResponse('Failed to set spec', {
+    return respondWithSpecError({
       status: 500,
-      requestId,
-      details: error instanceof Error ? error.message : 'Unknown error',
-      headers: responseHeaders,
+      errorCode: 'spec_update_failed',
+      messageSafe: 'Failed to set spec',
     });
   }
 }
