@@ -20,6 +20,7 @@ import { GET as listRuns, POST as createRun } from '../../app/api/issues/[id]/ru
 import { GET as getRunDetail } from '../../app/api/runs/[runId]/route';
 import { POST as executeRun } from '../../app/api/runs/[runId]/execute/route';
 import { POST as rerunRun } from '../../app/api/runs/[runId]/rerun/route';
+import { resolveIssueIdentifier } from '../../app/api/issues/_shared';
 
 const mockRunsDAO = {
   listRunsByIssue: jest.fn(),
@@ -59,9 +60,26 @@ jest.mock('../../src/lib/runner-service', () => ({
   getRunnerService: jest.fn(() => mockRunnerService),
 }));
 
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  return {
+    ...actual,
+    resolveIssueIdentifier: jest.fn(),
+  };
+});
+
 describe('AFU9 Runs API', () => {
+  const mockResolveIssueIdentifier = resolveIssueIdentifier as jest.Mock;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: 'issue-123',
+      issue: { id: 'issue-123' },
+      source: 'control',
+    });
   });
 
   describe('GET /api/playbooks', () => {

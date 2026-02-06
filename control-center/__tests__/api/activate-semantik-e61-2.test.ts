@@ -29,16 +29,59 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
 }));
 
 // Mock _shared module
-jest.mock('../../app/api/issues/_shared', () => ({
-  fetchIssueRowByIdentifier: jest.fn(),
-  normalizeIssueForApi: jest.fn((row) => ({ 
-    ...row, 
-    publicId: String(row.id).substring(0, 8),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    activatedAt: row.activated_at,
-  })),
-}));
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  const fetchIssueRowByIdentifier = jest.fn();
+  const resolveIssueIdentifier = jest.fn(async (id: string, requestId: string) => {
+    const result = await fetchIssueRowByIdentifier(id);
+    if (result?.ok) {
+      return {
+        ok: true,
+        type: 'uuid',
+        uuid: result.row.id,
+        issue: result.row,
+        source: 'control',
+      };
+    }
+    const status = result?.status ?? 404;
+    const errorCode = status === 400
+      ? 'invalid_issue_identifier'
+      : status === 404
+        ? 'issue_not_found'
+        : 'issue_lookup_failed';
+    return {
+      ok: false,
+      status,
+      body: {
+        errorCode,
+        issueId: id,
+        lookupStore: 'control',
+        requestId,
+      },
+    };
+  });
+  const ensureIssueInControl = jest.fn(async (id: string, requestId: string) => {
+    const resolved = await resolveIssueIdentifier(id, requestId);
+    if (resolved.ok) {
+      return { ok: true, status: 200, issue: resolved.issue };
+    }
+    return resolved;
+  });
+  return {
+    ...actual,
+    fetchIssueRowByIdentifier,
+    resolveIssueIdentifier,
+    resolveIssueIdentifierOr404: resolveIssueIdentifier,
+    ensureIssueInControl,
+    normalizeIssueForApi: jest.fn((row) => ({ 
+      ...row, 
+      publicId: String(row.id).substring(0, 8),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      activatedAt: row.activated_at,
+    })),
+  };
+});
 
 describe('E61.2: Activate Semantik (maxActive=1)', () => {
   const mockIssueId = '123e4567-e89b-12d3-a456-426614174000';

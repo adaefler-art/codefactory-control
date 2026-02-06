@@ -14,6 +14,7 @@ import { POST as verdictHandler } from '../../app/api/afu9/issues/[id]/verdict/r
 import { Afu9IssueStatus } from '@/lib/contracts/afu9Issue';
 import { Verdict } from '@/lib/contracts/verdict';
 import { IssueTimelineEventType, ActorType } from '@/lib/contracts/issueTimeline';
+import { resolveIssueIdentifier } from '../../app/api/issues/_shared';
 
 const mockPool = {
   query: jest.fn(),
@@ -57,9 +58,26 @@ jest.mock('@/lib/db/issueTimeline', () => ({
   logTimelineEvent: jest.fn(),
 }));
 
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  return {
+    ...actual,
+    resolveIssueIdentifier: jest.fn(),
+  };
+});
+
 describe('POST /api/afu9/issues/:issueId/verdict', () => {
+  const mockResolveIssueIdentifier = resolveIssueIdentifier as jest.Mock;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: 'test-issue-123',
+      issue: { id: 'test-issue-123' },
+      source: 'control',
+    });
   });
 
   test('GREEN verdict transitions IMPLEMENTING to VERIFIED', async () => {
@@ -262,6 +280,16 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
   });
 
   test('Returns 404 when issue not found', async () => {
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: false,
+      status: 404,
+      body: {
+        errorCode: 'issue_not_found',
+        issueId: 'non-existent',
+        lookupStore: 'control',
+        requestId: 'req-404',
+      },
+    });
     const { getAfu9IssueById } = require('@/lib/db/afu9Issues');
 
     getAfu9IssueById.mockResolvedValue({
@@ -281,7 +309,10 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
     const body = await response.json();
 
     expect(response.status).toBe(404);
-    expect(body.error).toContain('not found');
+    expect(body).toMatchObject({
+      errorCode: 'issue_not_found',
+      issueId: 'non-existent',
+    });
   });
 
   test('Returns 400 for invalid verdict', async () => {

@@ -46,6 +46,7 @@ import {
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -150,10 +151,20 @@ async function findExistingPr(params: {
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
   const pool = getPool();
 
   try {
     const { id } = await context.params;
+    const resolved = await resolveIssueIdentifierOr404(id, requestId);
+    if (!resolved.ok) {
+      return jsonResponse(resolved.body, {
+        status: resolved.status,
+        requestId,
+        headers: responseHeaders,
+      });
+    }
+    const issueId = resolved.uuid;
 
     // Parse request body
     const body = await request.json();
@@ -161,17 +172,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     console.log('[S3] Implement request:', {
       requestId,
-      issue_id: id,
+      issue_id: issueId,
       baseBranch,
     });
 
     // Get existing issue
-    const issueResult = await getS1S3IssueById(pool, id);
+    const issueResult = await getS1S3IssueById(pool, issueId);
     if (!issueResult.success || !issueResult.data) {
       return errorResponse('Issue not found', {
         status: 404,
         requestId,
         details: issueResult.error,
+        headers: responseHeaders,
       });
     }
 
@@ -187,6 +199,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 400,
         requestId,
         details: `Issue must be in SPEC_READY, IMPLEMENTING, or PR_CREATED state. Current: ${issue.status}`,
+        headers: responseHeaders,
       });
     }
 
@@ -213,6 +226,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         {
           status: 200,
           requestId,
+          headers: responseHeaders,
         }
       );
     }
@@ -230,6 +244,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           status: 403,
           requestId,
           details: `Repository ${issue.repo_full_name} is not in the allowlist`,
+          headers: responseHeaders,
         });
       }
       throw error;
@@ -249,6 +264,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         requestId,
         details: runResult.error,
+        headers: responseHeaders,
       });
     }
 
@@ -439,6 +455,7 @@ Closes #${issue.github_issue_number}
                   {
                     status: 409,
                     requestId,
+                    headers: responseHeaders,
                   }
                 );
               }
@@ -463,6 +480,7 @@ Closes #${issue.github_issue_number}
           status: 500,
           requestId,
           details: updateResult.error,
+          headers: responseHeaders,
         });
       }
 
@@ -493,6 +511,7 @@ Closes #${issue.github_issue_number}
           status: 500,
           requestId,
           details: stepResult.error,
+          headers: responseHeaders,
         });
       }
 
@@ -522,6 +541,7 @@ Closes #${issue.github_issue_number}
         {
           status: evidenceMode === 'reused_existing_pr' ? 200 : 201,
           requestId,
+          headers: responseHeaders,
         }
       );
     } catch (error) {
@@ -549,6 +569,7 @@ Closes #${issue.github_issue_number}
       status: 500,
       requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
+      headers: responseHeaders,
     });
   }
 }

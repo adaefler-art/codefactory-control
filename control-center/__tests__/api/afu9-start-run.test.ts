@@ -15,6 +15,7 @@
 import { NextRequest } from 'next/server';
 import { POST as startRun } from '../../app/api/afu9/issues/[id]/runs/start/route';
 import { Afu9IssueStatus } from '../../src/lib/contracts/afu9Issue';
+import { resolveIssueIdentifier } from '../../app/api/issues/_shared';
 
 const mockRunsDAO = {
   createRun: jest.fn(),
@@ -57,6 +58,14 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   updateAfu9Issue: (...args: unknown[]) => mockUpdateAfu9Issue(...args),
 }));
 
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  return {
+    ...actual,
+    resolveIssueIdentifier: jest.fn(),
+  };
+});
+
 // Mock issueTimeline
 jest.mock('../../src/lib/db/issueTimeline', () => ({
   logTimelineEvent: (...args: unknown[]) => mockLogTimelineEvent(...args),
@@ -68,8 +77,17 @@ jest.mock('uuid', () => ({
 }));
 
 describe('POST /api/afu9/issues/:issueId/runs/start', () => {
+  const mockResolveIssueIdentifier = resolveIssueIdentifier as jest.Mock;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: mockIssue.id,
+      issue: mockIssue,
+      source: 'control',
+    });
     mockRunsDAO.createRun.mockResolvedValue(undefined);
     mockRunsDAO.updateRunStatus.mockResolvedValue(undefined);
     mockUpdateAfu9Issue.mockResolvedValue({ success: true });
@@ -172,9 +190,15 @@ describe('POST /api/afu9/issues/:issueId/runs/start', () => {
   });
 
   test('returns 404 for non-existent issue', async () => {
-    mockGetAfu9IssueById.mockResolvedValue({
-      success: false,
-      error: 'Issue not found',
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: false,
+      status: 404,
+      body: {
+        errorCode: 'issue_not_found',
+        issueId: 'non-existent',
+        lookupStore: 'control',
+        requestId: 'req-404',
+      },
     });
 
     const request = new NextRequest('http://localhost/api/afu9/issues/non-existent/runs/start', {
@@ -186,8 +210,10 @@ describe('POST /api/afu9/issues/:issueId/runs/start', () => {
     const body = await response.json();
 
     expect(response.status).toBe(404);
-    expect(body.error).toBeDefined();
-    expect(body.error).toContain('Issue not found');
+    expect(body).toMatchObject({
+      errorCode: 'issue_not_found',
+      issueId: 'non-existent',
+    });
   });
 
   test('does not transition issue if already IMPLEMENTING', async () => {
@@ -249,13 +275,13 @@ describe('POST /api/afu9/issues/:issueId/runs/start', () => {
       id: resolvedUuid,
     };
 
-    mockGetAfu9IssueByPublicId.mockResolvedValue({
-      success: true,
-      data: resolvedIssue,
-    });
-    mockGetAfu9IssueById.mockResolvedValue({
-      success: true,
-      data: resolvedIssue,
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid: resolvedUuid,
+      shortId,
+      issue: resolvedIssue,
+      source: 'control',
     });
 
     const request = new NextRequest(`http://localhost/api/afu9/issues/${shortId}/runs/start`, {
@@ -268,7 +294,7 @@ describe('POST /api/afu9/issues/:issueId/runs/start', () => {
 
     expect(response.status).toBe(200);
     expect(body.issueId).toBe(resolvedUuid);
-    expect(mockGetAfu9IssueByPublicId).toHaveBeenCalledWith(expect.anything(), shortId);
+    expect(mockResolveIssueIdentifier).toHaveBeenCalledWith(shortId, expect.any(String));
     expect(mockRunsDAO.createRun).toHaveBeenCalledWith(
       'mock-run-id-123',
       expect.anything(),

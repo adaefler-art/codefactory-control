@@ -17,11 +17,12 @@
 
 import { NextRequest } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
-import { fetchIssueRowByIdentifier } from '../../../issues/_shared';
 import { normalizeIssueForApi } from '../../../issues/_shared';
+import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../issues/_shared';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { getAfu9IssueByCanonicalId } from '../../../../../src/lib/db/afu9Issues';
+import { parseIssueId } from '@/lib/contracts/ids';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -41,38 +42,32 @@ export async function GET(
   context: RouteContext
 ) {
   const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
   const { id } = await context.params;
 
   if (!id || typeof id !== 'string') {
     return errorResponse('Issue identifier required', {
       status: 400,
       requestId,
+      headers: responseHeaders,
     });
   }
 
   try {
     const pool = getPool();
+    const parsedId = parseIssueId(id);
 
-    // Try UUID/publicId lookup first (fast path)
-    const result = await fetchIssueRowByIdentifier(pool, id);
-
-    // Invalid UUID/publicId format → Try canonicalId fallback
-    // fetchIssueRowByIdentifier returns 400 when id doesn't match UUID or 8-hex pattern
-    // In this case, try canonicalId lookup as fallback (e.g., "I811", "E81.1")
-    if (!result.ok && result.status === 400) {
-      const canonicalResult = await getAfu9IssueByCanonicalId(pool, id);
-
-      if (!canonicalResult.success) {
-        // All lookup methods failed - return 400
-        return errorResponse('Invalid issue identifier format', {
-          status: 400,
+    if (parsedId.isValid) {
+      const resolved = await resolveIssueIdentifierOr404(id, requestId);
+      if (!resolved.ok) {
+        return jsonResponse(resolved.body, {
+          status: resolved.status,
           requestId,
-          details: 'Identifier must be a valid UUID v4, 8-hex publicId, or canonicalId',
+          headers: responseHeaders,
         });
       }
 
-      // Found by canonicalId
-      const issueRow = canonicalResult.data;
+      const issueRow = resolved.issue as Record<string, unknown>;
       const normalizedIssue = normalizeIssueForApi(issueRow);
 
       const responseBody: Record<string, unknown> = normalizedIssue;
@@ -84,31 +79,25 @@ export async function GET(
       return jsonResponse(responseBody, {
         requestId,
         headers: {
+          ...responseHeaders,
           'Cache-Control': 'no-store, max-age=0',
           Pragma: 'no-cache',
         },
       });
     }
 
-    // Database error → 500
-    if (!result.ok && result.status === 500) {
-      return errorResponse('Database error', {
-        status: 500,
+    const canonicalResult = await getAfu9IssueByCanonicalId(pool, id);
+
+    if (!canonicalResult.success) {
+      return errorResponse('Invalid issue identifier format', {
+        status: 400,
         requestId,
-        details: result.body.error,
+        details: 'Identifier must be a valid UUID v4, 8-hex publicId, or canonicalId',
+        headers: responseHeaders,
       });
     }
 
-    // Not found → 404
-    if (!result.ok && result.status === 404) {
-      return errorResponse('Issue not found', {
-        status: 404,
-        requestId,
-      });
-    }
-
-    // Success → 200
-    const issueRow = result.row;
+    const issueRow = canonicalResult.data;
     const normalizedIssue = normalizeIssueForApi(issueRow);
 
     const responseBody: Record<string, unknown> = normalizedIssue;
@@ -120,6 +109,7 @@ export async function GET(
     return jsonResponse(responseBody, {
       requestId,
       headers: {
+        ...responseHeaders,
         'Cache-Control': 'no-store, max-age=0',
         Pragma: 'no-cache',
       },
@@ -130,6 +120,7 @@ export async function GET(
       status: 500,
       requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
+      headers: responseHeaders,
     });
   }
 }

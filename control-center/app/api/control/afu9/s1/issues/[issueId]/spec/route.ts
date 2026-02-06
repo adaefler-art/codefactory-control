@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { getPool } from '@/lib/db';
 import { updateS1S3IssueSpec } from '@/lib/db/s1s3Flow';
 import { getRequestId } from '@/lib/api/response-helpers';
-import { ensureIssueInControl } from '../../../../../../issues/_shared';
+import { resolveIssueIdentifierOr404 } from '../../../../../../issues/_shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const UuidSchema = z.string().uuid();
 
 function buildResponse(
   status: number,
@@ -56,28 +53,14 @@ export async function POST(
 ) {
   const requestId = getRequestId(request);
   const { issueId } = await params;
-
-  const uuidParse = UuidSchema.safeParse(issueId);
-  if (!uuidParse.success) {
-    return errorResponse(400, requestId, 'invalid_spec_payload', 'Invalid issueId', {
-      issueId,
-      lookupTarget: 'control',
-      route: `POST ${request.nextUrl.pathname}`,
-    });
-  }
-
-  const ensured = await ensureIssueInControl(issueId, requestId);
-  if (!ensured.ok) {
-    const fallbackBody = ensured.body ?? {
-      errorCode: 'issue_lookup_failed',
-      issueId,
-      requestId,
-    };
-    return buildResponse(ensured.status, requestId, {
-      ...fallbackBody,
+  const resolved = await resolveIssueIdentifierOr404(issueId, requestId);
+  if (!resolved.ok) {
+    return buildResponse(resolved.status, requestId, {
+      ...resolved.body,
       requestId,
     });
   }
+  const resolvedIssueId = resolved.uuid;
 
   let body: Record<string, unknown>;
   try {
@@ -102,7 +85,7 @@ export async function POST(
   }
 
   const pool = getPool();
-  const updateResult = await updateS1S3IssueSpec(pool, issueId, {
+  const updateResult = await updateS1S3IssueSpec(pool, resolvedIssueId, {
     scope: scope.trim(),
     acceptance_criteria: acceptanceCriteria,
   });
@@ -125,7 +108,7 @@ export async function POST(
 
   return buildResponse(200, requestId, {
     status: 'SPEC_READY',
-    issueId,
+    issueId: resolvedIssueId,
     requestId,
   });
 }

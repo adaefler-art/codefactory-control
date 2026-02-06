@@ -41,7 +41,7 @@ import {
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
-import { ensureIssueInControl, getControlResponseHeaders } from '../../../../../issues/_shared';
+import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { parseIssueId } from '@/lib/contracts/ids';
 
 // Avoid stale reads
@@ -83,11 +83,6 @@ function deriveRepoFullName(issue: Record<string, unknown>): string | null {
   return match?.[1] ?? null;
 }
 
-function shouldCheckControlStore(issueId: string): boolean {
-  const parsed = parseIssueId(issueId);
-  return parsed.isValid && (parsed.kind === 'uuid' || parsed.kind === 'shortHex8');
-}
-
 interface RouteContext {
   params: Promise<{
     id: string;
@@ -106,6 +101,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
     const issueId = id;
+    const parsedId = parseIssueId(issueId);
+    let resolvedIssueId: string | null = null;
+    let controlIssue: Record<string, unknown> | null = null;
+
+    if (parsedId.isValid) {
+      const resolved = await resolveIssueIdentifierOr404(issueId, requestId);
+      if (!resolved.ok) {
+        return jsonResponse(resolved.body, {
+          status: resolved.status,
+          requestId,
+          headers: responseHeaders,
+        });
+      }
+      resolvedIssueId = resolved.uuid;
+      controlIssue = (resolved.issue as Record<string, unknown>) || null;
+    }
 
     // Parse request body
     const body = await request.json();
@@ -128,67 +139,49 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     // Get existing issue
-    let foundBy: 'id' | 'canonicalId' | null = null;
-    const idParsed = parseIssueId(issueId);
-    let issueResult = idParsed.isValid && idParsed.kind === 'uuid'
-      ? await getS1S3IssueById(pool, issueId)
-      : { success: false, error: 'Issue not found' };
+    let foundBy: 'id' | 'canonicalId' | 'seeded' | null = null;
+    let issueResult = resolvedIssueId
+      ? await getS1S3IssueById(pool, resolvedIssueId)
+      : await getS1S3IssueByCanonicalId(pool, issueId);
     let issue = issueResult.success ? issueResult.data : undefined;
 
     if (issue) {
-      foundBy = 'id';
+      foundBy = resolvedIssueId ? 'id' : 'canonicalId';
     } else {
-      issueResult = await getS1S3IssueByCanonicalId(pool, issueId);
-      issue = issueResult.success ? issueResult.data : undefined;
-      if (issue) foundBy = 'canonicalId';
-    }
+      if (controlIssue) {
+        const repoFullName = deriveRepoFullName(controlIssue);
+        const issueNumber = getNumberField(controlIssue, 'github_issue_number', 'githubIssueNumber');
+        const githubUrl = getStringField(controlIssue, 'github_url', 'githubUrl');
 
-    if (!issue) {
-      if (shouldCheckControlStore(issueId)) {
-        const ensured = await ensureIssueInControl(issueId, requestId);
-        if (ensured.ok) {
-          const controlIssue = ensured.issue;
-          const repoFullName = deriveRepoFullName(controlIssue);
-          const issueNumber = getNumberField(controlIssue, 'github_issue_number', 'githubIssueNumber');
-          const githubUrl = getStringField(controlIssue, 'github_url', 'githubUrl');
-
-          if (!repoFullName || !issueNumber || !githubUrl) {
-            return errorResponse('Issue missing GitHub metadata for spec', {
-              status: 409,
-              requestId,
-              details: 'github_repo/github_url and github_issue_number are required to seed S1S3 issue',
-              headers: responseHeaders,
-            });
-          }
-
-          const seedResult = await upsertS1S3Issue(pool, {
-            repo_full_name: repoFullName,
-            github_issue_number: issueNumber,
-            github_issue_url: githubUrl,
-            owner: getStringField(controlIssue, 'assignee') || 'afu9',
-            canonical_id: getStringField(controlIssue, 'canonical_id', 'canonicalId') || undefined,
-            status: S1S3IssueStatus.CREATED,
-          });
-
-          if (!seedResult.success || !seedResult.data) {
-            return errorResponse('Failed to seed S1S3 issue', {
-              status: 500,
-              requestId,
-              details: seedResult.error,
-              headers: responseHeaders,
-            });
-          }
-
-          issue = seedResult.data;
-          foundBy = 'seeded';
-        } else if (ensured.status !== 404) {
-          return errorResponse('Control lookup failed', {
-            status: ensured.status,
+        if (!repoFullName || !issueNumber || !githubUrl) {
+          return errorResponse('Issue missing GitHub metadata for spec', {
+            status: 409,
             requestId,
-            details: ensured.body?.errorCode ? String(ensured.body.errorCode) : 'Control lookup failed',
+            details: 'github_repo/github_url and github_issue_number are required to seed S1S3 issue',
             headers: responseHeaders,
           });
         }
+
+        const seedResult = await upsertS1S3Issue(pool, {
+          repo_full_name: repoFullName,
+          github_issue_number: issueNumber,
+          github_issue_url: githubUrl,
+          owner: getStringField(controlIssue, 'assignee') || 'afu9',
+          canonical_id: getStringField(controlIssue, 'canonical_id', 'canonicalId') || undefined,
+          status: S1S3IssueStatus.CREATED,
+        });
+
+        if (!seedResult.success || !seedResult.data) {
+          return errorResponse('Failed to seed S1S3 issue', {
+            status: 500,
+            requestId,
+            details: seedResult.error,
+            headers: responseHeaders,
+          });
+        }
+
+        issue = seedResult.data;
+        foundBy = 'seeded';
       }
     }
 

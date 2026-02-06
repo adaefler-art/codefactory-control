@@ -22,10 +22,45 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   updateAfu9Issue: jest.fn(),
 }));
 
-jest.mock('../../app/api/issues/_shared', () => ({
-  fetchIssueRowByIdentifier: jest.fn(),
-  normalizeIssueForApi: jest.fn((issue) => issue),
-}));
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  const fetchIssueRowByIdentifier = jest.fn();
+  const resolveIssueIdentifier = jest.fn(async (id: string, requestId: string) => {
+    const result = await fetchIssueRowByIdentifier(id);
+    if (result?.ok) {
+      return {
+        ok: true,
+        type: 'uuid',
+        uuid: result.row.id,
+        issue: result.row,
+        source: 'control',
+      };
+    }
+    const status = result?.status ?? 404;
+    const errorCode = status === 400
+      ? 'invalid_issue_identifier'
+      : status === 404
+        ? 'issue_not_found'
+        : 'issue_lookup_failed';
+    return {
+      ok: false,
+      status,
+      body: {
+        errorCode,
+        issueId: id,
+        lookupStore: 'control',
+        requestId,
+      },
+    };
+  });
+  return {
+    ...actual,
+    fetchIssueRowByIdentifier,
+    resolveIssueIdentifier,
+    resolveIssueIdentifierOr404: resolveIssueIdentifier,
+    normalizeIssueForApi: jest.fn((issue) => issue),
+  };
+});
 
 describe('Handoff with Label Normalization', () => {
   const mockIssue = {

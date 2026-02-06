@@ -24,6 +24,7 @@ import {
 import { normalizeAcceptanceCriteria, normalizeEvidenceRefs } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
 import { parseIssueId } from '@/lib/contracts/ids';
+import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../issues/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -41,33 +42,49 @@ interface RouteContext {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
+  const responseHeaders = getControlResponseHeaders(requestId);
   const pool = getPool();
 
   try {
     const { id } = await context.params;
+    const parsedId = parseIssueId(id);
+    let resolvedIssueId = id;
+
+    if (parsedId.isValid) {
+      const resolved = await resolveIssueIdentifierOr404(id, requestId);
+      if (!resolved.ok) {
+        return jsonResponse(resolved.body, {
+          status: resolved.status,
+          requestId,
+          headers: responseHeaders,
+        });
+      }
+      resolvedIssueId = resolved.uuid;
+    }
 
     console.log('[S1-S3] Get issue:', {
       requestId,
-      issue_id: id,
+      issue_id: resolvedIssueId,
     });
 
     // Get issue
-    const parsedId = parseIssueId(id);
-    const issueResult = parsedId.isUuid
-      ? await getS1S3IssueById(pool, id)
+    const issueResult = parsedId.isValid
+      ? await getS1S3IssueById(pool, resolvedIssueId)
       : await getS1S3IssueByCanonicalId(pool, id);
     if (!issueResult.success || !issueResult.data) {
       return errorResponse('Issue not found', {
         status: 404,
         requestId,
         details: issueResult.error,
+        headers: responseHeaders,
       });
     }
 
     const issue = issueResult.data;
+    const issueId = issue.id;
 
     // Get runs for this issue
-    const runsResult = await listS1S3RunsByIssue(pool, id);
+    const runsResult = await listS1S3RunsByIssue(pool, issueId);
     const runs = runsResult.success ? runsResult.data || [] : [];
 
     // Get steps for all runs
@@ -89,7 +106,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     console.log('[S1-S3] Issue fetched:', {
       requestId,
-      issue_id: id,
+      issue_id: issueId,
       runs_count: runs.length,
       steps_count: normalizedSteps.length,
     });
@@ -103,6 +120,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       {
         requestId,
         headers: {
+          ...responseHeaders,
           'Cache-Control': 'no-store, max-age=0',
           Pragma: 'no-cache',
         },
@@ -114,6 +132,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       status: 500,
       requestId,
       details: error instanceof Error ? error.message : 'Unknown error',
+      headers: responseHeaders,
     });
   }
 }

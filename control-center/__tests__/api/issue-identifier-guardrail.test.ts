@@ -52,11 +52,19 @@ const guardrails: RouteGuard[] = [
   },
   {
     file: 'app/api/afu9/s1s3/issues/[id]/spec/route.ts',
-    requiredTokens: ['parseIssueId'],
+    requiredTokens: ['resolveIssueIdentifierOr404'],
   },
   {
     file: 'app/api/afu9/s1s3/issues/[id]/route.ts',
-    requiredTokens: ['parseIssueId'],
+    requiredTokens: ['resolveIssueIdentifierOr404'],
+  },
+  {
+    file: 'app/api/afu9/s1s3/issues/[id]/implement/route.ts',
+    requiredTokens: ['resolveIssueIdentifierOr404'],
+  },
+  {
+    file: 'app/api/control/afu9/s1/issues/[issueId]/spec/route.ts',
+    requiredTokens: ['resolveIssueIdentifierOr404'],
   },
   {
     file: 'app/api/afu9/issues/[id]/merge/route.ts',
