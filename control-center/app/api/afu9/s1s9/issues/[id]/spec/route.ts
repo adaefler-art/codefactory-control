@@ -19,6 +19,7 @@ async function postS1S9Spec(request: NextRequest, context: RouteContext) {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+	const { id } = await context.params;
 	const primaryRequest = request.clone();
 	const fallbackRequest = request.clone();
 
@@ -27,5 +28,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 		fallback: () => postS1S3Spec(fallbackRequest, context),
 		primaryScope: 's1s9',
 		fallbackScope: 's1s3',
+		requestedScope: 's1s9',
+		issueId: id,
 	});
 }

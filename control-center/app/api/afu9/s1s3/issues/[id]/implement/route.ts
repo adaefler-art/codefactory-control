@@ -47,6 +47,7 @@ import {
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
+import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -152,7 +153,13 @@ async function findExistingPr(params: {
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const routeHeaderValue = getRouteHeaderValue(request);
-  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
+  const responseHeaders = {
+    ...getControlResponseHeaders(requestId, routeHeaderValue),
+    ...buildAfu9ScopeHeaders({
+      requestedScope: 's1s3',
+      resolvedScope: 's1s3',
+    }),
+  };
   const pool = getPool();
 
   try {
@@ -190,7 +197,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         {
           status: 404,
           requestId,
-          headers: responseHeaders,
+          headers: {
+            ...responseHeaders,
+            'x-afu9-error-code': 'issue_not_found',
+          },
         }
       );
     }
