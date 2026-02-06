@@ -7,11 +7,7 @@ type ScopeFallbackOptions = {
   fallbackScope: 's1s9' | 's1s3';
 };
 
-async function isIssueNotFound(response: Response): Promise<boolean> {
-  if (response.status !== 404) {
-    return false;
-  }
-
+export async function isIssueNotFound(response: Response): Promise<boolean> {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     return false;
