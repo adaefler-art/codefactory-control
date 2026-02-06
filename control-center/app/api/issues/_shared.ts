@@ -683,6 +683,13 @@ export async function resolveIssueIdentifier(
   });
 }
 
+export async function resolveIssueIdentifierOr404(
+  issueId: string,
+  requestId: string
+): Promise<ResolvedIssueIdentifier | ResolveIssueIdentifierError> {
+  return resolveIssueIdentifier(issueId, requestId);
+}
+
 export type EnsureIssueResult =
   | { ok: true; issue: Record<string, unknown>; source: 'control' | 'engine' }
   | { ok: false; status: number; body: Record<string, unknown> };

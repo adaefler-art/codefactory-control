@@ -5,6 +5,7 @@
 
 import { GET } from '../../app/api/issues/[id]/state-flow/route';
 import { NextRequest } from 'next/server';
+import { resolveIssueIdentifier } from '../../app/api/issues/_shared';
 
 const mockQuery = jest.fn();
 
@@ -25,12 +26,39 @@ jest.mock('../../src/lib/state-flow', () => ({
   getBlockersForDone: jest.fn(() => []),
 }));
 
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  return {
+    ...actual,
+    resolveIssueIdentifier: jest.fn(),
+  };
+});
+
 describe('GET /api/issues/[id]/state-flow', () => {
+  const mockResolveIssueIdentifier = resolveIssueIdentifier as jest.Mock;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: 'a1234567-1234-4234-8234-123456789abc',
+      issue: { id: 'a1234567-1234-4234-8234-123456789abc' },
+      source: 'control',
+    });
   });
 
   it('should return 400 with INVALID_ISSUE_ID for invalid UUID', async () => {
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: false,
+      status: 400,
+      body: {
+        errorCode: 'invalid_issue_identifier',
+        issueId: 'not-a-uuid',
+        lookupStore: 'control',
+        requestId: 'req-invalid',
+      },
+    });
     const request = new NextRequest('http://localhost/api/issues/not-a-uuid/state-flow');
     const params = Promise.resolve({ id: 'not-a-uuid' });
 
@@ -43,6 +71,16 @@ describe('GET /api/issues/[id]/state-flow', () => {
   });
 
   it('should return 400 with INVALID_ISSUE_ID for empty ID', async () => {
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: false,
+      status: 400,
+      body: {
+        errorCode: 'invalid_issue_identifier',
+        issueId: '',
+        lookupStore: 'control',
+        requestId: 'req-empty',
+      },
+    });
     const request = new NextRequest('http://localhost/api/issues//state-flow');
     const params = Promise.resolve({ id: '' });
 
@@ -55,6 +93,13 @@ describe('GET /api/issues/[id]/state-flow', () => {
 
   it('should return 404 for non-existent issue', async () => {
     const validUuid = 'a1234567-1234-4234-8234-123456789abc';
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: validUuid,
+      issue: { id: validUuid },
+      source: 'control',
+    });
     const request = new NextRequest(`http://localhost/api/issues/${validUuid}/state-flow`);
     const params = Promise.resolve({ id: validUuid });
 
@@ -69,6 +114,13 @@ describe('GET /api/issues/[id]/state-flow', () => {
 
   it('should return 200 with state flow data for valid issue', async () => {
     const validUuid = 'b1234567-1234-4234-8234-123456789abc';
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: validUuid,
+      issue: { id: validUuid },
+      source: 'control',
+    });
     const request = new NextRequest(`http://localhost/api/issues/${validUuid}/state-flow`);
     const params = Promise.resolve({ id: validUuid });
 
@@ -95,6 +147,13 @@ describe('GET /api/issues/[id]/state-flow', () => {
 
   it('should pass validated UUID to database query', async () => {
     const validUuid = 'c1234567-1234-4234-8234-123456789abc';
+    mockResolveIssueIdentifier.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: validUuid,
+      issue: { id: validUuid },
+      source: 'control',
+    });
     const request = new NextRequest(`http://localhost/api/issues/${validUuid}/state-flow`);
     const params = Promise.resolve({ id: validUuid });
 

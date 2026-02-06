@@ -20,6 +20,7 @@ import {
   updateS1S3RunStatus,
   updateS1S3IssuePR,
 } from '../../src/lib/db/s1s3Flow';
+import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 
 // Mock the database module
 jest.mock('../../src/lib/db', () => ({
@@ -42,6 +43,14 @@ jest.mock('../../src/lib/db/s1s3Flow', () => ({
   updateS1S3IssuePR: jest.fn(),
 }));
 
+jest.mock('../../app/api/issues/_shared', () => {
+  const actual = jest.requireActual('../../app/api/issues/_shared');
+  return {
+    ...actual,
+    resolveIssueIdentifierOr404: jest.fn(),
+  };
+});
+
 describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
   const mockCreateS1S3Run = createS1S3Run as jest.Mock;
@@ -49,6 +58,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
   const mockUpdateS1S3RunStatus = updateS1S3RunStatus as jest.Mock;
   const mockUpdateS1S3IssuePR = updateS1S3IssuePR as jest.Mock;
   const mockCreateAuthenticatedClient = createAuthenticatedClient as jest.Mock;
+  const mockResolveIssueIdentifierOr404 = resolveIssueIdentifierOr404 as jest.Mock;
 
   const mockIssue = {
     id: 'issue-123',
@@ -99,6 +109,13 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: mockIssue.id,
+      issue: { id: mockIssue.id },
+      source: 'control',
+    });
   });
 
   test('reuses existing PR when found', async () => {

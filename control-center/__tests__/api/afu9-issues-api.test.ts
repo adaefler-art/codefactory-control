@@ -991,7 +991,10 @@ describe('AFU9 Issues API', () => {
 
       expect(response.status).toBe(400);
       const body = await response.json();
-      expect(body.error).toContain('Invalid issue ID');
+      expect(body).toMatchObject({
+        errorCode: 'invalid_issue_identifier',
+        issueId: 'invalid-id',
+      });
     });
 
     test('handles database errors gracefully', async () => {
