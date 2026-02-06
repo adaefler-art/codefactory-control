@@ -179,11 +179,21 @@ export function toPublicIdFromUuid(uuid: string): string | null {
   return toShortHex8FromUuid(uuid);
 }
 
-export function getControlResponseHeaders(requestId: string): Record<string, string> {
-  return {
+export function getControlResponseHeaders(
+  requestId: string,
+  route?: string
+): Record<string, string> {
+  const headers: Record<string, string> = {
     'x-afu9-auth-path': 'control',
     'x-afu9-request-id': requestId,
+    'x-afu9-handler': 'control',
   };
+
+  if (route) {
+    headers['x-afu9-route'] = route;
+  }
+
+  return headers;
 }
 
 function buildIssueIdentifierError(

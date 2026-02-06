@@ -1,0 +1,9 @@
+Found forbidden directory:
+  Path: control-center\.next
+
+Error: Build artifacts must not be committed to repository
+
+Remedy:
+  - Bash:       rm -rf .next/
+  - PowerShell: Remove-Item -Recurse -Force .next
+  - Verify .gitignore includes: .next/

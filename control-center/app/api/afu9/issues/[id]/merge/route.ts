@@ -19,7 +19,7 @@ import { getPool } from '@/lib/db';
 import { executeS5 } from '@/lib/loop/stepExecutors/s5-merge';
 import { logger } from '@/lib/logger';
 import { getLoopRunStore } from '@/lib/loop/runStore';
-import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
+import { getRequestId, jsonResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifier } from '../../../../issues/_shared';
 
 type RouteContext = {
@@ -66,11 +66,14 @@ export async function POST(
 )
 {
   const requestId = getRequestId(request);
-  const responseHeaders = getControlResponseHeaders(requestId);
+  const routeHeaderValue = getRouteHeaderValue(request);
+  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
+  let requestedIssueId = 'unknown';
 
   try {
     // Get issue ID from params
     const params = await context.params;
+    requestedIssueId = params.id;
     const resolved = await resolveIssueIdentifier(params.id, requestId);
 
     if (!resolved.ok) {
@@ -242,9 +245,10 @@ export async function POST(
     if (error instanceof Error && error.message.includes('Issue not found')) {
       return jsonResponse(
         {
-          error: 'Issue not found',
-          code: 'ISSUE_NOT_FOUND',
+          errorCode: 'issue_not_found',
+          issueId: requestedIssueId,
           requestId,
+          lookupStore: 'control',
         },
         {
           status: 404,

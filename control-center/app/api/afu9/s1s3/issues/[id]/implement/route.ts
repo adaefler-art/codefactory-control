@@ -45,7 +45,7 @@ import {
   S1S3RunStatus,
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
-import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 
 // Avoid stale reads
@@ -151,7 +151,8 @@ async function findExistingPr(params: {
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
-  const responseHeaders = getControlResponseHeaders(requestId);
+  const routeHeaderValue = getRouteHeaderValue(request);
+  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
   const pool = getPool();
 
   try {
@@ -179,12 +180,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Get existing issue
     const issueResult = await getS1S3IssueById(pool, issueId);
     if (!issueResult.success || !issueResult.data) {
-      return errorResponse('Issue not found', {
-        status: 404,
-        requestId,
-        details: issueResult.error,
-        headers: responseHeaders,
-      });
+      return jsonResponse(
+        {
+          errorCode: 'issue_not_found',
+          issueId: id,
+          requestId,
+          lookupStore: 'control',
+        },
+        {
+          status: 404,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
 
     const issue = issueResult.data;

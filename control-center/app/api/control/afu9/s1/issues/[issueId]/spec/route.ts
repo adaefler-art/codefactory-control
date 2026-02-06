@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { updateS1S3IssueSpec } from '@/lib/db/s1s3Flow';
-import { getRequestId } from '@/lib/api/response-helpers';
-import { resolveIssueIdentifierOr404 } from '../../../../../../issues/_shared';
+import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../../issues/_shared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,12 +10,14 @@ export const revalidate = 0;
 function buildResponse(
   status: number,
   requestId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  headers: Record<string, string>
 ): NextResponse {
   const response = NextResponse.json(body, { status });
   response.headers.set('x-request-id', requestId);
-  response.headers.set('x-afu9-request-id', requestId);
-  response.headers.set('x-afu9-auth-path', 'control');
+  Object.entries(headers).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
   return response;
 }
 
@@ -24,14 +26,15 @@ function errorResponse(
   requestId: string,
   errorCode: string,
   message: string,
-  meta: Record<string, unknown>
+  meta: Record<string, unknown>,
+  headers: Record<string, string>
 ): NextResponse {
   return buildResponse(status, requestId, {
     errorCode,
     message,
     requestId,
     meta,
-  });
+  }, headers);
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -52,13 +55,15 @@ export async function POST(
   { params }: { params: Promise<{ issueId: string }> }
 ) {
   const requestId = getRequestId(request);
+  const routeHeaderValue = getRouteHeaderValue(request);
+  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
   const { issueId } = await params;
   const resolved = await resolveIssueIdentifierOr404(issueId, requestId);
   if (!resolved.ok) {
     return buildResponse(resolved.status, requestId, {
       ...resolved.body,
       requestId,
-    });
+    }, responseHeaders);
   }
   const resolvedIssueId = resolved.uuid;
 
@@ -70,7 +75,7 @@ export async function POST(
       issueId,
       lookupTarget: 'control',
       route: `POST ${request.nextUrl.pathname}`,
-    });
+    }, responseHeaders);
   }
 
   const scope = body.scope;
@@ -81,7 +86,7 @@ export async function POST(
       issueId,
       lookupTarget: 'control',
       route: `POST ${request.nextUrl.pathname}`,
-    });
+    }, responseHeaders);
   }
 
   const pool = getPool();
@@ -92,23 +97,24 @@ export async function POST(
 
   if (!updateResult.success || !updateResult.data) {
     if (updateResult.error?.toLowerCase().includes('not found')) {
-      return errorResponse(404, requestId, 'issue_not_found', 'Issue not found', {
+      return buildResponse(404, requestId, {
+        errorCode: 'issue_not_found',
         issueId,
-        lookupTarget: 'control',
-        route: `POST ${request.nextUrl.pathname}`,
-      });
+        requestId,
+        lookupStore: 'control',
+      }, responseHeaders);
     }
 
     return errorResponse(500, requestId, 'spec_update_failed', 'Failed to persist spec', {
       issueId,
       lookupTarget: 'control',
       route: `POST ${request.nextUrl.pathname}`,
-    });
+    }, responseHeaders);
   }
 
   return buildResponse(200, requestId, {
     status: 'SPEC_READY',
     issueId: resolvedIssueId,
     requestId,
-  });
+  }, responseHeaders);
 }

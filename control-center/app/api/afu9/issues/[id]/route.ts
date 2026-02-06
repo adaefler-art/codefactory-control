@@ -19,7 +19,7 @@ import { NextRequest } from 'next/server';
 import { getPool } from '../../../../../src/lib/db';
 import { normalizeIssueForApi } from '../../../issues/_shared';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../issues/_shared';
-import { getRequestId, jsonResponse, errorResponse } from '@/lib/api/response-helpers';
+import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { buildContextTrace, isDebugApiEnabled } from '@/lib/api/context-trace';
 import { getAfu9IssueByCanonicalId } from '../../../../../src/lib/db/afu9Issues';
 import { parseIssueId } from '@/lib/contracts/ids';
@@ -42,7 +42,8 @@ export async function GET(
   context: RouteContext
 ) {
   const requestId = getRequestId(request);
-  const responseHeaders = getControlResponseHeaders(requestId);
+  const routeHeaderValue = getRouteHeaderValue(request);
+  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
   const { id } = await context.params;
 
   if (!id || typeof id !== 'string') {
