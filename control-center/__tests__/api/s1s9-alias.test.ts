@@ -4,8 +4,9 @@
  * @jest-environment node
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { GET as getIssue } from '../../app/api/afu9/s1s9/issues/[id]/route';
+import * as s1s3IssueRoute from '../../app/api/afu9/s1s3/issues/[id]/route';
 import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 import {
   getS1S3IssueById,
@@ -85,5 +86,63 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
     );
     expect(mockGetS1S3IssueById).toHaveBeenCalledWith(expect.anything(), uuid);
     expect(mockListS1S3RunsByIssue).toHaveBeenCalledWith(expect.anything(), uuid);
+  });
+
+  it('falls back to s1s3 when s1s9 returns issue_not_found', async () => {
+    const issueId = 'ISS-404';
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${issueId}`,
+      { headers: new Headers({ 'x-request-id': 'req-fallback' }) }
+    );
+
+    const handlerSpy = jest.spyOn(s1s3IssueRoute, 'GET');
+    handlerSpy
+      .mockResolvedValueOnce(
+        NextResponse.json(
+          {
+            errorCode: 'issue_not_found',
+            issueId,
+            requestId: 'req-fallback',
+          },
+          {
+            status: 404,
+            headers: {
+              'x-afu9-handler': 'control',
+              'x-afu9-auth-path': 'control',
+              'x-afu9-request-id': 'req-fallback',
+              'x-afu9-route': `GET /api/afu9/s1s9/issues/${issueId}`,
+            },
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        NextResponse.json(
+          {
+            issue: { id: issueId },
+            runs: [],
+            steps: [],
+          },
+          {
+            status: 200,
+            headers: {
+              'x-afu9-handler': 'control',
+              'x-afu9-auth-path': 'control',
+              'x-afu9-request-id': 'req-fallback',
+              'x-afu9-route': `GET /api/afu9/s1s3/issues/${issueId}`,
+            },
+          }
+        )
+      );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
+    expect(response.headers.get('x-afu9-handler')).toBe('control');
+    expect(handlerSpy).toHaveBeenCalledTimes(2);
+
+    handlerSpy.mockRestore();
   });
 });
