@@ -48,6 +48,7 @@ import {
 import { getRequestId, jsonResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
+import { getStageRegistryEntry, getStageRegistryError, resolveStageMissingConfig } from '@/lib/stage-registry';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -173,37 +174,8 @@ async function findExistingPr(params: {
   return selectLatestPullRequest(allResult.data as PullRequestSummary[]);
 }
 
-const S3_STAGE = 'S3';
-const S3_HANDLER = 'control.s1s3.implement';
-
 function hasValue(value: string | undefined | null): boolean {
   return Boolean(value && value.trim().length > 0);
-}
-
-function resolveDispatchRequirements(): string[] {
-  const required: string[] = [];
-  const runnerEndpoint = process.env.MCP_RUNNER_URL || process.env.MCP_RUNNER_ENDPOINT;
-  if (!hasValue(runnerEndpoint)) {
-    required.push('MCP_RUNNER_URL');
-  }
-
-  const queueUrl = process.env.AFU9_GITHUB_EVENTS_QUEUE_URL;
-  if (!hasValue(queueUrl)) {
-    required.push('AFU9_GITHUB_EVENTS_QUEUE_URL');
-  }
-
-  const appId = process.env.GITHUB_APP_ID || process.env.GH_APP_ID;
-  const appKey =
-    process.env.GITHUB_APP_PRIVATE_KEY_PEM || process.env.GH_APP_PRIVATE_KEY_PEM;
-  const appSecretId =
-    process.env.GITHUB_APP_SECRET_ID || process.env.GH_APP_SECRET_ID;
-  const dispatcherConfigured = (hasValue(appId) && hasValue(appKey)) || hasValue(appSecretId);
-  if (!dispatcherConfigured) {
-    required.push('GITHUB_APP_ID');
-    required.push('GITHUB_APP_PRIVATE_KEY_PEM');
-  }
-
-  return required;
 }
 
 /**
@@ -213,16 +185,46 @@ function resolveDispatchRequirements(): string[] {
 export async function POST(request: NextRequest, context: RouteContext) {
   const requestId = getRequestId(request);
   const routeHeaderValue = getRouteHeaderValue(request);
+  const stageEntry = getStageRegistryEntry('S3');
+  const implementRoute = stageEntry?.routes.implement;
+
+  if (!stageEntry || !implementRoute?.handler) {
+    const registryError = getStageRegistryError('S3');
+    return jsonResponse(
+      {
+        ok: false,
+        stage: 'S3',
+        code: registryError.code,
+        message: registryError.message,
+        requestId,
+        errorCode: registryError.code,
+      },
+      {
+        status: 500,
+        requestId,
+        headers: {
+          ...getControlResponseHeaders(requestId, routeHeaderValue),
+          ...buildAfu9ScopeHeaders({
+            requestedScope: 's1s3',
+            resolvedScope: 's1s3',
+          }),
+          'x-afu9-error-code': registryError.code,
+        },
+      }
+    );
+  }
+
+  const stageId = stageEntry.stageId;
+  const handlerName = implementRoute.handler;
   const responseHeaders = {
     ...getControlResponseHeaders(requestId, routeHeaderValue),
     ...buildAfu9ScopeHeaders({
       requestedScope: 's1s3',
       resolvedScope: 's1s3',
     }),
-    'x-afu9-stage': S3_STAGE,
-    'x-afu9-handler': S3_HANDLER,
+    'x-afu9-stage': stageId,
+    'x-afu9-handler': handlerName,
   };
-  responseHeaders['x-afu9-handler'] = S3_HANDLER;
   const pool = getPool();
 
   const respondS3Error = (params: {
@@ -233,7 +235,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }) => {
     const body: S3ErrorResponse = {
       ok: false,
-      stage: S3_STAGE,
+      stage: stageId,
       code: params.code,
       message: params.message,
       requestId,
@@ -269,7 +271,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const missingDispatchConfig = resolveDispatchRequirements();
+    const missingDispatchConfig = resolveStageMissingConfig(stageEntry);
     if (missingDispatchConfig.length > 0) {
       return respondS3Error({
         status: 503,

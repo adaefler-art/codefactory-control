@@ -12,6 +12,7 @@ import { recordEvidence } from "@/lib/db/issueEvidence";
 import { logTimelineEvent } from "@/lib/db/issueTimeline";
 import { recordTimelineEvent as recordUnifiedTimelineEvent } from "@/lib/db/unifiedTimelineEvents";
 import { IssueState } from "./stateMachine";
+import { getStageRegistryEntry, getStageRegistryError } from "@/lib/stage-registry";
 
 export type ApplyMergeInput = {
   pool: Pool;
@@ -37,6 +38,13 @@ export type ApplyMergeResult =
       fromStep: string;
       toStep: string;
       updatedAt: string;
+    }
+  | {
+      ok: false;
+      code: "ENGINE_MISCONFIGURED";
+      message: string;
+      requestId: string;
+      reason?: string;
     }
   | {
       ok: false;
@@ -87,6 +95,19 @@ async function loadIssueByPrUrl(client: PoolClient, prUrl: string) {
 }
 
 export async function applyMergeToWorkflow(input: ApplyMergeInput): Promise<ApplyMergeResult> {
+  const stageEntry = getStageRegistryEntry("S5");
+  const mergeRoute = stageEntry?.routes.merge;
+  if (!stageEntry || !mergeRoute?.handler) {
+    const registryError = getStageRegistryError("S5");
+    return {
+      ok: false,
+      code: registryError.code,
+      message: registryError.message,
+      requestId: input.requestId,
+      reason: "registry",
+    };
+  }
+
   const prUrl = input.prUrl || buildPrUrl(input.repository, input.prNumber) || undefined;
 
   const client = await input.pool.connect();

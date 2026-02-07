@@ -52,6 +52,7 @@ import {
 import { parseIssueId } from '@/lib/contracts/ids';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { withApi } from '@/lib/http/withApi';
+import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-registry';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -107,14 +108,46 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
   const pool = getPool();
   const routeHeaderValue = getRouteHeaderValue(request);
   const requestedScope = request.nextUrl?.pathname?.includes('/afu9/s1s9/') ? 's1s9' : 's1s3';
+  const stageEntry = getStageRegistryEntry('S2');
+  const specRoute = stageEntry?.routes.spec;
+
+  if (!stageEntry || !specRoute?.handler) {
+    const registryError = getStageRegistryError('S2');
+    return jsonResponse(
+      {
+        ok: false,
+        code: registryError.code,
+        message: registryError.message,
+        errorCode: registryError.code,
+        requestId,
+        handler: 'control',
+        route: routeHeaderValue,
+        scopeRequested: requestedScope,
+        scopeResolved: 's1s3',
+      },
+      {
+        status: 500,
+        requestId,
+        headers: {
+          ...getControlResponseHeaders(requestId, routeHeaderValue),
+          ...buildAfu9ScopeHeaders({
+            requestedScope,
+            resolvedScope: 's1s3',
+          }),
+          'x-afu9-error-code': registryError.code,
+        },
+      }
+    );
+  }
+
   const responseHeaders = {
     ...getControlResponseHeaders(requestId, routeHeaderValue),
     ...buildAfu9ScopeHeaders({
       requestedScope,
       resolvedScope: 's1s3',
     }),
-    'x-afu9-stage': 'S2',
-    'x-afu9-handler': 'control.s1s3.spec',
+    'x-afu9-stage': stageEntry.stageId,
+    'x-afu9-handler': specRoute.handler,
   };
   const handlerName = 'control';
   const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();
