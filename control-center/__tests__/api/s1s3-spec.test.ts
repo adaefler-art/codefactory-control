@@ -231,4 +231,36 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.errorCode).toBe('spec_upstream_failed');
     expect(response.headers.get('x-afu9-error-code')).toBe('spec_upstream_failed');
   });
+
+  it('returns spec_ready_failed on unexpected handler errors', async () => {
+    const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockRejectedValue(new Error('boom'));
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/spec`,
+      {
+        method: 'POST',
+        headers: new Headers({
+          'content-type': 'application/json',
+          'x-request-id': 'req-4',
+          'x-afu9-sub': 'test-user',
+        }),
+        body: JSON.stringify({
+          scope: 'Test scope',
+          acceptanceCriteria: ['AC1'],
+        }),
+      }
+    );
+
+    const response = await postSpec(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.errorCode).toBe('spec_ready_failed');
+    expect(response.headers.get('x-afu9-error-code')).toBe('spec_ready_failed');
+  });
 });
