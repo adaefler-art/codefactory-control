@@ -43,6 +43,9 @@ import { getRequestId } from '@/lib/api/response-helpers';
 
 const AUTH_PATH_HEADER = 'x-afu9-auth-path';
 const REQUEST_ID_HEADER = 'x-afu9-request-id';
+const HANDLER_HEADER = 'x-afu9-handler';
+const ERROR_CODE_HEADER = 'x-afu9-error-code';
+const ISSUE_READ_HANDLER = 'control-center.issue-read';
 
 function withControlHeaders(response: NextResponse, requestId: string): NextResponse {
   response.headers.set('x-request-id', requestId);
@@ -58,6 +61,75 @@ function jsonWithHeaders(
 ): NextResponse {
   const response = NextResponse.json(body, { status });
   return withControlHeaders(response, requestId);
+}
+
+function jsonErrorResponse(params: {
+  code: string;
+  message: string;
+  requestId: string;
+  status?: number;
+  upstreamStatus?: number;
+}): NextResponse {
+  const response = NextResponse.json(
+    {
+      ok: false,
+      code: params.code,
+      message: params.message,
+      requestId: params.requestId,
+      upstreamStatus: params.upstreamStatus,
+    },
+    { status: params.status ?? 500 }
+  );
+  withControlHeaders(response, params.requestId);
+  response.headers.set(HANDLER_HEADER, ISSUE_READ_HANDLER);
+  response.headers.set(ERROR_CODE_HEADER, params.code);
+  return response;
+}
+
+function mapIssueReadFailure(params: {
+  requestId: string;
+  error: unknown;
+  statusHint?: number;
+}): NextResponse {
+  const statusHint =
+    typeof params.statusHint === 'number'
+      ? params.statusHint
+      : typeof (params.error as { status?: number })?.status === 'number'
+        ? (params.error as { status?: number }).status
+        : undefined;
+  const message =
+    params.error instanceof Error
+      ? params.error.message
+      : typeof params.error === 'string'
+        ? params.error
+        : 'Issue read failed';
+  const statusValue = typeof statusHint === 'number' ? statusHint : 500;
+
+  if (/json|parse/i.test(message)) {
+    return jsonErrorResponse({
+      code: 'SERIALIZATION_FAILED',
+      message: 'Failed to serialize issue response',
+      requestId: params.requestId,
+      status: 500,
+    });
+  }
+
+  if (/github/i.test(message)) {
+    return jsonErrorResponse({
+      code: 'GITHUB_API_ERROR',
+      message: 'GitHub API error',
+      requestId: params.requestId,
+      status: statusValue >= 500 ? 502 : statusValue,
+      upstreamStatus: statusHint,
+    });
+  }
+
+  return jsonErrorResponse({
+    code: 'INTERNAL_ERROR',
+    message,
+    requestId: params.requestId,
+    status: statusValue,
+  });
 }
 
 function errorWithHeaders(
@@ -138,23 +210,66 @@ export const GET = withApi(async (
     });
   }
 
-  const ensured = await ensureIssueInControl(id, requestId);
-  if (!ensured.ok) {
-    return jsonWithHeaders(
-      {
-        ...ensured.body,
-        requestId,
-      },
-      ensured.status,
-      requestId
-    );
+  let ensured: Awaited<ReturnType<typeof ensureIssueInControl>>;
+  try {
+    ensured = await ensureIssueInControl(id, requestId);
+  } catch (error) {
+    return jsonErrorResponse({
+      code: 'ISSUE_STORE_READ_FAILED',
+      message: 'Failed to load issue from store',
+      requestId,
+    });
   }
 
-  const responseBody: any = normalizeIssueForApi(ensured.issue);
-  if (isDebugApiEnabled()) {
-    responseBody.contextTrace = await buildContextTrace(request);
+  if (!ensured.ok) {
+    if (ensured.status >= 500) {
+      return jsonErrorResponse({
+        code: 'ISSUE_STORE_READ_FAILED',
+        message: 'Failed to load issue from store',
+        requestId,
+        status: ensured.status,
+      });
+    }
+
+    const fallbackCode = typeof ensured.body?.errorCode === 'string'
+      ? ensured.body.errorCode
+      : 'ISSUE_READ_FAILED';
+    return jsonErrorResponse({
+      code: fallbackCode,
+      message: typeof ensured.body?.error === 'string' ? ensured.body.error : 'Issue read failed',
+      requestId,
+      status: ensured.status,
+    });
   }
-  return jsonWithHeaders(responseBody, 200, requestId);
+
+  let responseBody: any;
+  try {
+    responseBody = normalizeIssueForApi(ensured.issue);
+  } catch (error) {
+    return jsonErrorResponse({
+      code: 'INVALID_STORED_STATE',
+      message: 'Issue record failed validation',
+      requestId,
+    });
+  }
+
+  if (isDebugApiEnabled()) {
+    try {
+      responseBody.contextTrace = await buildContextTrace(request);
+    } catch (error) {
+      return mapIssueReadFailure({ requestId, error });
+    }
+  }
+
+  try {
+    return jsonWithHeaders(responseBody, 200, requestId);
+  } catch (error) {
+    return jsonErrorResponse({
+      code: 'SERIALIZATION_FAILED',
+      message: 'Failed to serialize issue response',
+      requestId,
+    });
+  }
 });
 
 /**
