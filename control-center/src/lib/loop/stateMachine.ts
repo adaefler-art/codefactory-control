@@ -39,6 +39,7 @@ export enum BlockerCode {
   PR_CLOSED = 'PR_CLOSED',
   MERGE_CONFLICT = 'MERGE_CONFLICT',
   MERGE_FAILED = 'MERGE_FAILED',
+  MESH_UPDATE_FAILED = 'MESH_UPDATE_FAILED',
   // S6 Deployment Observation blocker codes (E9.3-CTRL-05)
   PR_NOT_MERGED = 'PR_NOT_MERGED',
   GITHUB_API_ERROR = 'GITHUB_API_ERROR',
@@ -377,6 +378,8 @@ export function getBlockerDescription(code: BlockerCode): string {
       return 'Issue is in an unknown or invalid state';
     case BlockerCode.INVARIANT_VIOLATION:
       return 'State machine invariant violated';
+    case BlockerCode.MESH_UPDATE_FAILED:
+      return 'Failed to persist workflow mesh update after merge';
     default:
       return 'Unknown blocker';
   }

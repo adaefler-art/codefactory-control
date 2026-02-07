@@ -113,6 +113,8 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       requestedScope,
       resolvedScope: 's1s3',
     }),
+    'x-afu9-stage': 'S2',
+    'x-afu9-handler': 'control.s1s3.spec',
   };
   const handlerName = 'control';
   const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();
@@ -129,11 +131,15 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     upstreamErrorCode?: string;
     extraBody?: Record<string, unknown>;
   }) => {
+    const message = params.detailsSafe || 'Request failed';
     return jsonResponse(
       {
+        ok: false,
+        code: params.errorCode,
+        message,
         errorCode: params.errorCode,
         requestId,
-        detailsSafe: params.detailsSafe || 'Request failed',
+        detailsSafe: message,
         handler: handlerName,
         route: routeHeaderValue,
         scopeRequested: requestedScope,
@@ -331,6 +337,9 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
       return jsonResponse(
         {
+          ok: false,
+          code: 'issue_not_found',
+          message: 'Issue not found',
           errorCode: 'issue_not_found',
           issueId,
           requestId,
@@ -454,6 +463,18 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     return jsonResponse(
       {
+        ok: true,
+        issueId: updatedIssue.id,
+        updatedAt: updatedIssue.updated_at ?? updatedIssue.updatedAt ?? null,
+        s2: {
+          status: 'READY',
+          scope: updatedIssue.scope ?? null,
+          acceptanceCriteria: updatedIssue.acceptance_criteria ?? [],
+          specReadyAt: updatedIssue.spec_ready_at ?? null,
+        },
+        workflow: {
+          current: 'S3',
+        },
         issue: updatedIssue,
         run: run,
         step: stepResult.data,

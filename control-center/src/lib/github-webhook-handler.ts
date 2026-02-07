@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { getPool } from '@/lib/db';
 import { verifyGitHubSignature } from '@/lib/webhooks/signature';
 import { recordGitHubWebhookDelivery } from '@/lib/webhooks/persistence';
 import { getGitHubWebhookSecret } from '@/lib/github-app-auth';
 import { postGitHubIssueComment } from '@/lib/github/auth-wrapper';
+import { applyMergeToWorkflow } from '@/lib/loop/applyMergeToWorkflow';
 
 export async function handleGitHubWebhook(rawBody: Buffer, headers: Headers): Promise<Response> {
   const signature = headers.get('x-hub-signature-256');
@@ -38,6 +40,7 @@ export async function handleGitHubWebhook(rawBody: Buffer, headers: Headers): Pr
   });
 
   const pool = getPool();
+  const requestId = deliveryId || randomUUID();
 
   const repositoryFullName: string | undefined =
     typeof payload?.repository?.full_name === 'string' ? payload.repository.full_name : undefined;
@@ -50,6 +53,58 @@ export async function handleGitHubWebhook(rawBody: Buffer, headers: Headers): Pr
 
   if (!deliveryRecord.inserted) {
     return NextResponse.json({ ok: true, duplicate: true }, { status: 200 });
+  }
+
+  if (
+    eventType === 'pull_request' &&
+    payload?.action === 'closed' &&
+    payload?.pull_request?.merged === true
+  ) {
+    const owner = payload?.repository?.owner?.login;
+    const repo = payload?.repository?.name;
+    const prNumber = payload?.pull_request?.number;
+    const prUrl = payload?.pull_request?.html_url;
+    const mergeSha = payload?.pull_request?.merge_commit_sha;
+    const mergedAt = payload?.pull_request?.merged_at;
+
+    if (typeof owner !== 'string' || typeof repo !== 'string' || typeof prNumber !== 'number') {
+      console.warn('[GitHubWebhook] Missing PR merge metadata', {
+        delivery_id: deliveryId,
+      });
+      return NextResponse.json({ ok: true, ignored: true }, { status: 200 });
+    }
+
+    const meshResult = await applyMergeToWorkflow({
+      pool,
+      repository: { owner, repo },
+      prNumber,
+      prUrl: typeof prUrl === 'string' ? prUrl : undefined,
+      mergeSha: typeof mergeSha === 'string' ? mergeSha : null,
+      mergedAt: typeof mergedAt === 'string' ? mergedAt : null,
+      requestId,
+      source: 'webhook',
+    });
+
+    if (!meshResult.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: meshResult.code,
+          message: meshResult.message,
+          requestId,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        issueId: meshResult.issueId,
+        requestId,
+      },
+      { status: 200 }
+    );
   }
 
   // Minimal roundtrip: issues.opened -> comment

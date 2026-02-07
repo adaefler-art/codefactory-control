@@ -45,7 +45,7 @@ import {
   S1S3RunStatus,
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
-import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import { getRequestId, jsonResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 
@@ -58,6 +58,33 @@ interface RouteContext {
     id: string;
   }>;
 }
+
+type S3ErrorCode =
+  | 'ENGINE_MISCONFIGURED'
+  | 'GITHUB_WRITE_DENIED'
+  | 'VALIDATION_FAILED'
+  | 'DISPATCH_DISABLED'
+  | 'NOT_IMPLEMENTED'
+  | 'INTERNAL_ERROR';
+
+type S3ErrorResponse = {
+  ok: false;
+  stage: 'S3';
+  code: S3ErrorCode;
+  message: string;
+  requestId: string;
+  errorCode?: string;
+  requiredConfig?: string[];
+};
+
+type S3SuccessResponse = {
+  ok: true;
+  stage: 'S3';
+  runId: string;
+  mutationId: string;
+  issueId: string;
+  startedAt: string;
+};
 
 type PullRequestSummary = {
   number: number;
@@ -146,6 +173,39 @@ async function findExistingPr(params: {
   return selectLatestPullRequest(allResult.data as PullRequestSummary[]);
 }
 
+const S3_STAGE = 'S3';
+const S3_HANDLER = 'control.s1s3.implement';
+
+function hasValue(value: string | undefined | null): boolean {
+  return Boolean(value && value.trim().length > 0);
+}
+
+function resolveDispatchRequirements(): string[] {
+  const required: string[] = [];
+  const runnerEndpoint = process.env.MCP_RUNNER_URL || process.env.MCP_RUNNER_ENDPOINT;
+  if (!hasValue(runnerEndpoint)) {
+    required.push('MCP_RUNNER_URL');
+  }
+
+  const queueUrl = process.env.AFU9_GITHUB_EVENTS_QUEUE_URL;
+  if (!hasValue(queueUrl)) {
+    required.push('AFU9_GITHUB_EVENTS_QUEUE_URL');
+  }
+
+  const appId = process.env.GITHUB_APP_ID || process.env.GH_APP_ID;
+  const appKey =
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM || process.env.GH_APP_PRIVATE_KEY_PEM;
+  const appSecretId =
+    process.env.GITHUB_APP_SECRET_ID || process.env.GH_APP_SECRET_ID;
+  const dispatcherConfigured = (hasValue(appId) && hasValue(appKey)) || hasValue(appSecretId);
+  if (!dispatcherConfigured) {
+    required.push('GITHUB_APP_ID');
+    required.push('GITHUB_APP_PRIVATE_KEY_PEM');
+  }
+
+  return required;
+}
+
 /**
  * POST /api/afu9/s1s3/issues/[id]/implement
  * Create branch and PR for implementation
@@ -159,23 +219,79 @@ export async function POST(request: NextRequest, context: RouteContext) {
       requestedScope: 's1s3',
       resolvedScope: 's1s3',
     }),
+    'x-afu9-stage': S3_STAGE,
+    'x-afu9-handler': S3_HANDLER,
   };
+  responseHeaders['x-afu9-handler'] = S3_HANDLER;
   const pool = getPool();
 
+  const respondS3Error = (params: {
+    status: number;
+    code: S3ErrorCode;
+    message: string;
+    requiredConfig?: string[];
+  }) => {
+    const body: S3ErrorResponse = {
+      ok: false,
+      stage: S3_STAGE,
+      code: params.code,
+      message: params.message,
+      requestId,
+      errorCode: params.code,
+      requiredConfig: params.requiredConfig,
+    };
+
+    return jsonResponse(body, {
+      status: params.status,
+      requestId,
+      headers: {
+        ...responseHeaders,
+        'x-afu9-error-code': params.code,
+      },
+    });
+  };
+
+  const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) =>
+    jsonResponse(body, {
+      status: 202,
+      requestId,
+      headers: responseHeaders,
+    });
+
   try {
+    const stageValue =
+      process.env.AFU9_STAGE || process.env.DEPLOY_ENV || process.env.ENVIRONMENT;
+    if (!hasValue(stageValue)) {
+      return respondS3Error({
+        status: 500,
+        code: 'ENGINE_MISCONFIGURED',
+        message: 'Missing AFU9_STAGE',
+      });
+    }
+
+    const missingDispatchConfig = resolveDispatchRequirements();
+    if (missingDispatchConfig.length > 0) {
+      return respondS3Error({
+        status: 503,
+        code: 'DISPATCH_DISABLED',
+        message: 'Execution disabled in this env',
+        requiredConfig: missingDispatchConfig,
+      });
+    }
+
     const { id } = await context.params;
     const resolved = await resolveIssueIdentifierOr404(id, requestId);
     if (!resolved.ok) {
-      return jsonResponse(resolved.body, {
+      return respondS3Error({
         status: resolved.status,
-        requestId,
-        headers: responseHeaders,
+        code: 'VALIDATION_FAILED',
+        message: resolved.body.errorCode || 'Invalid issue identifier',
       });
     }
     const issueId = resolved.uuid;
 
     // Parse request body
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const { baseBranch = 'main', prTitle, prBody } = body;
 
     console.log('[S3] Implement request:', {
@@ -187,22 +303,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Get existing issue
     const issueResult = await getS1S3IssueById(pool, issueId);
     if (!issueResult.success || !issueResult.data) {
-      return jsonResponse(
-        {
-          errorCode: 'issue_not_found',
-          issueId: id,
-          requestId,
-          lookupStore: 'control',
-        },
-        {
-          status: 404,
-          requestId,
-          headers: {
-            ...responseHeaders,
-            'x-afu9-error-code': 'issue_not_found',
-          },
-        }
-      );
+      return respondS3Error({
+        status: 404,
+        code: 'VALIDATION_FAILED',
+        message: 'Issue not found',
+      });
     }
 
     const issue = issueResult.data;
@@ -213,41 +318,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       issue.status !== S1S3IssueStatus.IMPLEMENTING &&
       issue.status !== S1S3IssueStatus.PR_CREATED
     ) {
-      return errorResponse('Invalid issue state', {
+      return respondS3Error({
         status: 400,
-        requestId,
-        details: `Issue must be in SPEC_READY, IMPLEMENTING, or PR_CREATED state. Current: ${issue.status}`,
-        headers: responseHeaders,
+        code: 'VALIDATION_FAILED',
+        message: `Issue must be in SPEC_READY, IMPLEMENTING, or PR_CREATED state. Current: ${issue.status}`,
       });
     }
 
-    // Idempotent: If PR already created, return existing PR info
-    if ((issue.status === S1S3IssueStatus.PR_CREATED || issue.status === S1S3IssueStatus.IMPLEMENTING) && issue.pr_number && issue.pr_url && issue.branch_name) {
-      console.log('[S3] PR already exists, returning existing info:', {
-        requestId,
-        issue_id: issue.id,
-        pr_number: issue.pr_number,
-        pr_url: issue.pr_url,
-        branch_name: issue.branch_name,
-      });
-
-      return jsonResponse(
-        {
-          issue: issue,
-          pr: {
-            number: issue.pr_number,
-            url: issue.pr_url,
-            branch: issue.branch_name,
-          },
-          message: 'PR already exists (idempotent)',
-        },
-        {
-          status: 200,
-          requestId,
-          headers: responseHeaders,
-        }
-      );
-    }
 
     // Parse repo
     const [repoOwner, repoName] = issue.repo_full_name.split('/');
@@ -258,14 +335,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       octokit = await createAuthenticatedClient({ owner: repoOwner, repo: repoName, requestId });
     } catch (error) {
       if (error instanceof Error && error.message.includes('not in allowlist')) {
-        return errorResponse('Repository access denied', {
+        return respondS3Error({
           status: 403,
-          requestId,
-          details: `Repository ${issue.repo_full_name} is not in the allowlist`,
-          headers: responseHeaders,
+          code: 'GITHUB_WRITE_DENIED',
+          message: `Repository ${issue.repo_full_name} is not in the allowlist`,
         });
       }
-      throw error;
+      return respondS3Error({
+        status: 500,
+        code: 'ENGINE_MISCONFIGURED',
+        message: error instanceof Error ? error.message : 'GitHub client not configured',
+      });
     }
 
     // Create run record
@@ -278,18 +358,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (!runResult.success || !runResult.data) {
-      return errorResponse('Failed to create run record', {
+      return respondS3Error({
         status: 500,
-        requestId,
-        details: runResult.error,
-        headers: responseHeaders,
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to create run record',
       });
     }
 
     const run = runResult.data;
+    const startedAt = new Date(run.created_at || Date.now()).toISOString();
 
     // Create step event - STARTED
-    await createS1S3RunStep(pool, {
+    const startStep = await createS1S3RunStep(pool, {
       run_id: run.id,
       step_id: 'S3',
       step_name: 'Create Branch and PR',
@@ -301,6 +381,74 @@ export async function POST(request: NextRequest, context: RouteContext) {
         request_id: requestId,
       },
     });
+
+    if (!startStep.success || !startStep.data) {
+      return respondS3Error({
+        status: 500,
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to create step event',
+      });
+    }
+
+    const issueHasExistingPr =
+      (issue.status === S1S3IssueStatus.PR_CREATED ||
+        issue.status === S1S3IssueStatus.IMPLEMENTING) &&
+      issue.pr_number &&
+      issue.pr_url &&
+      issue.branch_name;
+
+    if (issueHasExistingPr) {
+      console.log('[S3] PR already exists, returning existing info:', {
+        requestId,
+        issue_id: issue.id,
+        pr_number: issue.pr_number,
+        pr_url: issue.pr_url,
+        branch_name: issue.branch_name,
+      });
+
+      const stepResult = await createS1S3RunStep(pool, {
+        run_id: run.id,
+        step_id: 'S3',
+        step_name: 'Create Branch and PR',
+        status: S1S3StepStatus.SUCCEEDED,
+        evidence_refs: {
+          issue_id: issue.id,
+          issue_url: issue.github_issue_url,
+          pr_number: issue.pr_number,
+          pr_url: issue.pr_url,
+          branch_name: issue.branch_name,
+          base_branch: baseBranch,
+          request_id: requestId,
+          mode: 'reused_existing_pr',
+        },
+      });
+
+      if (!stepResult.success || !stepResult.data) {
+        return respondS3Error({
+          status: 500,
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to create step event',
+        });
+      }
+
+      await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.DONE);
+
+      return respondS3Success({
+        ok: true,
+        stage: S3_STAGE,
+        runId: run.id,
+        mutationId: stepResult.data.id,
+        issueId: issue.id,
+        startedAt,
+        issue,
+        pr: {
+          number: issue.pr_number,
+          url: issue.pr_url,
+          branch: issue.branch_name,
+        },
+        message: 'PR already exists (idempotent)',
+      });
+    }
 
     try {
       // Generate branch name
@@ -459,23 +607,11 @@ Closes #${issue.github_issue_number}
 
                 await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, 'S3_PR_EXISTS_BUT_NOT_FOUND');
 
-                return jsonResponse(
-                  {
-                    error: 'Pull request already exists but was not found',
-                    code: 'S3_PR_EXISTS_BUT_NOT_FOUND',
-                    evidence: {
-                      head,
-                      base: baseBranch,
-                    },
-                    requestId,
-                    timestamp: new Date().toISOString(),
-                  },
-                  {
-                    status: 409,
-                    requestId,
-                    headers: responseHeaders,
-                  }
-                );
+                return respondS3Error({
+                  status: 409,
+                  code: 'VALIDATION_FAILED',
+                  message: 'Pull request already exists but was not found',
+                });
               }
 
               evidenceMode = 'reused_existing_pr';
@@ -494,11 +630,10 @@ Closes #${issue.github_issue_number}
       });
 
       if (!updateResult.success || !updateResult.data) {
-        return errorResponse('Failed to update issue', {
+        return respondS3Error({
           status: 500,
-          requestId,
-          details: updateResult.error,
-          headers: responseHeaders,
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to update issue',
         });
       }
 
@@ -525,11 +660,10 @@ Closes #${issue.github_issue_number}
       });
 
       if (!stepResult.success || !stepResult.data) {
-        return errorResponse('Failed to create step event', {
+        return respondS3Error({
           status: 500,
-          requestId,
-          details: stepResult.error,
-          headers: responseHeaders,
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to create step event',
         });
       }
 
@@ -544,24 +678,23 @@ Closes #${issue.github_issue_number}
         mode: evidenceMode,
       });
 
-      return jsonResponse(
-        {
-          issue: updatedIssue,
-          run: run,
-          step: stepResult.data,
-          pr: {
-            number: pr.number,
-            url: pr.html_url,
-            branch: branchName,
-          },
-          ...(evidenceMode === 'reused_existing_pr' ? { message: 'PR already exists (idempotent)' } : {}),
+      return respondS3Success({
+        ok: true,
+        stage: S3_STAGE,
+        runId: run.id,
+        mutationId: stepResult.data.id,
+        issueId: updatedIssue.id,
+        startedAt,
+        issue: updatedIssue,
+        run: run,
+        step: stepResult.data,
+        pr: {
+          number: pr.number,
+          url: pr.html_url,
+          branch: branchName,
         },
-        {
-          status: evidenceMode === 'reused_existing_pr' ? 200 : 201,
-          requestId,
-          headers: responseHeaders,
-        }
-      );
+        ...(evidenceMode === 'reused_existing_pr' ? { message: 'PR already exists (idempotent)' } : {}),
+      });
     } catch (error) {
       // Log error step event
       await createS1S3RunStep(pool, {
@@ -579,15 +712,18 @@ Closes #${issue.github_issue_number}
       // Update run status to FAILED
       await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, error instanceof Error ? error.message : 'Unknown error');
 
-      throw error;
+      return respondS3Error({
+        status: 500,
+        code: 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   } catch (error) {
     console.error('[API /api/afu9/s1s3/issues/[id]/implement] Error implementing:', error);
-    return errorResponse('Failed to implement', {
+    return respondS3Error({
       status: 500,
-      requestId,
-      details: error instanceof Error ? error.message : 'Unknown error',
-      headers: responseHeaders,
+      code: 'INTERNAL_ERROR',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }

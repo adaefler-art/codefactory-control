@@ -15,6 +15,7 @@ import type { StepContext, StepExecutionResult } from './s1-pick-issue';
 import { captureSnapshotForPR } from '@/lib/github/checks-mirror-service';
 import { makeS4GateDecision } from '../s4-gate-decision';
 import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
+import { applyMergeToWorkflow } from '../applyMergeToWorkflow';
 
 // Re-export types for convenience
 export type { StepContext, StepExecutionResult };
@@ -224,15 +225,30 @@ export async function executeS5(
         idempotent: true,
       } as Record<string, unknown>,
     });
-    
-    // Update issue state to DONE if not already
-    if (issue.status !== IssueState.DONE) {
-      await pool.query(
-        `UPDATE afu9_issues
-         SET status = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [IssueState.DONE, issue.id]
-      );
+
+    const meshResult = await applyMergeToWorkflow({
+      pool,
+      issueId: issue.id,
+      repository: { owner: prInfo.owner, repo: prInfo.repo },
+      prNumber: prInfo.prNumber,
+      prUrl: issue.pr_url,
+      mergeSha: prDetails.merge_commit_sha,
+      mergedAt: prDetails.merged_at || new Date().toISOString(),
+      requestId: ctx.requestId,
+      source: 'executor',
+    });
+
+    if (!meshResult.ok) {
+      return {
+        success: false,
+        blocked: true,
+        blockerCode: BlockerCode.MESH_UPDATE_FAILED,
+        blockerMessage: meshResult.message,
+        stateBefore,
+        stateAfter: stateBefore,
+        fieldsChanged: [],
+        message: meshResult.message,
+      };
     }
     
     const durationMs = Date.now() - startTime;
@@ -496,15 +512,33 @@ export async function executeS5(
   
   // Step 10: Update issue state to DONE
   const stateAfter = IssueState.DONE;
-  
+
   if (ctx.mode === 'execute') {
-    await pool.query(
-      `UPDATE afu9_issues
-       SET status = $1, updated_at = NOW()
-       WHERE id = $2`,
-      [stateAfter, issue.id]
-    );
-    
+    const meshResult = await applyMergeToWorkflow({
+      pool,
+      issueId: issue.id,
+      repository: { owner: prInfo.owner, repo: prInfo.repo },
+      prNumber: prInfo.prNumber,
+      prUrl: issue.pr_url,
+      mergeSha,
+      mergedAt: new Date().toISOString(),
+      requestId: ctx.requestId,
+      source: 'executor',
+    });
+
+    if (!meshResult.ok) {
+      return {
+        success: false,
+        blocked: true,
+        blockerCode: BlockerCode.MESH_UPDATE_FAILED,
+        blockerMessage: meshResult.message,
+        stateBefore,
+        stateAfter: stateBefore,
+        fieldsChanged: [],
+        message: meshResult.message,
+      };
+    }
+
     logger.info('S5 state transitioned', {
       issueId: issue.id,
       stateBefore,
