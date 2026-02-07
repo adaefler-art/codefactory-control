@@ -127,18 +127,20 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     detailsSafe?: string;
     upstreamStatus?: number;
     upstreamErrorCode?: string;
+    extraBody?: Record<string, unknown>;
   }) => {
     return jsonResponse(
       {
         errorCode: params.errorCode,
         requestId,
-        detailsSafe: params.detailsSafe,
+        detailsSafe: params.detailsSafe || 'Request failed',
         handler: handlerName,
         route: routeHeaderValue,
         scopeRequested: requestedScope,
         scopeResolved: 's1s3',
         upstreamStatus: params.upstreamStatus,
         upstreamErrorCode: params.upstreamErrorCode,
+        ...params.extraBody,
       },
       {
         status: params.status,
@@ -201,12 +203,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         }
 
         if (resolved.status === 404 && resolved.body.errorCode === 'issue_not_found') {
-          return jsonResponse(resolved.body, {
-            status: resolved.status,
-            requestId,
-            headers: {
-              ...responseHeaders,
-              'x-afu9-error-code': resolved.body.errorCode,
+          return respondWithSpecError({
+            status: 404,
+            errorCode: 'issue_not_found',
+            detailsSafe: 'Issue not found',
+            extraBody: {
+              issueId,
+              lookupStore: resolved.body.lookupStore,
             },
           });
         }
@@ -466,9 +469,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       typeof (error as { status?: number })?.status === 'number'
         ? (error as { status?: number }).status
         : undefined;
+    const status = upstreamStatus ? 502 : 500;
     return respondWithSpecError({
-      status: 502,
-      errorCode: 'spec_upstream_failed',
+      status,
+      errorCode: 'spec_ready_failed',
       detailsSafe: 'Failed to set spec',
       upstreamStatus,
     });
