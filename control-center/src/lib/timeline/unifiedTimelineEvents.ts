@@ -14,6 +14,7 @@ import { z } from 'zod';
 // ========================================
 
 export const UNIFIED_EVENT_TYPES = [
+  'afu9.mesh.updated',
   'approval_submitted',
   'approval_approved',
   'approval_denied',

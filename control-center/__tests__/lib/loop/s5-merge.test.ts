@@ -16,6 +16,7 @@ import { getLoopEventStore } from '../../../src/lib/loop/eventStore';
 import { captureSnapshotForPR } from '../../../src/lib/github/checks-mirror-service';
 import { makeS4GateDecision } from '../../../src/lib/loop/s4-gate-decision';
 import { createAuthenticatedClient } from '../../../src/lib/github/auth-wrapper';
+import { applyMergeToWorkflow } from '../../../src/lib/loop/applyMergeToWorkflow';
 
 // Mock dependencies
 jest.mock('../../../src/lib/db', () => ({
@@ -47,6 +48,10 @@ jest.mock('../../../src/lib/loop/s4-gate-decision', () => ({
 
 jest.mock('../../../src/lib/github/auth-wrapper', () => ({
   createAuthenticatedClient: jest.fn(),
+}));
+
+jest.mock('../../../src/lib/loop/applyMergeToWorkflow', () => ({
+  applyMergeToWorkflow: jest.fn(),
 }));
 
 describe('E9.3-CTRL-04: S5 Merge Step Executor', () => {
@@ -83,6 +88,15 @@ describe('E9.3-CTRL-04: S5 Merge Step Executor', () => {
 
     (getLoopEventStore as jest.Mock).mockReturnValue(mockEventStore);
     (createAuthenticatedClient as jest.Mock).mockResolvedValue(mockOctokit);
+    (applyMergeToWorkflow as jest.Mock).mockResolvedValue({
+      ok: true,
+      issueId: 'issue-123',
+      stateBefore: IssueState.REVIEW_READY,
+      stateAfter: IssueState.DONE,
+      fromStep: 'S5',
+      toStep: 'S6',
+      updatedAt: '2026-02-07T10:00:00.000Z',
+    });
   });
 
   describe('Validation', () => {

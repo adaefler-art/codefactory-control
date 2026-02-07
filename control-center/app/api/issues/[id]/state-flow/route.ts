@@ -66,13 +66,14 @@ export async function GET(
     // - GitHub API (PR status, reviews, checks)
     // - Database (sync audit events)
     // For now, we'll use placeholder evidence based on handoff/execution state
+    const prMerged = ['DONE', 'VERIFIED', 'CLOSED'].includes(currentStatus);
     const evidence = {
       hasCode: issue.execution_state === 'DONE' || issue.execution_state === 'RUNNING',
       testsPass: issue.execution_state === 'DONE',
       reviewApproved: false, // Would fetch from GitHub
       ciChecksPass: false, // Would fetch from GitHub
       noMergeConflicts: true, // Would fetch from GitHub
-      prMerged: false, // Would fetch from GitHub
+      prMerged,
       specificationComplete: currentStatus !== 'CREATED',
     };
 

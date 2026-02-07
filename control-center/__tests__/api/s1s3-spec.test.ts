@@ -122,10 +122,18 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
       params: Promise.resolve({ id: issueId }),
     });
 
+    const body = await response.json();
+
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s3');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
+    expect(response.headers.get('x-afu9-stage')).toBe('S2');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
     expect(response.headers.get('x-afu9-error-code')).toBeNull();
+    expect(body.ok).toBe(true);
+    expect(body.issueId).toBe(issueId);
+    expect(body.s2?.status).toBe('READY');
+    expect(body.workflow?.current).toBe('S3');
   });
 
   it('returns a 400 errorCode for invalid body', async () => {
@@ -175,6 +183,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     const body = await response.json();
 
     expect(response.status).toBe(400);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('spec_invalid_payload');
     expect(body.errorCode).toBe('spec_invalid_payload');
     expect(response.headers.get('x-afu9-error-code')).toBe('spec_invalid_payload');
   });
@@ -228,6 +238,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     const body = await response.json();
 
     expect(response.status).toBe(502);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('spec_upstream_failed');
     expect(body.errorCode).toBe('spec_upstream_failed');
     expect(response.headers.get('x-afu9-error-code')).toBe('spec_upstream_failed');
   });
@@ -260,6 +272,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('spec_ready_failed');
     expect(body.errorCode).toBe('spec_ready_failed');
     expect(response.headers.get('x-afu9-error-code')).toBe('spec_ready_failed');
   });

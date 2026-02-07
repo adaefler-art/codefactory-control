@@ -26,6 +26,10 @@ export interface GitHubPullRequest {
   title: string;
   body?: string;
   state: string;
+  merged?: boolean;
+  merged_at?: string | null;
+  merge_commit_sha?: string | null;
+  html_url?: string;
   head?: {
     ref: string;
   };

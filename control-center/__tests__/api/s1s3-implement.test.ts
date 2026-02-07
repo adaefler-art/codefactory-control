@@ -52,6 +52,7 @@ jest.mock('../../app/api/issues/_shared', () => {
 });
 
 describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
+  const envSnapshot = { ...process.env };
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
   const mockCreateS1S3Run = createS1S3Run as jest.Mock;
   const mockCreateS1S3RunStep = createS1S3RunStep as jest.Mock;
@@ -109,6 +110,14 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env = {
+      ...envSnapshot,
+      MCP_RUNNER_URL: 'http://runner.local',
+      AFU9_GITHUB_EVENTS_QUEUE_URL: 'https://queue.local/afu9',
+      GITHUB_APP_ID: '12345',
+      GITHUB_APP_PRIVATE_KEY_PEM: 'dummy-key',
+      AFU9_STAGE: 'dev',
+    };
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
       type: 'uuid',
@@ -116,6 +125,37 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       issue: { id: mockIssue.id },
       source: 'control',
     });
+  });
+
+  afterEach(() => {
+    process.env = { ...envSnapshot };
+  });
+
+  test('returns DISPATCH_DISABLED when dispatch config is missing', async () => {
+    process.env = {
+      ...envSnapshot,
+      AFU9_STAGE: 'dev',
+    };
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({ baseBranch: 'main' }),
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('DISPATCH_DISABLED');
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
+    expect(response.headers.get('x-afu9-stage')).toBe('S3');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.implement');
+    expect(response.headers.get('x-afu9-error-code')).toBe('DISPATCH_DISABLED');
   });
 
   test('reuses existing PR when found', async () => {
@@ -160,10 +200,18 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const response = await implementIssue(request, context);
     const body = await response.json();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(body.stage).toBe('S3');
+    expect(body.runId).toBe(mockRun.id);
+    expect(body.mutationId).toBe('step-1');
+    expect(body.issueId).toBe(mockIssue.id);
     expect(body.pr.number).toBe(916);
     expect(body.message).toBe('PR already exists (idempotent)');
     expect(octokit.rest.pulls.create).not.toHaveBeenCalled();
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
+    expect(response.headers.get('x-afu9-stage')).toBe('S3');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.implement');
   });
 
   test('creates PR when none exists', async () => {
@@ -209,7 +257,11 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const response = await implementIssue(request, context);
     const body = await response.json();
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(body.stage).toBe('S3');
+    expect(body.runId).toBe(mockRun.id);
+    expect(body.mutationId).toBe('step-2');
     expect(body.pr.number).toBe(101);
     expect(octokit.rest.pulls.create).toHaveBeenCalled();
   });
@@ -261,7 +313,11 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const response = await implementIssue(request, context);
     const body = await response.json();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(body.stage).toBe('S3');
+    expect(body.runId).toBe(mockRun.id);
+    expect(body.mutationId).toBe('step-3');
     expect(body.pr.number).toBe(916);
     expect(body.message).toBe('PR already exists (idempotent)');
   });
@@ -296,6 +352,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const body = await response.json();
 
     expect(response.status).toBe(409);
-    expect(body.code).toBe('S3_PR_EXISTS_BUT_NOT_FOUND');
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('VALIDATION_FAILED');
+    expect(response.headers.get('x-afu9-error-code')).toBe('VALIDATION_FAILED');
   });
 });
