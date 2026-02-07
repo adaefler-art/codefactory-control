@@ -109,8 +109,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
         headers: new Headers({
           'content-type': 'application/json',
           'x-request-id': 'req-1',
+          'x-afu9-sub': 'test-user',
         }),
         body: JSON.stringify({
+          scope: 'Test scope',
           acceptanceCriteria: ['AC1'],
         }),
       }
@@ -157,8 +159,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
         headers: new Headers({
           'content-type': 'application/json',
           'x-request-id': 'req-2',
+          'x-afu9-sub': 'test-user',
         }),
         body: JSON.stringify({
+          scope: '',
           acceptanceCriteria: [],
         }),
       }
@@ -171,7 +175,60 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     const body = await response.json();
 
     expect(response.status).toBe(400);
-    expect(body.errorCode).toBe('invalid_acceptance_criteria');
-    expect(response.headers.get('x-afu9-error-code')).toBe('invalid_acceptance_criteria');
+    expect(body.errorCode).toBe('spec_invalid_payload');
+    expect(response.headers.get('x-afu9-error-code')).toBe('spec_invalid_payload');
+  });
+
+  it('returns 502 with spec_upstream_failed on downstream errors', async () => {
+    const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: issueId,
+      issue: { id: issueId },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'CREATED',
+        owner: 'afu9',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: [],
+      },
+    });
+
+    mockCreateS1S3Run.mockRejectedValue(new Error('boom'));
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/spec`,
+      {
+        method: 'POST',
+        headers: new Headers({
+          'content-type': 'application/json',
+          'x-request-id': 'req-3',
+          'x-afu9-sub': 'test-user',
+        }),
+        body: JSON.stringify({
+          scope: 'Test scope',
+          acceptanceCriteria: ['AC1'],
+        }),
+      }
+    );
+
+    const response = await postSpec(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.errorCode).toBe('spec_upstream_failed');
+    expect(response.headers.get('x-afu9-error-code')).toBe('spec_upstream_failed');
   });
 });

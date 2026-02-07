@@ -40,10 +40,18 @@ import {
   S1S3RunStatus,
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
-import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
-import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
+import { getRequestId, jsonResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import {
+  extractServiceTokenFromHeaders,
+  getControlResponseHeaders,
+  getServiceTokenDebugInfo,
+  normalizeServiceToken,
+  resolveIssueIdentifierOr404,
+  tokensEqual,
+} from '../../../../../issues/_shared';
 import { parseIssueId } from '@/lib/contracts/ids';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
+import { withApi } from '@/lib/http/withApi';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -94,34 +102,40 @@ interface RouteContext {
  * POST /api/afu9/s1s3/issues/[id]/spec
  * Set spec ready with acceptance criteria
  */
-export async function POST(request: NextRequest, context: RouteContext) {
+export const POST = withApi(async (request: NextRequest, context: RouteContext) => {
   const requestId = getRequestId(request);
   const pool = getPool();
   const routeHeaderValue = getRouteHeaderValue(request);
+  const requestedScope = request.nextUrl?.pathname?.includes('/afu9/s1s9/') ? 's1s9' : 's1s3';
   const responseHeaders = {
     ...getControlResponseHeaders(requestId, routeHeaderValue),
     ...buildAfu9ScopeHeaders({
-      requestedScope: 's1s3',
+      requestedScope,
       resolvedScope: 's1s3',
     }),
   };
   const handlerName = 'control';
+  const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();
+  const { token: providedServiceToken, reason: tokenReason } = extractServiceTokenFromHeaders(request.headers);
+  const expectedServiceToken = normalizeServiceToken(process.env.SERVICE_READ_TOKEN || '');
+  const isTestEnv = process.env.NODE_ENV === 'test';
+  const shouldEnforceServiceToken = !isTestEnv || Boolean(expectedServiceToken);
 
   const respondWithSpecError = (params: {
     status: number;
     errorCode: string;
-    messageSafe: string;
+    detailsSafe?: string;
     upstreamStatus?: number;
     upstreamErrorCode?: string;
   }) => {
     return jsonResponse(
       {
         errorCode: params.errorCode,
-        messageSafe: params.messageSafe,
         requestId,
+        detailsSafe: params.detailsSafe,
         handler: handlerName,
         route: routeHeaderValue,
-        scopeRequested: 's1s3',
+        scopeRequested: requestedScope,
         scopeResolved: 's1s3',
         upstreamStatus: params.upstreamStatus,
         upstreamErrorCode: params.upstreamErrorCode,
@@ -138,6 +152,35 @@ export async function POST(request: NextRequest, context: RouteContext) {
   };
 
   try {
+    if (!verifiedUserSub && shouldEnforceServiceToken) {
+      if (!providedServiceToken) {
+        if (process.env.DEBUG_SERVICE_AUTH === 'true' && expectedServiceToken) {
+          console.warn('[S2] service token missing', {
+            requestId,
+            reason: tokenReason,
+          });
+        }
+        return respondWithSpecError({
+          status: 401,
+          errorCode: 'spec_unauthorized',
+          detailsSafe: tokenReason === 'malformed' ? 'Malformed Authorization header' : 'Missing service token',
+        });
+      }
+      if (!expectedServiceToken || !tokensEqual(providedServiceToken, expectedServiceToken)) {
+        if (process.env.DEBUG_SERVICE_AUTH === 'true' && expectedServiceToken) {
+          console.warn('[S2] service token rejected', {
+            requestId,
+            ...getServiceTokenDebugInfo(providedServiceToken, expectedServiceToken),
+          });
+        }
+        return respondWithSpecError({
+          status: 401,
+          errorCode: 'spec_unauthorized',
+          detailsSafe: expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
+        });
+      }
+    }
+
     const { id } = await context.params;
     const issueId = id;
     const parsedId = parseIssueId(issueId);
@@ -147,13 +190,31 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (parsedId.isValid) {
       const resolved = await resolveIssueIdentifierOr404(issueId, requestId);
       if (!resolved.ok) {
-        return jsonResponse(resolved.body, {
+        if (resolved.status >= 500) {
+          return respondWithSpecError({
+            status: 502,
+            errorCode: 'spec_upstream_failed',
+            detailsSafe: 'Issue lookup failed',
+            upstreamStatus: resolved.status,
+            upstreamErrorCode: resolved.body.errorCode,
+          });
+        }
+
+        if (resolved.status === 404 && resolved.body.errorCode === 'issue_not_found') {
+          return jsonResponse(resolved.body, {
+            status: resolved.status,
+            requestId,
+            headers: {
+              ...responseHeaders,
+              'x-afu9-error-code': resolved.body.errorCode,
+            },
+          });
+        }
+
+        return respondWithSpecError({
           status: resolved.status,
-          requestId,
-          headers: {
-            ...responseHeaders,
-            'x-afu9-error-code': resolved.body.errorCode,
-          },
+          errorCode: 'spec_invalid_payload',
+          detailsSafe: 'Invalid issue identifier',
         });
       }
       resolvedIssueId = resolved.uuid;
@@ -167,25 +228,40 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch {
       return respondWithSpecError({
         status: 400,
-        errorCode: 'invalid_spec_body',
-        messageSafe: 'Invalid request body',
+        errorCode: 'spec_invalid_payload',
+        detailsSafe: 'Invalid request body',
       });
     }
 
     const problem = typeof body.problem === 'string' ? body.problem : undefined;
-    const scope = typeof body.scope === 'string' ? body.scope : undefined;
+    const scope = typeof body.scope === 'string' ? body.scope.trim() : '';
     const notes = typeof body.notes === 'string' ? body.notes : undefined;
     const acceptanceCriteriaRaw = body.acceptanceCriteria;
-    const acceptanceCriteria = Array.isArray(acceptanceCriteriaRaw)
-      ? acceptanceCriteriaRaw.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
-      : null;
+    let acceptanceCriteria: string[] | null = null;
+
+    if (typeof acceptanceCriteriaRaw === 'string') {
+      const trimmed = acceptanceCriteriaRaw.trim();
+      acceptanceCriteria = trimmed ? [trimmed] : null;
+    } else if (Array.isArray(acceptanceCriteriaRaw)) {
+      acceptanceCriteria = acceptanceCriteriaRaw.filter(
+        (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0
+      );
+    }
+
+    if (!scope) {
+      return respondWithSpecError({
+        status: 400,
+        errorCode: 'spec_invalid_payload',
+        detailsSafe: 'Scope is required',
+      });
+    }
 
     // Validate acceptance criteria (required for SPEC_READY)
     if (!acceptanceCriteria || acceptanceCriteria.length === 0) {
       return respondWithSpecError({
         status: 400,
-        errorCode: 'invalid_acceptance_criteria',
-        messageSafe: 'Acceptance criteria required',
+        errorCode: 'spec_invalid_payload',
+        detailsSafe: 'Acceptance criteria required',
       });
     }
 
@@ -213,8 +289,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!repoFullName || !issueNumber || !githubUrl) {
           return respondWithSpecError({
             status: 409,
-            errorCode: 'issue_metadata_missing',
-            messageSafe: 'Issue missing GitHub metadata for spec',
+            errorCode: 'spec_invalid_payload',
+            detailsSafe: 'Issue missing GitHub metadata for spec',
           });
         }
 
@@ -229,9 +305,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
         if (!seedResult.success || !seedResult.data) {
           return respondWithSpecError({
-            status: 500,
-            errorCode: 'spec_update_failed',
-            messageSafe: 'Failed to seed S1S3 issue',
+            status: 502,
+            errorCode: 'spec_upstream_failed',
+            detailsSafe: 'Failed to seed S1S3 issue',
           });
         }
 
@@ -278,8 +354,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (issue.status !== S1S3IssueStatus.CREATED && issue.status !== S1S3IssueStatus.SPEC_READY) {
       return respondWithSpecError({
         status: 409,
-        errorCode: 'invalid_issue_state',
-        messageSafe: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
+        errorCode: 'spec_invalid_payload',
+        detailsSafe: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
       });
     }
 
@@ -294,9 +370,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!runResult.success || !runResult.data) {
       return respondWithSpecError({
-        status: 500,
-        errorCode: 'spec_update_failed',
-        messageSafe: 'Failed to create run record',
+        status: 502,
+        errorCode: 'spec_upstream_failed',
+        detailsSafe: 'Failed to create run record',
       });
     }
 
@@ -325,9 +401,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!updateResult.success || !updateResult.data) {
       return respondWithSpecError({
-        status: 500,
-        errorCode: 'spec_update_failed',
-        messageSafe: 'Failed to update issue',
+        status: 502,
+        errorCode: 'spec_upstream_failed',
+        detailsSafe: 'Failed to update issue',
       });
     }
 
@@ -358,9 +434,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!stepResult.success || !stepResult.data) {
       return respondWithSpecError({
-        status: 500,
-        errorCode: 'spec_update_failed',
-        messageSafe: 'Failed to create step event',
+        status: 502,
+        errorCode: 'spec_upstream_failed',
+        detailsSafe: 'Failed to create step event',
       });
     }
 
@@ -386,10 +462,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   } catch (error) {
     console.error('[API /api/afu9/s1s3/issues/[id]/spec] Error setting spec:', error);
+    const upstreamStatus =
+      typeof (error as { status?: number })?.status === 'number'
+        ? (error as { status?: number }).status
+        : undefined;
     return respondWithSpecError({
-      status: 500,
-      errorCode: 'spec_update_failed',
-      messageSafe: 'Failed to set spec',
+      status: 502,
+      errorCode: 'spec_upstream_failed',
+      detailsSafe: 'Failed to set spec',
+      upstreamStatus,
     });
   }
-}
+});

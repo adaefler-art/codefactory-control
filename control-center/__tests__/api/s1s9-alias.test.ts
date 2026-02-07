@@ -6,8 +6,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GET as getIssue } from '../../app/api/afu9/s1s9/issues/[id]/route';
-import * as s1s9IssueRoute from '../../app/api/afu9/issues/[id]/route';
-import * as s1s3IssueRoute from '../../app/api/afu9/s1s3/issues/[id]/route';
+import { GET as getS1S9Issue } from '../../app/api/afu9/issues/[id]/route';
+import { GET as getS1S3Issue } from '../../app/api/afu9/s1s3/issues/[id]/route';
+
+jest.mock('../../app/api/afu9/issues/[id]/route', () => ({
+  GET: jest.fn(),
+}));
+
+jest.mock('../../app/api/afu9/s1s3/issues/[id]/route', () => ({
+  GET: jest.fn(),
+}));
 
 jest.mock('../../src/lib/db', () => ({
   getPool: jest.fn(() => ({
@@ -27,8 +35,8 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
   it('uses s1s9 handler when available', async () => {
     const issueId = '234fcabf';
 
-    const handlerSpy = jest.spyOn(s1s9IssueRoute, 'GET');
-    handlerSpy.mockResolvedValueOnce(
+    const mockS1S9Issue = getS1S9Issue as jest.Mock;
+    mockS1S9Issue.mockResolvedValueOnce(
       NextResponse.json(
         {
           id: issueId,
@@ -56,9 +64,7 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
-    expect(handlerSpy).toHaveBeenCalledTimes(1);
-
-    handlerSpy.mockRestore();
+    expect(mockS1S9Issue).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to s1s3 when s1s9 returns issue_not_found', async () => {
@@ -68,8 +74,8 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
       { headers: new Headers({ 'x-request-id': 'req-fallback' }) }
     );
 
-    const s1s9Spy = jest.spyOn(s1s9IssueRoute, 'GET');
-    s1s9Spy.mockResolvedValueOnce(
+    const mockS1S9Issue = getS1S9Issue as jest.Mock;
+    mockS1S9Issue.mockResolvedValueOnce(
       NextResponse.json(
         {
           errorCode: 'issue_not_found',
@@ -89,8 +95,8 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
       )
     );
 
-    const s1s3Spy = jest.spyOn(s1s3IssueRoute, 'GET');
-    s1s3Spy.mockResolvedValueOnce(
+    const mockS1S3Issue = getS1S3Issue as jest.Mock;
+    mockS1S3Issue.mockResolvedValueOnce(
       NextResponse.json(
         {
           issue: { id: issueId },
@@ -118,11 +124,8 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
     expect(response.headers.get('x-afu9-handler')).toBe('control');
-    expect(s1s9Spy).toHaveBeenCalledTimes(1);
-    expect(s1s3Spy).toHaveBeenCalledTimes(1);
-
-    s1s9Spy.mockRestore();
-    s1s3Spy.mockRestore();
+    expect(mockS1S9Issue).toHaveBeenCalledTimes(1);
+    expect(mockS1S3Issue).toHaveBeenCalledTimes(1);
   });
 
   it('sets error code header when fallback also fails', async () => {
@@ -132,8 +135,8 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
       { headers: new Headers({ 'x-request-id': 'req-fallback-err' }) }
     );
 
-    const s1s9Spy = jest.spyOn(s1s9IssueRoute, 'GET');
-    s1s9Spy.mockResolvedValueOnce(
+    const mockS1S9Issue = getS1S9Issue as jest.Mock;
+    mockS1S9Issue.mockResolvedValueOnce(
       NextResponse.json(
         {
           errorCode: 'issue_not_found',
@@ -150,8 +153,8 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
       )
     );
 
-    const s1s3Spy = jest.spyOn(s1s3IssueRoute, 'GET');
-    s1s3Spy.mockResolvedValueOnce(
+    const mockS1S3Issue = getS1S3Issue as jest.Mock;
+    mockS1S3Issue.mockResolvedValueOnce(
       NextResponse.json(
         {
           errorCode: 'issue_not_found',
@@ -176,8 +179,5 @@ describe('GET /api/afu9/s1s9/issues/[id] alias', () => {
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
     expect(response.headers.get('x-afu9-error-code')).toBe('issue_not_found');
-
-    s1s9Spy.mockRestore();
-    s1s3Spy.mockRestore();
   });
 });
