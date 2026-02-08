@@ -165,6 +165,38 @@ curl https://<alb-dns-name>/api/health
 # {"status":"ok","version":"0.6.5"}
 ```
 
+### Execution Capability Matrix (S3 Implement)
+
+Policy:
+- Preview: enabled (when required env vars are present)
+- Prod: enabled
+
+Required env vars for S3 execution:
+- AFU9_STAGE
+- AFU9_GITHUB_EVENTS_QUEUE_URL
+- MCP_RUNNER_URL (or MCP_RUNNER_ENDPOINT)
+- GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PEM (or GITHUB_APP_SECRET_ID)
+
+If any required config is missing, POST /api/control/afu9/s1s3/issues/:id/implement returns
+503 DISPATCH_DISABLED with a requiredConfig list.
+
+### S3 Implement Smoke Test
+
+Logged-in user:
+
+```bash
+curl -X POST https://<alb-dns-name>/api/control/afu9/s1s3/issues/<issue-id>/implement \
+   -H "Content-Type: application/json" \
+   -H "x-request-id: smoke-s3-001" \
+   -d '{"baseBranch":"main"}'
+```
+
+Expected:
+- HTTP 202
+- JSON contains {"runId": "...", "mutationId": "..."}
+- UI RunsHistoryPanel shows the new run
+- requestId propagation intact in headers (x-afu9-request-id or x-request-id)
+
 ### Deploy Status Monitor
 
 ```bash
