@@ -35,6 +35,7 @@ import {
   resolveStageMissingConfig,
   isStageEnabled,
   resolveStageExecutionState,
+  resolveStageActions,
 } from '@/lib/stage-registry';
 
 // Avoid stale reads
@@ -438,6 +439,11 @@ export async function GET(
           blockedReason: s2Execution.blockedReason,
         };
 
+    const stages = ["S2", "S3"].map((stageId) => ({
+      stageId,
+      actions: resolveStageActions(stageId as "S2" | "S3"),
+    }));
+
     const workflow = buildWorkflow({
       s1s3Issue,
       hasS1: Boolean(normalizedStored.github?.url || (normalizedStored.github?.repo && normalizedStored.github?.issueNumber)),
@@ -552,6 +558,7 @@ export async function GET(
       issue: normalizedIssue,
       s2,
       workflow,
+      stages,
       runs,
       stateFlow,
       execution,

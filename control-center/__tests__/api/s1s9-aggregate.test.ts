@@ -498,6 +498,96 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     expect(body.workflow.current).toBe('S2');
   });
 
+  it('nextStep_is_s2_even_when_s2_sync_blocked', async () => {
+    const shortId = 'd1e2f3a4';
+    const uuid = 'd1e2f3a4-1234-4abc-9def-1234567890ab';
+
+    delete process.env.AFU9_GITHUB_EVENTS_QUEUE_URL;
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        title: 'Mirror present',
+        github_url: 'https://github.com/octo/repo/issues/9',
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: false,
+      error: 'missing',
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-s1-3' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.workflow.nextStep).toBe('S2');
+  });
+
+  it('stages_include_s2_actions_with_sync_blocked_when_missing_queue', async () => {
+    const shortId = 'e1f2a3b4';
+    const uuid = 'e1f2a3b4-1234-4abc-9def-1234567890ab';
+
+    delete process.env.AFU9_GITHUB_EVENTS_QUEUE_URL;
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        title: 'Mirror present',
+        github_url: 'https://github.com/octo/repo/issues/9',
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: false,
+      error: 'missing',
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-s1-4' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+    const s2Stage = body.stages.find((stage: { stageId?: string }) => stage.stageId === 'S2');
+
+    expect(response.status).toBe(200);
+    expect(s2Stage).toBeTruthy();
+    expect(s2Stage.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ actionId: 'edit', state: 'ready' }),
+        expect.objectContaining({ actionId: 'save', state: 'ready' }),
+        expect.objectContaining({
+          actionId: 'sync',
+          state: 'blocked',
+          blockedReason: 'MISSING_QUEUE_URL',
+        }),
+      ])
+    );
+  });
+
   it('returns 500 with DB_READ_FAILED when lookup throws', async () => {
     mockResolveIssueIdentifierOr404.mockRejectedValue(new Error('db down'));
 
