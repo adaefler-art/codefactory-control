@@ -15,13 +15,13 @@ import {
   updateS1S3IssueSpec,
 } from '../../src/lib/db/s1s3Flow';
 
-jest.mock('../../src/lib/db', () => ({
+jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
-jest.mock('../../src/lib/db/s1s3Flow', () => ({
+jest.mock('@/lib/db/s1s3Flow', () => ({
   getS1S3IssueById: jest.fn(),
   getS1S3IssueByCanonicalId: jest.fn(),
   createS1S3Run: jest.fn(),

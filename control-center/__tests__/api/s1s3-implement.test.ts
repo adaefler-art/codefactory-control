@@ -23,19 +23,19 @@ import {
 import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 
 // Mock the database module
-jest.mock('../../src/lib/db', () => ({
+jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
   })),
 }));
 
 // Mock GitHub auth wrapper
-jest.mock('../../src/lib/github/auth-wrapper', () => ({
+jest.mock('@/lib/github/auth-wrapper', () => ({
   createAuthenticatedClient: jest.fn(),
 }));
 
 // Mock S1S3 DAO functions
-jest.mock('../../src/lib/db/s1s3Flow', () => ({
+jest.mock('@/lib/db/s1s3Flow', () => ({
   getS1S3IssueById: jest.fn(),
   createS1S3Run: jest.fn(),
   createS1S3RunStep: jest.fn(),

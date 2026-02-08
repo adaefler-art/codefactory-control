@@ -437,7 +437,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       return respondS3Success({
         ok: true,
-        stage: S3_STAGE,
+        stage: stageId,
         runId: run.id,
         mutationId: stepResult.data.id,
         issueId: issue.id,
@@ -682,7 +682,7 @@ Closes #${issue.github_issue_number}
 
       return respondS3Success({
         ok: true,
-        stage: S3_STAGE,
+        stage: stageId,
         runId: run.id,
         mutationId: stepResult.data.id,
         issueId: updatedIssue.id,

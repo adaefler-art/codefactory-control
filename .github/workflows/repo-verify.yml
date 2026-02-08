@@ -91,6 +91,9 @@ jobs:
       - name: Validate MCP Catalog
         run: npm --prefix control-center run validate-mcp-catalog
 
+      - name: Verify AFU9 Control OpenAPI
+        run: npm --prefix control-center run api:check
+
       - name: Run Repository Canon Verification
         id: repo_verify
         shell: bash

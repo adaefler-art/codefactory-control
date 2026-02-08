@@ -7,6 +7,7 @@
 import { NextRequest } from 'next/server';
 import { GET as getIssue } from '../../app/api/afu9/s1s9/issues/[id]/route';
 import { resolveIssueIdentifierOr404, normalizeIssueForApi } from '../../app/api/issues/_shared';
+import { getAfu9IssueByCanonicalId } from '../../src/lib/db/afu9Issues';
 import { getS1S3IssueById, listS1S3RunsByIssue } from '../../src/lib/db/s1s3Flow';
 import { computeStateFlow, getBlockersForDone } from '../../src/lib/state-flow';
 
@@ -24,6 +25,10 @@ jest.mock('../../src/lib/db/s1s3Flow', () => ({
   getS1S3IssueById: jest.fn(),
   getS1S3IssueByCanonicalId: jest.fn(),
   listS1S3RunsByIssue: jest.fn(),
+}));
+
+jest.mock('../../src/lib/db/afu9Issues', () => ({
+  getAfu9IssueByCanonicalId: jest.fn(),
 }));
 
 jest.mock('../../src/lib/state-flow', () => ({
@@ -45,6 +50,7 @@ jest.mock('../../app/api/issues/_shared', () => {
 describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
   const mockResolveIssueIdentifierOr404 = resolveIssueIdentifierOr404 as jest.Mock;
   const mockNormalizeIssueForApi = normalizeIssueForApi as jest.Mock;
+  const mockGetAfu9IssueByCanonicalId = getAfu9IssueByCanonicalId as jest.Mock;
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
   const mockListS1S3RunsByIssue = listS1S3RunsByIssue as jest.Mock;
   const mockComputeStateFlow = computeStateFlow as jest.Mock;
@@ -66,6 +72,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
       throw new Error('boom');
     });
     mockGetBlockersForDone.mockReturnValue([]);
+    mockGetAfu9IssueByCanonicalId.mockReset();
   });
 
   afterEach(() => {
@@ -127,7 +134,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.stateQuality).toBe('complete');
+    expect(body.stateQuality).toBe('partial');
     expect(body.s2.status).toBe('SPEC_READY');
     expect(body.runs).toMatchObject({
       status: 'UNAVAILABLE',
@@ -151,6 +158,11 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
 
   it('returns 404 when mandatory issue lookup fails', async () => {
     const issueId = 'ISS-404';
+
+    mockGetAfu9IssueByCanonicalId.mockResolvedValue({
+      success: false,
+      error: `Issue not found with canonical ID: ${issueId}`,
+    });
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: false,
@@ -589,15 +601,20 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
   });
 
   it('returns 500 with DB_READ_FAILED when lookup throws', async () => {
+    const issueId = 'ISS-500';
     mockResolveIssueIdentifierOr404.mockRejectedValue(new Error('db down'));
+    mockGetAfu9IssueByCanonicalId.mockResolvedValue({
+      success: false,
+      error: 'Database operation failed',
+    });
 
     const request = new NextRequest(
-      'http://localhost/api/afu9/s1s9/issues/ISS-DB-FAIL',
+      `http://localhost/api/afu9/s1s9/issues/${issueId}`,
       { headers: new Headers({ 'x-request-id': 'req-db-1' }) }
     );
 
     const response = await getIssue(request, {
-      params: Promise.resolve({ id: 'ISS-DB-FAIL' }),
+      params: Promise.resolve({ id: issueId }),
     });
 
     const body = await response.json();

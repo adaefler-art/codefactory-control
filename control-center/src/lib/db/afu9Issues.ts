@@ -1284,6 +1284,13 @@ export async function getAfu9IssueByCanonicalId(
       [canonicalId]
     );
 
+    if (!result || !Array.isArray(result.rows)) {
+      return {
+        success: false,
+        error: `Issue not found with canonical ID: ${canonicalId}`,
+      };
+    }
+
     if (result.rows.length === 0) {
       return {
         success: false,

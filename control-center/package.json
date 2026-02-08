@@ -14,7 +14,10 @@
     "validate-mcp-catalog": "node ../scripts/validate-mcp-catalog.js",
     "validate-playbooks": "node ../scripts/validate-playbooks.js",
     "smoke:timeline:backfill": "pwsh -File ../scripts/backfill-timeline-test-data.ps1",
-    "smoke:timeline:chain": "pwsh -File ../scripts/smoke-test-timeline-chain.ps1 -BaseUrl http://localhost:3000"
+    "smoke:timeline:chain": "pwsh -File ../scripts/smoke-test-timeline-chain.ps1 -BaseUrl http://localhost:3000",
+    "api:spec": "tsx scripts/generate-openapi.ts",
+    "api:types": "openapi-typescript src/generated/afu9-control-openapi.json --output src/generated/afu9-control-api.d.ts",
+    "api:check": "npm run api:spec && npm run api:types && git diff --exit-code src/generated/afu9-control-openapi.json src/generated/afu9-control-api.d.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -36,6 +39,8 @@
     "pg": "^8.16.3",
     "react": "19.2.1",
     "react-dom": "19.2.1",
+    "@asteasolutions/zod-to-openapi": "^8.0.0",
+    "swagger-ui-dist": "^5.20.1",
     "uuid": "^11.1.0",
     "zod": "^4.2.1"
   },
@@ -52,9 +57,10 @@
     "eslint-config-next": "16.0.8",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "openapi-typescript": "^7.8.0",
     "tailwindcss": "^4",
-    "ts-jest": "^29.1.2",
     "tsx": "^4.21.0",
+    "ts-jest": "^29.1.2",
     "typescript": "5.9.3"
   }
 }
