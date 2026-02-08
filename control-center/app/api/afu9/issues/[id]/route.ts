@@ -44,6 +44,45 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+type UnavailablePayload = {
+  status: 'UNAVAILABLE';
+  code: string;
+  message: string;
+  requestId?: string;
+  upstreamStatus?: number;
+};
+
+function buildUnavailable(params: {
+  code: string;
+  message: string;
+  requestId: string;
+  upstreamStatus?: number;
+}): UnavailablePayload {
+  return {
+    status: 'UNAVAILABLE',
+    code: params.code,
+    message: params.message,
+    requestId: params.requestId,
+    upstreamStatus: params.upstreamStatus,
+  };
+}
+
+function resolveOptionalCode(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string' && code.trim()) {
+      return code.trim();
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (message.includes('DISPATCH_DISABLED')) {
+    return 'DISPATCH_DISABLED';
+  }
+
+  return fallback;
+}
+
 /**
  * GET /api/afu9/issues/[id]
  * 
@@ -177,12 +216,14 @@ export async function GET(
       }
       runs = runsResult.data || [];
     } catch (error) {
+      const code = resolveOptionalCode(error, 'RUNS_UNAVAILABLE');
+      const message = error instanceof Error ? error.message : 'Runs unavailable';
       partial = true;
-      runs = {
-        status: 'UNAVAILABLE',
-        reason: 'RUNS_UNAVAILABLE',
+      runs = buildUnavailable({
+        code,
+        message,
         requestId,
-      };
+      });
       console.warn('[API /api/afu9/issues/[id]] Runs unavailable:', error);
     }
 
@@ -209,12 +250,14 @@ export async function GET(
         blockersForDone,
       };
     } catch (error) {
+      const code = resolveOptionalCode(error, 'STATE_FLOW_UNAVAILABLE');
+      const message = error instanceof Error ? error.message : 'State flow unavailable';
       partial = true;
-      stateFlow = {
-        status: 'UNAVAILABLE',
-        reason: 'STATE_FLOW_UNAVAILABLE',
+      stateFlow = buildUnavailable({
+        code,
+        message,
         requestId,
-      };
+      });
       console.warn('[API /api/afu9/issues/[id]] State flow unavailable:', error);
     }
 
@@ -231,7 +274,8 @@ export async function GET(
         partial = true;
         execution = {
           status: 'DISABLED',
-          reason: 'DISPATCH_DISABLED',
+          code: 'DISPATCH_DISABLED',
+          message: 'Execution disabled in this env',
           requiredConfig: missingConfig,
           requestId,
         };
@@ -242,12 +286,14 @@ export async function GET(
         };
       }
     } catch (error) {
+      const code = resolveOptionalCode(error, 'EXECUTION_UNAVAILABLE');
+      const message = error instanceof Error ? error.message : 'Execution status unavailable';
       partial = true;
-      execution = {
-        status: 'UNAVAILABLE',
-        reason: 'EXECUTION_UNAVAILABLE',
+      execution = buildUnavailable({
+        code,
+        message,
         requestId,
-      };
+      });
       console.warn('[API /api/afu9/issues/[id]] Execution status unavailable:', error);
     }
 
@@ -259,6 +305,7 @@ export async function GET(
       runs,
       stateFlow,
       execution,
+      partial,
       ...normalizedIssue,
     };
 
