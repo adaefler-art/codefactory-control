@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server';
 import { GET as getIssue } from '../../app/api/afu9/s1s9/issues/[id]/route';
 import { resolveIssueIdentifierOr404, normalizeIssueForApi } from '../../app/api/issues/_shared';
 import { getS1S3IssueById, listS1S3RunsByIssue } from '../../src/lib/db/s1s3Flow';
+import { computeStateFlow, getBlockersForDone } from '../../src/lib/state-flow';
 
 jest.mock('../../app/api/afu9/s1s3/issues/[id]/route', () => ({
   GET: jest.fn(),
@@ -46,6 +47,9 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
   const mockNormalizeIssueForApi = normalizeIssueForApi as jest.Mock;
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
   const mockListS1S3RunsByIssue = listS1S3RunsByIssue as jest.Mock;
+  const mockComputeStateFlow = computeStateFlow as jest.Mock;
+  const mockGetBlockersForDone = getBlockersForDone as jest.Mock;
+  const actualIssueShared = jest.requireActual('../../app/api/issues/_shared');
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
@@ -57,6 +61,11 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     delete process.env.GITHUB_APP_PRIVATE_KEY_PEM;
     delete process.env.GITHUB_APP_SECRET_ID;
     delete process.env.AFU9_STAGE_S3_ENABLED;
+    mockNormalizeIssueForApi.mockImplementation(actualIssueShared.normalizeIssueForApi);
+    mockComputeStateFlow.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    mockGetBlockersForDone.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -172,5 +181,194 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
       lookupStore: 'control',
       requestId: 'req-404',
     });
+  });
+
+  it('normalizes legacy record with githubUrl and missing title', async () => {
+    const shortId = '234fcabf';
+    const uuid = '234fcabf-1234-4abc-9def-1234567890ab';
+
+    process.env.AFU9_GITHUB_EVENTS_QUEUE_URL = 'https://example.com/queue';
+    process.env.MCP_RUNNER_URL = 'https://example.com/runner';
+    process.env.MCP_RUNNER_ENDPOINT = 'https://example.com/runner';
+    process.env.GITHUB_APP_ID = '123';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '---KEY---';
+    process.env.GITHUB_APP_SECRET_ID = 'secret';
+    process.env.AFU9_STAGE_S3_ENABLED = '1';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        status: 'CREATED',
+        github_url: 'https://github.com/octo/repo/issues/7',
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: 'CREATED',
+        scope: null,
+        acceptance_criteria: [],
+        spec_ready_at: null,
+      },
+    });
+
+    mockListS1S3RunsByIssue.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    mockComputeStateFlow.mockReturnValue({});
+    mockGetBlockersForDone.mockReturnValue([]);
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-legacy-1' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-afu9-partial')).toBe('true');
+    expect(body.title).toBe(`Issue ${shortId}`);
+    expect(body.githubUrl).toBe('https://github.com/octo/repo/issues/7');
+    expect(body.githubRepo).toBe('octo/repo');
+    expect(body.githubIssueNumber).toBe(7);
+    expect(body.workflow.completed).toContain('S1');
+  });
+
+  it('fills github url from repo and issue number', async () => {
+    const shortId = '1234abcd';
+    const uuid = '1234abcd-1234-4abc-9def-1234567890ab';
+
+    process.env.AFU9_GITHUB_EVENTS_QUEUE_URL = 'https://example.com/queue';
+    process.env.MCP_RUNNER_URL = 'https://example.com/runner';
+    process.env.MCP_RUNNER_ENDPOINT = 'https://example.com/runner';
+    process.env.GITHUB_APP_ID = '123';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '---KEY---';
+    process.env.GITHUB_APP_SECRET_ID = 'secret';
+    process.env.AFU9_STAGE_S3_ENABLED = '1';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        title: 'Legacy repo fields',
+        github_repo: 'octo/repo',
+        github_issue_number: 55,
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: 'CREATED',
+        scope: null,
+        acceptance_criteria: [],
+        spec_ready_at: null,
+      },
+    });
+
+    mockListS1S3RunsByIssue.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    mockComputeStateFlow.mockReturnValue({});
+    mockGetBlockersForDone.mockReturnValue([]);
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-legacy-2' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-afu9-partial')).toBe('true');
+    expect(body.githubUrl).toBe('https://github.com/octo/repo/issues/55');
+    expect(body.githubRepo).toBe('octo/repo');
+    expect(body.githubIssueNumber).toBe(55);
+    expect(body.workflow.completed).toContain('S1');
+  });
+
+  it('uses legacy title field when title is missing', async () => {
+    const shortId = '9abc3210';
+    const uuid = '9abc3210-1234-4abc-9def-1234567890ab';
+
+    process.env.AFU9_GITHUB_EVENTS_QUEUE_URL = 'https://example.com/queue';
+    process.env.MCP_RUNNER_URL = 'https://example.com/runner';
+    process.env.MCP_RUNNER_ENDPOINT = 'https://example.com/runner';
+    process.env.GITHUB_APP_ID = '123';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '---KEY---';
+    process.env.GITHUB_APP_SECRET_ID = 'secret';
+    process.env.AFU9_STAGE_S3_ENABLED = '1';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        issueTitle: 'Legacy title field',
+        github_repo: 'octo/repo',
+        github_issue_number: 88,
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: 'CREATED',
+        scope: null,
+        acceptance_criteria: [],
+        spec_ready_at: null,
+      },
+    });
+
+    mockListS1S3RunsByIssue.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    mockComputeStateFlow.mockReturnValue({});
+    mockGetBlockersForDone.mockReturnValue([]);
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-legacy-3' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-afu9-partial')).toBe('true');
+    expect(body.title).toBe('Legacy title field');
   });
 });
