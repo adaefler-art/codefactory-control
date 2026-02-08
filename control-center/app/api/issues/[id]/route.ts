@@ -39,7 +39,7 @@ import {
 } from '../_shared';
 import { withApi, apiError } from '../../../../src/lib/http/withApi';
 import { normalizeLabels } from '../../../../src/lib/label-utils';
-import { getRequestId } from '@/lib/api/response-helpers';
+import { getRequestId, errorResponse } from '@/lib/api/response-helpers';
 
 const AUTH_PATH_HEADER = 'x-afu9-auth-path';
 const REQUEST_ID_HEADER = 'x-afu9-request-id';
@@ -214,32 +214,25 @@ export const GET = withApi(async (
   try {
     ensured = await ensureIssueInControl(id, requestId);
   } catch (error) {
-    return jsonErrorResponse({
-      code: 'ISSUE_STORE_READ_FAILED',
-      message: 'Failed to load issue from store',
+    const response = errorResponse('Failed to get issue', {
+      status: 500,
       requestId,
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
+    return withControlHeaders(response, requestId);
   }
 
   if (!ensured.ok) {
     if (ensured.status >= 500) {
       return jsonErrorResponse({
         code: 'ISSUE_STORE_READ_FAILED',
-        message: 'Failed to load issue from store',
+        message: 'Failed to fetch issue',
         requestId,
         status: ensured.status,
       });
     }
 
-    const fallbackCode = typeof ensured.body?.errorCode === 'string'
-      ? ensured.body.errorCode
-      : 'ISSUE_READ_FAILED';
-    return jsonErrorResponse({
-      code: fallbackCode,
-      message: typeof ensured.body?.error === 'string' ? ensured.body.error : 'Issue read failed',
-      requestId,
-      status: ensured.status,
-    });
+    return jsonWithHeaders(ensured.body, ensured.status, requestId);
   }
 
   let responseBody: any;

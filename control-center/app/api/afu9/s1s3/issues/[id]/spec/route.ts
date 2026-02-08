@@ -405,13 +405,27 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     }
 
     // Create run record
-    const runResult = await createS1S3Run(pool, {
-      type: S1S3RunType.S2_SPEC_READY,
-      issue_id: issue.id,
-      request_id: requestId,
-      actor: issue.owner,
-      status: S1S3RunStatus.RUNNING,
-    });
+    let runResult;
+    try {
+      runResult = await createS1S3Run(pool, {
+        type: S1S3RunType.S2_SPEC_READY,
+        issue_id: issue.id,
+        request_id: requestId,
+        actor: issue.owner,
+        status: S1S3RunStatus.RUNNING,
+      });
+    } catch (error) {
+      const upstreamStatus =
+        typeof (error as { status?: number })?.status === 'number'
+          ? (error as { status?: number }).status
+          : undefined;
+      return respondWithSpecError({
+        status: 502,
+        errorCode: 'spec_upstream_failed',
+        detailsSafe: 'Failed to create run record',
+        upstreamStatus,
+      });
+    }
 
     if (!runResult.success || !runResult.data) {
       return respondWithSpecError({

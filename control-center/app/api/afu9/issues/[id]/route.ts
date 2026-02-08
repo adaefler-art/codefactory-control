@@ -66,6 +66,8 @@ type NormalizedStoredIssue = {
   appliedFallbacks: string[];
 };
 
+const CANONICAL_ID_REGEX = /^[A-Za-z]+-?\d+(?:\.\d+)?$/;
+
 function buildUnavailable(params: {
   code: string;
   message: string;
@@ -331,11 +333,38 @@ export async function GET(
       resolvedIssueId = resolved.uuid;
       resolvedShortId = resolved.shortId;
     } else {
+      if (!CANONICAL_ID_REGEX.test(id)) {
+        return errorResponse('Invalid issue identifier format', {
+          status: 400,
+          requestId,
+          headers: responseHeaders,
+        });
+      }
+
       const canonicalResult = await getAfu9IssueByCanonicalId(pool, id);
 
       if (!canonicalResult.success) {
+        const errorMessage = typeof canonicalResult.error === 'string' ? canonicalResult.error : '';
+        const looksNotFound = errorMessage.toLowerCase().includes('not found');
+
+        if (looksNotFound) {
+          return jsonResponse(
+            {
+              errorCode: 'NOT_FOUND',
+              id,
+              requestId,
+            },
+            {
+              status: 404,
+              requestId,
+              headers: responseHeaders,
+            }
+          );
+        }
+
         return jsonResponse(
           {
+            error: 'Failed to get issue',
             errorCode: 'DB_READ_FAILED',
             requestId,
           },
@@ -397,14 +426,70 @@ export async function GET(
     try {
       normalizedIssue = normalizeIssueForApi(normalizedStored.normalizedRow);
     } catch (error) {
+      const fallbackCreatedAt =
+        (issueRow.created_at as string | undefined) ||
+        (issueRow.createdAt as string | undefined) ||
+        new Date().toISOString();
+      const fallbackUpdatedAt =
+        (issueRow.updated_at as string | undefined) ||
+        (issueRow.updatedAt as string | undefined) ||
+        fallbackCreatedAt;
+      const fallbackStatus = typeof issueRow.status === 'string' ? issueRow.status : 'CREATED';
+      const fallbackLabels = Array.isArray(issueRow.labels) ? issueRow.labels : [];
+      const fallbackSource = typeof issueRow.source === 'string' ? issueRow.source : 'afu9';
+      const fallbackHandoffState =
+        typeof issueRow.handoff_state === 'string'
+          ? issueRow.handoff_state
+          : typeof issueRow.handoffState === 'string'
+            ? issueRow.handoffState
+            : 'NOT_SENT';
+      const fallbackExecutionState =
+        typeof issueRow.execution_state === 'string'
+          ? issueRow.execution_state
+          : typeof issueRow.executionState === 'string'
+            ? issueRow.executionState
+            : 'IDLE';
+      const fallbackGithubRepo =
+        (normalizedStored.normalizedRow.github_repo as string | undefined) ||
+        (issueRow.github_repo as string | undefined) ||
+        (issueRow.githubRepo as string | undefined) ||
+        normalizedStored.github?.repo ||
+        null;
+      const fallbackGithubIssueNumber =
+        (normalizedStored.normalizedRow.github_issue_number as number | undefined) ||
+        (issueRow.github_issue_number as number | undefined) ||
+        (issueRow.githubIssueNumber as number | undefined) ||
+        normalizedStored.github?.issueNumber ||
+        null;
+      const fallbackGithubUrl =
+        (normalizedStored.normalizedRow.github_url as string | undefined) ||
+        (issueRow.github_url as string | undefined) ||
+        (issueRow.githubUrl as string | undefined) ||
+        normalizedStored.github?.url ||
+        null;
+
       normalizedIssue = normalizeIssueForApi({
         id: issueRow.id || resolvedIssueId,
         title: normalizedStored.normalizedRow.title || `Issue ${shortIdFallback}`,
-        status: issueRow.status || 'CREATED',
-        labels: Array.isArray(issueRow.labels) ? issueRow.labels : [],
-        priority: issueRow.priority || null,
-        created_at: issueRow.created_at || issueRow.createdAt || null,
-        updated_at: issueRow.updated_at || issueRow.updatedAt || null,
+        body: issueRow.body ?? null,
+        status: fallbackStatus,
+        labels: fallbackLabels,
+        priority: issueRow.priority ?? null,
+        assignee: issueRow.assignee ?? null,
+        source: fallbackSource,
+        handoff_state: fallbackHandoffState,
+        github_issue_number: fallbackGithubIssueNumber,
+        github_url: fallbackGithubUrl,
+        github_repo: fallbackGithubRepo,
+        last_error: issueRow.last_error ?? issueRow.lastError ?? null,
+        created_at: fallbackCreatedAt,
+        updated_at: fallbackUpdatedAt,
+        activated_at: issueRow.activated_at ?? issueRow.activatedAt ?? null,
+        execution_state: fallbackExecutionState,
+        execution_started_at: issueRow.execution_started_at ?? issueRow.executionStartedAt ?? null,
+        execution_completed_at: issueRow.execution_completed_at ?? issueRow.executionCompletedAt ?? null,
+        execution_output: issueRow.execution_output ?? issueRow.executionOutput ?? null,
+        deleted_at: issueRow.deleted_at ?? issueRow.deletedAt ?? null,
       });
       normalizedStored.appliedFallbacks.push('output_contract_recovery');
       console.warn('[API /api/afu9/issues/[id]] Normalization fallback applied:', error);
@@ -589,6 +674,7 @@ export async function GET(
     console.error('[API /api/afu9/issues/[id]] Unexpected error:', error);
     return jsonResponse(
       {
+        error: 'Failed to get issue',
         errorCode: 'DB_READ_FAILED',
         requestId,
       },

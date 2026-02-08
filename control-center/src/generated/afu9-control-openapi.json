@@ -1,0 +1,1570 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AFU-9 Control API",
+    "version": "v1",
+    "description": "AFU-9 Control API v1 (control-center)."
+  },
+  "tags": [
+    {
+      "name": "AFU9 Read",
+      "description": "AFU-9 read-only endpoints."
+    },
+    {
+      "name": "AFU9 Stage Actions",
+      "description": "AFU-9 stage action endpoints."
+    },
+    {
+      "name": "Diagnostics",
+      "description": "Control-center diagnostics endpoints."
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "errorCode": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {}
+        },
+        "required": [
+          "errorCode",
+          "requestId"
+        ],
+        "additionalProperties": {}
+      },
+      "UnavailablePayload": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNAVAILABLE"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "upstreamStatus": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "code",
+          "message"
+        ],
+        "additionalProperties": {}
+      },
+      "StageAction": {
+        "type": "object",
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "blocked"
+            ]
+          },
+          "blockedReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "state"
+        ],
+        "additionalProperties": {}
+      },
+      "StageStatus": {
+        "type": "object",
+        "properties": {
+          "stageId": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageAction"
+            }
+          }
+        },
+        "required": [
+          "stageId",
+          "actions"
+        ],
+        "additionalProperties": {}
+      },
+      "WorkflowState": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "nextStep": {
+            "type": "string"
+          },
+          "current": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "completed",
+          "nextStep"
+        ],
+        "additionalProperties": {}
+      },
+      "GithubLink": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "issueNumber": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "Afu9Issue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publicId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canonicalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "githubIssueNumber": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "githubUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "githubRepo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "labels"
+        ],
+        "additionalProperties": {}
+      },
+      "IssueListResponse": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Afu9Issue"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "filtered": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "issues",
+          "total",
+          "filtered",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": {}
+      },
+      "IssueDetailS2": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "specReadyAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "executionState": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "blocked"
+            ]
+          },
+          "missingConfig": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blockedReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "scope",
+          "acceptanceCriteria",
+          "specReadyAt",
+          "executionState"
+        ],
+        "additionalProperties": {}
+      },
+      "IssueDetailResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "issue": {
+            "$ref": "#/components/schemas/Afu9Issue"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "github": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubLink"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "stateQuality": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/WorkflowState"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageStatus"
+            }
+          },
+          "s2": {
+            "$ref": "#/components/schemas/IssueDetailS2"
+          },
+          "runs": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "$ref": "#/components/schemas/UnavailablePayload"
+              }
+            ]
+          },
+          "stateFlow": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "$ref": "#/components/schemas/UnavailablePayload"
+              }
+            ]
+          },
+          "execution": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "$ref": "#/components/schemas/UnavailablePayload"
+              }
+            ]
+          },
+          "diagnostics": {
+            "type": "object",
+            "properties": {
+              "migrationApplied": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "migrationApplied"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "issue",
+          "id",
+          "title",
+          "stateQuality",
+          "workflow",
+          "stages"
+        ],
+        "additionalProperties": {}
+      },
+      "S1S3Issue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "public_id": {
+            "type": "string"
+          },
+          "canonical_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repo_full_name": {
+            "type": "string"
+          },
+          "github_issue_number": {
+            "type": "integer"
+          },
+          "github_issue_url": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acceptance_criteria": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pr_number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pr_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "branch_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "spec_ready_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pr_created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "canonical_id",
+          "repo_full_name",
+          "github_issue_number",
+          "github_issue_url",
+          "owner",
+          "status",
+          "problem",
+          "scope",
+          "acceptance_criteria",
+          "notes",
+          "pr_number",
+          "pr_url",
+          "branch_name",
+          "created_at",
+          "updated_at",
+          "spec_ready_at",
+          "pr_created_at"
+        ],
+        "additionalProperties": {}
+      },
+      "S1S3Run": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "issue_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "issue_id",
+          "request_id",
+          "actor",
+          "status",
+          "error_message",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "additionalProperties": {}
+      },
+      "S1S3RunStep": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "step_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "evidence_refs": {},
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "step_id",
+          "step_name",
+          "status",
+          "error_message",
+          "created_at"
+        ],
+        "additionalProperties": {}
+      },
+      "S1PickRequest": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "issueNumber": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "canonicalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "issueNumber"
+        ]
+      },
+      "S1PickResponse": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "$ref": "#/components/schemas/S1S3Issue"
+          },
+          "run": {
+            "$ref": "#/components/schemas/S1S3Run"
+          },
+          "step": {
+            "$ref": "#/components/schemas/S1S3RunStep"
+          }
+        },
+        "required": [
+          "issue",
+          "run",
+          "step"
+        ],
+        "additionalProperties": {}
+      },
+      "S2SpecRequest": {
+        "type": "object",
+        "properties": {
+          "problem": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "acceptanceCriteria"
+        ]
+      },
+      "S2SpecResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "issueId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "s2": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "scope": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "acceptanceCriteria": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "specReadyAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "scope",
+              "acceptanceCriteria",
+              "specReadyAt"
+            ],
+            "additionalProperties": {}
+          },
+          "workflow": {
+            "type": "object",
+            "properties": {
+              "current": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "current"
+            ],
+            "additionalProperties": {}
+          },
+          "issue": {
+            "$ref": "#/components/schemas/S1S3Issue"
+          },
+          "run": {
+            "$ref": "#/components/schemas/S1S3Run"
+          },
+          "step": {
+            "$ref": "#/components/schemas/S1S3RunStep"
+          }
+        },
+        "required": [
+          "ok",
+          "issueId",
+          "updatedAt",
+          "s2",
+          "workflow",
+          "issue",
+          "run",
+          "step"
+        ],
+        "additionalProperties": {}
+      },
+      "S3ImplementRequest": {
+        "type": "object",
+        "properties": {
+          "baseBranch": {
+            "type": "string"
+          },
+          "prTitle": {
+            "type": "string"
+          },
+          "prBody": {
+            "type": "string"
+          }
+        }
+      },
+      "S3ImplementResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "S3"
+            ]
+          },
+          "runId": {
+            "type": "string"
+          },
+          "mutationId": {
+            "type": "string"
+          },
+          "issueId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "issue": {
+            "$ref": "#/components/schemas/S1S3Issue"
+          },
+          "run": {
+            "$ref": "#/components/schemas/S1S3Run"
+          },
+          "step": {
+            "$ref": "#/components/schemas/S1S3RunStep"
+          },
+          "pr": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "branch": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "number",
+              "url",
+              "branch"
+            ],
+            "additionalProperties": {}
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "stage",
+          "runId",
+          "mutationId",
+          "issueId",
+          "startedAt",
+          "issue",
+          "run",
+          "step",
+          "pr"
+        ],
+        "additionalProperties": {}
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "service": {
+            "type": "string"
+          },
+          "healthContractVersion": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "intentEnabled": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "service",
+          "healthContractVersion",
+          "stage",
+          "commitSha",
+          "version",
+          "intentEnabled",
+          "timestamp"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/api/afu9/issues/{id}": {
+      "get": {
+        "tags": [
+          "AFU9 Read"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AFU-9 issue detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid identifier",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/s1s9/issues/{id}": {
+      "get": {
+        "tags": [
+          "AFU9 Read"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AFU-9 issue detail (s1s9 scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid identifier",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/issues": {
+      "get": {
+        "tags": [
+          "AFU9 Read"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "canonicalId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "canonical_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "publicId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "public_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "handoff_state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AFU-9 issue list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/s1s3/issues/pick": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S1PickRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "S1 pick issue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S1PickResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/s1s3/issues/{id}/spec": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S2SpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "S2 save spec",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S2SpecResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/s1s9/issues/{id}/spec": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S2SpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "S2 save spec (s1s9 scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S2SpecResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/s1s3/issues/{id}/implement": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S3ImplementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "S3 implement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S3ImplementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dispatch disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/s1s9/issues/{id}/implement": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S3ImplementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "S3 implement (s1s9 scope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S3ImplementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dispatch disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "responses": {
+          "200": {
+            "description": "Service health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}
