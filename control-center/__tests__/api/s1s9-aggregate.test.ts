@@ -118,24 +118,59 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-partial')).toBe('true');
     expect(body.ok).toBe(true);
+    expect(body.partial).toBe(true);
     expect(body.s2.status).toBe('SPEC_READY');
     expect(body.runs).toMatchObject({
       status: 'UNAVAILABLE',
-      reason: 'RUNS_UNAVAILABLE',
+      code: 'RUNS_UNAVAILABLE',
       requestId: 'req-partial',
     });
     expect(body.stateFlow).toMatchObject({
       status: 'UNAVAILABLE',
-      reason: 'STATE_FLOW_UNAVAILABLE',
+      code: 'STATE_FLOW_UNAVAILABLE',
       requestId: 'req-partial',
     });
     expect(body.execution).toMatchObject({
       status: 'DISABLED',
-      reason: 'DISPATCH_DISABLED',
+      code: 'DISPATCH_DISABLED',
       requestId: 'req-partial',
     });
     expect(body.execution.requiredConfig).toEqual(
       expect.arrayContaining(['AFU9_GITHUB_EVENTS_QUEUE_URL'])
     );
+  });
+
+  it('returns 404 when mandatory issue lookup fails', async () => {
+    const issueId = 'ISS-404';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: false,
+      status: 404,
+      body: {
+        errorCode: 'issue_not_found',
+        issueId,
+        lookupStore: 'control',
+        requestId: 'req-404',
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${issueId}`,
+      { headers: new Headers({ 'x-request-id': 'req-404' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body).toMatchObject({
+      errorCode: 'issue_not_found',
+      issueId,
+      lookupStore: 'control',
+      requestId: 'req-404',
+    });
   });
 });
