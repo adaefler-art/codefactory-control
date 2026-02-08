@@ -34,6 +34,7 @@ import {
   getStageRegistryEntry,
   resolveStageMissingConfig,
   isStageEnabled,
+  resolveStageExecutionState,
 } from '@/lib/stage-registry';
 
 // Avoid stale reads
@@ -409,18 +410,26 @@ export async function GET(
       : await getS1S3IssueByCanonicalId(pool, id);
 
     const s1s3Issue = s1s3IssueResult.success ? s1s3IssueResult.data : null;
+    const s2Stage = getStageRegistryEntry('S2');
+    const s2Execution = s2Stage
+      ? resolveStageExecutionState(s2Stage)
+      : { executionState: 'blocked', missingConfig: ['STAGE_REGISTRY_MISSING'] };
     const s2 = s1s3Issue
       ? {
           status: s1s3Issue.status,
           scope: s1s3Issue.scope ?? null,
           acceptanceCriteria: normalizeAcceptanceCriteria(s1s3Issue.acceptance_criteria),
           specReadyAt: s1s3Issue.spec_ready_at ?? null,
+          executionState: s2Execution.executionState,
+          missingConfig: s2Execution.missingConfig,
         }
       : {
           status: 'UNAVAILABLE',
           scope: null,
           acceptanceCriteria: [],
           specReadyAt: null,
+          executionState: s2Execution.executionState,
+          missingConfig: s2Execution.missingConfig,
         };
 
     const workflow = buildWorkflow({
@@ -437,7 +446,6 @@ export async function GET(
       github_url?: string;
     };
 
-    let partial = false;
     let runs: unknown = [];
     let stateFlow: unknown = undefined;
     let execution: unknown = undefined;
@@ -454,7 +462,6 @@ export async function GET(
     } catch (error) {
       const code = resolveOptionalCode(error, 'RUNS_UNAVAILABLE');
       const message = error instanceof Error ? error.message : 'Runs unavailable';
-      partial = true;
       runs = buildUnavailable({
         code,
         message,
@@ -488,7 +495,6 @@ export async function GET(
     } catch (error) {
       const code = resolveOptionalCode(error, 'STATE_FLOW_UNAVAILABLE');
       const message = error instanceof Error ? error.message : 'State flow unavailable';
-      partial = true;
       stateFlow = buildUnavailable({
         code,
         message,
@@ -507,7 +513,6 @@ export async function GET(
       const enabled = isStageEnabled(stageEntry) && missingConfig.length === 0;
 
       if (!enabled) {
-        partial = true;
         execution = {
           status: 'DISABLED',
           code: 'DISPATCH_DISABLED',
@@ -524,7 +529,6 @@ export async function GET(
     } catch (error) {
       const code = resolveOptionalCode(error, 'EXECUTION_UNAVAILABLE');
       const message = error instanceof Error ? error.message : 'Execution status unavailable';
-      partial = true;
       execution = buildUnavailable({
         code,
         message,
@@ -533,9 +537,9 @@ export async function GET(
       console.warn('[API /api/afu9/issues/[id]] Execution status unavailable:', error);
     }
 
-    if (normalizedStored.appliedFallbacks.length > 0 || !s1s3Issue) {
-      partial = true;
-    }
+    const stateQuality = normalizedStored.appliedFallbacks.length > 0
+      ? 'partial'
+      : 'complete';
 
     const responseBody: Record<string, unknown> = {
       ok: true,
@@ -545,7 +549,7 @@ export async function GET(
       runs,
       stateFlow,
       execution,
-      partial,
+      stateQuality,
       github: normalizedStored.github,
       diagnostics:
         normalizedStored.appliedFallbacks.length > 0
@@ -563,10 +567,6 @@ export async function GET(
       ...cacheHeaders,
     };
 
-    if (partial) {
-      headers['x-afu9-partial'] = 'true';
-      headers['x-afu9-warning'] = 'PARTIAL_STATE';
-    }
 
     return jsonResponse(responseBody, {
       requestId,

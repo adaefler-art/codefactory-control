@@ -83,6 +83,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
       shortId,
       issue: {
         id: uuid,
+        title: 'Core issue',
         status: 'CREATED',
         execution_state: 'RUNNING',
         handoff_state: null,
@@ -125,9 +126,8 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('x-afu9-partial')).toBe('true');
     expect(body.ok).toBe(true);
-    expect(body.partial).toBe(true);
+    expect(body.stateQuality).toBe('complete');
     expect(body.s2.status).toBe('SPEC_READY');
     expect(body.runs).toMatchObject({
       status: 'UNAVAILABLE',
@@ -238,8 +238,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('x-afu9-partial')).toBe('true');
-    expect(response.headers.get('x-afu9-warning')).toBe('PARTIAL_STATE');
+    expect(body.stateQuality).toBe('partial');
     expect(body.title).toBe(`Issue ${shortId}`);
     expect(body.githubUrl).toBe('https://github.com/octo/repo/issues/7');
     expect(body.githubRepo).toBe('octo/repo');
@@ -304,8 +303,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('x-afu9-partial')).toBe('true');
-    expect(response.headers.get('x-afu9-warning')).toBe('PARTIAL_STATE');
+    expect(body.stateQuality).toBe('partial');
     expect(body.githubUrl).toBe('https://github.com/octo/repo/issues/55');
     expect(body.githubRepo).toBe('octo/repo');
     expect(body.githubIssueNumber).toBe(55);
@@ -369,9 +367,58 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('x-afu9-partial')).toBe('true');
-    expect(response.headers.get('x-afu9-warning')).toBe('PARTIAL_STATE');
+    expect(body.stateQuality).toBe('partial');
     expect(body.title).toBe('Legacy title field');
+  });
+
+  it('partial_state_sets_stateQuality_partial', async () => {
+    const shortId = 'a1b2c3d4';
+    const uuid = 'a1b2c3d4-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        github_url: 'https://github.com/octo/repo/issues/7',
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: 'CREATED',
+        scope: null,
+        acceptance_criteria: [],
+        spec_ready_at: null,
+      },
+    });
+
+    mockListS1S3RunsByIssue.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    mockComputeStateFlow.mockReturnValue({});
+    mockGetBlockersForDone.mockReturnValue([]);
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-partial-2' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.stateQuality).toBe('partial');
   });
 
   it('returns 500 with DB_READ_FAILED when lookup throws', async () => {
