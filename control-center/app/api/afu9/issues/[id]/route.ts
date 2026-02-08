@@ -233,7 +233,7 @@ function normalizeStoredIssue(params: {
 function buildWorkflow(params: {
   s1s3Issue?: { status?: string } | null;
   hasS1: boolean;
-}): { current: string; completed: string[] } {
+}): { current: string; completed: string[]; nextStep: string } {
   const { s1s3Issue, hasS1 } = params;
   const completed: string[] = [];
 
@@ -242,9 +242,11 @@ function buildWorkflow(params: {
   }
 
   if (!s1s3Issue) {
+    const current = hasS1 ? 'S2' : 'S1';
     return {
-      current: hasS1 ? 'S2' : 'S1',
+      current,
       completed,
+      nextStep: current,
     };
   }
 
@@ -254,12 +256,14 @@ function buildWorkflow(params: {
     return {
       current: 'S3',
       completed,
+      nextStep: 'S3',
     };
   }
 
   return {
     current: 'S2',
     completed,
+    nextStep: 'S2',
   };
 }
 
@@ -422,6 +426,7 @@ export async function GET(
           specReadyAt: s1s3Issue.spec_ready_at ?? null,
           executionState: s2Execution.executionState,
           missingConfig: s2Execution.missingConfig,
+          blockedReason: s2Execution.blockedReason,
         }
       : {
           status: 'UNAVAILABLE',
@@ -430,6 +435,7 @@ export async function GET(
           specReadyAt: null,
           executionState: s2Execution.executionState,
           missingConfig: s2Execution.missingConfig,
+          blockedReason: s2Execution.blockedReason,
         };
 
     const workflow = buildWorkflow({
