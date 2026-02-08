@@ -52,6 +52,18 @@ type UnavailablePayload = {
   upstreamStatus?: number;
 };
 
+type GithubLink = {
+  repo?: string;
+  issueNumber?: number;
+  url?: string;
+};
+
+type NormalizedStoredIssue = {
+  normalizedRow: Record<string, unknown>;
+  github: GithubLink | null;
+  appliedFallbacks: string[];
+};
+
 function buildUnavailable(params: {
   code: string;
   message: string;
@@ -81,6 +93,173 @@ function resolveOptionalCode(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function getStringCandidate(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function getNumberCandidate(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function parseGithubIssueUrl(url?: string): GithubLink {
+  if (!url) return {};
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.endsWith('github.com')) return {};
+    const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
+    if (!match) return {};
+    const [, owner, repo, issue] = match;
+    const issueNumber = Number.parseInt(issue, 10);
+    if (!Number.isFinite(issueNumber)) return {};
+    return {
+      repo: `${owner}/${repo}`,
+      issueNumber,
+      url,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function buildGithubUrl(repo?: string, issueNumber?: number): string | undefined {
+  if (!repo || !issueNumber) return undefined;
+  return `https://github.com/${repo}/issues/${issueNumber}`;
+}
+
+function normalizeStoredIssue(params: {
+  issueRow: Record<string, unknown>;
+  fallbackTitle: string;
+}): NormalizedStoredIssue {
+  const { issueRow, fallbackTitle } = params;
+  const normalizedRow: Record<string, unknown> = { ...issueRow };
+  const appliedFallbacks: string[] = [];
+
+  const issueRecord =
+    issueRow.issue && typeof issueRow.issue === 'object'
+      ? (issueRow.issue as Record<string, unknown>)
+      : issueRow;
+  const metadata =
+    issueRow.metadata && typeof issueRow.metadata === 'object'
+      ? (issueRow.metadata as Record<string, unknown>)
+      : null;
+
+  const primaryTitle = getStringCandidate(issueRecord, ['title']);
+  const fallbackTitleValue =
+    getStringCandidate(issueRecord, ['summary', 'issueTitle', 'name']) ||
+    getStringCandidate(issueRow, ['summary', 'issueTitle', 'name']) ||
+    (metadata ? getStringCandidate(metadata, ['title']) : undefined) ||
+    fallbackTitle;
+
+  if (!primaryTitle || primaryTitle !== fallbackTitleValue) {
+    appliedFallbacks.push('legacy_title');
+  }
+
+  if (!primaryTitle && fallbackTitleValue === fallbackTitle) {
+    appliedFallbacks.push('missing_title');
+  }
+
+  normalizedRow.title = primaryTitle || fallbackTitleValue;
+
+  const rawRepo =
+    getStringCandidate(issueRecord, ['github_repo', 'githubRepo']) ||
+    getStringCandidate(issueRow, ['github_repo', 'githubRepo']);
+  const rawIssueNumber =
+    getNumberCandidate(issueRecord, ['github_issue_number', 'githubIssueNumber']) ||
+    getNumberCandidate(issueRow, ['github_issue_number', 'githubIssueNumber']);
+  const rawUrl =
+    getStringCandidate(issueRecord, ['github_url', 'githubUrl']) ||
+    getStringCandidate(issueRow, ['github_url', 'githubUrl']);
+
+  const legacyRepo = getStringCandidate(issueRow, ['repository', 'repoFullName', 'mirrorRepo']);
+  const legacyIssueNumber = getNumberCandidate(issueRow, [
+    'issueNumber',
+    'mirrorIssue',
+    'mirrorIssueNumber',
+  ]);
+  const legacyUrl = getStringCandidate(issueRow, ['githubIssueUrl', 'url', 'html_url']);
+
+  let repo = rawRepo || legacyRepo;
+  let issueNumber = rawIssueNumber || legacyIssueNumber;
+  let url = rawUrl || legacyUrl;
+
+  if (url && (!repo || !issueNumber)) {
+    const parsed = parseGithubIssueUrl(url);
+    repo = repo || parsed.repo;
+    issueNumber = issueNumber || parsed.issueNumber;
+    if (parsed.repo || parsed.issueNumber) {
+      appliedFallbacks.push('legacy_github_fields');
+    }
+  }
+
+  if (!url && repo && issueNumber) {
+    url = buildGithubUrl(repo, issueNumber);
+    appliedFallbacks.push('github_url_constructed');
+  }
+
+  if (!rawRepo && repo) appliedFallbacks.push('legacy_github_fields');
+  if (!rawIssueNumber && issueNumber) appliedFallbacks.push('legacy_github_fields');
+  if (!rawUrl && url) appliedFallbacks.push('legacy_github_fields');
+
+  if (repo) normalizedRow.github_repo = repo;
+  if (issueNumber) normalizedRow.github_issue_number = issueNumber;
+  if (url) normalizedRow.github_url = url;
+
+  const github = repo || issueNumber || url ? { repo, issueNumber, url } : null;
+
+  return { normalizedRow, github, appliedFallbacks: Array.from(new Set(appliedFallbacks)) };
+}
+
+function buildWorkflow(params: {
+  s1s3Issue?: { status?: string } | null;
+  hasS1: boolean;
+}): { current: string; completed: string[] } {
+  const { s1s3Issue, hasS1 } = params;
+  const completed: string[] = [];
+
+  if (hasS1) {
+    completed.push('S1');
+  }
+
+  if (!s1s3Issue) {
+    return {
+      current: 'S1',
+      completed,
+    };
+  }
+
+  const status = s1s3Issue.status || 'CREATED';
+  if (status === 'SPEC_READY') {
+    completed.push('S2');
+    return {
+      current: 'S3',
+      completed,
+    };
+  }
+
+  return {
+    current: 'S2',
+    completed,
+  };
 }
 
 /**
@@ -115,10 +294,26 @@ export async function GET(
 
     let issueRow: Record<string, unknown> | null = null;
     let resolvedIssueId = id;
+    let resolvedShortId: string | undefined;
 
     if (parsedId.isValid) {
       const resolved = await resolveIssueIdentifierOr404(id, requestId);
       if (!resolved.ok) {
+        if (resolved.status === 404) {
+          return jsonResponse(
+            {
+              errorCode: 'NOT_FOUND',
+              id,
+              requestId,
+            },
+            {
+              status: 404,
+              requestId,
+              headers: responseHeaders,
+            }
+          );
+        }
+
         return jsonResponse(resolved.body, {
           status: resolved.status,
           requestId,
@@ -128,16 +323,37 @@ export async function GET(
 
       issueRow = resolved.issue as Record<string, unknown>;
       resolvedIssueId = resolved.uuid;
+      resolvedShortId = resolved.shortId;
     } else {
       const canonicalResult = await getAfu9IssueByCanonicalId(pool, id);
 
-      if (!canonicalResult.success || !canonicalResult.data) {
-        return errorResponse('Invalid issue identifier format', {
-          status: 400,
-          requestId,
-          details: 'Identifier must be a valid UUID v4, 8-hex publicId, or canonicalId',
-          headers: responseHeaders,
-        });
+      if (!canonicalResult.success) {
+        return jsonResponse(
+          {
+            errorCode: 'DB_READ_FAILED',
+            requestId,
+          },
+          {
+            status: 500,
+            requestId,
+            headers: responseHeaders,
+          }
+        );
+      }
+
+      if (!canonicalResult.data) {
+        return jsonResponse(
+          {
+            errorCode: 'NOT_FOUND',
+            id,
+            requestId,
+          },
+          {
+            status: 404,
+            requestId,
+            headers: responseHeaders,
+          }
+        );
       }
 
       issueRow = canonicalResult.data as Record<string, unknown>;
@@ -148,52 +364,69 @@ export async function GET(
     }
 
     if (!issueRow) {
-      return errorResponse('Failed to get issue', {
-        status: 500,
-        requestId,
-        details: 'Issue row could not be resolved',
-        headers: responseHeaders,
-      });
-    }
-
-    const normalizedIssue = normalizeIssueForApi(issueRow);
-
-    const s1s3IssueResult = parsedId.isValid
-      ? await getS1S3IssueById(pool, resolvedIssueId)
-      : await getS1S3IssueByCanonicalId(pool, id);
-
-    if (!s1s3IssueResult.success || !s1s3IssueResult.data) {
       return jsonResponse(
         {
-          ok: false,
-          code: 'INVALID_STORED_STATE',
-          message: 'S2 data is missing for this issue',
+          errorCode: 'DB_READ_FAILED',
           requestId,
         },
         {
           status: 500,
           requestId,
-          headers: {
-            ...responseHeaders,
-            ...cacheHeaders,
-            'x-afu9-error-code': 'INVALID_STORED_STATE',
-          },
+          headers: responseHeaders,
         }
       );
     }
 
-    const s1s3Issue = s1s3IssueResult.data;
-    const s2 = {
-      status: s1s3Issue.status,
-      scope: s1s3Issue.scope ?? null,
-      acceptanceCriteria: normalizeAcceptanceCriteria(s1s3Issue.acceptance_criteria),
-      specReadyAt: s1s3Issue.spec_ready_at ?? null,
-    };
+    const shortIdFallback =
+      resolvedShortId ||
+      (typeof issueRow.public_id === 'string' ? issueRow.public_id : undefined) ||
+      (typeof issueRow.publicId === 'string' ? issueRow.publicId : undefined) ||
+      (typeof resolvedIssueId === 'string' ? resolvedIssueId.slice(0, 8) : undefined) ||
+      id;
+    const normalizedStored = normalizeStoredIssue({
+      issueRow,
+      fallbackTitle: `Issue ${shortIdFallback}`,
+    });
+    let normalizedIssue: Record<string, unknown>;
+    try {
+      normalizedIssue = normalizeIssueForApi(normalizedStored.normalizedRow);
+    } catch (error) {
+      normalizedIssue = normalizeIssueForApi({
+        id: issueRow.id || resolvedIssueId,
+        title: normalizedStored.normalizedRow.title || `Issue ${shortIdFallback}`,
+        status: issueRow.status || 'CREATED',
+        labels: Array.isArray(issueRow.labels) ? issueRow.labels : [],
+        priority: issueRow.priority || null,
+        created_at: issueRow.created_at || issueRow.createdAt || null,
+        updated_at: issueRow.updated_at || issueRow.updatedAt || null,
+      });
+      normalizedStored.appliedFallbacks.push('output_contract_recovery');
+      console.warn('[API /api/afu9/issues/[id]] Normalization fallback applied:', error);
+    }
 
-    const workflow = {
-      current: s1s3Issue.status === 'SPEC_READY' ? 'S3' : 'S2',
-      completed: s1s3Issue.status === 'SPEC_READY' ? ['S1', 'S2'] : ['S1'],
-    };
+    const s1s3IssueResult = parsedId.isValid
+      ? await getS1S3IssueById(pool, resolvedIssueId)
+      : await getS1S3IssueByCanonicalId(pool, id);
+
+    const s1s3Issue = s1s3IssueResult.success ? s1s3IssueResult.data : null;
+    const s2 = s1s3Issue
+      ? {
+          status: s1s3Issue.status,
+          scope: s1s3Issue.scope ?? null,
+          acceptanceCriteria: normalizeAcceptanceCriteria(s1s3Issue.acceptance_criteria),
+          specReadyAt: s1s3Issue.spec_ready_at ?? null,
+        }
+      : {
+          status: 'UNAVAILABLE',
+          scope: null,
+          acceptanceCriteria: [],
+          specReadyAt: null,
+        };
+
+    const workflow = buildWorkflow({
+      s1s3Issue,
+      hasS1: Boolean(normalizedStored.github?.url || (normalizedStored.github?.repo && normalizedStored.github?.issueNumber)),
+    });
 
     const issueSnapshot = issueRow as {
       id?: string;
@@ -210,6 +443,9 @@ export async function GET(
     let execution: unknown = undefined;
 
     try {
+      if (!s1s3Issue) {
+        throw new Error('Runs unavailable');
+      }
       const runsResult = await listS1S3RunsByIssue(pool, s1s3Issue.id);
       if (!runsResult.success) {
         throw new Error(runsResult.error || 'Runs unavailable');
@@ -297,6 +533,10 @@ export async function GET(
       console.warn('[API /api/afu9/issues/[id]] Execution status unavailable:', error);
     }
 
+    if (normalizedStored.appliedFallbacks.length > 0 || !s1s3Issue) {
+      partial = true;
+    }
+
     const responseBody: Record<string, unknown> = {
       ok: true,
       issue: normalizedIssue,
@@ -306,6 +546,11 @@ export async function GET(
       stateFlow,
       execution,
       partial,
+      github: normalizedStored.github,
+      diagnostics:
+        normalizedStored.appliedFallbacks.length > 0
+          ? { migrationApplied: normalizedStored.appliedFallbacks }
+          : undefined,
       ...normalizedIssue,
     };
 
@@ -320,6 +565,7 @@ export async function GET(
 
     if (partial) {
       headers['x-afu9-partial'] = 'true';
+      headers['x-afu9-warning'] = 'PARTIAL_STATE';
     }
 
     return jsonResponse(responseBody, {
@@ -328,11 +574,16 @@ export async function GET(
     });
   } catch (error) {
     console.error('[API /api/afu9/issues/[id]] Unexpected error:', error);
-    return errorResponse('Failed to get issue', {
-      status: 500,
-      requestId,
-      details: error instanceof Error ? error.message : 'Unknown error',
-      headers: responseHeaders,
-    });
+    return jsonResponse(
+      {
+        errorCode: 'DB_READ_FAILED',
+        requestId,
+      },
+      {
+        status: 500,
+        requestId,
+        headers: responseHeaders,
+      }
+    );
   }
 }
