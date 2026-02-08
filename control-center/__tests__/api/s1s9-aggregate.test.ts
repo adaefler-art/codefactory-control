@@ -421,6 +421,83 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     expect(body.stateQuality).toBe('partial');
   });
 
+  it('github_url_marks_s1_complete_and_next_is_s2', async () => {
+    const shortId = 'b1c2d3e4';
+    const uuid = 'b1c2d3e4-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        title: 'Has mirror',
+        github_url: 'https://github.com/octo/repo/issues/9',
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: false,
+      error: 'missing',
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-s1-1' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.workflow.completed).toContain('S1');
+    expect(body.workflow.current).toBe('S2');
+  });
+
+  it('repo_and_issueNumber_marks_s1_complete_and_next_is_s2', async () => {
+    const shortId = 'c1d2e3f4';
+    const uuid = 'c1d2e3f4-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId,
+      issue: {
+        id: uuid,
+        title: 'Repo mirror',
+        github_repo: 'octo/repo',
+        github_issue_number: 11,
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: false,
+      error: 'missing',
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${shortId}`,
+      { headers: new Headers({ 'x-request-id': 'req-s1-2' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: shortId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.workflow.completed).toContain('S1');
+    expect(body.workflow.current).toBe('S2');
+  });
+
   it('returns 500 with DB_READ_FAILED when lookup throws', async () => {
     mockResolveIssueIdentifierOr404.mockRejectedValue(new Error('db down'));
 

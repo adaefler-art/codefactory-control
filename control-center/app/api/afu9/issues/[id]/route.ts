@@ -243,7 +243,7 @@ function buildWorkflow(params: {
 
   if (!s1s3Issue) {
     return {
-      current: 'S1',
+      current: hasS1 ? 'S2' : 'S1',
       completed,
     };
   }
