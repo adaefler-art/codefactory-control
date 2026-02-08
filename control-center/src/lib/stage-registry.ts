@@ -33,6 +33,13 @@ export type StageRegistryEntry = {
 };
 
 export type StageExecutionState = "ready" | "blocked";
+export type StageBlockedReason = "MISSING_QUEUE_URL" | "DISPATCH_DISABLED";
+
+export type StageActionId = "edit" | "save" | "sync" | "execute";
+
+export type ActionCapability =
+  | { actionId: StageActionId; state: "ready" }
+  | { actionId: StageActionId; state: "blocked"; blockedReason: StageBlockedReason };
 
 export type StageRegistryError = {
   code: "ENGINE_MISCONFIGURED";
@@ -259,10 +266,47 @@ export function isStageEnabled(entry: StageRegistryEntry): boolean {
 export function resolveStageExecutionState(entry: StageRegistryEntry): {
   executionState: StageExecutionState;
   missingConfig: string[];
+  blockedReason?: StageBlockedReason;
 } {
   const missingConfig = resolveStageMissingConfig(entry);
+  const blockedReason = missingConfig.includes("AFU9_GITHUB_EVENTS_QUEUE_URL")
+    ? "MISSING_QUEUE_URL"
+    : missingConfig.length > 0
+      ? "DISPATCH_DISABLED"
+      : undefined;
   return {
     executionState: missingConfig.length > 0 ? "blocked" : "ready",
     missingConfig,
+    blockedReason,
   };
+}
+
+export function resolveStageActions(stageId: StageId): ActionCapability[] {
+  if (stageId === "S2") {
+    const missingConfig = resolveStageMissingConfig(STAGE_REGISTRY.S2);
+    const blockedReason = missingConfig.includes("AFU9_GITHUB_EVENTS_QUEUE_URL")
+      ? "MISSING_QUEUE_URL"
+      : missingConfig.length > 0
+        ? "DISPATCH_DISABLED"
+        : undefined;
+    const syncAction: ActionCapability = blockedReason
+      ? { actionId: "sync", state: "blocked", blockedReason }
+      : { actionId: "sync", state: "ready" };
+    return [
+      { actionId: "edit", state: "ready" },
+      { actionId: "save", state: "ready" },
+      syncAction
+    ];
+  }
+
+  if (stageId === "S3") {
+    const missingQueue = !hasValue(process.env.AFU9_GITHUB_EVENTS_QUEUE_URL);
+    return [
+      missingQueue
+        ? { actionId: "execute", state: "blocked", blockedReason: "MISSING_QUEUE_URL" }
+        : { actionId: "execute", state: "ready" }
+    ];
+  }
+
+  return [];
 }
