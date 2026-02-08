@@ -32,6 +32,8 @@ export type StageRegistryEntry = {
   featureFlags?: string[];
 };
 
+export type StageExecutionState = "ready" | "blocked";
+
 export type StageRegistryError = {
   code: "ENGINE_MISCONFIGURED";
   message: string;
@@ -90,6 +92,10 @@ export const STAGE_REGISTRY: Record<StageId, StageRegistryEntry> = {
         path: "/api/afu9/s1s3/issues/:id/spec",
         handler: "control.s1s3.spec",
       }),
+    },
+    capabilities: {
+      eventsQueue: true,
+      githubWrite: true,
     },
     featureFlags: [`${STAGE_FLAG_PREFIX}S2_ENABLED`],
   },
@@ -248,4 +254,15 @@ export function isStageEnabled(entry: StageRegistryEntry): boolean {
   }
 
   return entry.featureFlags.every((flag) => process.env[flag] !== "0");
+}
+
+export function resolveStageExecutionState(entry: StageRegistryEntry): {
+  executionState: StageExecutionState;
+  missingConfig: string[];
+} {
+  const missingConfig = resolveStageMissingConfig(entry);
+  return {
+    executionState: missingConfig.length > 0 ? "blocked" : "ready",
+    missingConfig,
+  };
 }
