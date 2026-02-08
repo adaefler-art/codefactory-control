@@ -176,9 +176,8 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
 
     expect(response.status).toBe(404);
     expect(body).toMatchObject({
-      errorCode: 'issue_not_found',
-      issueId,
-      lookupStore: 'control',
+      errorCode: 'NOT_FOUND',
+      id: issueId,
       requestId: 'req-404',
     });
   });
@@ -240,6 +239,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-partial')).toBe('true');
+    expect(response.headers.get('x-afu9-warning')).toBe('PARTIAL_STATE');
     expect(body.title).toBe(`Issue ${shortId}`);
     expect(body.githubUrl).toBe('https://github.com/octo/repo/issues/7');
     expect(body.githubRepo).toBe('octo/repo');
@@ -305,6 +305,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-partial')).toBe('true');
+    expect(response.headers.get('x-afu9-warning')).toBe('PARTIAL_STATE');
     expect(body.githubUrl).toBe('https://github.com/octo/repo/issues/55');
     expect(body.githubRepo).toBe('octo/repo');
     expect(body.githubIssueNumber).toBe(55);
@@ -369,6 +370,28 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-partial')).toBe('true');
+    expect(response.headers.get('x-afu9-warning')).toBe('PARTIAL_STATE');
     expect(body.title).toBe('Legacy title field');
+  });
+
+  it('returns 500 with DB_READ_FAILED when lookup throws', async () => {
+    mockResolveIssueIdentifierOr404.mockRejectedValue(new Error('db down'));
+
+    const request = new NextRequest(
+      'http://localhost/api/afu9/s1s9/issues/ISS-DB-FAIL',
+      { headers: new Headers({ 'x-request-id': 'req-db-1' }) }
+    );
+
+    const response = await getIssue(request, {
+      params: Promise.resolve({ id: 'ISS-DB-FAIL' }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({
+      errorCode: 'DB_READ_FAILED',
+      requestId: 'req-db-1',
+    });
   });
 });

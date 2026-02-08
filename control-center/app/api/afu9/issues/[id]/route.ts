@@ -58,6 +58,12 @@ type GithubLink = {
   url?: string;
 };
 
+type NormalizedStoredIssue = {
+  normalizedRow: Record<string, unknown>;
+  github: GithubLink | null;
+  appliedFallbacks: string[];
+};
+
 function buildUnavailable(params: {
   code: string;
   message: string;
@@ -143,38 +149,53 @@ function buildGithubUrl(repo?: string, issueNumber?: number): string | undefined
 function normalizeStoredIssue(params: {
   issueRow: Record<string, unknown>;
   fallbackTitle: string;
-}): {
-  normalizedRow: Record<string, unknown>;
-  github: GithubLink | null;
-  appliedFallback: boolean;
-} {
+}): NormalizedStoredIssue {
   const { issueRow, fallbackTitle } = params;
   const normalizedRow: Record<string, unknown> = { ...issueRow };
-  let appliedFallback = false;
+  const appliedFallbacks: string[] = [];
 
+  const issueRecord =
+    issueRow.issue && typeof issueRow.issue === 'object'
+      ? (issueRow.issue as Record<string, unknown>)
+      : issueRow;
   const metadata =
     issueRow.metadata && typeof issueRow.metadata === 'object'
       ? (issueRow.metadata as Record<string, unknown>)
       : null;
 
-  const primaryTitle = getStringCandidate(issueRow, ['title']);
+  const primaryTitle = getStringCandidate(issueRecord, ['title']);
   const fallbackTitleValue =
-    getStringCandidate(issueRow, ['issueTitle', 'name']) ||
+    getStringCandidate(issueRecord, ['summary', 'issueTitle', 'name']) ||
+    getStringCandidate(issueRow, ['summary', 'issueTitle', 'name']) ||
     (metadata ? getStringCandidate(metadata, ['title']) : undefined) ||
     fallbackTitle;
 
   if (!primaryTitle || primaryTitle !== fallbackTitleValue) {
-    appliedFallback = true;
+    appliedFallbacks.push('legacy_title');
+  }
+
+  if (!primaryTitle && fallbackTitleValue === fallbackTitle) {
+    appliedFallbacks.push('missing_title');
   }
 
   normalizedRow.title = primaryTitle || fallbackTitleValue;
 
-  const rawRepo = getStringCandidate(issueRow, ['github_repo', 'githubRepo']);
-  const rawIssueNumber = getNumberCandidate(issueRow, ['github_issue_number', 'githubIssueNumber']);
-  const rawUrl = getStringCandidate(issueRow, ['github_url', 'githubUrl']);
+  const rawRepo =
+    getStringCandidate(issueRecord, ['github_repo', 'githubRepo']) ||
+    getStringCandidate(issueRow, ['github_repo', 'githubRepo']);
+  const rawIssueNumber =
+    getNumberCandidate(issueRecord, ['github_issue_number', 'githubIssueNumber']) ||
+    getNumberCandidate(issueRow, ['github_issue_number', 'githubIssueNumber']);
+  const rawUrl =
+    getStringCandidate(issueRecord, ['github_url', 'githubUrl']) ||
+    getStringCandidate(issueRow, ['github_url', 'githubUrl']);
 
   const legacyRepo = getStringCandidate(issueRow, ['repository', 'repoFullName', 'mirrorRepo']);
-  const legacyIssueNumber = getNumberCandidate(issueRow, ['issueNumber', 'mirrorIssue']);
+  const legacyIssueNumber = getNumberCandidate(issueRow, [
+    'issueNumber',
+    'mirrorIssue',
+    'mirrorIssueNumber',
+  ]);
   const legacyUrl = getStringCandidate(issueRow, ['githubIssueUrl', 'url', 'html_url']);
 
   let repo = rawRepo || legacyRepo;
@@ -186,18 +207,18 @@ function normalizeStoredIssue(params: {
     repo = repo || parsed.repo;
     issueNumber = issueNumber || parsed.issueNumber;
     if (parsed.repo || parsed.issueNumber) {
-      appliedFallback = true;
+      appliedFallbacks.push('legacy_github_fields');
     }
   }
 
   if (!url && repo && issueNumber) {
     url = buildGithubUrl(repo, issueNumber);
-    appliedFallback = true;
+    appliedFallbacks.push('github_url_constructed');
   }
 
-  if (!rawRepo && repo) appliedFallback = true;
-  if (!rawIssueNumber && issueNumber) appliedFallback = true;
-  if (!rawUrl && url) appliedFallback = true;
+  if (!rawRepo && repo) appliedFallbacks.push('legacy_github_fields');
+  if (!rawIssueNumber && issueNumber) appliedFallbacks.push('legacy_github_fields');
+  if (!rawUrl && url) appliedFallbacks.push('legacy_github_fields');
 
   if (repo) normalizedRow.github_repo = repo;
   if (issueNumber) normalizedRow.github_issue_number = issueNumber;
@@ -205,7 +226,7 @@ function normalizeStoredIssue(params: {
 
   const github = repo || issueNumber || url ? { repo, issueNumber, url } : null;
 
-  return { normalizedRow, github, appliedFallback };
+  return { normalizedRow, github, appliedFallbacks: Array.from(new Set(appliedFallbacks)) };
 }
 
 function buildWorkflow(params: {
@@ -278,6 +299,21 @@ export async function GET(
     if (parsedId.isValid) {
       const resolved = await resolveIssueIdentifierOr404(id, requestId);
       if (!resolved.ok) {
+        if (resolved.status === 404) {
+          return jsonResponse(
+            {
+              errorCode: 'NOT_FOUND',
+              id,
+              requestId,
+            },
+            {
+              status: 404,
+              requestId,
+              headers: responseHeaders,
+            }
+          );
+        }
+
         return jsonResponse(resolved.body, {
           status: resolved.status,
           requestId,
@@ -291,13 +327,33 @@ export async function GET(
     } else {
       const canonicalResult = await getAfu9IssueByCanonicalId(pool, id);
 
-      if (!canonicalResult.success || !canonicalResult.data) {
-        return errorResponse('Invalid issue identifier format', {
-          status: 400,
-          requestId,
-          details: 'Identifier must be a valid UUID v4, 8-hex publicId, or canonicalId',
-          headers: responseHeaders,
-        });
+      if (!canonicalResult.success) {
+        return jsonResponse(
+          {
+            errorCode: 'DB_READ_FAILED',
+            requestId,
+          },
+          {
+            status: 500,
+            requestId,
+            headers: responseHeaders,
+          }
+        );
+      }
+
+      if (!canonicalResult.data) {
+        return jsonResponse(
+          {
+            errorCode: 'NOT_FOUND',
+            id,
+            requestId,
+          },
+          {
+            status: 404,
+            requestId,
+            headers: responseHeaders,
+          }
+        );
       }
 
       issueRow = canonicalResult.data as Record<string, unknown>;
@@ -308,12 +364,17 @@ export async function GET(
     }
 
     if (!issueRow) {
-      return errorResponse('Failed to get issue', {
-        status: 500,
-        requestId,
-        details: 'Issue row could not be resolved',
-        headers: responseHeaders,
-      });
+      return jsonResponse(
+        {
+          errorCode: 'DB_READ_FAILED',
+          requestId,
+        },
+        {
+          status: 500,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
 
     const shortIdFallback =
@@ -326,7 +387,22 @@ export async function GET(
       issueRow,
       fallbackTitle: `Issue ${shortIdFallback}`,
     });
-    const normalizedIssue = normalizeIssueForApi(normalizedStored.normalizedRow);
+    let normalizedIssue: Record<string, unknown>;
+    try {
+      normalizedIssue = normalizeIssueForApi(normalizedStored.normalizedRow);
+    } catch (error) {
+      normalizedIssue = normalizeIssueForApi({
+        id: issueRow.id || resolvedIssueId,
+        title: normalizedStored.normalizedRow.title || `Issue ${shortIdFallback}`,
+        status: issueRow.status || 'CREATED',
+        labels: Array.isArray(issueRow.labels) ? issueRow.labels : [],
+        priority: issueRow.priority || null,
+        created_at: issueRow.created_at || issueRow.createdAt || null,
+        updated_at: issueRow.updated_at || issueRow.updatedAt || null,
+      });
+      normalizedStored.appliedFallbacks.push('output_contract_recovery');
+      console.warn('[API /api/afu9/issues/[id]] Normalization fallback applied:', error);
+    }
 
     const s1s3IssueResult = parsedId.isValid
       ? await getS1S3IssueById(pool, resolvedIssueId)
@@ -349,7 +425,7 @@ export async function GET(
 
     const workflow = buildWorkflow({
       s1s3Issue,
-      hasS1: Boolean(normalizedStored.github?.repo && normalizedStored.github?.issueNumber),
+      hasS1: Boolean(normalizedStored.github?.url || (normalizedStored.github?.repo && normalizedStored.github?.issueNumber)),
     });
 
     const issueSnapshot = issueRow as {
@@ -367,6 +443,9 @@ export async function GET(
     let execution: unknown = undefined;
 
     try {
+      if (!s1s3Issue) {
+        throw new Error('Runs unavailable');
+      }
       const runsResult = await listS1S3RunsByIssue(pool, s1s3Issue.id);
       if (!runsResult.success) {
         throw new Error(runsResult.error || 'Runs unavailable');
@@ -454,7 +533,7 @@ export async function GET(
       console.warn('[API /api/afu9/issues/[id]] Execution status unavailable:', error);
     }
 
-    if (normalizedStored.appliedFallback || !s1s3Issue) {
+    if (normalizedStored.appliedFallbacks.length > 0 || !s1s3Issue) {
       partial = true;
     }
 
@@ -468,7 +547,10 @@ export async function GET(
       execution,
       partial,
       github: normalizedStored.github,
-      diagnostics: normalizedStored.appliedFallback ? { migrationApplied: true } : undefined,
+      diagnostics:
+        normalizedStored.appliedFallbacks.length > 0
+          ? { migrationApplied: normalizedStored.appliedFallbacks }
+          : undefined,
       ...normalizedIssue,
     };
 
@@ -483,6 +565,7 @@ export async function GET(
 
     if (partial) {
       headers['x-afu9-partial'] = 'true';
+      headers['x-afu9-warning'] = 'PARTIAL_STATE';
     }
 
     return jsonResponse(responseBody, {
@@ -491,11 +574,16 @@ export async function GET(
     });
   } catch (error) {
     console.error('[API /api/afu9/issues/[id]] Unexpected error:', error);
-    return errorResponse('Failed to get issue', {
-      status: 500,
-      requestId,
-      details: error instanceof Error ? error.message : 'Unknown error',
-      headers: responseHeaders,
-    });
+    return jsonResponse(
+      {
+        errorCode: 'DB_READ_FAILED',
+        requestId,
+      },
+      {
+        status: 500,
+        requestId,
+        headers: responseHeaders,
+      }
+    );
   }
 }
