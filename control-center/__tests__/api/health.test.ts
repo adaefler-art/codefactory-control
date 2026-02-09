@@ -26,7 +26,7 @@ describe('GET /api/health', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.service).toBe('afu9-control-center');
+    expect(body.service).toBe('control');
     expect(body.commitSha).toBe('abcdef1234567890');
     expect(body.buildTime).toBe('2026-02-09T00:00:00.000Z');
     expect(response.headers.get('x-cf-service')).toBe('control');

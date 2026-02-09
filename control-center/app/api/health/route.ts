@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     return jsonResponse(
       {
         ok: true,
-        service: 'afu9-control-center',
+        service: 'control',
         healthContractVersion: HEALTH_CONTRACT_VERSION,
         stage,
         commitSha: buildInfo.gitSha,
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     return jsonResponse(
       {
         ok: true,
-        service: 'afu9-control-center',
+        service: 'control',
         healthContractVersion: HEALTH_CONTRACT_VERSION,
         stage,
         commitSha: 'unknown',
