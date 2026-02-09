@@ -561,6 +561,9 @@
               "null"
             ]
           },
+          "blockedReason": {
+            "type": "string"
+          },
           "created_at": {
             "type": "string"
           },
@@ -615,6 +618,9 @@
               "string",
               "null"
             ]
+          },
+          "blockedReason": {
+            "type": "string"
           },
           "created_at": {
             "type": "string"

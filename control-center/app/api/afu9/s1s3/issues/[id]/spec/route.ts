@@ -52,7 +52,12 @@ import {
 import { parseIssueId } from '@/lib/contracts/ids';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { withApi } from '@/lib/http/withApi';
-import { getStageRegistryEntry, getStageRegistryError, resolveStageMissingConfig } from '@/lib/stage-registry';
+import {
+  getStageRegistryEntry,
+  getStageRegistryError,
+  resolveStageExecutionState,
+  resolveStageMissingConfig,
+} from '@/lib/stage-registry';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -507,10 +512,12 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       });
     }
 
-    const missingConfig = resolveStageMissingConfig(stageEntry);
+    const executionState = resolveStageExecutionState(stageEntry);
+    const missingConfig = executionState.missingConfig;
     const backendBlocked = missingConfig.length > 0;
 
     if (backendBlocked) {
+      const blockedReason = executionState.blockedReason || 'DISPATCH_DISABLED';
       const blockedMessage = buildBlockedMessage(missingConfig);
       const blockedStepResult = await createS1S3RunStep(pool, {
         run_id: run.id,
@@ -544,6 +551,18 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       const runForResponse = blockedRunResult.success && blockedRunResult.data
         ? blockedRunResult.data
         : run;
+      const runWithBlock = {
+        ...runForResponse,
+        status: 'BLOCKED',
+        error_message: blockedMessage,
+        blockedReason,
+      };
+      const stepWithBlock = {
+        ...blockedStepResult.data,
+        status: 'BLOCKED',
+        error_message: blockedMessage,
+        blockedReason,
+      };
 
       return jsonResponse(
         {
@@ -560,8 +579,8 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
             current: 'S2',
           },
           issue: updatedIssue,
-          run: runForResponse,
-          step: blockedStepResult.data,
+          run: runWithBlock,
+          step: stepWithBlock,
         },
         {
           requestId,

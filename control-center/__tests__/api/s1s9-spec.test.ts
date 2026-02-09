@@ -189,9 +189,11 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
     expect(body.ok).toBe(true);
-    expect(body.run?.status).toBe('FAILED');
-    expect(body.step?.status).toBe('FAILED');
+    expect(body.run?.status).toBe('BLOCKED');
+    expect(body.run?.blockedReason).toBe('MISSING_QUEUE_URL');
+    expect(body.step?.status).toBe('BLOCKED');
     expect(body.step?.step_name).toBe('sync-to-github');
+    expect(body.step?.blockedReason).toBe('MISSING_QUEUE_URL');
     expect(body.workflow?.current).toBe('S2');
   });
 
