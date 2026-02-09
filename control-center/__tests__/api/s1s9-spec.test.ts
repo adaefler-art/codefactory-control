@@ -186,6 +186,8 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s9-spec-v2');
+    expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
     expect(body.ok).toBe(true);
@@ -409,6 +411,8 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s9-spec-v2');
+    expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(body.ok).toBe(true);
     expect(body.run?.status).toBe('BLOCKED');
     expect(body.run?.blockedReason).toBe('MISSING_QUEUE_URL');

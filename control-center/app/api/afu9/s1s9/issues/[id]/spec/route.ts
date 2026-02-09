@@ -12,6 +12,23 @@ interface RouteContext {
 	}>;
 }
 
+const HANDLER_MARKER = 's1s9-spec-v2';
+
+function resolveCommitSha(): string {
+	const raw =
+		process.env.VERCEL_GIT_COMMIT_SHA ||
+		process.env.GIT_COMMIT_SHA ||
+		process.env.COMMIT_SHA;
+	if (!raw) return 'unknown';
+	return raw.slice(0, 7);
+}
+
+function applyHandlerHeaders(response: Response): Response {
+	response.headers.set('x-afu9-handler', HANDLER_MARKER);
+	response.headers.set('x-afu9-commit', resolveCommitSha());
+	return response;
+}
+
 async function postS1S9Spec(request: NextRequest, context: RouteContext) {
 	let lookupResponse: Response | null = null;
 	try {
@@ -36,6 +53,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			requestedScope,
 			resolvedScope: 's1s9',
 		}),
+		'x-afu9-handler': HANDLER_MARKER,
+		'x-afu9-commit': resolveCommitSha(),
 	};
 
 	try {
@@ -43,7 +62,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 		const primaryRequest = request.clone();
 		const fallbackRequest = request.clone();
 
-		return withAfu9ScopeFallback({
+		const response = await withAfu9ScopeFallback({
 			primary: () => postS1S9Spec(primaryRequest, context),
 			fallback: () => postS1S3Spec(fallbackRequest, context),
 			primaryScope: 's1s9',
@@ -51,6 +70,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			requestedScope: 's1s9',
 			issueId: id,
 		});
+		return applyHandlerHeaders(response);
 	} catch (error) {
 		const upstreamStatus =
 			typeof (error as { status?: number })?.status === 'number'
