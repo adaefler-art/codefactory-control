@@ -67,3 +67,11 @@ export const discoveredS4S9Endpoints: DiscoveredAfu9Endpoint[] = [
     },
   },
 ];
+
+export const s4s9AuditNotes = [
+  "S6/S8/S9: no route handlers discovered under app/api in this repo.",
+  "Search: \\bS6\\b|\\bS8\\b|\\bS9\\b|stageId:\\s*\"S6\"|stageId:\\s*\"S8\"|stageId:\\s*\"S9\"",
+  "Search: deploy|deployment|promote|release|verify|verdict|close|closing|hold|unhold|remediate|remediation|rollback|transition",
+  "Search: export\\s+async\\s+function\\s+(GET|POST|PUT|PATCH|DELETE)\\b",
+  "Search: /api/afu9/|app/api/afu9/|afu9/s1s9|s4s9|stage-registry|stages\\W*\\[",
+];
