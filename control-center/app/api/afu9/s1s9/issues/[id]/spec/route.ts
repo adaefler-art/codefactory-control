@@ -13,8 +13,13 @@ interface RouteContext {
 }
 
 async function postS1S9Spec(request: NextRequest, context: RouteContext) {
-	const lookupResponse = await getS1S9Issue(request, context);
-	if (await isIssueNotFound(lookupResponse)) {
+	let lookupResponse: Response | null = null;
+	try {
+		lookupResponse = await getS1S9Issue(request, context);
+	} catch {
+		lookupResponse = null;
+	}
+	if (lookupResponse && await isIssueNotFound(lookupResponse)) {
 		return lookupResponse;
 	}
 

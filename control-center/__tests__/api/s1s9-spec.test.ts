@@ -303,4 +303,117 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     expect(body.step?.status).toBe('SUCCEEDED');
     expect(body.workflow?.current).toBe('S2');
   });
+
+  it('s1s9_spec_returns_200_blocked_when_queue_missing_even_if_lookup_fails', async () => {
+    const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+    setBackendMissingQueue();
+
+    mockGetS1S9Issue.mockRejectedValueOnce(new Error('lookup failed'));
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: issueId,
+      issue: { id: issueId },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'CREATED',
+        owner: 'afu9',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: [],
+      },
+    });
+
+    mockCreateS1S3Run.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'run-lookup-fail',
+        status: 'RUNNING',
+      },
+    });
+
+    mockCreateS1S3RunStep
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-start',
+          status: 'STARTED',
+          step_name: 'Spec Ready',
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-spec',
+          status: 'SUCCEEDED',
+          step_name: 'Spec Ready',
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-blocked',
+          status: 'FAILED',
+          step_name: 'sync-to-github',
+          error_message: 'Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)',
+        },
+      });
+
+    mockUpdateS1S3IssueSpec.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'SPEC_READY',
+        spec_ready_at: '2024-01-01T00:00:00Z',
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: ['AC1'],
+      },
+    });
+
+    mockUpdateS1S3RunStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'run-lookup-fail',
+        status: 'FAILED',
+        error_message: 'Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)',
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s9/issues/${issueId}/spec`,
+      {
+        method: 'POST',
+        headers: new Headers({
+          'content-type': 'application/json',
+          'x-request-id': 'req-blocked-lookup',
+          'x-afu9-sub': 'test-user',
+        }),
+        body: JSON.stringify({
+          scope: 'Test scope',
+          acceptanceCriteria: ['AC1'],
+        }),
+      }
+    );
+
+    const response = await postSpec(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.run?.status).toBe('BLOCKED');
+    expect(body.run?.blockedReason).toBe('MISSING_QUEUE_URL');
+    expect(body.step?.status).toBe('BLOCKED');
+    expect(body.step?.blockedReason).toBe('MISSING_QUEUE_URL');
+    expect(body.workflow?.current).toBe('S2');
+  });
 });
