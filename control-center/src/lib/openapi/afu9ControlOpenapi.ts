@@ -187,6 +187,7 @@ const S1S3RunSchema = registry.register(
       actor: z.string(),
       status: z.string(),
       error_message: z.string().nullable(),
+      blockedReason: z.string().optional(),
       created_at: z.string(),
       started_at: z.string().nullable(),
       completed_at: z.string().nullable(),
@@ -205,6 +206,7 @@ const S1S3StepSchema = registry.register(
       status: z.string(),
       evidence_refs: z.unknown(),
       error_message: z.string().nullable(),
+      blockedReason: z.string().optional(),
       created_at: z.string(),
     })
     .passthrough()
