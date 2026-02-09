@@ -36,9 +36,13 @@ export type BuildInfo = {
  * Falls back to "unknown" for missing environment variables.
  */
 export function getBuildInfo(): BuildInfo {
+  const gitSha =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GIT_SHA ||
+    'unknown';
   return {
     appVersion: process.env.APP_VERSION || 'unknown',
-    gitSha: process.env.GIT_SHA || 'unknown',
+    gitSha,
     buildTime: process.env.BUILD_TIME || 'unknown',
   };
 }

@@ -16,6 +16,16 @@ type RouteLikeRequest = {
   url?: string;
 };
 
+const SERVICE_NAME = 'control-center';
+
+function resolveBuildSha(): string {
+  const raw =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GIT_SHA ||
+    'unknown';
+  return raw.trim() || 'unknown';
+}
+
 /**
  * Extract or generate request ID from the request
  */
@@ -72,6 +82,9 @@ export function jsonResponse<T>(
   const response = NextResponse.json(data, { 
     status: options?.status ?? 200,
   });
+
+  response.headers.set('x-afu9-build-sha', resolveBuildSha());
+  response.headers.set('x-afu9-service', SERVICE_NAME);
   
   if (options?.requestId) {
     response.headers.set('x-request-id', options.requestId);

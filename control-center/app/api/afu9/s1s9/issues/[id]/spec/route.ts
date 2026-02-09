@@ -12,7 +12,8 @@ interface RouteContext {
 	}>;
 }
 
-const HANDLER_MARKER = 's1s9-spec-v2';
+const HANDLER_MARKER = 's1s9-spec';
+const HANDLER_VERSION = 'v1';
 
 function resolveCommitSha(): string {
 	const raw =
@@ -25,6 +26,7 @@ function resolveCommitSha(): string {
 
 function applyHandlerHeaders(response: Response): Response {
 	response.headers.set('x-afu9-handler', HANDLER_MARKER);
+	response.headers.set('x-afu9-handler-ver', HANDLER_VERSION);
 	response.headers.set('x-afu9-commit', resolveCommitSha());
 	return response;
 }
@@ -54,6 +56,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			resolvedScope: 's1s9',
 		}),
 		'x-afu9-handler': HANDLER_MARKER,
+		'x-afu9-handler-ver': HANDLER_VERSION,
 		'x-afu9-commit': resolveCommitSha(),
 	};
 
