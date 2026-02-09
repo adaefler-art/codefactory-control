@@ -524,9 +524,19 @@ export async function GET(
           blockedReason: s2Execution.blockedReason,
         };
 
-    const stages = ["S2", "S3"].map((stageId) => ({
+    const stageIds: Array<"S2" | "S3" | "S4" | "S5" | "S6" | "S7" | "S8" | "S9"> = [
+      "S2",
+      "S3",
+      "S4",
+      "S5",
+      "S6",
+      "S7",
+      "S8",
+      "S9",
+    ];
+    const stages = stageIds.map((stageId) => ({
       stageId,
-      actions: resolveStageActions(stageId as "S2" | "S3"),
+      actions: resolveStageActions(stageId),
     }));
 
     const workflow = buildWorkflow({

@@ -302,6 +302,117 @@ const S3ImplementResponseSchema = registry.register(
     .passthrough()
 );
 
+const VerdictRequestSchema = registry.register(
+  'VerdictRequest',
+  z.object({
+    verdict: z.enum(['GREEN', 'RED', 'HOLD']),
+  })
+);
+
+const VerdictResponseSchema = registry.register(
+  'VerdictResponse',
+  z
+    .object({
+      issueId: z.string(),
+      verdict: z.enum(['GREEN', 'RED', 'HOLD']),
+      oldStatus: z.string(),
+      newStatus: z.string(),
+      stateChanged: z.boolean(),
+    })
+    .passthrough()
+);
+
+const S5MergeRequestSchema = registry.register(
+  'S5MergeRequest',
+  z.object({
+    mode: z.enum(['execute', 'dryRun']).optional(),
+    requestId: z.string().optional(),
+  })
+);
+
+const S5MergeResponseSchema = registry.register(
+  'S5MergeResponse',
+  z
+    .object({
+      success: z.boolean(),
+      issueId: z.string(),
+      runId: z.string(),
+      merged: z.boolean(),
+      mergeSha: z.string().optional(),
+      blocked: z.boolean().optional(),
+      blockerCode: z.string().optional(),
+      blockerMessage: z.string().optional(),
+      stateBefore: z.string(),
+      stateAfter: z.string(),
+      message: z.string(),
+      requestId: z.string(),
+    })
+    .passthrough()
+);
+
+const VerificationEvidenceSchema = registry.register(
+  'VerificationEvidence',
+  z
+    .object({
+      deploymentObservations: z.array(
+        z.object({
+          deploymentId: z.number().int(),
+          environment: z.string(),
+          sha: z.string(),
+          status: z.string(),
+          isAuthentic: z.boolean(),
+          observedAt: z.string(),
+        })
+      ),
+      healthChecks: z
+        .array(
+          z.object({
+            endpoint: z.string(),
+            status: z.number().int(),
+            responseTime: z.number(),
+            timestamp: z.string(),
+          })
+        )
+        .optional(),
+      integrationTests: z
+        .object({
+          passed: z.number().int(),
+          failed: z.number().int(),
+          skipped: z.number().int(),
+          duration: z.number().int(),
+        })
+        .optional(),
+      errorRates: z
+        .object({
+          current: z.number(),
+          threshold: z.number(),
+        })
+        .optional(),
+    })
+    .passthrough()
+);
+
+const S7VerifyRequestSchema = registry.register(
+  'S7VerifyRequest',
+  z.object({
+    evidence: VerificationEvidenceSchema,
+  })
+);
+
+const S7VerifyResponseSchema = registry.register(
+  'S7VerifyResponse',
+  z
+    .object({
+      verdict: z.enum(['GREEN', 'RED']),
+      verdictId: z.string(),
+      evidenceId: z.string(),
+      evaluatedAt: z.string(),
+      rationale: z.string(),
+      failedChecks: z.array(z.string()).optional(),
+    })
+    .passthrough()
+);
+
 const HealthResponseSchema = registry.register(
   'HealthResponse',
   z
@@ -320,6 +431,10 @@ const HealthResponseSchema = registry.register(
 
 const IssueIdParamSchema = z.object({
   id: z.string(),
+});
+
+const RunIdParamSchema = z.object({
+  runId: z.string(),
 });
 
 const IssueListQuerySchema = z.object({
@@ -710,6 +825,146 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: 'post',
+  path: '/api/afu9/issues/{id}/verdict',
+  tags: ['AFU9 Stage Actions (S4-S9)'],
+  request: {
+    params: IssueIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: VerdictRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'S4 verdict decision',
+      content: {
+        'application/json': {
+          schema: VerdictResponseSchema,
+        },
+      },
+    },
+    400: {
+      description: 'Invalid verdict',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+    404: {
+      description: 'Issue not found',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+    500: {
+      description: 'Server error',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/api/afu9/issues/{id}/merge',
+  tags: ['AFU9 Stage Actions (S4-S9)'],
+  request: {
+    params: IssueIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: S5MergeRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'S5 merge',
+      content: {
+        'application/json': {
+          schema: S5MergeResponseSchema,
+        },
+      },
+    },
+    400: {
+      description: 'Invalid request',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+    404: {
+      description: 'Issue not found',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+    409: {
+      description: 'Merge blocked',
+      content: {
+        'application/json': {
+          schema: S5MergeResponseSchema,
+        },
+      },
+    },
+    500: {
+      description: 'Server error',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/api/afu9/runs/{runId}/verify',
+  tags: ['AFU9 Stage Actions (S4-S9)'],
+  request: {
+    params: RunIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: S7VerifyRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'S7 verify verdict',
+      content: {
+        'application/json': {
+          schema: S7VerifyResponseSchema,
+        },
+      },
+    },
+    400: {
+      description: 'Invalid evidence',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+    404: {
+      description: 'Run not found',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+    500: {
+      description: 'Server error',
+      content: {
+        'application/json': { schema: ErrorResponseSchema },
+      },
+    },
+  },
+});
+
+registry.registerPath({
   method: 'get',
   path: '/api/health',
   tags: ['Diagnostics'],
@@ -737,6 +992,7 @@ export function buildAfu9ControlOpenApiDocument() {
     tags: [
       { name: 'AFU9 Read', description: 'AFU-9 read-only endpoints.' },
       { name: 'AFU9 Stage Actions', description: 'AFU-9 stage action endpoints.' },
+      { name: 'AFU9 Stage Actions (S4-S9)', description: 'AFU-9 stage actions for S4-S9.' },
       { name: 'Diagnostics', description: 'Control-center diagnostics endpoints.' },
     ],
   });
