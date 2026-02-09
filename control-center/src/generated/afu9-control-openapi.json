@@ -15,6 +15,10 @@
       "description": "AFU-9 stage action endpoints."
     },
     {
+      "name": "AFU9 Stage Actions (S4-S9)",
+      "description": "AFU-9 stage actions for S4-S9."
+    },
+    {
       "name": "Diagnostics",
       "description": "Control-center diagnostics endpoints."
     }
@@ -866,6 +870,278 @@
         ],
         "additionalProperties": {}
       },
+      "VerdictRequest": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "GREEN",
+              "RED",
+              "HOLD"
+            ]
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "VerdictResponse": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "GREEN",
+              "RED",
+              "HOLD"
+            ]
+          },
+          "oldStatus": {
+            "type": "string"
+          },
+          "newStatus": {
+            "type": "string"
+          },
+          "stateChanged": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "issueId",
+          "verdict",
+          "oldStatus",
+          "newStatus",
+          "stateChanged"
+        ],
+        "additionalProperties": {}
+      },
+      "S5MergeRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "execute",
+              "dryRun"
+            ]
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "S5MergeResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "issueId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "merged": {
+            "type": "boolean"
+          },
+          "mergeSha": {
+            "type": "string"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "blockerCode": {
+            "type": "string"
+          },
+          "blockerMessage": {
+            "type": "string"
+          },
+          "stateBefore": {
+            "type": "string"
+          },
+          "stateAfter": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "issueId",
+          "runId",
+          "merged",
+          "stateBefore",
+          "stateAfter",
+          "message",
+          "requestId"
+        ],
+        "additionalProperties": {}
+      },
+      "VerificationEvidence": {
+        "type": "object",
+        "properties": {
+          "deploymentObservations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "deploymentId": {
+                  "type": "integer"
+                },
+                "environment": {
+                  "type": "string"
+                },
+                "sha": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "isAuthentic": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "deploymentId",
+                "environment",
+                "sha",
+                "status",
+                "isAuthentic",
+                "observedAt"
+              ]
+            }
+          },
+          "healthChecks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "endpoint": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "integer"
+                },
+                "responseTime": {
+                  "type": "number"
+                },
+                "timestamp": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "endpoint",
+                "status",
+                "responseTime",
+                "timestamp"
+              ]
+            }
+          },
+          "integrationTests": {
+            "type": "object",
+            "properties": {
+              "passed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "skipped": {
+                "type": "integer"
+              },
+              "duration": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "passed",
+              "failed",
+              "skipped",
+              "duration"
+            ]
+          },
+          "errorRates": {
+            "type": "object",
+            "properties": {
+              "current": {
+                "type": "number"
+              },
+              "threshold": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "current",
+              "threshold"
+            ]
+          }
+        },
+        "required": [
+          "deploymentObservations"
+        ],
+        "additionalProperties": {}
+      },
+      "S7VerifyRequest": {
+        "type": "object",
+        "properties": {
+          "evidence": {
+            "$ref": "#/components/schemas/VerificationEvidence"
+          }
+        },
+        "required": [
+          "evidence"
+        ]
+      },
+      "S7VerifyResponse": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "GREEN",
+              "RED"
+            ]
+          },
+          "verdictId": {
+            "type": "string"
+          },
+          "evidenceId": {
+            "type": "string"
+          },
+          "evaluatedAt": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "failedChecks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "verdict",
+          "verdictId",
+          "evidenceId",
+          "evaluatedAt",
+          "rationale"
+        ],
+        "additionalProperties": {}
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -1535,6 +1811,220 @@
           },
           "503": {
             "description": "Dispatch disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/issues/{id}/verdict": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions (S4-S9)"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerdictRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "S4 verdict decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerdictResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/issues/{id}/merge": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions (S4-S9)"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S5MergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "S5 merge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S5MergeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Issue not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Merge blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S5MergeResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/afu9/runs/{runId}/verify": {
+      "post": {
+        "tags": [
+          "AFU9 Stage Actions (S4-S9)"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S7VerifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "S7 verify verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S7VerifyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid evidence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
             "content": {
               "application/json": {
                 "schema": {
