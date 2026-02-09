@@ -63,6 +63,7 @@ import {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 const AUTH_PATH = 'control';
+const CF_HANDLER = 's1s3-spec';
 
 
 function getStringField(record: Record<string, unknown>, ...keys: string[]): string | null {
@@ -140,6 +141,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
             resolvedScope: 's1s3',
           }),
           'x-afu9-error-code': registryError.code,
+          'x-cf-handler': CF_HANDLER,
         },
       }
     );
@@ -153,6 +155,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     }),
     'x-afu9-stage': stageEntry.stageId,
     'x-afu9-handler': specRoute.handler,
+    'x-cf-handler': CF_HANDLER,
   };
   const handlerName = 'control';
   const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();

@@ -29,5 +29,8 @@ describe('GET /api/health', () => {
     expect(body.service).toBe('afu9-control-center');
     expect(body.commitSha).toBe('abcdef1234567890');
     expect(body.buildTime).toBe('2026-02-09T00:00:00.000Z');
+    expect(response.headers.get('x-cf-service')).toBe('control');
+    expect(response.headers.get('x-cf-build-sha')).toBe('abcdef1234567890');
+    expect(response.headers.get('x-cf-build-time')).toBe('2026-02-09T00:00:00.000Z');
   });
 });
