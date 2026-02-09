@@ -28,8 +28,14 @@ function resolveBuildSha(): string {
 }
 
 function resolveBuildTime(): string {
-  const raw = process.env.BUILD_TIME || 'unknown';
-  return raw.trim() || 'unknown';
+  const raw = process.env.BUILD_TIME || '';
+  if (raw.trim()) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return new Date(0).toISOString();
 }
 
 function createTraceId(): string {

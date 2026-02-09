@@ -32,7 +32,7 @@ describe('Health Endpoint Contract', () => {
     
     const body = await response.json();
     expect(body.ok).toBe(true);
-    expect(body.service).toBe('afu9-control-center');
+    expect(body.service).toBe('control');
     expect(body.version).toBeDefined();
     expect(body.timestamp).toBeDefined();
   });

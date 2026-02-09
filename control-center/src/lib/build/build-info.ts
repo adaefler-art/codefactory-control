@@ -40,9 +40,17 @@ export function getBuildInfo(): BuildInfo {
     process.env.VERCEL_GIT_COMMIT_SHA ||
     process.env.GIT_SHA ||
     'unknown';
+  const rawBuildTime = process.env.BUILD_TIME || '';
+  let buildTime = new Date(0).toISOString();
+  if (rawBuildTime.trim()) {
+    const parsed = new Date(rawBuildTime);
+    if (!Number.isNaN(parsed.getTime())) {
+      buildTime = parsed.toISOString();
+    }
+  }
   return {
     appVersion: process.env.APP_VERSION || 'unknown',
     gitSha,
-    buildTime: process.env.BUILD_TIME || 'unknown',
+    buildTime,
   };
 }
