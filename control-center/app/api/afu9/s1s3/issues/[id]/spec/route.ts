@@ -52,7 +52,7 @@ import {
 import { parseIssueId } from '@/lib/contracts/ids';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { withApi } from '@/lib/http/withApi';
-import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-registry';
+import { getStageRegistryEntry, getStageRegistryError, resolveStageMissingConfig } from '@/lib/stage-registry';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -190,6 +190,14 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         },
       }
     );
+  };
+
+  const buildBlockedMessage = (missingConfig: string[]): string => {
+    if (missingConfig.includes('AFU9_GITHUB_EVENTS_QUEUE_URL')) {
+      return 'Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)';
+    }
+    const primary = missingConfig[0] || 'DISPATCH_DISABLED';
+    return `Execution backend not configured (${primary})`;
   };
 
   try {
@@ -404,14 +412,39 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       });
     }
 
+    // Update issue with spec data
+    const updateResult = await updateS1S3IssueSpec(pool, issue.id, {
+      problem: problem?.trim() || null,
+      scope: scope?.trim() || null,
+      acceptance_criteria: acceptanceCriteria,
+      notes: notes?.trim() || null,
+    });
+
+    if (!updateResult.success || !updateResult.data) {
+      return respondWithSpecError({
+        status: 502,
+        errorCode: 'spec_upstream_failed',
+        detailsSafe: 'Failed to update issue',
+      });
+    }
+
+    const updatedIssue = updateResult.data;
+
+    console.log('[S2] Spec persisted:', {
+      requestId,
+      issue_id: updatedIssue.id,
+      status: updatedIssue.status,
+      ac_count: acceptanceCriteria.length,
+    });
+
     // Create run record
     let runResult;
     try {
       runResult = await createS1S3Run(pool, {
         type: S1S3RunType.S2_SPEC_READY,
-        issue_id: issue.id,
+        issue_id: updatedIssue.id,
         request_id: requestId,
-        actor: issue.owner,
+        actor: updatedIssue.owner,
         status: S1S3RunStatus.RUNNING,
       });
     } catch (error) {
@@ -444,35 +477,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       step_name: 'Spec Ready',
       status: S1S3StepStatus.STARTED,
       evidence_refs: {
-        issue_id: issue.id,
-        issue_url: issue.github_issue_url,
+        issue_id: updatedIssue.id,
+        issue_url: updatedIssue.github_issue_url,
         request_id: requestId,
       },
-    });
-
-    // Update issue with spec data
-    const updateResult = await updateS1S3IssueSpec(pool, issue.id, {
-      problem: problem?.trim() || null,
-      scope: scope?.trim() || null,
-      acceptance_criteria: acceptanceCriteria,
-      notes: notes?.trim() || null,
-    });
-
-    if (!updateResult.success || !updateResult.data) {
-      return respondWithSpecError({
-        status: 502,
-        errorCode: 'spec_upstream_failed',
-        detailsSafe: 'Failed to update issue',
-      });
-    }
-
-    const updatedIssue = updateResult.data;
-
-    console.log('[S2] Spec persisted:', {
-      requestId,
-      issue_id: updatedIssue.id,
-      status: updatedIssue.status,
-      ac_count: acceptanceCriteria.length,
     });
 
     // Create step event - SUCCEEDED
@@ -499,8 +507,73 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       });
     }
 
-    // Update run status to DONE
-    await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.DONE);
+    const missingConfig = resolveStageMissingConfig(stageEntry);
+    const backendBlocked = missingConfig.length > 0;
+
+    if (backendBlocked) {
+      const blockedMessage = buildBlockedMessage(missingConfig);
+      const blockedStepResult = await createS1S3RunStep(pool, {
+        run_id: run.id,
+        step_id: 'S2',
+        step_name: 'sync-to-github',
+        status: S1S3StepStatus.FAILED,
+        error_message: blockedMessage,
+        evidence_refs: {
+          issue_id: updatedIssue.id,
+          issue_url: updatedIssue.github_issue_url,
+          request_id: requestId,
+          missing_config: missingConfig,
+        },
+      });
+
+      if (!blockedStepResult.success || !blockedStepResult.data) {
+        return respondWithSpecError({
+          status: 502,
+          errorCode: 'spec_upstream_failed',
+          detailsSafe: 'Failed to record blocked dispatch step',
+        });
+      }
+
+      const blockedRunResult = await updateS1S3RunStatus(
+        pool,
+        run.id,
+        S1S3RunStatus.FAILED,
+        blockedMessage
+      );
+
+      const runForResponse = blockedRunResult.success && blockedRunResult.data
+        ? blockedRunResult.data
+        : run;
+
+      return jsonResponse(
+        {
+          ok: true,
+          issueId: updatedIssue.id,
+          updatedAt: updatedIssue.updated_at ?? updatedIssue.updatedAt ?? null,
+          s2: {
+            status: 'READY',
+            scope: updatedIssue.scope ?? null,
+            acceptanceCriteria: updatedIssue.acceptance_criteria ?? [],
+            specReadyAt: updatedIssue.spec_ready_at ?? null,
+          },
+          workflow: {
+            current: 'S2',
+          },
+          issue: updatedIssue,
+          run: runForResponse,
+          step: blockedStepResult.data,
+        },
+        {
+          requestId,
+          headers: responseHeaders,
+        }
+      );
+    }
+
+    const updatedRunResult = await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.DONE);
+    const runForResponse = updatedRunResult.success && updatedRunResult.data
+      ? updatedRunResult.data
+      : run;
 
     console.log('[S2] Spec ready completed successfully:', {
       requestId,
@@ -520,10 +593,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           specReadyAt: updatedIssue.spec_ready_at ?? null,
         },
         workflow: {
-          current: 'S3',
+          current: 'S2',
         },
         issue: updatedIssue,
-        run: run,
+        run: runForResponse,
         step: stepResult.data,
       },
       {
