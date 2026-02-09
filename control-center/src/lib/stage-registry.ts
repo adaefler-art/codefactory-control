@@ -308,5 +308,23 @@ export function resolveStageActions(stageId: StageId): ActionCapability[] {
     ];
   }
 
+  if (["S4", "S5", "S6", "S7", "S8", "S9"].includes(stageId)) {
+    const entry = STAGE_REGISTRY[stageId];
+    if (!entry) {
+      return [];
+    }
+    const missingConfig = resolveStageMissingConfig(entry);
+    const blockedReason = missingConfig.includes("AFU9_GITHUB_EVENTS_QUEUE_URL")
+      ? "MISSING_QUEUE_URL"
+      : missingConfig.length > 0
+        ? "DISPATCH_DISABLED"
+        : undefined;
+    return [
+      blockedReason
+        ? { actionId: "execute", state: "blocked", blockedReason }
+        : { actionId: "execute", state: "ready" }
+    ];
+  }
+
   return [];
 }
