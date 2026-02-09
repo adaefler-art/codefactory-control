@@ -834,6 +834,14 @@ registry.registerPath({
       content: {
         'application/json': {
           schema: VerdictRequestSchema,
+          examples: {
+            greenVerdict: {
+              summary: 'Submit a GREEN verdict',
+              value: {
+                verdict: 'GREEN',
+              },
+            },
+          },
         },
       },
     },
@@ -844,6 +852,18 @@ registry.registerPath({
       content: {
         'application/json': {
           schema: VerdictResponseSchema,
+          examples: {
+            verdictAccepted: {
+              summary: 'Verdict accepted and workflow advanced',
+              value: {
+                issueId: 'ISSUE-123',
+                verdict: 'GREEN',
+                oldStatus: 'S4',
+                newStatus: 'S5',
+                stateChanged: true,
+              },
+            },
+          },
         },
       },
     },
@@ -878,6 +898,15 @@ registry.registerPath({
       content: {
         'application/json': {
           schema: S5MergeRequestSchema,
+          examples: {
+            executeMerge: {
+              summary: 'Execute merge now',
+              value: {
+                mode: 'execute',
+                requestId: 'req_123',
+              },
+            },
+          },
         },
       },
     },
@@ -888,6 +917,23 @@ registry.registerPath({
       content: {
         'application/json': {
           schema: S5MergeResponseSchema,
+          examples: {
+            mergeSuccess: {
+              summary: 'Merge executed successfully',
+              value: {
+                success: true,
+                issueId: 'ISSUE-123',
+                runId: 'run_456',
+                merged: true,
+                mergeSha: 'abc123def456',
+                blocked: false,
+                stateBefore: 'S5',
+                stateAfter: 'S6',
+                message: 'Merge completed',
+                requestId: 'req_123',
+              },
+            },
+          },
         },
       },
     },
@@ -907,7 +953,20 @@ registry.registerPath({
       description: 'Merge blocked',
       content: {
         'application/json': {
-          schema: S5MergeResponseSchema,
+          schema: ErrorResponseSchema,
+          examples: {
+            mergeBlocked: {
+              summary: 'Merge blocked by gate condition',
+              value: {
+                errorCode: 'MERGE_BLOCKED',
+                requestId: 'req_123',
+                message: 'Merge blocked: verdict not GREEN',
+                details: {
+                  blockerCode: 'VERDICT_NOT_GREEN',
+                },
+              },
+            },
+          },
         },
       },
     },
