@@ -28,6 +28,7 @@ function applyHandlerHeaders(response: Response): Response {
 	response.headers.set('x-afu9-handler', HANDLER_MARKER);
 	response.headers.set('x-afu9-handler-ver', HANDLER_VERSION);
 	response.headers.set('x-afu9-commit', resolveCommitSha());
+	response.headers.set('x-cf-handler', HANDLER_MARKER);
 	return response;
 }
 
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 		'x-afu9-handler': HANDLER_MARKER,
 		'x-afu9-handler-ver': HANDLER_VERSION,
 		'x-afu9-commit': resolveCommitSha(),
+		'x-cf-handler': HANDLER_MARKER,
 	};
 
 	try {

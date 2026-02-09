@@ -17,6 +17,7 @@ type RouteLikeRequest = {
 };
 
 const SERVICE_NAME = 'control-center';
+const CF_SERVICE_NAME = 'control';
 
 function resolveBuildSha(): string {
   const raw =
@@ -26,20 +27,34 @@ function resolveBuildSha(): string {
   return raw.trim() || 'unknown';
 }
 
-/**
- * Extract or generate request ID from the request
- */
-export function getRequestId(request?: RequestLike): string {
-  const headerValue = request?.headers?.get?.('x-request-id');
-  if (headerValue && headerValue.trim()) {
-    return headerValue.trim();
-  }
-  
+function resolveBuildTime(): string {
+  const raw = process.env.BUILD_TIME || 'unknown';
+  return raw.trim() || 'unknown';
+}
+
+function createTraceId(): string {
   try {
     return randomUUID();
   } catch {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
+}
+
+/**
+ * Extract or generate request ID from the request
+ */
+export function getRequestId(request?: RequestLike): string {
+  const traceHeader = request?.headers?.get?.('x-cf-trace');
+  if (traceHeader && traceHeader.trim()) {
+    return traceHeader.trim();
+  }
+
+  const headerValue = request?.headers?.get?.('x-request-id');
+  if (headerValue && headerValue.trim()) {
+    return headerValue.trim();
+  }
+  
+  return createTraceId();
 }
 
 /**
@@ -76,6 +91,7 @@ export function jsonResponse<T>(
   options?: {
     status?: number;
     requestId?: string;
+    traceId?: string;
     headers?: Record<string, string>;
   }
 ): NextResponse<T> {
@@ -85,6 +101,10 @@ export function jsonResponse<T>(
 
   response.headers.set('x-afu9-build-sha', resolveBuildSha());
   response.headers.set('x-afu9-service', SERVICE_NAME);
+  response.headers.set('x-cf-build-sha', resolveBuildSha());
+  response.headers.set('x-cf-build-time', resolveBuildTime());
+  response.headers.set('x-cf-service', CF_SERVICE_NAME);
+  response.headers.set('x-cf-trace', options?.traceId || options?.requestId || createTraceId());
   
   if (options?.requestId) {
     response.headers.set('x-request-id', options.requestId);
