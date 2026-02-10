@@ -32,8 +32,17 @@ import { getPool } from '@/lib/db';
 import { getAfu9IssueById } from '@/lib/db/afu9Issues';
 import { validateVerdictInput } from '@/lib/contracts/verdict';
 import { applyVerdict } from '@/lib/services/verdictService';
-import { getRequestId, jsonResponse, errorResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import { getRequestId, jsonResponse } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifier } from '../../../../issues/_shared';
+import {
+  buildStageHeaders,
+  stageErrorResponse,
+  assertPrecondition,
+  getStageRouteHeaderValue,
+} from '../../_stageAction';
+
+const HANDLER_MARKER = 's4-verdict';
+const HANDLER_VERSION = 'v1';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -47,19 +56,34 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const requestId = getRequestId(request);
-  const routeHeaderValue = getRouteHeaderValue(request);
-  const responseHeaders = getControlResponseHeaders(requestId, routeHeaderValue);
+  const routeHeaderValue = getStageRouteHeaderValue(request);
+  const responseHeaders = buildStageHeaders({
+    requestId,
+    routeHeaderValue,
+    handler: HANDLER_MARKER,
+    version: HANDLER_VERSION,
+  });
   
   try {
     const pool = getPool();
     const { id: rawIssueId } = await params;
     const resolved = await resolveIssueIdentifier(rawIssueId, requestId);
     if (!resolved.ok) {
-      return jsonResponse(resolved.body, {
-        status: resolved.status,
-        requestId,
-        headers: responseHeaders,
-      });
+      return stageErrorResponse(
+        {
+          ok: false,
+          errorCode: resolved.body.errorCode || 'ISSUE_NOT_FOUND',
+          code: resolved.body.errorCode || 'ISSUE_NOT_FOUND',
+          message: 'Issue lookup failed',
+          requestId,
+          detailsSafe: resolved.body.errorCode || 'Issue lookup failed',
+        },
+        {
+          status: resolved.status,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
     const issueId = resolved.uuid;
 
@@ -67,22 +91,40 @@ export async function POST(
     const body = await request.json().catch(() => null);
     
     if (!body) {
-      return errorResponse('Invalid request body', {
-        status: 400,
-        requestId,
-        details: 'Request body must be valid JSON',
-        headers: responseHeaders,
-      });
+      return stageErrorResponse(
+        {
+          ok: false,
+          errorCode: 'VERDICT_INVALID',
+          code: 'VERDICT_INVALID',
+          message: 'Invalid request body',
+          requestId,
+          detailsSafe: 'Request body must be valid JSON',
+        },
+        {
+          status: 422,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
 
     const validation = validateVerdictInput(body);
     if (!validation.valid) {
-      return errorResponse('Invalid verdict', {
-        status: 400,
-        requestId,
-        details: validation.error,
-        headers: responseHeaders,
-      });
+      return stageErrorResponse(
+        {
+          ok: false,
+          errorCode: 'VERDICT_INVALID',
+          code: 'VERDICT_INVALID',
+          message: 'Invalid verdict',
+          requestId,
+          detailsSafe: validation.error,
+        },
+        {
+          status: 422,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
 
     const { verdict } = body;
@@ -90,12 +132,14 @@ export async function POST(
     // Verify issue exists
     const issueResult = await getAfu9IssueById(pool, issueId);
     if (!issueResult.success || !issueResult.data) {
-      return jsonResponse(
+      return stageErrorResponse(
         {
-          errorCode: 'issue_not_found',
-          issueId: rawIssueId,
+          ok: false,
+          errorCode: 'ISSUE_NOT_FOUND',
+          code: 'ISSUE_NOT_FOUND',
+          message: 'Issue not found',
           requestId,
-          lookupStore: 'control',
+          detailsSafe: 'Issue not found',
         },
         {
           status: 404,
@@ -107,37 +151,81 @@ export async function POST(
 
     const issue = issueResult.data;
     const oldStatus = issue.status;
+    const allowedStatuses = new Set([
+      Afu9IssueStatus.IMPLEMENTING,
+      Afu9IssueStatus.VERIFIED,
+    ]);
+    const preconditionResponse = assertPrecondition(
+      allowedStatuses.has(issue.status),
+      {
+        ok: false,
+        errorCode: 'VERDICT_PRECONDITION_FAILED',
+        code: 'VERDICT_PRECONDITION_FAILED',
+        message: 'Verdict precondition failed',
+        requestId,
+        preconditionFailed: 'STATUS_INVALID',
+        detailsSafe: `Issue status ${issue.status}`,
+      },
+      {
+        status: 409,
+        requestId,
+        headers: responseHeaders,
+      }
+    );
+    if (preconditionResponse) {
+      return preconditionResponse;
+    }
 
     // Apply verdict and update state
     const verdictResult = await applyVerdict(pool, issueId, issue, verdict);
 
     if (!verdictResult.success) {
-      return errorResponse('Failed to apply verdict', {
-        status: 500,
-        requestId,
-        details: verdictResult.error || 'Unknown error',
-        headers: responseHeaders,
-      });
+      return stageErrorResponse(
+        {
+          ok: false,
+          errorCode: 'VERDICT_FAILED',
+          code: 'VERDICT_FAILED',
+          message: 'Failed to apply verdict',
+          requestId,
+          detailsSafe: verdictResult.error || 'Unknown error',
+        },
+        {
+          status: 500,
+          requestId,
+          headers: responseHeaders,
+        }
+      );
     }
 
-    return jsonResponse({
-      issueId,
-      verdict,
-      oldStatus,
-      newStatus: verdictResult.newStatus,
-      stateChanged: verdictResult.stateChanged,
-    }, {
-      requestId,
-      status: 200,
-      headers: responseHeaders,
-    });
+    return jsonResponse(
+      {
+        issueId,
+        verdict,
+        oldStatus,
+        newStatus: verdictResult.newStatus,
+        stateChanged: verdictResult.stateChanged,
+      },
+      {
+        requestId,
+        status: 200,
+        headers: responseHeaders,
+      }
+    );
   } catch (error) {
-    console.error('[API /api/afu9/issues/:id/verdict] Error:', error);
-    return errorResponse('Failed to apply verdict', {
-      status: 500,
-      requestId,
-      details: error instanceof Error ? error.message : 'Unknown error',
-      headers: responseHeaders,
-    });
+    return stageErrorResponse(
+      {
+        ok: false,
+        errorCode: 'VERDICT_FAILED',
+        code: 'VERDICT_FAILED',
+        message: 'Failed to apply verdict',
+        requestId,
+        detailsSafe: error instanceof Error ? error.message.slice(0, 200) : 'Unknown error',
+      },
+      {
+        status: 500,
+        requestId,
+        headers: responseHeaders,
+      }
+    );
   }
 }
