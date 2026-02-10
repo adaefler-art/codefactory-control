@@ -39,7 +39,7 @@ import {
   stageErrorResponse,
   assertPrecondition,
   getStageRouteHeaderValue,
-} from '../../_stageAction';
+} from '../../../_stageAction';
 
 const HANDLER_MARKER = 's4-verdict';
 const HANDLER_VERSION = 'v1';
