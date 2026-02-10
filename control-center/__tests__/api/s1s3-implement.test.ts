@@ -114,7 +114,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     process.env = { ...envSnapshot };
   });
 
-  test('returns DISPATCH_DISABLED when dispatch config is missing', async () => {
+  test('returns GITHUB_AUTH_MISSING when dispatch config is missing', async () => {
     process.env = {
       ...envSnapshot,
       AFU9_STAGE: 'dev',
@@ -132,20 +132,25 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const response = await implementIssue(request, context);
     const body = await response.json();
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('DISPATCH_DISABLED');
+    expect(body.code).toBe('GITHUB_AUTH_MISSING');
     expect(body.requiredConfig).toEqual([
+      'GITHUB_APP_ID',
+      'GITHUB_APP_PRIVATE_KEY_PEM',
+    ]);
+    expect(body.missingConfig).toEqual([
       'GITHUB_APP_ID',
       'GITHUB_APP_PRIVATE_KEY_PEM',
     ]);
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-stage')).toBe('S3');
-    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.implement');
-    expect(response.headers.get('x-afu9-error-code')).toBe('DISPATCH_DISABLED');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-commit')).toBeTruthy();
+    expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
   });
 
-  test('returns DISPATCH_DISABLED when trigger config is missing', async () => {
+  test('returns IMPLEMENT_TRIGGER_CONFIG_MISSING when trigger config is missing', async () => {
     process.env = {
       ...envSnapshot,
       GITHUB_APP_ID: '12345',
@@ -167,13 +172,41 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const response = await implementIssue(request, context);
     const body = await response.json();
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('DISPATCH_DISABLED');
+    expect(body.code).toBe('IMPLEMENT_TRIGGER_CONFIG_MISSING');
     expect(body.requiredConfig).toEqual([
       'AFU9_GITHUB_IMPLEMENT_LABEL',
       'AFU9_GITHUB_IMPLEMENT_COMMENT',
     ]);
+  });
+
+  test('returns GITHUB_MIRROR_MISSING when repo metadata missing', async () => {
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        ...mockIssue,
+        repo_full_name: null,
+      },
+    });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('GITHUB_MIRROR_MISSING');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-commit')).toBeTruthy();
   });
 
   test('triggers GitHub implementation and returns 202', async () => {

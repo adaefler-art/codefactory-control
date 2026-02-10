@@ -51,6 +51,9 @@ import { triggerAfu9Implementation } from '@/lib/github/issue-sync';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const HANDLER_MARKER = 's1s3-implement';
+const HANDLER_VERSION = 'v1';
+
 interface RouteContext {
   params: Promise<{
     id: string;
@@ -60,19 +63,32 @@ interface RouteContext {
 type S3ErrorCode =
   | 'ENGINE_MISCONFIGURED'
   | 'GITHUB_WRITE_DENIED'
+  | 'GITHUB_MIRROR_MISSING'
+  | 'SPEC_NOT_READY'
+  | 'GITHUB_AUTH_MISSING'
+  | 'GITHUB_AUTH_INVALID'
+  | 'GITHUB_TARGET_NOT_FOUND'
+  | 'GITHUB_VALIDATION_FAILED'
+  | 'IMPLEMENT_TRIGGER_CONFIG_MISSING'
   | 'VALIDATION_FAILED'
-  | 'DISPATCH_DISABLED'
   | 'NOT_IMPLEMENTED'
+  | 'IMPLEMENT_INVALID_PAYLOAD'
+  | 'IMPLEMENT_FAILED'
   | 'INTERNAL_ERROR';
 
 type S3ErrorResponse = {
   ok: false;
   stage: 'S3';
   code: S3ErrorCode;
+  errorCode?: string;
   message: string;
   requestId: string;
-  errorCode?: string;
   requiredConfig?: string[];
+  missingConfig?: string[];
+  preconditionFailed?: string | null;
+  upstreamStatus?: number;
+  githubRequestId?: string;
+  detailsSafe?: string;
 };
 
 type S3SuccessResponse = {
@@ -86,6 +102,46 @@ type S3SuccessResponse = {
 
 function hasValue(value: string | undefined | null): boolean {
   return Boolean(value && value.trim().length > 0);
+}
+
+function resolveCommitSha(): string {
+  const raw =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GIT_COMMIT_SHA ||
+    process.env.COMMIT_SHA;
+  if (!raw) return 'unknown';
+  return raw.slice(0, 7);
+}
+
+function trimDetails(value?: string, maxLength = 200): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.length > maxLength ? trimmed.slice(0, maxLength) : trimmed;
+}
+
+function getGithubErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const record = error as { status?: unknown; response?: { status?: unknown } };
+  if (typeof record.status === 'number') return record.status;
+  if (typeof record.response?.status === 'number') return record.response.status;
+  return undefined;
+}
+
+function getGithubRequestId(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const record = error as { response?: { headers?: Record<string, string> } };
+  const headers = record.response?.headers;
+  if (!headers) return undefined;
+  return headers['x-github-request-id'] || headers['X-GitHub-Request-Id'] || headers['X-GITHUB-REQUEST-ID'];
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return String(error ?? '');
 }
 
 /**
@@ -125,7 +181,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const stageId = stageEntry.stageId;
-  const handlerName = implementRoute.handler;
+  const handlerName = HANDLER_MARKER;
   const responseHeaders = {
     ...getControlResponseHeaders(requestId, routeHeaderValue),
     ...buildAfu9ScopeHeaders({
@@ -134,6 +190,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }),
     'x-afu9-stage': stageId,
     'x-afu9-handler': handlerName,
+    'x-afu9-handler-ver': HANDLER_VERSION,
+    'x-afu9-commit': resolveCommitSha(),
+    'x-cf-handler': HANDLER_MARKER,
   };
   const pool = getPool();
 
@@ -142,15 +201,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
     code: S3ErrorCode;
     message: string;
     requiredConfig?: string[];
+    missingConfig?: string[];
+    preconditionFailed?: string | null;
+    upstreamStatus?: number;
+    githubRequestId?: string;
+    detailsSafe?: string;
   }) => {
     const body: S3ErrorResponse = {
       ok: false,
       stage: stageId,
       code: params.code,
+      errorCode: params.code,
       message: params.message,
       requestId,
-      errorCode: params.code,
       requiredConfig: params.requiredConfig,
+      missingConfig: params.missingConfig,
+      preconditionFailed: params.preconditionFailed ?? null,
+      upstreamStatus: params.upstreamStatus,
+      githubRequestId: params.githubRequestId,
+      detailsSafe: params.detailsSafe,
     };
 
     return jsonResponse(body, {
@@ -178,16 +247,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         code: 'ENGINE_MISCONFIGURED',
         message: 'Missing AFU9_STAGE',
+        detailsSafe: 'Missing AFU9_STAGE',
       });
     }
 
     const missingDispatchConfig = resolveStageMissingConfig(stageEntry);
     if (missingDispatchConfig.length > 0) {
       return respondS3Error({
-        status: 503,
-        code: 'DISPATCH_DISABLED',
-        message: 'Execution disabled in this env',
+        status: 409,
+        code: 'GITHUB_AUTH_MISSING',
+        message: 'GitHub auth not configured',
         requiredConfig: missingDispatchConfig,
+        missingConfig: missingDispatchConfig,
+        preconditionFailed: 'GITHUB_AUTH_MISSING',
+        detailsSafe: 'Missing GitHub auth configuration',
       });
     }
 
@@ -203,18 +276,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const issueId = resolved.uuid;
 
     // Parse request body
-    const body = await request.json().catch(() => ({}));
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return respondS3Error({
+        status: 422,
+        code: 'IMPLEMENT_INVALID_PAYLOAD',
+        message: 'Invalid request body',
+        preconditionFailed: 'INVALID_PAYLOAD',
+        detailsSafe: 'Invalid request body',
+      });
+    }
     const hasCustomInputs = Boolean(
       (body as Record<string, unknown>).baseBranch ||
       (body as Record<string, unknown>).prTitle ||
       (body as Record<string, unknown>).prBody
     );
-
-    console.log('[S3] Implement request:', {
-      requestId,
-      issue_id: issueId,
-      hasCustomInputs,
-    });
 
     // Get existing issue
     const issueResult = await getS1S3IssueById(pool, issueId);
@@ -223,6 +301,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 404,
         code: 'VALIDATION_FAILED',
         message: 'Issue not found',
+        detailsSafe: 'Issue not found',
       });
     }
 
@@ -235,9 +314,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       issue.status !== S1S3IssueStatus.PR_CREATED
     ) {
       return respondS3Error({
-        status: 400,
-        code: 'VALIDATION_FAILED',
-        message: `Issue must be in SPEC_READY, IMPLEMENTING, or PR_CREATED state. Current: ${issue.status}`,
+        status: 409,
+        code: 'SPEC_NOT_READY',
+        message: 'Spec not ready',
+        preconditionFailed: 'SPEC_NOT_READY',
+        detailsSafe: `Issue status ${issue.status}`,
       });
     }
 
@@ -245,17 +326,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const issueNumber = issue.github_issue_number;
     if (!repoFullName || !repoFullName.includes('/')) {
       return respondS3Error({
-        status: 400,
-        code: 'VALIDATION_FAILED',
-        message: 'Missing repository metadata for issue',
+        status: 409,
+        code: 'GITHUB_MIRROR_MISSING',
+        message: 'GitHub mirror missing',
+        preconditionFailed: 'GITHUB_MIRROR_MISSING',
+        detailsSafe: 'Missing repository metadata for issue',
       });
     }
 
     if (!issueNumber) {
       return respondS3Error({
-        status: 400,
-        code: 'VALIDATION_FAILED',
-        message: 'Missing GitHub issue number',
+        status: 409,
+        code: 'GITHUB_MIRROR_MISSING',
+        message: 'GitHub mirror missing',
+        preconditionFailed: 'GITHUB_MIRROR_MISSING',
+        detailsSafe: 'Missing GitHub issue number',
       });
     }
 
@@ -272,10 +357,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (missingTriggerConfig.length === 2) {
       return respondS3Error({
-        status: 503,
-        code: 'DISPATCH_DISABLED',
+        status: 409,
+        code: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
         message: 'GitHub trigger not configured',
         requiredConfig: missingTriggerConfig,
+        missingConfig: missingTriggerConfig,
+        preconditionFailed: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
+        detailsSafe: 'Missing GitHub trigger configuration',
       });
     }
 
@@ -293,6 +381,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         code: 'INTERNAL_ERROR',
         message: 'Failed to create run record',
+        detailsSafe: 'Failed to create run record',
       });
     }
 
@@ -317,6 +406,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         code: 'INTERNAL_ERROR',
         message: 'Failed to create step event',
+        detailsSafe: 'Failed to create step event',
       });
     }
 
@@ -333,7 +423,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         requestId,
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error) || 'GitHub trigger failed.';
+      const upstreamStatus = getGithubErrorStatus(error);
+      const githubRequestId = getGithubRequestId(error);
 
       await createS1S3RunStep(pool, {
         run_id: run.id,
@@ -354,16 +446,59 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (error instanceof Error && error.name === 'RepoAccessDeniedError') {
         return respondS3Error({
-          status: 403,
-          code: 'GITHUB_WRITE_DENIED',
-          message: 'Repository is not in the allowlist',
+          status: 409,
+          code: 'GITHUB_AUTH_INVALID',
+          message: 'Repository access denied',
+          preconditionFailed: 'GITHUB_AUTH_INVALID',
+          upstreamStatus,
+          githubRequestId,
+          detailsSafe: trimDetails(errorMessage),
+        });
+      }
+
+      if (upstreamStatus === 401 || upstreamStatus === 403) {
+        return respondS3Error({
+          status: 409,
+          code: 'GITHUB_AUTH_INVALID',
+          message: 'GitHub auth invalid',
+          preconditionFailed: 'GITHUB_AUTH_INVALID',
+          upstreamStatus,
+          githubRequestId,
+          detailsSafe: trimDetails(errorMessage),
+        });
+      }
+
+      if (upstreamStatus === 404) {
+        return respondS3Error({
+          status: 409,
+          code: 'GITHUB_TARGET_NOT_FOUND',
+          message: 'GitHub target not found',
+          preconditionFailed: 'GITHUB_TARGET_NOT_FOUND',
+          upstreamStatus,
+          githubRequestId,
+          detailsSafe: trimDetails(errorMessage),
+        });
+      }
+
+      if (upstreamStatus === 422) {
+        return respondS3Error({
+          status: 409,
+          code: 'GITHUB_VALIDATION_FAILED',
+          message: 'GitHub validation failed',
+          preconditionFailed: 'GITHUB_VALIDATION_FAILED',
+          upstreamStatus,
+          githubRequestId,
+          detailsSafe: trimDetails(errorMessage),
         });
       }
 
       return respondS3Error({
         status: 500,
-        code: 'INTERNAL_ERROR',
-        message: errorMessage,
+        code: 'IMPLEMENT_FAILED',
+        message: 'Implementation failed',
+        upstreamStatus,
+        githubRequestId,
+        detailsSafe: trimDetails(errorMessage),
       });
     }
 
@@ -378,6 +513,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         code: 'INTERNAL_ERROR',
         message: 'Failed to update issue status',
+        detailsSafe: 'Failed to update issue status',
       });
     }
 
@@ -401,18 +537,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 500,
         code: 'INTERNAL_ERROR',
         message: 'Failed to create step event',
+        detailsSafe: 'Failed to create step event',
       });
     }
 
     await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.DONE);
-
-    console.log('[S3] GitHub trigger sent:', {
-      requestId,
-      issue_id: updatedIssue.id,
-      run_id: run.id,
-      label_applied: triggerResult.labelApplied,
-      comment_posted: triggerResult.commentPosted,
-    });
 
     return respondS3Success({
       ok: true,
@@ -432,11 +561,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
     });
   } catch (error) {
-    console.error('[API /api/afu9/s1s3/issues/[id]/implement] Error implementing:', error);
     return respondS3Error({
       status: 500,
       code: 'INTERNAL_ERROR',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: 'Unexpected implement failure',
+      detailsSafe: trimDetails(getErrorMessage(error)) || 'Unexpected implement failure',
     });
   }
 }
