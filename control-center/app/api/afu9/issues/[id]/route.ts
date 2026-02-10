@@ -26,6 +26,7 @@ import { parseIssueId } from '@/lib/contracts/ids';
 import {
   getS1S3IssueById,
   getS1S3IssueByCanonicalId,
+  getS1S3IssueByGitHub,
   listS1S3RunsByIssue,
 } from '@/lib/db/s1s3Flow';
 import { normalizeAcceptanceCriteria } from '@/lib/contracts/s1s3Flow';
@@ -495,11 +496,38 @@ export async function GET(
       console.warn('[API /api/afu9/issues/[id]] Normalization fallback applied:', error);
     }
 
-    const s1s3IssueResult = parsedId.isValid
-      ? await getS1S3IssueById(pool, resolvedIssueId)
-      : await getS1S3IssueByCanonicalId(pool, id);
+    const canonicalIdCandidate =
+      typeof normalizedIssue.canonicalId === 'string' && normalizedIssue.canonicalId.trim()
+        ? normalizedIssue.canonicalId.trim()
+        : typeof (issueRow as { canonical_id?: unknown }).canonical_id === 'string' &&
+          (issueRow as { canonical_id?: string }).canonical_id?.trim()
+          ? (issueRow as { canonical_id?: string }).canonical_id?.trim()
+          : typeof (issueRow as { canonicalId?: unknown }).canonicalId === 'string' &&
+            (issueRow as { canonicalId?: string }).canonicalId?.trim()
+            ? (issueRow as { canonicalId?: string }).canonicalId?.trim()
+            : undefined;
 
-    const s1s3Issue = s1s3IssueResult.success ? s1s3IssueResult.data : null;
+    let s1s3IssueResult = null as
+      | Awaited<ReturnType<typeof getS1S3IssueByGitHub>>
+      | Awaited<ReturnType<typeof getS1S3IssueByCanonicalId>>
+      | Awaited<ReturnType<typeof getS1S3IssueById>>
+      | null;
+
+    if (normalizedStored.github?.repo && normalizedStored.github?.issueNumber) {
+      s1s3IssueResult = await getS1S3IssueByGitHub(
+        pool,
+        normalizedStored.github.repo,
+        normalizedStored.github.issueNumber
+      );
+    }
+
+    if ((!s1s3IssueResult || !s1s3IssueResult.success) && canonicalIdCandidate) {
+      s1s3IssueResult = await getS1S3IssueByCanonicalId(pool, canonicalIdCandidate);
+    }
+
+    const s1s3Issue = s1s3IssueResult && s1s3IssueResult.success
+      ? s1s3IssueResult.data
+      : null;
     const s2Stage = getStageRegistryEntry('S2');
     const s2Execution = s2Stage
       ? resolveStageExecutionState(s2Stage)

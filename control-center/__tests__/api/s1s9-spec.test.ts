@@ -185,6 +185,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
     expect(body.ok).toBe(true);
+    expect(body.issue?.status).toBe('SPEC_READY');
     expect(body.run?.status).toBe('BLOCKED');
     expect(body.run?.blockedReason).toBe('DISPATCH_DISABLED');
     expect(body.step?.status).toBe('BLOCKED');
@@ -301,6 +302,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
     expect(body.ok).toBe(true);
+    expect(body.issue?.status).toBe('SPEC_READY');
     expect(body.run?.status).toBe('DONE');
     expect(body.step?.status).toBe('SUCCEEDED');
     expect(body.step?.step_name).toBe('sync-to-github');
@@ -417,6 +419,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(body.ok).toBe(true);
+    expect(body.issue?.status).toBe('SPEC_READY');
     expect(body.run?.status).toBe('BLOCKED');
     expect(body.run?.blockedReason).toBe('DISPATCH_DISABLED');
     expect(body.step?.status).toBe('BLOCKED');
