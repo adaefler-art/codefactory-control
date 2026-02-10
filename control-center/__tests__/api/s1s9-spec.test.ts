@@ -4,9 +4,8 @@
  * @jest-environment node
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { POST as postSpec } from '../../app/api/afu9/s1s9/issues/[id]/spec/route';
-import { GET as getS1S9Issue } from '../../app/api/afu9/issues/[id]/route';
 import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 import {
   getS1S3IssueById,
@@ -15,10 +14,6 @@ import {
   updateS1S3RunStatus,
   updateS1S3IssueSpec,
 } from '../../src/lib/db/s1s3Flow';
-
-jest.mock('../../app/api/afu9/issues/[id]/route', () => ({
-  GET: jest.fn(),
-}));
 
 jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
@@ -45,7 +40,6 @@ jest.mock('../../app/api/issues/_shared', () => {
 });
 
 describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
-  const mockGetS1S9Issue = getS1S9Issue as jest.Mock;
   const mockResolveIssueIdentifierOr404 = resolveIssueIdentifierOr404 as jest.Mock;
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
   const mockCreateS1S3Run = createS1S3Run as jest.Mock;
@@ -79,13 +73,6 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
   it('spec_saves_and_returns_200_when_backend_missing_with_blocked_run_step', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
     setBackendMissingQueue();
-
-    mockGetS1S9Issue.mockResolvedValueOnce(
-      NextResponse.json(
-        { id: issueId },
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      )
-    );
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
@@ -204,13 +191,6 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
 
   it('spec_returns_normal_run_step_when_backend_available', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
-
-    mockGetS1S9Issue.mockResolvedValueOnce(
-      NextResponse.json(
-        { id: issueId },
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      )
-    );
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
