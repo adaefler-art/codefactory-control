@@ -47,6 +47,13 @@ jest.mock('../../src/lib/db/afu9Issues', () => ({
   getIssueEvents: jest.fn(),
 }));
 
+jest.mock('../../src/lib/db/s1s3Flow', () => ({
+  getS1S3IssueById: jest.fn(),
+  getS1S3IssueByCanonicalId: jest.fn(),
+  getS1S3IssueByGitHub: jest.fn(),
+  listS1S3RunsByIssue: jest.fn(),
+}));
+
 describe('AFU9 Issues API', () => {
   const mockIssue = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -67,6 +74,16 @@ describe('AFU9 Issues API', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    const {
+      getS1S3IssueById,
+      getS1S3IssueByCanonicalId,
+      getS1S3IssueByGitHub,
+      listS1S3RunsByIssue,
+    } = require('../../src/lib/db/s1s3Flow');
+    getS1S3IssueById.mockResolvedValue({ success: false, error: 'Issue not found' });
+    getS1S3IssueByCanonicalId.mockResolvedValue({ success: false, error: 'Issue not found' });
+    getS1S3IssueByGitHub.mockResolvedValue({ success: false, error: 'Issue not found' });
+    listS1S3RunsByIssue.mockResolvedValue({ success: true, data: [] });
   });
 
   describe('GET /api/issues (list)', () => {
@@ -246,6 +263,41 @@ describe('AFU9 Issues API', () => {
 
       expect(response.status).toBe(200);
       expect(body.id).toBe(mockIssue.id);
+    });
+
+    test('returns workflow nextStep S3 when SPEC_READY exists', async () => {
+      const { getAfu9IssueById } = require('../../src/lib/db/afu9Issues');
+      const { getS1S3IssueByGitHub } = require('../../src/lib/db/s1s3Flow');
+      const issueWithGithub = {
+        ...mockIssue,
+        github_issue_number: 42,
+        github_url: 'https://github.com/octo/repo/issues/42',
+        github_repo: 'octo/repo',
+      };
+      getAfu9IssueById.mockResolvedValue({
+        success: true,
+        data: issueWithGithub,
+      });
+      getS1S3IssueByGitHub.mockResolvedValue({
+        success: true,
+        data: {
+          id: 's1s3-issue-1',
+          status: 'SPEC_READY',
+          scope: 'Test scope',
+          acceptance_criteria: ['AC1'],
+          spec_ready_at: '2024-01-01T00:00:00Z',
+        },
+      });
+
+      const request = new NextRequest('http://localhost/api/issues/123e4567-e89b-12d3-a456-426614174000');
+      const response = await getIssue(request, {
+        params: Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' }),
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.workflow?.nextStep).toBe('S3');
+      expect(body.workflow?.completed || []).toContain('S2');
     });
 
     test('returns issue by publicId (8-hex)', async () => {
