@@ -69,6 +69,7 @@ type S3ErrorCode =
   | 'GITHUB_AUTH_INVALID'
   | 'GITHUB_TARGET_NOT_FOUND'
   | 'GITHUB_VALIDATION_FAILED'
+  | 'GITHUB_UPSTREAM_UNREACHABLE'
   | 'IMPLEMENT_TRIGGER_CONFIG_MISSING'
   | 'VALIDATION_FAILED'
   | 'NOT_IMPLEMENTED'
@@ -111,6 +112,14 @@ function resolveCommitSha(): string {
     process.env.COMMIT_SHA;
   if (!raw) return 'unknown';
   return raw.slice(0, 7);
+}
+
+function applyHandlerHeaders(response: Response): Response {
+  response.headers.set('x-afu9-handler', HANDLER_MARKER);
+  response.headers.set('x-afu9-handler-ver', HANDLER_VERSION);
+  response.headers.set('x-afu9-commit', resolveCommitSha());
+  response.headers.set('x-cf-handler', HANDLER_MARKER);
+  return response;
 }
 
 function trimDetails(value?: string, maxLength = 200): string | undefined {
@@ -156,27 +165,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   if (!stageEntry || !implementRoute?.handler) {
     const registryError = getStageRegistryError('S3');
-    return jsonResponse(
-      {
-        ok: false,
-        stage: 'S3',
-        code: registryError.code,
-        message: registryError.message,
-        requestId,
-        errorCode: registryError.code,
-      },
-      {
-        status: 500,
-        requestId,
-        headers: {
-          ...getControlResponseHeaders(requestId, routeHeaderValue),
-          ...buildAfu9ScopeHeaders({
-            requestedScope: 's1s3',
-            resolvedScope: 's1s3',
-          }),
-          'x-afu9-error-code': registryError.code,
+    return applyHandlerHeaders(
+      jsonResponse(
+        {
+          ok: false,
+          stage: 'S3',
+          code: registryError.code,
+          message: registryError.message,
+          requestId,
+          errorCode: registryError.code,
         },
-      }
+        {
+          status: 500,
+          requestId,
+          headers: {
+            ...getControlResponseHeaders(requestId, routeHeaderValue),
+            ...buildAfu9ScopeHeaders({
+              requestedScope: 's1s3',
+              resolvedScope: 's1s3',
+            }),
+            'x-afu9-error-code': registryError.code,
+          },
+        }
+      )
     );
   }
 
@@ -222,22 +233,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
       detailsSafe: params.detailsSafe,
     };
 
-    return jsonResponse(body, {
-      status: params.status,
-      requestId,
-      headers: {
-        ...responseHeaders,
-        'x-afu9-error-code': params.code,
-      },
-    });
+    return applyHandlerHeaders(
+      jsonResponse(body, {
+        status: params.status,
+        requestId,
+        headers: {
+          ...responseHeaders,
+          'x-afu9-error-code': params.code,
+        },
+      })
+    );
   };
 
   const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) =>
-    jsonResponse(body, {
-      status: 202,
-      requestId,
-      headers: responseHeaders,
-    });
+    applyHandlerHeaders(
+      jsonResponse(body, {
+        status: 202,
+        requestId,
+        headers: responseHeaders,
+      })
+    );
 
   try {
     const stageValue =
@@ -493,9 +508,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return respondS3Error({
-        status: 500,
-        code: 'IMPLEMENT_FAILED',
-        message: 'Implementation failed',
+        status: 502,
+        code: 'GITHUB_UPSTREAM_UNREACHABLE',
+        message: 'GitHub upstream unreachable',
         upstreamStatus,
         githubRequestId,
         detailsSafe: trimDetails(errorMessage),
@@ -563,9 +578,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   } catch (error) {
     return respondS3Error({
       status: 500,
-      code: 'INTERNAL_ERROR',
-      message: 'Unexpected implement failure',
-      detailsSafe: trimDetails(getErrorMessage(error)) || 'Unexpected implement failure',
+      code: 'IMPLEMENT_FAILED',
+      message: 'Implementation failed',
+      detailsSafe: trimDetails(getErrorMessage(error)) || 'Implementation failed',
     });
   }
 }

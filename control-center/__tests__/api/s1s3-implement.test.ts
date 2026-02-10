@@ -249,4 +249,28 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.githubTrigger?.labelApplied).toBe(true);
     expect(body.githubTrigger?.commentPosted).toBe(false);
   });
+
+  test('returns IMPLEMENT_FAILED on unexpected error', async () => {
+    mockGetS1S3IssueById.mockImplementation(() => {
+      throw new Error('boom');
+    });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const context = {
+      params: Promise.resolve({ id: 'issue-123' }),
+    };
+
+    const response = await implementIssue(request, context);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('IMPLEMENT_FAILED');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-commit')).toBeTruthy();
+  });
 });
