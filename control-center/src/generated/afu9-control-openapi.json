@@ -304,6 +304,74 @@
         ],
         "additionalProperties": {}
       },
+      "GithubSyncStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "BLOCKED",
+              "SKIPPED"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "blockedReason": {
+            "type": "string"
+          },
+          "missingConfig": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errorCode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": {}
+      },
+      "GithubTriggerStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "TRIGGERED",
+              "FAILED",
+              "BLOCKED"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "labelApplied": {
+            "type": "boolean"
+          },
+          "commentPosted": {
+            "type": "boolean"
+          },
+          "missingConfig": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errorCode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": {}
+      },
       "IssueDetailResponse": {
         "type": "object",
         "properties": {
@@ -773,6 +841,9 @@
           },
           "step": {
             "$ref": "#/components/schemas/S1S3RunStep"
+          },
+          "githubSync": {
+            "$ref": "#/components/schemas/GithubSyncStatus"
           }
         },
         "required": [
@@ -860,6 +931,9 @@
           },
           "message": {
             "type": "string"
+          },
+          "githubTrigger": {
+            "$ref": "#/components/schemas/GithubTriggerStatus"
           }
         },
         "required": [
@@ -871,8 +945,7 @@
           "startedAt",
           "issue",
           "run",
-          "step",
-          "pr"
+          "step"
         ],
         "additionalProperties": {}
       },

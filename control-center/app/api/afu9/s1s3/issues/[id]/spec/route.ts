@@ -55,9 +55,9 @@ import { withApi } from '@/lib/http/withApi';
 import {
   getStageRegistryEntry,
   getStageRegistryError,
-  resolveStageExecutionState,
   resolveStageMissingConfig,
 } from '@/lib/stage-registry';
+import { syncAfu9SpecToGitHubIssue } from '@/lib/github/issue-sync';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -201,11 +201,8 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
   };
 
   const buildBlockedMessage = (missingConfig: string[]): string => {
-    if (missingConfig.includes('AFU9_GITHUB_EVENTS_QUEUE_URL')) {
-      return 'Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)';
-    }
     const primary = missingConfig[0] || 'DISPATCH_DISABLED';
-    return `Execution backend not configured (${primary})`;
+    return `GitHub sync disabled (${primary})`;
   };
 
   try {
@@ -515,12 +512,9 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       });
     }
 
-    const executionState = resolveStageExecutionState(stageEntry);
-    const missingConfig = executionState.missingConfig;
-    const backendBlocked = missingConfig.length > 0;
-
-    if (backendBlocked) {
-      const blockedReason = executionState.blockedReason || 'DISPATCH_DISABLED';
+    const missingConfig = resolveStageMissingConfig(stageEntry);
+    if (missingConfig.length > 0) {
+      const blockedReason = 'DISPATCH_DISABLED';
       const blockedMessage = buildBlockedMessage(missingConfig);
       const blockedStepResult = await createS1S3RunStep(pool, {
         run_id: run.id,
@@ -540,7 +534,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         return respondWithSpecError({
           status: 502,
           errorCode: 'spec_upstream_failed',
-          detailsSafe: 'Failed to record blocked dispatch step',
+          detailsSafe: 'Failed to record blocked sync step',
         });
       }
 
@@ -584,6 +578,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           issue: updatedIssue,
           run: runWithBlock,
           step: stepWithBlock,
+          githubSync: {
+            status: 'BLOCKED',
+            blockedReason,
+            message: blockedMessage,
+            missingConfig,
+            errorCode: blockedReason,
+          },
         },
         {
           requestId,
@@ -592,7 +593,74 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       );
     }
 
-    const updatedRunResult = await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.DONE);
+    let syncStatus: 'SUCCEEDED' | 'SKIPPED' | 'FAILED' = 'SUCCEEDED';
+    let syncMessage: string | undefined;
+    let syncErrorCode: string | undefined;
+
+    const repoFullName = updatedIssue.repo_full_name;
+    const issueNumber = updatedIssue.github_issue_number;
+    if (!repoFullName || !issueNumber || !repoFullName.includes('/')) {
+      syncStatus = 'FAILED';
+      syncMessage = 'GitHub issue metadata missing for sync.';
+      syncErrorCode = 'GITHUB_METADATA_MISSING';
+    } else {
+      const [owner, repo] = repoFullName.split('/');
+      try {
+        const syncResult = await syncAfu9SpecToGitHubIssue({
+          owner,
+          repo,
+          issueNumber,
+          problem: updatedIssue.problem,
+          scope: updatedIssue.scope,
+          acceptanceCriteria: acceptanceCriteria,
+          notes: updatedIssue.notes,
+          requestId,
+        });
+        syncStatus = syncResult.status;
+        if (syncResult.status === 'SKIPPED') {
+          syncMessage = 'GitHub issue already up to date.';
+        }
+      } catch (error) {
+        syncStatus = 'FAILED';
+        syncMessage = error instanceof Error ? error.message : 'GitHub sync failed.';
+        if (error instanceof Error && error.name === 'RepoAccessDeniedError') {
+          syncErrorCode = 'GITHUB_WRITE_DENIED';
+        } else {
+          syncErrorCode = 'GITHUB_SYNC_FAILED';
+        }
+      }
+    }
+
+    const syncStepStatus = syncStatus === 'FAILED' ? S1S3StepStatus.FAILED : S1S3StepStatus.SUCCEEDED;
+    const syncStepResult = await createS1S3RunStep(pool, {
+      run_id: run.id,
+      step_id: 'S2',
+      step_name: 'sync-to-github',
+      status: syncStepStatus,
+      error_message: syncStatus === 'FAILED' ? syncMessage || 'GitHub sync failed.' : null,
+      evidence_refs: {
+        issue_id: updatedIssue.id,
+        issue_url: updatedIssue.github_issue_url,
+        request_id: requestId,
+        sync_status: syncStatus,
+      },
+    });
+
+    if (!syncStepResult.success || !syncStepResult.data) {
+      return respondWithSpecError({
+        status: 502,
+        errorCode: 'spec_upstream_failed',
+        detailsSafe: 'Failed to record sync step',
+      });
+    }
+
+    const runStatus = syncStatus === 'FAILED' ? S1S3RunStatus.FAILED : S1S3RunStatus.DONE;
+    const updatedRunResult = await updateS1S3RunStatus(
+      pool,
+      run.id,
+      runStatus,
+      syncStatus === 'FAILED' ? syncMessage : undefined
+    );
     const runForResponse = updatedRunResult.success && updatedRunResult.data
       ? updatedRunResult.data
       : run;
@@ -619,7 +687,12 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         },
         issue: updatedIssue,
         run: runForResponse,
-        step: stepResult.data,
+        step: syncStepResult.data,
+        githubSync: {
+          status: syncStatus,
+          message: syncMessage,
+          errorCode: syncErrorCode,
+        },
       },
       {
         requestId,

@@ -101,7 +101,6 @@ export const STAGE_REGISTRY: Record<StageId, StageRegistryEntry> = {
       }),
     },
     capabilities: {
-      eventsQueue: true,
       githubWrite: true,
     },
     featureFlags: [`${STAGE_FLAG_PREFIX}S2_ENABLED`],
@@ -118,9 +117,7 @@ export const STAGE_REGISTRY: Record<StageId, StageRegistryEntry> = {
       }),
     },
     capabilities: {
-      runner: true,
       githubWrite: true,
-      eventsQueue: true,
     },
     featureFlags: [`${STAGE_FLAG_PREFIX}S3_ENABLED`],
   },
@@ -284,11 +281,7 @@ export function resolveStageExecutionState(entry: StageRegistryEntry): {
 export function resolveStageActions(stageId: StageId): ActionCapability[] {
   if (stageId === "S2") {
     const missingConfig = resolveStageMissingConfig(STAGE_REGISTRY.S2);
-    const blockedReason = missingConfig.includes("AFU9_GITHUB_EVENTS_QUEUE_URL")
-      ? "MISSING_QUEUE_URL"
-      : missingConfig.length > 0
-        ? "DISPATCH_DISABLED"
-        : undefined;
+    const blockedReason = missingConfig.length > 0 ? "DISPATCH_DISABLED" : undefined;
     const syncAction: ActionCapability = blockedReason
       ? { actionId: "sync", state: "blocked", blockedReason }
       : { actionId: "sync", state: "ready" };
@@ -300,10 +293,11 @@ export function resolveStageActions(stageId: StageId): ActionCapability[] {
   }
 
   if (stageId === "S3") {
-    const missingQueue = !hasValue(process.env.AFU9_GITHUB_EVENTS_QUEUE_URL);
+    const missingConfig = resolveStageMissingConfig(STAGE_REGISTRY.S3);
+    const blockedReason = missingConfig.length > 0 ? "DISPATCH_DISABLED" : undefined;
     return [
-      missingQueue
-        ? { actionId: "execute", state: "blocked", blockedReason: "MISSING_QUEUE_URL" }
+      blockedReason
+        ? { actionId: "execute", state: "blocked", blockedReason }
         : { actionId: "execute", state: "ready" }
     ];
   }
