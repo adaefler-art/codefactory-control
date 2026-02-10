@@ -124,6 +124,33 @@ const IssueDetailS2Schema = registry.register(
     .passthrough()
 );
 
+const GithubSyncSchema = registry.register(
+  'GithubSyncStatus',
+  z
+    .object({
+      status: z.enum(['SUCCEEDED', 'FAILED', 'BLOCKED', 'SKIPPED']),
+      message: z.string().optional(),
+      blockedReason: z.string().optional(),
+      missingConfig: z.array(z.string()).optional(),
+      errorCode: z.string().optional(),
+    })
+    .passthrough()
+);
+
+const GithubTriggerSchema = registry.register(
+  'GithubTriggerStatus',
+  z
+    .object({
+      status: z.enum(['TRIGGERED', 'FAILED', 'BLOCKED']),
+      message: z.string().optional(),
+      labelApplied: z.boolean().optional(),
+      commentPosted: z.boolean().optional(),
+      missingConfig: z.array(z.string()).optional(),
+      errorCode: z.string().optional(),
+    })
+    .passthrough()
+);
+
 const IssueDetailResponseSchema = registry.register(
   'IssueDetailResponse',
   z
@@ -266,6 +293,7 @@ const S2SpecResponseSchema = registry.register(
       issue: S1S3IssueSchema,
       run: S1S3RunSchema,
       step: S1S3StepSchema,
+      githubSync: GithubSyncSchema.optional(),
     })
     .passthrough()
 );
@@ -298,8 +326,10 @@ const S3ImplementResponseSchema = registry.register(
           url: z.string().url(),
           branch: z.string(),
         })
-        .passthrough(),
+        .passthrough()
+        .optional(),
       message: z.string().optional(),
+      githubTrigger: GithubTriggerSchema.optional(),
     })
     .passthrough()
 );

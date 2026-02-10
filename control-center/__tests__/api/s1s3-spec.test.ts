@@ -14,6 +14,7 @@ import {
   updateS1S3RunStatus,
   updateS1S3IssueSpec,
 } from '../../src/lib/db/s1s3Flow';
+import { syncAfu9SpecToGitHubIssue } from '../../src/lib/github/issue-sync';
 
 jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
@@ -31,6 +32,10 @@ jest.mock('@/lib/db/s1s3Flow', () => ({
   upsertS1S3Issue: jest.fn(),
 }));
 
+jest.mock('@/lib/github/issue-sync', () => ({
+  syncAfu9SpecToGitHubIssue: jest.fn(),
+}));
+
 jest.mock('../../app/api/issues/_shared', () => {
   const actual = jest.requireActual('../../app/api/issues/_shared');
   return {
@@ -46,18 +51,17 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
   const mockCreateS1S3RunStep = createS1S3RunStep as jest.Mock;
   const mockUpdateS1S3RunStatus = updateS1S3RunStatus as jest.Mock;
   const mockUpdateS1S3IssueSpec = updateS1S3IssueSpec as jest.Mock;
+  const mockSyncAfu9SpecToGitHubIssue = syncAfu9SpecToGitHubIssue as jest.Mock;
   const originalEnv = { ...process.env };
 
   const setBackendReady = () => {
-    process.env.AFU9_GITHUB_EVENTS_QUEUE_URL = 'https://queue.local/afu9';
     process.env.GITHUB_APP_ID = 'afu9-app';
     process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'test-key';
   };
 
-  const setBackendMissingQueue = () => {
-    delete process.env.AFU9_GITHUB_EVENTS_QUEUE_URL;
-    process.env.GITHUB_APP_ID = 'afu9-app';
-    process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'test-key';
+  const setBackendMissingGithub = () => {
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY_PEM;
   };
 
   beforeEach(() => {
@@ -118,6 +122,14 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
           status: 'SUCCEEDED',
           step_name: 'Spec Ready',
         },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-sync',
+          status: 'SUCCEEDED',
+          step_name: 'sync-to-github',
+        },
       });
 
     mockUpdateS1S3IssueSpec.mockResolvedValue({
@@ -137,6 +149,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
         id: 'run-1',
         status: 'DONE',
       },
+    });
+    mockSyncAfu9SpecToGitHubIssue.mockResolvedValue({
+      status: 'SUCCEEDED',
+      issueUrl: 'https://github.com/octo/repo/issues/42',
     });
 
     const request = new NextRequest(
@@ -171,11 +187,13 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.issueId).toBe(issueId);
     expect(body.s2?.status).toBe('READY');
     expect(body.workflow?.current).toBe('S2');
+    expect(body.step?.step_name).toBe('sync-to-github');
+    expect(body.githubSync?.status).toBe('SUCCEEDED');
   });
 
-  it('spec_saves_and_returns_200_when_backend_missing_with_blocked_run_step', async () => {
+  it('spec_saves_and_returns_200_when_github_missing_with_blocked_run_step', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
-    setBackendMissingQueue();
+    setBackendMissingGithub();
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
@@ -229,7 +247,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
           id: 'step-blocked',
           status: 'FAILED',
           step_name: 'sync-to-github',
-          error_message: 'Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)',
+          error_message: 'GitHub sync disabled (GITHUB_APP_ID)',
         },
       });
 
@@ -249,7 +267,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
       data: {
         id: 'run-2',
         status: 'FAILED',
-        error_message: 'Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)',
+        error_message: 'GitHub sync disabled (GITHUB_APP_ID)',
       },
     });
 
@@ -278,12 +296,13 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.run?.status).toBe('BLOCKED');
-    expect(body.run?.blockedReason).toBe('MISSING_QUEUE_URL');
-    expect(body.run?.error_message).toBe('Execution backend not configured (AFU9_GITHUB_EVENTS_QUEUE_URL)');
+    expect(body.run?.blockedReason).toBe('DISPATCH_DISABLED');
+    expect(body.run?.error_message).toBe('GitHub sync disabled (GITHUB_APP_ID)');
     expect(body.step?.status).toBe('BLOCKED');
     expect(body.step?.step_name).toBe('sync-to-github');
-    expect(body.step?.blockedReason).toBe('MISSING_QUEUE_URL');
+    expect(body.step?.blockedReason).toBe('DISPATCH_DISABLED');
     expect(body.workflow?.current).toBe('S2');
+    expect(body.githubSync?.status).toBe('BLOCKED');
   });
 
   it('spec_returns_normal_run_step_when_backend_available', async () => {
@@ -334,6 +353,14 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
           status: 'SUCCEEDED',
           step_name: 'Spec Ready',
         },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-sync',
+          status: 'SUCCEEDED',
+          step_name: 'sync-to-github',
+        },
       });
 
     mockUpdateS1S3IssueSpec.mockResolvedValue({
@@ -353,6 +380,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
         id: 'run-3',
         status: 'DONE',
       },
+    });
+    mockSyncAfu9SpecToGitHubIssue.mockResolvedValue({
+      status: 'SUCCEEDED',
+      issueUrl: 'https://github.com/octo/repo/issues/42',
     });
 
     const request = new NextRequest(
@@ -381,6 +412,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.ok).toBe(true);
     expect(body.run?.status).toBe('DONE');
     expect(body.step?.status).toBe('SUCCEEDED');
+    expect(body.step?.step_name).toBe('sync-to-github');
+    expect(body.githubSync?.status).toBe('SUCCEEDED');
     expect(body.workflow?.current).toBe('S2');
   });
 
