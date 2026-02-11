@@ -123,11 +123,16 @@ function applyHandlerHeaders(response: Response): Response {
   return response;
 }
 
-function withAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+async function attachAfu9Headers(
+  response: Response,
+  requestId: string,
+  handlerName: string
+): Promise<Response> {
+  const text = await response.text();
   const headers = new Headers(response.headers);
   headers.set('x-afu9-request-id', requestId);
   headers.set('x-afu9-handler', handlerName);
-  return new Response(response.body, {
+  return new Response(text, {
     status: response.status,
     headers,
   });
@@ -181,7 +186,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   if (!stageEntry || !implementRoute?.handler) {
     const registryError = getStageRegistryError('S3');
-    return withAfu9Headers(
+    return await attachAfu9Headers(
       applyHandlerHeaders(
         jsonResponse(
           {
@@ -227,7 +232,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   };
   const pool = getPool();
 
-  const respondS3Error = (params: {
+  const respondS3Error = async (params: {
     status: number;
     code: S3ErrorCode;
     message: string;
@@ -253,7 +258,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       detailsSafe: params.detailsSafe,
     };
 
-    return withAfu9Headers(
+    return await attachAfu9Headers(
       applyHandlerHeaders(
         jsonResponse(body, {
           status: params.status,
@@ -269,8 +274,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   };
 
-  const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) =>
-    withAfu9Headers(
+  const respondS3Success = async (body: S3SuccessResponse & Record<string, unknown>) =>
+    await attachAfu9Headers(
       applyHandlerHeaders(
         jsonResponse(body, {
           status: 202,
