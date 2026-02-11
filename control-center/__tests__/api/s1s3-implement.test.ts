@@ -156,6 +156,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-stage')).toBe('S3');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-handler')).toBeTruthy();
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
     expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();

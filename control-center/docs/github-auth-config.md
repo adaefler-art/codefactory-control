@@ -32,3 +32,12 @@ AFU9 implement uses GitHub App authentication (installation token).
 - Code: GITHUB_AUTH_MISSING
 - missingConfig: array of absent keys (names only)
 - Headers: x-afu9-request-id, x-afu9-handler
+
+## Implement response headers
+
+Both implement routes always return these headers on success and error (including 409 preflight):
+
+- /api/afu9/s1s3/issues/{id}/implement
+- /api/afu9/s1s9/issues/{id}/implement
+
+Headers: x-afu9-request-id, x-afu9-handler

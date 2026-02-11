@@ -123,6 +123,16 @@ function applyHandlerHeaders(response: Response): Response {
   return response;
 }
 
+function withAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+  const headers = new Headers(response.headers);
+  headers.set('x-afu9-request-id', requestId);
+  headers.set('x-afu9-handler', handlerName);
+  return new Response(response.body, {
+    status: response.status,
+    headers,
+  });
+}
+
 function trimDetails(value?: string, maxLength = 200): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
@@ -171,29 +181,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   if (!stageEntry || !implementRoute?.handler) {
     const registryError = getStageRegistryError('S3');
-    return applyHandlerHeaders(
-      jsonResponse(
-        {
-          ok: false,
-          stage: 'S3',
-          code: registryError.code,
-          message: registryError.message,
-          requestId,
-          errorCode: registryError.code,
-        },
-        {
-          status: 500,
-          requestId,
-          headers: {
-            ...getControlResponseHeaders(requestId, routeHeaderValue),
-            ...buildAfu9ScopeHeaders({
-              requestedScope: 's1s3',
-              resolvedScope: 's1s3',
-            }),
-            'x-afu9-error-code': registryError.code,
+    return withAfu9Headers(
+      applyHandlerHeaders(
+        jsonResponse(
+          {
+            ok: false,
+            stage: 'S3',
+            code: registryError.code,
+            message: registryError.message,
+            requestId,
+            errorCode: registryError.code,
           },
-        }
-      )
+          {
+            status: 500,
+            requestId,
+            headers: {
+              ...getControlResponseHeaders(requestId, routeHeaderValue),
+              ...buildAfu9ScopeHeaders({
+                requestedScope: 's1s3',
+                resolvedScope: 's1s3',
+              }),
+              'x-afu9-error-code': registryError.code,
+            },
+          }
+        )
+      ),
+      requestId,
+      HANDLER_MARKER
     );
   }
 
@@ -239,25 +253,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
       detailsSafe: params.detailsSafe,
     };
 
-    return applyHandlerHeaders(
-      jsonResponse(body, {
-        status: params.status,
-        requestId,
-        headers: {
-          ...responseHeaders,
-          'x-afu9-error-code': params.code,
-        },
-      })
+    return withAfu9Headers(
+      applyHandlerHeaders(
+        jsonResponse(body, {
+          status: params.status,
+          requestId,
+          headers: {
+            ...responseHeaders,
+            'x-afu9-error-code': params.code,
+          },
+        })
+      ),
+      requestId,
+      HANDLER_MARKER
     );
   };
 
   const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) =>
-    applyHandlerHeaders(
-      jsonResponse(body, {
-        status: 202,
-        requestId,
-        headers: responseHeaders,
-      })
+    withAfu9Headers(
+      applyHandlerHeaders(
+        jsonResponse(body, {
+          status: 202,
+          requestId,
+          headers: responseHeaders,
+        })
+      ),
+      requestId,
+      HANDLER_MARKER
     );
 
   try {

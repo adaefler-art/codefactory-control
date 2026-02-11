@@ -1752,6 +1752,20 @@
         "responses": {
           "202": {
             "description": "S3 implement",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1762,6 +1776,20 @@
           },
           "401": {
             "description": "Unauthorized",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1772,6 +1800,20 @@
           },
           "404": {
             "description": "Issue not found",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1782,6 +1824,20 @@
           },
           "409": {
             "description": "Conflict",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1792,6 +1848,20 @@
           },
           "500": {
             "description": "Server error",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1802,6 +1872,20 @@
           },
           "503": {
             "description": "Dispatch disabled",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1840,6 +1924,20 @@
         "responses": {
           "202": {
             "description": "S3 implement (s1s9 scope)",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1850,6 +1948,20 @@
           },
           "401": {
             "description": "Unauthorized",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1860,6 +1972,20 @@
           },
           "404": {
             "description": "Issue not found",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1870,6 +1996,20 @@
           },
           "409": {
             "description": "Conflict",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1880,6 +2020,20 @@
           },
           "500": {
             "description": "Server error",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1890,6 +2044,20 @@
           },
           "503": {
             "description": "Dispatch disabled",
+            "headers": {
+              "x-afu9-request-id": {
+                "description": "AFU9 request identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-afu9-handler": {
+                "description": "AFU9 handler marker.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
