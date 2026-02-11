@@ -110,6 +110,13 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     });
   });
 
+  const setupTriggerRunMocks = () => {
+    mockGetS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
+    mockCreateS1S3Run.mockResolvedValue({ success: true, data: mockRun });
+    mockCreateS1S3RunStep.mockResolvedValue({ success: true, data: { id: 'step-start' } });
+    mockUpdateS1S3RunStatus.mockResolvedValue({ success: true, data: mockRun });
+  };
+
   afterEach(() => {
     process.env = { ...envSnapshot };
   });
@@ -139,16 +146,124 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.requiredConfig).toEqual([
       'GITHUB_APP_ID',
       'GITHUB_APP_PRIVATE_KEY_PEM',
+      'GITHUB_APP_SECRET_ID',
     ]);
     expect(body.missingConfig).toEqual([
       'GITHUB_APP_ID',
       'GITHUB_APP_PRIVATE_KEY_PEM',
+      'GITHUB_APP_SECRET_ID',
     ]);
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-stage')).toBe('S3');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
+    expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();
+  });
+
+  test('maps 401 from GitHub to GITHUB_AUTH_INVALID', async () => {
+    setupTriggerRunMocks();
+    mockTriggerAfu9Implementation.mockRejectedValue({ response: { status: 401 } });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'x-request-id': 'req-401' },
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GITHUB_AUTH_INVALID');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-401');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+  });
+
+  test('maps 403 from GitHub to GITHUB_AUTH_INVALID', async () => {
+    setupTriggerRunMocks();
+    mockTriggerAfu9Implementation.mockRejectedValue({ response: { status: 403 } });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'x-request-id': 'req-403' },
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GITHUB_AUTH_INVALID');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-403');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+  });
+
+  test('maps 404 from GitHub to GITHUB_TARGET_NOT_FOUND', async () => {
+    setupTriggerRunMocks();
+    mockTriggerAfu9Implementation.mockRejectedValue({ response: { status: 404 } });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'x-request-id': 'req-404' },
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GITHUB_TARGET_NOT_FOUND');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-404');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+  });
+
+  test('maps 422 from GitHub to GITHUB_VALIDATION_FAILED', async () => {
+    setupTriggerRunMocks();
+    mockTriggerAfu9Implementation.mockRejectedValue({ response: { status: 422 } });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'x-request-id': 'req-422' },
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GITHUB_VALIDATION_FAILED');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-422');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+  });
+
+  test('maps network failures to GITHUB_UPSTREAM_UNREACHABLE', async () => {
+    setupTriggerRunMocks();
+    mockTriggerAfu9Implementation.mockRejectedValue(new Error('timeout'));
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'x-request-id': 'req-502' },
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.code).toBe('GITHUB_UPSTREAM_UNREACHABLE');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-502');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
   });
 
   test('returns IMPLEMENT_TRIGGER_CONFIG_MISSING when trigger config is missing', async () => {

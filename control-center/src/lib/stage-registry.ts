@@ -242,10 +242,20 @@ export function resolveStageMissingConfig(entry: StageRegistryEntry): string[] {
     const appId = process.env.GITHUB_APP_ID || process.env.GH_APP_ID;
     const appKey = process.env.GITHUB_APP_PRIVATE_KEY_PEM || process.env.GH_APP_PRIVATE_KEY_PEM;
     const appSecretId = process.env.GITHUB_APP_SECRET_ID || process.env.GH_APP_SECRET_ID;
-    const dispatcherConfigured = (hasValue(appId) && hasValue(appKey)) || hasValue(appSecretId);
+    const hasAppId = hasValue(appId);
+    const hasAppKey = hasValue(appKey);
+    const hasSecretId = hasValue(appSecretId);
+    const dispatcherConfigured = (hasAppId && hasAppKey) || hasSecretId;
     if (!dispatcherConfigured) {
-      missing.add("GITHUB_APP_ID");
-      missing.add("GITHUB_APP_PRIVATE_KEY_PEM");
+      if (!hasAppId) {
+        missing.add("GITHUB_APP_ID");
+      }
+      if (!hasAppKey) {
+        missing.add("GITHUB_APP_PRIVATE_KEY_PEM");
+      }
+      if (!hasSecretId) {
+        missing.add("GITHUB_APP_SECRET_ID");
+      }
     }
   }
 
