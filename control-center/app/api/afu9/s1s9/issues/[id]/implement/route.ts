@@ -23,12 +23,18 @@ function resolveCommitSha(): string {
 	return raw.slice(0, 7);
 }
 
-function applyHandlerHeaders(response: Response): Response {
+function applyHandlerHeaders(response: Response, requestId: string): Response {
 	response.headers.set('x-afu9-handler', HANDLER_MARKER);
 	response.headers.set('x-afu9-handler-ver', HANDLER_VERSION);
 	response.headers.set('x-afu9-commit', resolveCommitSha());
 	response.headers.set('x-cf-handler', HANDLER_MARKER);
+	response.headers.set('x-afu9-request-id', requestId);
 	return response;
+}
+
+function isProxyTypeError(error: unknown): boolean {
+	if (!(error instanceof TypeError)) return false;
+	return error.message.toLowerCase().includes('proxy');
 }
 
 async function postS1S9Implement(request: NextRequest, context: RouteContext) {
@@ -68,8 +74,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			issueId: id,
 		});
 
-		return applyHandlerHeaders(response);
+		return applyHandlerHeaders(response, requestId);
 	} catch (error) {
+		if (isProxyTypeError(error)) {
+			return applyHandlerHeaders(
+				jsonResponse(
+					{
+						ok: false,
+						code: 'IMPLEMENT_PRECONDITION_FAILED',
+						errorCode: 'IMPLEMENT_PRECONDITION_FAILED',
+						requestId,
+						scopeRequested: 's1s9',
+						scopeResolved: 's1s9',
+						detailsSafe: 'Implement not available: missing GitHub client/config',
+						thrown: false,
+					},
+					{
+						status: 409,
+						requestId,
+						headers: {
+							...responseHeaders,
+							'x-afu9-error-code': 'IMPLEMENT_PRECONDITION_FAILED',
+						},
+					}
+				),
+				requestId
+			);
+		}
 		const upstreamStatus =
 			typeof (error as { status?: number })?.status === 'number'
 				? (error as { status?: number }).status
@@ -107,7 +138,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 						'x-afu9-error-code': 'IMPLEMENT_FAILED',
 					},
 				}
-			)
+			),
+			requestId
 		);
 	}
 }
