@@ -70,6 +70,7 @@ type S3ErrorCode =
   | 'GITHUB_TARGET_NOT_FOUND'
   | 'GITHUB_VALIDATION_FAILED'
   | 'GITHUB_UPSTREAM_UNREACHABLE'
+  | 'IMPLEMENT_PRECONDITION_FAILED'
   | 'IMPLEMENT_TRIGGER_CONFIG_MISSING'
   | 'VALIDATION_FAILED'
   | 'NOT_IMPLEMENTED'
@@ -151,6 +152,11 @@ function getErrorMessage(error: unknown): string {
     return String((error as { message?: unknown }).message ?? '');
   }
   return String(error ?? '');
+}
+
+function isProxyTypeError(error: unknown): boolean {
+  if (!(error instanceof TypeError)) return false;
+  return error.message.toLowerCase().includes('proxy');
 }
 
 /**
@@ -266,19 +272,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const missingDispatchConfig = resolveStageMissingConfig(stageEntry);
-    if (missingDispatchConfig.length > 0) {
-      return respondS3Error({
-        status: 409,
-        code: 'GITHUB_AUTH_MISSING',
-        message: 'GitHub auth not configured',
-        requiredConfig: missingDispatchConfig,
-        missingConfig: missingDispatchConfig,
-        preconditionFailed: 'GITHUB_AUTH_MISSING',
-        detailsSafe: 'Missing GitHub auth configuration',
-      });
-    }
-
     const { id } = await context.params;
     const resolved = await resolveIssueIdentifierOr404(id, requestId);
     if (!resolved.ok) {
@@ -322,21 +315,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const issue = issueResult.data;
 
-    // Check if issue has spec ready
-    if (
-      issue.status !== S1S3IssueStatus.SPEC_READY &&
-      issue.status !== S1S3IssueStatus.IMPLEMENTING &&
-      issue.status !== S1S3IssueStatus.PR_CREATED
-    ) {
-      return respondS3Error({
-        status: 409,
-        code: 'SPEC_NOT_READY',
-        message: 'Spec not ready',
-        preconditionFailed: 'SPEC_NOT_READY',
-        detailsSafe: `Issue status ${issue.status}`,
-      });
-    }
-
     const repoFullName = issue.repo_full_name;
     const issueNumber = issue.github_issue_number;
     if (!repoFullName || !repoFullName.includes('/')) {
@@ -356,6 +334,34 @@ export async function POST(request: NextRequest, context: RouteContext) {
         message: 'GitHub mirror missing',
         preconditionFailed: 'GITHUB_MIRROR_MISSING',
         detailsSafe: 'Missing GitHub issue number',
+      });
+    }
+
+    // Check if issue has spec ready
+    if (
+      issue.status !== S1S3IssueStatus.SPEC_READY &&
+      issue.status !== S1S3IssueStatus.IMPLEMENTING &&
+      issue.status !== S1S3IssueStatus.PR_CREATED
+    ) {
+      return respondS3Error({
+        status: 409,
+        code: 'SPEC_NOT_READY',
+        message: 'Spec not ready',
+        preconditionFailed: 'SPEC_NOT_READY',
+        detailsSafe: `Issue status ${issue.status}`,
+      });
+    }
+
+    const missingDispatchConfig = resolveStageMissingConfig(stageEntry);
+    if (missingDispatchConfig.length > 0) {
+      return respondS3Error({
+        status: 409,
+        code: 'GITHUB_AUTH_MISSING',
+        message: 'GitHub auth not configured',
+        requiredConfig: missingDispatchConfig,
+        missingConfig: missingDispatchConfig,
+        preconditionFailed: 'GITHUB_AUTH_MISSING',
+        detailsSafe: 'Missing GitHub auth configuration',
       });
     }
 
@@ -380,6 +386,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
         preconditionFailed: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
         detailsSafe: 'Missing GitHub trigger configuration',
       });
+    }
+
+    try {
+      const proxyTarget = (globalThis as { fetch?: unknown }).fetch as object | undefined;
+      const proxyHandler = {};
+      new Proxy(proxyTarget as object, proxyHandler);
+    } catch (error) {
+      if (isProxyTypeError(error)) {
+        return respondS3Error({
+          status: 409,
+          code: 'IMPLEMENT_PRECONDITION_FAILED',
+          message: 'Implement not available: missing GitHub client/config',
+          preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
+          requiredConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
+          missingConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
+          detailsSafe: 'Implement not available: missing GitHub client/config',
+        });
+      }
+      throw error;
     }
 
     // Create run record
@@ -458,6 +483,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
 
       await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, errorMessage);
+
+      if (isProxyTypeError(error)) {
+        return respondS3Error({
+          status: 409,
+          code: 'IMPLEMENT_PRECONDITION_FAILED',
+          message: 'Implement not available: missing GitHub client/config',
+          preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
+          requiredConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
+          missingConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
+          detailsSafe: 'Implement not available: missing GitHub client/config',
+        });
+      }
 
       if (error instanceof Error && error.name === 'RepoAccessDeniedError') {
         return respondS3Error({

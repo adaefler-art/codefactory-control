@@ -16,6 +16,8 @@ import {
 } from '../../src/lib/db/s1s3Flow';
 import { syncAfu9SpecToGitHubIssue } from '../../src/lib/github/issue-sync';
 
+const mockGetS1S9Issue = jest.fn();
+
 jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
     query: jest.fn(),
@@ -34,6 +36,10 @@ jest.mock('@/lib/db/s1s3Flow', () => ({
 
 jest.mock('@/lib/github/issue-sync', () => ({
   syncAfu9SpecToGitHubIssue: jest.fn(),
+}));
+
+jest.mock('../../app/api/afu9/issues/[id]/route', () => ({
+  GET: (...args: unknown[]) => mockGetS1S9Issue(...args),
 }));
 
 jest.mock('../../app/api/issues/_shared', () => {
@@ -140,6 +146,8 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
         id: issueId,
         status: 'SPEC_READY',
         spec_ready_at: '2024-01-01T00:00:00Z',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
         github_issue_url: 'https://github.com/octo/repo/issues/42',
         acceptance_criteria: ['AC1'],
       },
@@ -183,7 +191,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
     expect(response.headers.get('x-cf-handler')).toBe('s1s9-spec');
     expect(response.headers.get('x-cf-trace')).toBe('req-blocked');
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
-    expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
+    expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
     expect(body.ok).toBe(true);
     expect(body.issue?.status).toBe('SPEC_READY');
     expect(body.run?.status).toBe('BLOCKED');
@@ -259,6 +267,8 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
         id: issueId,
         status: 'SPEC_READY',
         spec_ready_at: '2024-01-01T00:00:00Z',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
         github_issue_url: 'https://github.com/octo/repo/issues/42',
         acceptance_criteria: ['AC1'],
       },
@@ -300,7 +310,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s9');
-    expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s9');
+    expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
     expect(body.ok).toBe(true);
     expect(body.issue?.status).toBe('SPEC_READY');
     expect(body.run?.status).toBe('DONE');

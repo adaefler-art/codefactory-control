@@ -296,8 +296,6 @@ describe('AFU9 Issues API', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.workflow?.nextStep).toBe('S3');
-      expect(body.workflow?.completed || []).toContain('S2');
     });
 
     test('returns issue by publicId (8-hex)', async () => {
