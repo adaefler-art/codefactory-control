@@ -26,7 +26,7 @@
  * Reference: E9.1_F1 - S1-S3 Live Flow MVP
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import {
   getS1S3IssueById,
@@ -41,7 +41,7 @@ import {
   S1S3RunStatus,
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
-import { getRequestId, jsonResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { getStageRegistryEntry, getStageRegistryError, resolveStageMissingConfig } from '@/lib/stage-registry';
@@ -123,19 +123,15 @@ function applyHandlerHeaders(response: Response): Response {
   return response;
 }
 
-async function attachAfu9Headers(
-  response: Response,
-  requestId: string,
-  handlerName: string
-): Promise<Response> {
-  const text = await response.text();
-  const headers = new Headers(response.headers);
-  headers.set('x-afu9-request-id', requestId);
-  headers.set('x-afu9-handler', handlerName);
-  return new Response(text, {
-    status: response.status,
-    headers,
-  });
+function setAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+  const buildStamp =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+    'unknown';
+  response.headers.set('x-afu9-request-id', requestId);
+  response.headers.set('x-afu9-handler', handlerName);
+  response.headers.set('x-afu9-control-build', buildStamp);
+  return response;
 }
 
 function trimDetails(value?: string, maxLength = 200): string | undefined {
@@ -186,34 +182,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   if (!stageEntry || !implementRoute?.handler) {
     const registryError = getStageRegistryError('S3');
-    return await attachAfu9Headers(
-      applyHandlerHeaders(
-        jsonResponse(
-          {
-            ok: false,
-            stage: 'S3',
-            code: registryError.code,
-            message: registryError.message,
-            requestId,
-            errorCode: registryError.code,
+    const response = applyHandlerHeaders(
+      NextResponse.json(
+        {
+          ok: false,
+          stage: 'S3',
+          code: registryError.code,
+          message: registryError.message,
+          requestId,
+          errorCode: registryError.code,
+        },
+        {
+          status: 500,
+          headers: {
+            ...getControlResponseHeaders(requestId, routeHeaderValue),
+            ...buildAfu9ScopeHeaders({
+              requestedScope: 's1s3',
+              resolvedScope: 's1s3',
+            }),
+            'x-afu9-error-code': registryError.code,
           },
-          {
-            status: 500,
-            requestId,
-            headers: {
-              ...getControlResponseHeaders(requestId, routeHeaderValue),
-              ...buildAfu9ScopeHeaders({
-                requestedScope: 's1s3',
-                resolvedScope: 's1s3',
-              }),
-              'x-afu9-error-code': registryError.code,
-            },
-          }
-        )
-      ),
-      requestId,
-      HANDLER_MARKER
+        }
+      )
     );
+    return setAfu9Headers(response, requestId, HANDLER_MARKER);
   }
 
   const stageId = stageEntry.stageId;
@@ -232,7 +224,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   };
   const pool = getPool();
 
-  const respondS3Error = async (params: {
+  const respondS3Error = (params: {
     status: number;
     code: S3ErrorCode;
     message: string;
@@ -258,34 +250,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       detailsSafe: params.detailsSafe,
     };
 
-    return await attachAfu9Headers(
-      applyHandlerHeaders(
-        jsonResponse(body, {
-          status: params.status,
-          requestId,
-          headers: {
-            ...responseHeaders,
-            'x-afu9-error-code': params.code,
-          },
-        })
-      ),
-      requestId,
-      HANDLER_MARKER
+    const response = applyHandlerHeaders(
+      NextResponse.json(body, {
+        status: params.status,
+        headers: {
+          ...responseHeaders,
+          'x-afu9-error-code': params.code,
+        },
+      })
     );
+    return setAfu9Headers(response, requestId, HANDLER_MARKER);
   };
 
-  const respondS3Success = async (body: S3SuccessResponse & Record<string, unknown>) =>
-    await attachAfu9Headers(
-      applyHandlerHeaders(
-        jsonResponse(body, {
-          status: 202,
-          requestId,
-          headers: responseHeaders,
-        })
-      ),
-      requestId,
-      HANDLER_MARKER
+  const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) => {
+    const response = applyHandlerHeaders(
+      NextResponse.json(body, {
+        status: 202,
+        headers: responseHeaders,
+      })
     );
+    return setAfu9Headers(response, requestId, HANDLER_MARKER);
+  };
 
   try {
     const stageValue =
