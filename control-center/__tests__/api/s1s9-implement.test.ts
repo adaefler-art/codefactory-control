@@ -71,7 +71,9 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     expect(response.status).toBe(409);
     expect(body.code).toBe('GITHUB_AUTH_MISSING');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s9-implement');
+    expect(response.headers.get('x-afu9-handler')).toBeTruthy();
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
   });
 
   test('maps proxy TypeError to 409 with headers', async () => {

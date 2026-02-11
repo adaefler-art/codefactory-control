@@ -34,6 +34,16 @@ function applyHandlerHeaders(response: Response, requestId: string): Response {
 	return response;
 }
 
+function withAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+	const headers = new Headers(response.headers);
+	headers.set('x-afu9-request-id', requestId);
+	headers.set('x-afu9-handler', handlerName);
+	return new Response(response.body, {
+		status: response.status,
+		headers,
+	});
+}
+
 function isProxyTypeError(error: unknown): boolean {
 	if (!(error instanceof TypeError)) return false;
 	return error.message.toLowerCase().includes('cannot create proxy with a non-object as target or handler');
@@ -76,31 +86,34 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			issueId: id,
 		});
 
-		return applyHandlerHeaders(response, requestId);
+		return withAfu9Headers(applyHandlerHeaders(response, requestId), requestId, HANDLER_MARKER);
 	} catch (error) {
 		if (isProxyTypeError(error)) {
-			return applyHandlerHeaders(
-				jsonResponse(
-					{
-						ok: false,
-						code: 'IMPLEMENT_PRECONDITION_FAILED',
-						errorCode: 'IMPLEMENT_PRECONDITION_FAILED',
-						requestId,
-						scopeRequested: 's1s9',
-						scopeResolved: 's1s9',
-						detailsSafe: 'Implement not available: missing GitHub client/config',
-						thrown: false,
-					},
-					{
-						status: 409,
-						requestId,
-						headers: {
-							...responseHeaders,
-							'x-afu9-error-code': 'IMPLEMENT_PRECONDITION_FAILED',
+			return withAfu9Headers(
+				applyHandlerHeaders(
+					jsonResponse(
+						{
+							ok: false,
+							code: 'IMPLEMENT_PRECONDITION_FAILED',
+							errorCode: 'IMPLEMENT_PRECONDITION_FAILED',
+							requestId,
+							scopeRequested: 's1s9',
+							scopeResolved: 's1s9',
+							detailsSafe: 'Implement not available: missing GitHub client/config',
+							thrown: false,
 						},
-					}
+						{
+							status: 409,
+							requestId,
+							headers: {
+								...responseHeaders,
+								'x-afu9-error-code': 'IMPLEMENT_PRECONDITION_FAILED',
+							},
+						}
+					)
 				),
-				requestId
+				requestId,
+				HANDLER_MARKER
 			);
 		}
 		throw error;

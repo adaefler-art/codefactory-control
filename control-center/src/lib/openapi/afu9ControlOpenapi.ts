@@ -151,6 +151,17 @@ const GithubTriggerSchema = registry.register(
     .passthrough()
 );
 
+const Afu9ImplementResponseHeaders = {
+  'x-afu9-request-id': {
+    description: 'AFU9 request identifier.',
+    schema: { type: 'string' },
+  },
+  'x-afu9-handler': {
+    description: 'AFU9 handler marker.',
+    schema: { type: 'string' },
+  },
+};
+
 const IssueDetailResponseSchema = registry.register(
   'IssueDetailResponse',
   z
@@ -761,6 +772,7 @@ registry.registerPath({
   responses: {
     202: {
       description: 'S3 implement',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': {
           schema: S3ImplementResponseSchema,
@@ -769,30 +781,35 @@ registry.registerPath({
     },
     401: {
       description: 'Unauthorized',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     404: {
       description: 'Issue not found',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     409: {
       description: 'Conflict',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     500: {
       description: 'Server error',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     503: {
       description: 'Dispatch disabled',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
@@ -817,6 +834,7 @@ registry.registerPath({
   responses: {
     202: {
       description: 'S3 implement (s1s9 scope)',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': {
           schema: S3ImplementResponseSchema,
@@ -825,30 +843,35 @@ registry.registerPath({
     },
     401: {
       description: 'Unauthorized',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     404: {
       description: 'Issue not found',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     409: {
       description: 'Conflict',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     500: {
       description: 'Server error',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
     },
     503: {
       description: 'Dispatch disabled',
+      headers: Afu9ImplementResponseHeaders,
       content: {
         'application/json': { schema: ErrorResponseSchema },
       },
