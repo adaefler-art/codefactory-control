@@ -28,13 +28,15 @@ function applyHandlerHeaders(response: Response, requestId: string): Response {
 	response.headers.set('x-afu9-handler-ver', HANDLER_VERSION);
 	response.headers.set('x-afu9-commit', resolveCommitSha());
 	response.headers.set('x-cf-handler', HANDLER_MARKER);
-	response.headers.set('x-afu9-request-id', requestId);
+	if (!response.headers.get('x-afu9-request-id')) {
+		response.headers.set('x-afu9-request-id', requestId);
+	}
 	return response;
 }
 
 function isProxyTypeError(error: unknown): boolean {
 	if (!(error instanceof TypeError)) return false;
-	return error.message.toLowerCase().includes('proxy');
+	return error.message.toLowerCase().includes('cannot create proxy with a non-object as target or handler');
 }
 
 async function postS1S9Implement(request: NextRequest, context: RouteContext) {
@@ -101,45 +103,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 				requestId
 			);
 		}
-		const upstreamStatus =
-			typeof (error as { status?: number })?.status === 'number'
-				? (error as { status?: number }).status
-				: undefined;
-		const errorName =
-			typeof (error as { name?: string })?.name === 'string'
-				? (error as { name?: string }).name
-				: undefined;
-		const errorMessage =
-			typeof (error as { message?: string })?.message === 'string'
-				? (error as { message?: string }).message
-				: undefined;
-		const errorMessageSafe = errorMessage ? errorMessage.slice(0, 200) : undefined;
-		const status = upstreamStatus ? 502 : 500;
-		return applyHandlerHeaders(
-			jsonResponse(
-				{
-					ok: false,
-					code: 'IMPLEMENT_FAILED',
-					errorCode: 'IMPLEMENT_FAILED',
-					requestId,
-					scopeRequested: 's1s9',
-					scopeResolved: 's1s9',
-					detailsSafe: 'Failed to implement',
-					thrown: true,
-					errorName,
-					errorMessageSafe,
-					hasStatusField: typeof upstreamStatus === 'number',
-				},
-				{
-					status,
-					requestId,
-					headers: {
-						...responseHeaders,
-						'x-afu9-error-code': 'IMPLEMENT_FAILED',
-					},
-				}
-			),
-			requestId
-		);
+		throw error;
 	}
 }
