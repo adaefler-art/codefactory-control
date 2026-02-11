@@ -34,11 +34,16 @@ function applyHandlerHeaders(response: Response, requestId: string): Response {
 	return response;
 }
 
-function withAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+async function attachAfu9Headers(
+	response: Response,
+	requestId: string,
+	handlerName: string
+): Promise<Response> {
+	const text = await response.text();
 	const headers = new Headers(response.headers);
 	headers.set('x-afu9-request-id', requestId);
 	headers.set('x-afu9-handler', handlerName);
-	return new Response(response.body, {
+	return new Response(text, {
 		status: response.status,
 		headers,
 	});
@@ -86,10 +91,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			issueId: id,
 		});
 
-		return withAfu9Headers(applyHandlerHeaders(response, requestId), requestId, HANDLER_MARKER);
+		return await attachAfu9Headers(
+			applyHandlerHeaders(response, requestId),
+			requestId,
+			HANDLER_MARKER
+		);
 	} catch (error) {
 		if (isProxyTypeError(error)) {
-			return withAfu9Headers(
+			return await attachAfu9Headers(
 				applyHandlerHeaders(
 					jsonResponse(
 						{
