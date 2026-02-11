@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
 import { GET as getS1S9Issue } from '../../../../issues/[id]/route';
 import { POST as postS1S3Implement } from '../../../../s1s3/issues/[id]/implement/route';
-import { isIssueNotFound, withAfu9ScopeFallback } from '../../../_shared';
+import { isIssueNotFound, withAfu9ScopeFallback, buildAfu9ScopeHeaders } from '../../../_shared';
+import { getRequestId, getRouteHeaderValue, jsonResponse } from '@/lib/api/response-helpers';
+import { getControlResponseHeaders } from '../../../../../issues/_shared';
 
 interface RouteContext {
 	params: Promise<{
@@ -39,18 +41,73 @@ async function postS1S9Implement(request: NextRequest, context: RouteContext) {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+	const requestId = getRequestId(request);
+	const routeHeaderValue = getRouteHeaderValue(request);
 	const { id } = await context.params;
 	const primaryRequest = request.clone();
 	const fallbackRequest = request.clone();
+	const responseHeaders = {
+		...getControlResponseHeaders(requestId, routeHeaderValue),
+		...buildAfu9ScopeHeaders({
+			requestedScope: 's1s9',
+			resolvedScope: 's1s9',
+		}),
+		'x-afu9-handler': HANDLER_MARKER,
+		'x-afu9-handler-ver': HANDLER_VERSION,
+		'x-afu9-commit': resolveCommitSha(),
+		'x-cf-handler': HANDLER_MARKER,
+	};
 
-	const response = await withAfu9ScopeFallback({
-		primary: () => postS1S9Implement(primaryRequest, context),
-		fallback: () => postS1S3Implement(fallbackRequest, context),
-		primaryScope: 's1s9',
-		fallbackScope: 's1s3',
-		requestedScope: 's1s9',
-		issueId: id,
-	});
+	try {
+		const response = await withAfu9ScopeFallback({
+			primary: () => postS1S9Implement(primaryRequest, context),
+			fallback: () => postS1S3Implement(fallbackRequest, context),
+			primaryScope: 's1s9',
+			fallbackScope: 's1s3',
+			requestedScope: 's1s9',
+			issueId: id,
+		});
 
-	return applyHandlerHeaders(response);
+		return applyHandlerHeaders(response);
+	} catch (error) {
+		const upstreamStatus =
+			typeof (error as { status?: number })?.status === 'number'
+				? (error as { status?: number }).status
+				: undefined;
+		const errorName =
+			typeof (error as { name?: string })?.name === 'string'
+				? (error as { name?: string }).name
+				: undefined;
+		const errorMessage =
+			typeof (error as { message?: string })?.message === 'string'
+				? (error as { message?: string }).message
+				: undefined;
+		const errorMessageSafe = errorMessage ? errorMessage.slice(0, 200) : undefined;
+		const status = upstreamStatus ? 502 : 500;
+		return applyHandlerHeaders(
+			jsonResponse(
+				{
+					ok: false,
+					code: 'IMPLEMENT_FAILED',
+					errorCode: 'IMPLEMENT_FAILED',
+					requestId,
+					scopeRequested: 's1s9',
+					scopeResolved: 's1s9',
+					detailsSafe: 'Failed to implement',
+					thrown: true,
+					errorName,
+					errorMessageSafe,
+					hasStatusField: typeof upstreamStatus === 'number',
+				},
+				{
+					status,
+					requestId,
+					headers: {
+						...responseHeaders,
+						'x-afu9-error-code': 'IMPLEMENT_FAILED',
+					},
+				}
+			)
+		);
+	}
 }
