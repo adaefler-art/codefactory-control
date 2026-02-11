@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { GET as getS1S9Issue } from '../../../../issues/[id]/route';
 import { POST as postS1S3Implement } from '../../../../s1s3/issues/[id]/implement/route';
 import { isIssueNotFound, withAfu9ScopeFallback, buildAfu9ScopeHeaders } from '../../../_shared';
-import { getRequestId, getRouteHeaderValue, jsonResponse } from '@/lib/api/response-helpers';
+import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders } from '../../../../../issues/_shared';
 
 interface RouteContext {
@@ -34,19 +34,15 @@ function applyHandlerHeaders(response: Response, requestId: string): Response {
 	return response;
 }
 
-async function attachAfu9Headers(
-	response: Response,
-	requestId: string,
-	handlerName: string
-): Promise<Response> {
-	const text = await response.text();
-	const headers = new Headers(response.headers);
-	headers.set('x-afu9-request-id', requestId);
-	headers.set('x-afu9-handler', handlerName);
-	return new Response(text, {
-		status: response.status,
-		headers,
-	});
+function setAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+	const buildStamp =
+		process.env.VERCEL_GIT_COMMIT_SHA ||
+		process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+		'unknown';
+	response.headers.set('x-afu9-request-id', requestId);
+	response.headers.set('x-afu9-handler', handlerName);
+	response.headers.set('x-afu9-control-build', buildStamp);
+	return response;
 }
 
 function isProxyTypeError(error: unknown): boolean {
@@ -91,39 +87,35 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			issueId: id,
 		});
 
-		return await attachAfu9Headers(
+		return setAfu9Headers(
 			applyHandlerHeaders(response, requestId),
 			requestId,
 			HANDLER_MARKER
 		);
 	} catch (error) {
 		if (isProxyTypeError(error)) {
-			return await attachAfu9Headers(
-				applyHandlerHeaders(
-					jsonResponse(
-						{
-							ok: false,
-							code: 'IMPLEMENT_PRECONDITION_FAILED',
-							errorCode: 'IMPLEMENT_PRECONDITION_FAILED',
-							requestId,
-							scopeRequested: 's1s9',
-							scopeResolved: 's1s9',
-							detailsSafe: 'Implement not available: missing GitHub client/config',
-							thrown: false,
+			const response = applyHandlerHeaders(
+				NextResponse.json(
+					{
+						ok: false,
+						code: 'IMPLEMENT_PRECONDITION_FAILED',
+						errorCode: 'IMPLEMENT_PRECONDITION_FAILED',
+						requestId,
+						scopeRequested: 's1s9',
+						scopeResolved: 's1s9',
+						detailsSafe: 'Implement not available: missing GitHub client/config',
+						thrown: false,
+					},
+					{
+						status: 409,
+						headers: {
+							...responseHeaders,
+							'x-afu9-error-code': 'IMPLEMENT_PRECONDITION_FAILED',
 						},
-						{
-							status: 409,
-							requestId,
-							headers: {
-								...responseHeaders,
-								'x-afu9-error-code': 'IMPLEMENT_PRECONDITION_FAILED',
-							},
-						}
-					)
-				),
-				requestId,
-				HANDLER_MARKER
+					}
+				)
 			);
+			return setAfu9Headers(response, requestId, HANDLER_MARKER);
 		}
 		throw error;
 	}
