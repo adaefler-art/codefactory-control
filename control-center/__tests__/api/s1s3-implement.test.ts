@@ -119,6 +119,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       ...envSnapshot,
       AFU9_STAGE: 'dev',
     };
+    mockGetS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
 
     const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
       method: 'POST',

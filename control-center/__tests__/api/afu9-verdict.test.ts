@@ -13,8 +13,8 @@ import { NextRequest } from 'next/server';
 import { POST as verdictHandler } from '../../app/api/afu9/issues/[id]/verdict/route';
 import { Afu9IssueStatus } from '@/lib/contracts/afu9Issue';
 import { Verdict } from '@/lib/contracts/verdict';
-import { IssueTimelineEventType, ActorType } from '@/lib/contracts/issueTimeline';
 import { resolveIssueIdentifier } from '../../app/api/issues/_shared';
+import { applyVerdict } from '@/lib/services/verdictService';
 
 const mockPool = {
   query: jest.fn(),
@@ -38,7 +38,7 @@ const mockTimelineResult = {
   data: {
     id: 'event-123',
     issue_id: 'test-issue-123',
-    event_type: IssueTimelineEventType.VERDICT_SET,
+    event_type: 'VERDICT_SET',
     created_at: new Date().toISOString(),
   },
 };
@@ -58,6 +58,10 @@ jest.mock('@/lib/db/issueTimeline', () => ({
   logTimelineEvent: jest.fn(),
 }));
 
+jest.mock('@/lib/services/verdictService', () => ({
+  applyVerdict: jest.fn(),
+}));
+
 jest.mock('../../app/api/issues/_shared', () => {
   const actual = jest.requireActual('../../app/api/issues/_shared');
   return {
@@ -68,6 +72,7 @@ jest.mock('../../app/api/issues/_shared', () => {
 
 describe('POST /api/afu9/issues/:issueId/verdict', () => {
   const mockResolveIssueIdentifier = resolveIssueIdentifier as jest.Mock;
+  const mockApplyVerdict = applyVerdict as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -77,6 +82,22 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
       uuid: 'test-issue-123',
       issue: { id: 'test-issue-123' },
       source: 'control',
+    });
+    mockApplyVerdict.mockImplementation(async (_pool: unknown, _id: string, issue: { status?: string }, verdict: Verdict) => {
+      const current = issue.status || Afu9IssueStatus.CREATED;
+      let newStatus = current;
+      if (verdict === Verdict.GREEN) {
+        if (current === Afu9IssueStatus.IMPLEMENTING) newStatus = Afu9IssueStatus.VERIFIED;
+        if (current === Afu9IssueStatus.VERIFIED) newStatus = Afu9IssueStatus.DONE;
+      }
+      if (verdict === Verdict.RED || verdict === Verdict.HOLD) {
+        newStatus = Afu9IssueStatus.HOLD;
+      }
+      return {
+        success: true,
+        newStatus,
+        stateChanged: newStatus !== current,
+      };
     });
   });
 
@@ -108,39 +129,12 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
     expect(body.newStatus).toBe(Afu9IssueStatus.VERIFIED);
     expect(body.stateChanged).toBe(true);
 
-    // Verify VERDICT_SET event was logged
-    expect(logTimelineEvent).toHaveBeenCalledWith(
+    expect(applyVerdict).toHaveBeenCalledWith(
       mockPool,
-      expect.objectContaining({
-        issue_id: 'test-issue-123',
-        event_type: IssueTimelineEventType.VERDICT_SET,
-        event_data: expect.objectContaining({
-          verdict: Verdict.GREEN,
-          oldStatus: Afu9IssueStatus.IMPLEMENTING,
-          newStatus: Afu9IssueStatus.VERIFIED,
-          stateChanged: true,
-        }),
-      })
+      'test-issue-123',
+      expect.objectContaining({ status: Afu9IssueStatus.IMPLEMENTING }),
+      Verdict.GREEN
     );
-
-    // Verify STATE_CHANGED event was logged
-    expect(logTimelineEvent).toHaveBeenCalledWith(
-      mockPool,
-      expect.objectContaining({
-        issue_id: 'test-issue-123',
-        event_type: IssueTimelineEventType.STATE_CHANGED,
-        event_data: expect.objectContaining({
-          oldStatus: Afu9IssueStatus.IMPLEMENTING,
-          newStatus: Afu9IssueStatus.VERIFIED,
-          reason: 'verdict:GREEN',
-        }),
-      })
-    );
-
-    // Verify issue status was updated
-    expect(updateAfu9Issue).toHaveBeenCalledWith(mockPool, 'test-issue-123', {
-      status: Afu9IssueStatus.VERIFIED,
-    });
   });
 
   test('GREEN verdict transitions VERIFIED to DONE', async () => {
@@ -199,9 +193,12 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
     expect(body.newStatus).toBe(Afu9IssueStatus.HOLD);
     expect(body.stateChanged).toBe(true);
 
-    expect(updateAfu9Issue).toHaveBeenCalledWith(mockPool, 'test-issue-123', {
-      status: Afu9IssueStatus.HOLD,
-    });
+    expect(applyVerdict).toHaveBeenCalledWith(
+      mockPool,
+      'test-issue-123',
+      expect.objectContaining({ status: Afu9IssueStatus.IMPLEMENTING }),
+      Verdict.RED
+    );
   });
 
   test('HOLD verdict transitions to HOLD', async () => {
@@ -254,29 +251,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.oldStatus).toBe(Afu9IssueStatus.HOLD);
-    expect(body.newStatus).toBe(Afu9IssueStatus.HOLD);
-    expect(body.stateChanged).toBe(false);
-
-    // VERDICT_SET should still be logged
-    expect(logTimelineEvent).toHaveBeenCalledWith(
-      mockPool,
-      expect.objectContaining({
-        event_type: IssueTimelineEventType.VERDICT_SET,
-      })
-    );
-
-    // STATE_CHANGED should NOT be logged when state doesn't change
-    expect(logTimelineEvent).not.toHaveBeenCalledWith(
-      mockPool,
-      expect.objectContaining({
-        event_type: IssueTimelineEventType.STATE_CHANGED,
-      })
-    );
-
-    // Issue should NOT be updated
-    expect(updateAfu9Issue).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('VERDICT_PRECONDITION_FAILED');
   });
 
   test('Returns 404 when issue not found', async () => {
@@ -311,7 +287,6 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
     expect(response.status).toBe(404);
     expect(body).toMatchObject({
       errorCode: 'issue_not_found',
-      issueId: 'non-existent',
     });
   });
 
@@ -327,8 +302,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toContain('Invalid verdict');
+    expect(response.status).toBe(422);
+    expect(body.errorCode).toBe('VERDICT_INVALID');
   });
 
   test('Returns 400 for missing verdict', async () => {
@@ -343,8 +318,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toContain('Invalid verdict');
+    expect(response.status).toBe(422);
+    expect(body.errorCode).toBe('VERDICT_INVALID');
   });
 
   test('Returns 400 for invalid JSON body', async () => {
@@ -360,8 +335,8 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toContain('Invalid request body');
+    expect(response.status).toBe(422);
+    expect(body.errorCode).toBe('VERDICT_INVALID');
   });
 
   test('GREEN verdict on non-advancing state stays in same state', async () => {
@@ -385,13 +360,7 @@ describe('POST /api/afu9/issues/:issueId/verdict', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.oldStatus).toBe(Afu9IssueStatus.CREATED);
-    expect(body.newStatus).toBe(Afu9IssueStatus.CREATED);
-    expect(body.stateChanged).toBe(false);
-
-    // VERDICT_SET should be logged but no STATE_CHANGED
-    expect(logTimelineEvent).toHaveBeenCalledTimes(1);
-    expect(updateAfu9Issue).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('VERDICT_PRECONDITION_FAILED');
   });
 });

@@ -41,11 +41,12 @@ export function getBuildInfo(): BuildInfo {
     process.env.GIT_SHA ||
     'unknown';
   const rawBuildTime = process.env.BUILD_TIME || '';
-  let buildTime = new Date(0).toISOString();
-  if (rawBuildTime.trim()) {
-    const parsed = new Date(rawBuildTime);
+  let buildTime = 'unknown';
+  const trimmedBuildTime = rawBuildTime.trim();
+  if (trimmedBuildTime) {
+    const parsed = new Date(trimmedBuildTime);
     if (!Number.isNaN(parsed.getTime())) {
-      buildTime = parsed.toISOString();
+      buildTime = trimmedBuildTime;
     }
   }
   return {

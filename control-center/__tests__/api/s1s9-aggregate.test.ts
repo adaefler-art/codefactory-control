@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server';
 import { GET as getIssue } from '../../app/api/afu9/s1s9/issues/[id]/route';
 import { resolveIssueIdentifierOr404, normalizeIssueForApi } from '../../app/api/issues/_shared';
 import { getAfu9IssueByCanonicalId } from '../../src/lib/db/afu9Issues';
-import { getS1S3IssueById, listS1S3RunsByIssue } from '../../src/lib/db/s1s3Flow';
+import { getS1S3IssueById, getS1S3IssueByGitHub, listS1S3RunsByIssue } from '../../src/lib/db/s1s3Flow';
 import { computeStateFlow, getBlockersForDone } from '../../src/lib/state-flow';
 
 jest.mock('../../app/api/afu9/s1s3/issues/[id]/route', () => ({
@@ -24,6 +24,7 @@ jest.mock('../../src/lib/db', () => ({
 jest.mock('../../src/lib/db/s1s3Flow', () => ({
   getS1S3IssueById: jest.fn(),
   getS1S3IssueByCanonicalId: jest.fn(),
+  getS1S3IssueByGitHub: jest.fn(),
   listS1S3RunsByIssue: jest.fn(),
 }));
 
@@ -52,6 +53,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
   const mockNormalizeIssueForApi = normalizeIssueForApi as jest.Mock;
   const mockGetAfu9IssueByCanonicalId = getAfu9IssueByCanonicalId as jest.Mock;
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
+  const mockGetS1S3IssueByGitHub = getS1S3IssueByGitHub as jest.Mock;
   const mockListS1S3RunsByIssue = listS1S3RunsByIssue as jest.Mock;
   const mockComputeStateFlow = computeStateFlow as jest.Mock;
   const mockGetBlockersForDone = getBlockersForDone as jest.Mock;
@@ -73,6 +75,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     });
     mockGetBlockersForDone.mockReturnValue([]);
     mockGetAfu9IssueByCanonicalId.mockReset();
+    mockGetS1S3IssueByGitHub.mockResolvedValue({ success: false, error: 'missing' });
   });
 
   afterEach(() => {
@@ -106,6 +109,16 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
     });
 
     mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: 'SPEC_READY',
+        scope: 'scope',
+        acceptance_criteria: [],
+        spec_ready_at: '2024-01-01T00:00:00Z',
+      },
+    });
+    mockGetS1S3IssueByGitHub.mockResolvedValue({
       success: true,
       data: {
         id: uuid,
@@ -152,7 +165,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
       requestId: 'req-partial',
     });
     expect(body.execution.requiredConfig).toEqual(
-      expect.arrayContaining(['AFU9_GITHUB_EVENTS_QUEUE_URL'])
+      expect.arrayContaining(['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY_PEM'])
     );
   });
 
@@ -594,7 +607,7 @@ describe('GET /api/afu9/s1s9/issues/[id] partial aggregation', () => {
         expect.objectContaining({
           actionId: 'sync',
           state: 'blocked',
-          blockedReason: 'MISSING_QUEUE_URL',
+          blockedReason: 'DISPATCH_DISABLED',
         }),
       ])
     );
