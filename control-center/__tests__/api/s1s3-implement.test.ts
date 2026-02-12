@@ -176,6 +176,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe(
+      'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
+    );
     expect(mockCreateAuthenticatedClient).toHaveBeenCalled();
     expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();
   });
@@ -320,6 +324,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       'AFU9_GITHUB_IMPLEMENT_COMMENT',
     ]);
     expect(response.headers.get('x-afu9-auth-path')).toBe('app');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe(
+      'AFU9_GITHUB_IMPLEMENT_LABEL,AFU9_GITHUB_IMPLEMENT_COMMENT'
+    );
   });
 
   test('returns GITHUB_MIRROR_MISSING when repo metadata missing', async () => {

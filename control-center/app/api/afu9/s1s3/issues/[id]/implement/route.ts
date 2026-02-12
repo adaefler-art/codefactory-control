@@ -63,6 +63,7 @@ interface RouteContext {
 }
 
 type S3ErrorCode =
+  | 'AFU9_STAGE_MISSING'
   | 'ENGINE_MISCONFIGURED'
   | 'GITHUB_WRITE_DENIED'
   | 'GITHUB_MIRROR_MISSING'
@@ -105,6 +106,7 @@ type S3SuccessResponse = {
 };
 
 type Afu9AuthPath = 'token' | 'app' | 'unknown';
+type Afu9Phase = 'preflight' | 'trigger' | 'mapped' | 'success';
 
 function hasValue(value: string | undefined | null): boolean {
   return Boolean(value && value.trim().length > 0);
@@ -131,7 +133,9 @@ function setAfu9Headers(
   response: Response,
   requestId: string,
   handlerName: string,
-  authPath: Afu9AuthPath
+  authPath: Afu9AuthPath,
+  phase: Afu9Phase,
+  missingConfig?: string[]
 ): Response {
   const buildStamp =
     process.env.VERCEL_GIT_COMMIT_SHA ||
@@ -141,6 +145,8 @@ function setAfu9Headers(
   response.headers.set('x-afu9-handler', handlerName);
   response.headers.set('x-afu9-control-build', buildStamp);
   response.headers.set('x-afu9-auth-path', authPath);
+  response.headers.set('x-afu9-phase', phase);
+  response.headers.set('x-afu9-missing-config', missingConfig?.length ? missingConfig.join(',') : '');
   return response;
 }
 
@@ -248,6 +254,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const stageId = stageEntry.stageId;
   const handlerName = HANDLER_MARKER;
   let authPath: Afu9AuthPath = 'unknown';
+  let phase: Afu9Phase = 'preflight';
+  let missingConfig: string[] = [];
   const responseHeaders = {
     ...getControlResponseHeaders(requestId, routeHeaderValue),
     ...buildAfu9ScopeHeaders({
@@ -272,6 +280,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     upstreamStatus?: number;
     githubRequestId?: string;
     detailsSafe?: string;
+    phase?: Afu9Phase;
   }) => {
     const body: S3ErrorResponse = {
       ok: false,
@@ -297,7 +306,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       })
     );
-    return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath);
+    return setAfu9Headers(
+      response,
+      requestId,
+      HANDLER_MARKER,
+      authPath,
+      params.phase ?? phase,
+      params.missingConfig ?? missingConfig
+    );
   };
 
   const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) => {
@@ -307,18 +323,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
         headers: responseHeaders,
       })
     );
-    return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath);
+    return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath, phase, missingConfig);
   };
 
   try {
     const stageValue =
       process.env.AFU9_STAGE || process.env.DEPLOY_ENV || process.env.ENVIRONMENT;
     if (!hasValue(stageValue)) {
+      missingConfig = ['AFU9_STAGE', 'DEPLOY_ENV', 'ENVIRONMENT'];
       return respondS3Error({
-        status: 500,
-        code: 'ENGINE_MISCONFIGURED',
-        message: 'Missing AFU9_STAGE',
-        detailsSafe: 'Missing AFU9_STAGE',
+        status: 409,
+        code: 'AFU9_STAGE_MISSING',
+        message: 'AFU9 stage/env gate missing',
+        requiredConfig: missingConfig,
+        missingConfig,
+        preconditionFailed: 'AFU9_STAGE_MISSING',
+        detailsSafe: 'AFU9 stage/env gate missing',
+        phase: 'preflight',
       });
     }
 
@@ -344,6 +365,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         message: 'Invalid request body',
         preconditionFailed: 'INVALID_PAYLOAD',
         detailsSafe: 'Invalid request body',
+        phase: 'preflight',
       });
     }
     const hasCustomInputs = Boolean(
@@ -360,6 +382,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         code: 'VALIDATION_FAILED',
         message: 'Issue not found',
         detailsSafe: 'Issue not found',
+        phase: 'preflight',
       });
     }
 
@@ -374,6 +397,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         message: 'GitHub mirror missing',
         preconditionFailed: 'GITHUB_MIRROR_MISSING',
         detailsSafe: 'Missing repository metadata for issue',
+        phase: 'preflight',
       });
     }
 
@@ -384,6 +408,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         message: 'GitHub mirror missing',
         preconditionFailed: 'GITHUB_MIRROR_MISSING',
         detailsSafe: 'Missing GitHub issue number',
+        phase: 'preflight',
       });
     }
 
@@ -399,6 +424,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         message: 'Spec not ready',
         preconditionFailed: 'SPEC_NOT_READY',
         detailsSafe: `Issue status ${issue.status}`,
+        phase: 'preflight',
       });
     }
 
@@ -411,7 +437,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       authPath = 'app';
     } catch (error) {
       if (error instanceof GitHubAppConfigError || error instanceof GitHubAppKeyFormatError) {
-        const missingConfig = resolveGitHubAppMissingConfig();
+        missingConfig = resolveGitHubAppMissingConfig();
         return respondS3Error({
           status: 409,
           code: 'GITHUB_AUTH_MISSING',
@@ -419,7 +445,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
           requiredConfig: missingConfig.length > 0 ? missingConfig : undefined,
           missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
           preconditionFailed: 'GITHUB_AUTH_MISSING',
-          detailsSafe: 'Missing GitHub auth configuration',
+          detailsSafe: 'GitHub auth config missing',
+          phase: 'preflight',
         });
       }
 
@@ -431,6 +458,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           message: 'Repository access denied',
           preconditionFailed: 'GITHUB_AUTH_INVALID',
           detailsSafe: trimDetails(getErrorMessage(error)),
+          phase: 'preflight',
         });
       }
 
@@ -449,6 +477,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (missingTriggerConfig.length === 2) {
+      missingConfig = missingTriggerConfig;
       return respondS3Error({
         status: 409,
         code: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
@@ -456,7 +485,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         requiredConfig: missingTriggerConfig,
         missingConfig: missingTriggerConfig,
         preconditionFailed: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
-        detailsSafe: 'Missing GitHub trigger configuration',
+        detailsSafe: 'Implement trigger config missing',
+        phase: 'preflight',
       });
     }
 
@@ -475,6 +505,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         code: 'INTERNAL_ERROR',
         message: 'Failed to create run record',
         detailsSafe: 'Failed to create run record',
+        phase: 'mapped',
       });
     }
 
@@ -500,11 +531,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         code: 'INTERNAL_ERROR',
         message: 'Failed to create step event',
         detailsSafe: 'Failed to create step event',
+        phase: 'mapped',
       });
     }
 
     let triggerResult;
     try {
+      phase = 'trigger';
       triggerResult = await triggerAfu9Implementation({
         owner: repoOwner,
         repo: repoName,
@@ -540,9 +573,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return respondS3Error({
           status: 409,
           code: 'IMPLEMENT_PRECONDITION_FAILED',
-          message: 'Implement not available: missing GitHub client/config',
+          message: 'Implement precondition failed',
           preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
-          detailsSafe: 'Implement not available: missing GitHub client/config',
+          detailsSafe: 'Implement precondition failed',
+          phase: 'preflight',
         });
       }
 
@@ -555,6 +589,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
+          phase: 'mapped',
         });
       }
 
@@ -567,6 +602,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
+          phase: 'mapped',
         });
       }
 
@@ -579,6 +615,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
+          phase: 'mapped',
         });
       }
 
@@ -591,6 +628,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
+          phase: 'mapped',
         });
       }
 
@@ -601,6 +639,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         upstreamStatus,
         githubRequestId,
         detailsSafe: trimDetails(errorMessage),
+        phase: 'mapped',
       });
     }
 
@@ -616,6 +655,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         code: 'INTERNAL_ERROR',
         message: 'Failed to update issue status',
         detailsSafe: 'Failed to update issue status',
+        phase: 'mapped',
       });
     }
 
@@ -640,11 +680,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         code: 'INTERNAL_ERROR',
         message: 'Failed to create step event',
         detailsSafe: 'Failed to create step event',
+        phase: 'mapped',
       });
     }
 
     await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.DONE);
 
+    phase = 'success';
     return respondS3Success({
       ok: true,
       stage: stageId,
@@ -668,6 +710,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       code: 'IMPLEMENT_FAILED',
       message: 'Implementation failed',
       detailsSafe: trimDetails(getErrorMessage(error)) || 'Implementation failed',
+      phase: 'mapped',
     });
   }
 }

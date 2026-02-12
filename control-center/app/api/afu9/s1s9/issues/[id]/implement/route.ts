@@ -15,6 +15,7 @@ const HANDLER_MARKER = 's1s9-implement';
 const HANDLER_VERSION = 'v1';
 
 type Afu9AuthPath = 'token' | 'app' | 'unknown';
+type Afu9Phase = 'preflight' | 'trigger' | 'mapped' | 'success';
 
 function resolveCommitSha(): string {
 	const raw =
@@ -40,7 +41,9 @@ function setAfu9Headers(
 	response: Response,
 	requestId: string,
 	handlerName: string,
-	authPath: Afu9AuthPath
+	authPath: Afu9AuthPath,
+	phase: Afu9Phase,
+	missingConfig?: string[]
 ): Response {
 	const buildStamp =
 		process.env.VERCEL_GIT_COMMIT_SHA ||
@@ -50,7 +53,19 @@ function setAfu9Headers(
 	response.headers.set('x-afu9-handler', handlerName);
 	response.headers.set('x-afu9-control-build', buildStamp);
 	response.headers.set('x-afu9-auth-path', authPath);
+	response.headers.set('x-afu9-phase', phase);
+	response.headers.set('x-afu9-missing-config', missingConfig?.length ? missingConfig.join(',') : '');
 	return response;
+}
+
+function parseMissingConfig(value: string | null): string[] {
+	if (!value) {
+		return [];
+	}
+	return value
+		.split(',')
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
 }
 
 function isProxyTypeError(error: unknown): boolean {
@@ -96,11 +111,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 		});
 
 		const authPath = (response.headers.get('x-afu9-auth-path') as Afu9AuthPath) || 'unknown';
+		const phase = (response.headers.get('x-afu9-phase') as Afu9Phase) || 'preflight';
+		const missingConfig = parseMissingConfig(response.headers.get('x-afu9-missing-config'));
 		return setAfu9Headers(
 			applyHandlerHeaders(response, requestId),
 			requestId,
 			HANDLER_MARKER,
-			authPath
+			authPath,
+			phase,
+			missingConfig
 		);
 	} catch (error) {
 		if (isProxyTypeError(error)) {
@@ -113,7 +132,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 						requestId,
 						scopeRequested: 's1s9',
 						scopeResolved: 's1s9',
-						detailsSafe: 'Implement not available: missing GitHub client/config',
+						detailsSafe: 'Implement precondition failed',
 						thrown: false,
 					},
 					{
@@ -125,7 +144,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 					}
 				)
 			);
-			return setAfu9Headers(response, requestId, HANDLER_MARKER, 'unknown');
+			return setAfu9Headers(response, requestId, HANDLER_MARKER, 'unknown', 'preflight', []);
 		}
 		throw error;
 	}

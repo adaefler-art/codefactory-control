@@ -53,6 +53,8 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
           'content-type': 'application/json',
           'x-afu9-request-id': 'req-123',
           'x-afu9-auth-path': 'app',
+          'x-afu9-phase': 'preflight',
+          'x-afu9-missing-config': 'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID',
         },
       })
     );
@@ -76,6 +78,10 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-auth-path')).toBe('app');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe(
+      'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
+    );
   });
 
   test('maps proxy TypeError to 409 with headers', async () => {
@@ -100,5 +106,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-handler')).toBe('s1s9-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-456');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe('');
   });
 });
