@@ -142,6 +142,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe('');
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
@@ -182,6 +184,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe(
+      'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
+    );
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
