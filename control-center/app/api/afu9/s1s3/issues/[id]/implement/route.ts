@@ -44,7 +44,9 @@ import {
 import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
-import { getStageRegistryEntry, getStageRegistryError, resolveStageMissingConfig } from '@/lib/stage-registry';
+import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-registry';
+import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
+import { GitHubAppConfigError, GitHubAppKeyFormatError } from '@/lib/github-app-auth';
 import { triggerAfu9Implementation } from '@/lib/github/issue-sync';
 
 // Avoid stale reads
@@ -102,6 +104,8 @@ type S3SuccessResponse = {
   startedAt: string;
 };
 
+type Afu9AuthPath = 'token' | 'app' | 'unknown';
+
 function hasValue(value: string | undefined | null): boolean {
   return Boolean(value && value.trim().length > 0);
 }
@@ -123,7 +127,12 @@ function applyHandlerHeaders(response: Response): Response {
   return response;
 }
 
-function setAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+function setAfu9Headers(
+  response: Response,
+  requestId: string,
+  handlerName: string,
+  authPath: Afu9AuthPath
+): Response {
   const buildStamp =
     process.env.VERCEL_GIT_COMMIT_SHA ||
     process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
@@ -131,7 +140,35 @@ function setAfu9Headers(response: Response, requestId: string, handlerName: stri
   response.headers.set('x-afu9-request-id', requestId);
   response.headers.set('x-afu9-handler', handlerName);
   response.headers.set('x-afu9-control-build', buildStamp);
+  response.headers.set('x-afu9-auth-path', authPath);
   return response;
+}
+
+function resolveGitHubAppMissingConfig(): string[] {
+  const appId = process.env.GITHUB_APP_ID || process.env.GH_APP_ID;
+  const appKey = process.env.GITHUB_APP_PRIVATE_KEY_PEM || process.env.GH_APP_PRIVATE_KEY_PEM;
+  const appSecretId = process.env.GITHUB_APP_SECRET_ID || process.env.GH_APP_SECRET_ID;
+  const hasAppId = hasValue(appId);
+  const hasAppKey = hasValue(appKey);
+  const hasSecretId = hasValue(appSecretId);
+  const dispatcherConfigured = (hasAppId && hasAppKey) || hasSecretId;
+
+  if (dispatcherConfigured) {
+    return [];
+  }
+
+  const missing: string[] = [];
+  if (!hasAppId) {
+    missing.push('GITHUB_APP_ID');
+  }
+  if (!hasAppKey) {
+    missing.push('GITHUB_APP_PRIVATE_KEY_PEM');
+  }
+  if (!hasSecretId) {
+    missing.push('GITHUB_APP_SECRET_ID');
+  }
+
+  return missing;
 }
 
 function trimDetails(value?: string, maxLength = 200): string | undefined {
@@ -210,6 +247,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const stageId = stageEntry.stageId;
   const handlerName = HANDLER_MARKER;
+  let authPath: Afu9AuthPath = 'unknown';
   const responseHeaders = {
     ...getControlResponseHeaders(requestId, routeHeaderValue),
     ...buildAfu9ScopeHeaders({
@@ -259,7 +297,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       })
     );
-    return setAfu9Headers(response, requestId, HANDLER_MARKER);
+    return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath);
   };
 
   const respondS3Success = (body: S3SuccessResponse & Record<string, unknown>) => {
@@ -269,7 +307,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         headers: responseHeaders,
       })
     );
-    return setAfu9Headers(response, requestId, HANDLER_MARKER);
+    return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath);
   };
 
   try {
@@ -364,17 +402,39 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const missingDispatchConfig = resolveStageMissingConfig(stageEntry);
-    if (missingDispatchConfig.length > 0) {
-      return respondS3Error({
-        status: 409,
-        code: 'GITHUB_AUTH_MISSING',
-        message: 'GitHub auth not configured',
-        requiredConfig: missingDispatchConfig,
-        missingConfig: missingDispatchConfig,
-        preconditionFailed: 'GITHUB_AUTH_MISSING',
-        detailsSafe: 'Missing GitHub auth configuration',
-      });
+    const [repoOwner, repoName] = repoFullName.split('/');
+
+    // Canonical GitHub client for AFU9 write paths: auth-wrapper createAuthenticatedClient (S1/S2).
+    let authClient;
+    try {
+      authClient = await createAuthenticatedClient({ owner: repoOwner, repo: repoName, requestId });
+      authPath = 'app';
+    } catch (error) {
+      if (error instanceof GitHubAppConfigError || error instanceof GitHubAppKeyFormatError) {
+        const missingConfig = resolveGitHubAppMissingConfig();
+        return respondS3Error({
+          status: 409,
+          code: 'GITHUB_AUTH_MISSING',
+          message: 'GitHub auth not configured',
+          requiredConfig: missingConfig.length > 0 ? missingConfig : undefined,
+          missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
+          preconditionFailed: 'GITHUB_AUTH_MISSING',
+          detailsSafe: 'Missing GitHub auth configuration',
+        });
+      }
+
+      if (error instanceof Error && error.name === 'RepoAccessDeniedError') {
+        authPath = 'app';
+        return respondS3Error({
+          status: 409,
+          code: 'GITHUB_AUTH_INVALID',
+          message: 'Repository access denied',
+          preconditionFailed: 'GITHUB_AUTH_INVALID',
+          detailsSafe: trimDetails(getErrorMessage(error)),
+        });
+      }
+
+      throw error;
     }
 
     const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim();
@@ -398,25 +458,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         preconditionFailed: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
         detailsSafe: 'Missing GitHub trigger configuration',
       });
-    }
-
-    try {
-      const proxyTarget = (globalThis as { fetch?: unknown }).fetch as object | undefined;
-      const proxyHandler = {};
-      new Proxy(proxyTarget as object, proxyHandler);
-    } catch (error) {
-      if (isProxyTypeError(error)) {
-        return respondS3Error({
-          status: 409,
-          code: 'IMPLEMENT_PRECONDITION_FAILED',
-          message: 'Implement not available: missing GitHub client/config',
-          preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
-          requiredConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
-          missingConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
-          detailsSafe: 'Implement not available: missing GitHub client/config',
-        });
-      }
-      throw error;
     }
 
     // Create run record
@@ -462,8 +503,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const [repoOwner, repoName] = repoFullName.split('/');
-
     let triggerResult;
     try {
       triggerResult = await triggerAfu9Implementation({
@@ -473,6 +512,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         label: triggerLabel,
         comment: triggerComment,
         requestId,
+        octokit: authClient,
       });
     } catch (error) {
       const errorMessage = getErrorMessage(error) || 'GitHub trigger failed.';
@@ -502,8 +542,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
           code: 'IMPLEMENT_PRECONDITION_FAILED',
           message: 'Implement not available: missing GitHub client/config',
           preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
-          requiredConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
-          missingConfig: missingDispatchConfig.length > 0 ? missingDispatchConfig : undefined,
           detailsSafe: 'Implement not available: missing GitHub client/config',
         });
       }

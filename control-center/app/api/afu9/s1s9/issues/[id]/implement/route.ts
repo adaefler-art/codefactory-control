@@ -14,6 +14,8 @@ interface RouteContext {
 const HANDLER_MARKER = 's1s9-implement';
 const HANDLER_VERSION = 'v1';
 
+type Afu9AuthPath = 'token' | 'app' | 'unknown';
+
 function resolveCommitSha(): string {
 	const raw =
 		process.env.VERCEL_GIT_COMMIT_SHA ||
@@ -34,7 +36,12 @@ function applyHandlerHeaders(response: Response, requestId: string): Response {
 	return response;
 }
 
-function setAfu9Headers(response: Response, requestId: string, handlerName: string): Response {
+function setAfu9Headers(
+	response: Response,
+	requestId: string,
+	handlerName: string,
+	authPath: Afu9AuthPath
+): Response {
 	const buildStamp =
 		process.env.VERCEL_GIT_COMMIT_SHA ||
 		process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
@@ -42,6 +49,7 @@ function setAfu9Headers(response: Response, requestId: string, handlerName: stri
 	response.headers.set('x-afu9-request-id', requestId);
 	response.headers.set('x-afu9-handler', handlerName);
 	response.headers.set('x-afu9-control-build', buildStamp);
+	response.headers.set('x-afu9-auth-path', authPath);
 	return response;
 }
 
@@ -87,10 +95,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			issueId: id,
 		});
 
+		const authPath = (response.headers.get('x-afu9-auth-path') as Afu9AuthPath) || 'unknown';
 		return setAfu9Headers(
 			applyHandlerHeaders(response, requestId),
 			requestId,
-			HANDLER_MARKER
+			HANDLER_MARKER,
+			authPath
 		);
 	} catch (error) {
 		if (isProxyTypeError(error)) {
@@ -115,7 +125,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 					}
 				)
 			);
-			return setAfu9Headers(response, requestId, HANDLER_MARKER);
+			return setAfu9Headers(response, requestId, HANDLER_MARKER, 'unknown');
 		}
 		throw error;
 	}

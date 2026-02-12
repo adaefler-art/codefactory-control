@@ -52,6 +52,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
         headers: {
           'content-type': 'application/json',
           'x-afu9-request-id': 'req-123',
+          'x-afu9-auth-path': 'app',
         },
       })
     );
@@ -74,6 +75,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-handler')).toBeTruthy();
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('maps proxy TypeError to 409 with headers', async () => {
@@ -97,5 +99,6 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     expect(body.code).toBe('IMPLEMENT_PRECONDITION_FAILED');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s9-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-456');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
   });
 });
