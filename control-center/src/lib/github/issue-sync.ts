@@ -1,3 +1,4 @@
+import { Octokit } from 'octokit';
 import { createAuthenticatedClient } from './auth-wrapper';
 import { DEFAULT_RETRY_CONFIG, withRetry } from './retry-policy';
 
@@ -171,12 +172,15 @@ export async function triggerAfu9Implementation(params: {
   label?: string;
   comment?: string;
   requestId?: string;
+  octokit?: Octokit;
 }): Promise<GithubTriggerResult> {
-  const octokit = await createAuthenticatedClient({
-    owner: params.owner,
-    repo: params.repo,
-    requestId: params.requestId,
-  });
+  const octokit =
+    params.octokit ??
+    (await createAuthenticatedClient({
+      owner: params.owner,
+      repo: params.repo,
+      requestId: params.requestId,
+    }));
 
   const label = normalizeLines(params.label);
   const comment = normalizeLines(params.comment);

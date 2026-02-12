@@ -9,6 +9,8 @@ import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/impl
 import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow';
 import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 import { triggerAfu9Implementation } from '../../src/lib/github/issue-sync';
+import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper';
+import { GitHubAppConfigError } from '../../src/lib/github-app-auth';
 
 const mockGetS1S3IssueById = jest.fn();
 const mockCreateS1S3Run = jest.fn();
@@ -16,7 +18,6 @@ const mockCreateS1S3RunStep = jest.fn();
 const mockUpdateS1S3RunStatus = jest.fn();
 const mockUpdateS1S3IssueStatus = jest.fn();
 
-const mockResolveStageMissingConfig = jest.fn();
 const mockGetStageRegistryEntry = jest.fn();
 
 jest.mock('@/lib/db', () => ({
@@ -39,12 +40,19 @@ jest.mock('@/lib/stage-registry', () => ({
     code: 'STAGE_MISSING',
     message: 'Stage missing',
   })),
-  resolveStageMissingConfig: (...args: unknown[]) => mockResolveStageMissingConfig(...args),
 }));
 
 jest.mock('@/lib/github/issue-sync', () => ({
   triggerAfu9Implementation: jest.fn(),
 }));
+
+jest.mock('@/lib/github/auth-wrapper', () => {
+  const actual = jest.requireActual('@/lib/github/auth-wrapper');
+  return {
+    ...actual,
+    createAuthenticatedClient: jest.fn(),
+  };
+});
 
 jest.mock('../../app/api/issues/_shared', () => {
   const actual = jest.requireActual('../../app/api/issues/_shared');
@@ -56,6 +64,7 @@ jest.mock('../../app/api/issues/_shared', () => {
 
 describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
   const mockResolveIssue = resolveIssueIdentifierOr404 as jest.Mock;
+  const mockCreateAuthenticatedClient = createAuthenticatedClient as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -71,7 +80,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
         },
       },
     });
-    mockResolveStageMissingConfig.mockReturnValue([]);
+    mockCreateAuthenticatedClient.mockResolvedValue({});
 
     mockResolveIssue.mockResolvedValue({
       ok: true,
@@ -137,7 +146,6 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
   });
 
   test('returns 409 + handler headers when github auth missing', async () => {
-    mockResolveStageMissingConfig.mockReturnValue(['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY_PEM']);
     mockGetS1S3IssueById.mockResolvedValue({
       success: true,
       data: {
@@ -149,6 +157,9 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
         github_issue_url: 'https://github.com/org/repo/issues/42',
       },
     });
+    mockCreateAuthenticatedClient.mockRejectedValue(
+      new GitHubAppConfigError('Missing GITHUB_APP_ID')
+    );
 
     const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
       method: 'POST',
@@ -170,6 +181,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
@@ -204,7 +216,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
   });
 
-  test('returns 409 when proxy creation fails', async () => {
+  test('returns 409 when repo access is denied', async () => {
     mockGetS1S3IssueById.mockResolvedValue({
       success: true,
       data: {
@@ -216,6 +228,9 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
         github_issue_url: 'https://github.com/org/repo/issues/42',
       },
     });
+    mockCreateAuthenticatedClient.mockRejectedValue(
+      Object.assign(new Error('Repo access denied'), { name: 'RepoAccessDeniedError' })
+    );
     mockCreateS1S3Run.mockResolvedValue({
       success: true,
       data: {
@@ -229,28 +244,20 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     });
     mockUpdateS1S3RunStatus.mockResolvedValue({ success: true });
 
-    const originalFetch = (globalThis as { fetch?: unknown }).fetch;
-    (globalThis as { fetch?: unknown }).fetch = undefined;
-
     const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
       method: 'POST',
       body: JSON.stringify({}),
     });
     const params = Promise.resolve({ id: 'issue-123' });
-    let response: Response;
-    let body: Record<string, unknown>;
-    try {
-      response = await implementIssue(request, { params });
-      body = (await response.json()) as Record<string, unknown>;
-    } finally {
-      (globalThis as { fetch?: unknown }).fetch = originalFetch;
-    }
+    const response = await implementIssue(request, { params });
+    const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(409);
-    expect(body.code).toBe('IMPLEMENT_PRECONDITION_FAILED');
+    expect(body.code).toBe('GITHUB_AUTH_INVALID');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
@@ -305,6 +312,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.ok).toBe(true);
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-202');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
     expect(triggerAfu9Implementation).toHaveBeenCalled();
   });
 });

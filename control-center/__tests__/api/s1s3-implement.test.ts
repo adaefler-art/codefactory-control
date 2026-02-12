@@ -12,6 +12,8 @@
 import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/implement/route';
 import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow';
 import { triggerAfu9Implementation } from '../../src/lib/github/issue-sync';
+import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper';
+import { GitHubAppConfigError } from '../../src/lib/github-app-auth';
 import {
   getS1S3IssueById,
   createS1S3Run,
@@ -32,6 +34,14 @@ jest.mock('@/lib/db', () => ({
 jest.mock('@/lib/github/issue-sync', () => ({
   triggerAfu9Implementation: jest.fn(),
 }));
+
+jest.mock('@/lib/github/auth-wrapper', () => {
+  const actual = jest.requireActual('@/lib/github/auth-wrapper');
+  return {
+    ...actual,
+    createAuthenticatedClient: jest.fn(),
+  };
+});
 
 // Mock S1S3 DAO functions
 jest.mock('@/lib/db/s1s3Flow', () => ({
@@ -58,6 +68,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
   const mockUpdateS1S3RunStatus = updateS1S3RunStatus as jest.Mock;
   const mockUpdateS1S3IssueStatus = updateS1S3IssueStatus as jest.Mock;
   const mockTriggerAfu9Implementation = triggerAfu9Implementation as jest.Mock;
+  const mockCreateAuthenticatedClient = createAuthenticatedClient as jest.Mock;
   const mockResolveIssueIdentifierOr404 = resolveIssueIdentifierOr404 as jest.Mock;
 
   const mockIssue = {
@@ -108,6 +119,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       issue: { id: mockIssue.id },
       source: 'control',
     });
+    mockCreateAuthenticatedClient.mockResolvedValue({});
   });
 
   const setupTriggerRunMocks = () => {
@@ -127,6 +139,9 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       AFU9_STAGE: 'dev',
     };
     mockGetS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
+    mockCreateAuthenticatedClient.mockRejectedValue(
+      new GitHubAppConfigError('Missing GITHUB_APP_ID')
+    );
 
     const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
       method: 'POST',
@@ -160,6 +175,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
+    expect(mockCreateAuthenticatedClient).toHaveBeenCalled();
     expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
@@ -182,6 +199,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_AUTH_INVALID');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-401');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('maps 403 from GitHub to GITHUB_AUTH_INVALID', async () => {
@@ -203,6 +221,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_AUTH_INVALID');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-403');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('maps 404 from GitHub to GITHUB_TARGET_NOT_FOUND', async () => {
@@ -224,6 +243,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_TARGET_NOT_FOUND');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-404');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('maps 422 from GitHub to GITHUB_VALIDATION_FAILED', async () => {
@@ -245,6 +265,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_VALIDATION_FAILED');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-422');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('maps network failures to GITHUB_UPSTREAM_UNREACHABLE', async () => {
@@ -266,6 +287,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_UPSTREAM_UNREACHABLE');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-502');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('returns IMPLEMENT_TRIGGER_CONFIG_MISSING when trigger config is missing', async () => {
@@ -297,6 +319,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       'AFU9_GITHUB_IMPLEMENT_LABEL',
       'AFU9_GITHUB_IMPLEMENT_COMMENT',
     ]);
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 
   test('returns GITHUB_MIRROR_MISSING when repo metadata missing', async () => {
@@ -325,6 +348,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_MIRROR_MISSING');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
+    expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
   });
 
   test('triggers GitHub implementation and returns 202', async () => {
@@ -366,6 +390,9 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.githubTrigger?.status).toBe('TRIGGERED');
     expect(body.githubTrigger?.labelApplied).toBe(true);
     expect(body.githubTrigger?.commentPosted).toBe(false);
+    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
+    expect(mockCreateAuthenticatedClient).toHaveBeenCalled();
+    expect(mockTriggerAfu9Implementation).toHaveBeenCalled();
   });
 
   test('returns IMPLEMENT_FAILED on unexpected error', async () => {
@@ -390,5 +417,6 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('IMPLEMENT_FAILED');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
+    expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
   });
 });
