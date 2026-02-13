@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { GET as getS1S9Issue } from '../../../../issues/[id]/route';
 import { POST as postS1S3Implement } from '../../../../s1s3/issues/[id]/implement/route';
 import { isIssueNotFound, withAfu9ScopeFallback, buildAfu9ScopeHeaders } from '../../../_shared';
 import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders } from '../../../../../issues/_shared';
+import { makeAfu9Error, S3_IMPLEMENT_CODES } from '@/lib/afu9/workflow-errors';
 
 interface RouteContext {
 	params: Promise<{
@@ -124,25 +125,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
 	} catch (error) {
 		if (isProxyTypeError(error)) {
 			const response = applyHandlerHeaders(
-				NextResponse.json(
-					{
-						ok: false,
-						code: 'IMPLEMENT_PRECONDITION_FAILED',
-						errorCode: 'IMPLEMENT_PRECONDITION_FAILED',
-						requestId,
+				makeAfu9Error({
+					stage: 'S3',
+					code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+					phase: 'preflight',
+					blockedBy: 'INTERNAL',
+					nextAction: 'Retry implement when proxy ready',
+					requestId,
+					handler: HANDLER_MARKER,
+					extraBody: {
 						scopeRequested: 's1s9',
 						scopeResolved: 's1s9',
 						detailsSafe: 'Implement precondition failed',
 						thrown: false,
 					},
-					{
-						status: 409,
-						headers: {
-							...responseHeaders,
-							'x-afu9-error-code': 'IMPLEMENT_PRECONDITION_FAILED',
-						},
-					}
-				)
+					extraHeaders: responseHeaders,
+				})
 			);
 			return setAfu9Headers(response, requestId, HANDLER_MARKER, 'unknown', 'preflight', []);
 		}

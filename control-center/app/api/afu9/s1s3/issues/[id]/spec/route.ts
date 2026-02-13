@@ -42,6 +42,13 @@ import {
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, jsonResponse, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import {
+  COMMON_AFU9_CODES,
+  S2_SPEC_CODES,
+  makeAfu9Error,
+  type Afu9BlockedBy,
+  type Afu9Phase,
+} from '@/lib/afu9/workflow-errors';
+import {
   extractServiceTokenFromHeaders,
   getControlResponseHeaders,
   getServiceTokenDebugInfo,
@@ -160,32 +167,30 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
   if (!stageEntry || !specRoute?.handler) {
     const registryError = getStageRegistryError('S2');
-    return jsonResponse(
-      {
-        ok: false,
-        code: registryError.code,
+    return makeAfu9Error({
+      stage: 'S2',
+      code: S2_SPEC_CODES.INTERNAL_ERROR,
+      phase: 'preflight',
+      blockedBy: 'INTERNAL',
+      nextAction: 'Check stage registry',
+      requestId,
+      handler: 'control.s1s3.spec',
+      extraBody: {
         message: registryError.message,
-        errorCode: registryError.code,
-        requestId,
         handler: 'control',
         route: routeHeaderValue,
         scopeRequested: requestedScope,
         scopeResolved: 's1s3',
       },
-      {
-        status: 500,
-        requestId,
-        headers: {
-          ...getControlResponseHeaders(requestId, routeHeaderValue),
-          ...buildAfu9ScopeHeaders({
-            requestedScope,
-            resolvedScope: 's1s3',
-          }),
-          'x-afu9-error-code': registryError.code,
-          'x-cf-handler': CF_HANDLER,
-        },
-      }
-    );
+      extraHeaders: {
+        ...getControlResponseHeaders(requestId, routeHeaderValue),
+        ...buildAfu9ScopeHeaders({
+          requestedScope,
+          resolvedScope: 's1s3',
+        }),
+        'x-cf-handler': CF_HANDLER,
+      },
+    });
   }
 
   const responseHeaders = {
@@ -198,7 +203,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     'x-afu9-handler': specRoute.handler,
     'x-cf-handler': CF_HANDLER,
   };
-  const handlerName = 'control';
+  const handlerName = specRoute.handler;
   const verifiedUserSub = request.headers.get('x-afu9-sub')?.trim();
   const { token: providedServiceToken, reason: tokenReason } = extractServiceTokenFromHeaders(request.headers);
   const expectedServiceToken = normalizeServiceToken(process.env.SERVICE_READ_TOKEN || '');
@@ -206,8 +211,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
   const shouldEnforceServiceToken = !isTestEnv || Boolean(expectedServiceToken);
 
   const respondWithSpecError = (params: {
-    status: number;
-    errorCode: string;
+    code: string;
+    phase: Afu9Phase;
+    blockedBy: Afu9BlockedBy;
+    nextAction: string;
+    missingConfig?: string[];
     detailsSafe?: string;
     upstreamStatus?: number;
     upstreamErrorCode?: string;
@@ -215,13 +223,17 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     extraHeaders?: Record<string, string>;
   }) => {
     const message = params.detailsSafe || 'Request failed';
-    return jsonResponse(
-      {
-        ok: false,
-        code: params.errorCode,
+    return makeAfu9Error({
+      stage: 'S2',
+      code: params.code,
+      phase: params.phase,
+      blockedBy: params.blockedBy,
+      nextAction: params.nextAction,
+      requestId,
+      handler: handlerName,
+      missingConfig: params.missingConfig,
+      extraBody: {
         message,
-        errorCode: params.errorCode,
-        requestId,
         detailsSafe: message,
         handler: handlerName,
         route: routeHeaderValue,
@@ -231,16 +243,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         upstreamErrorCode: params.upstreamErrorCode,
         ...params.extraBody,
       },
-      {
-        status: params.status,
-        requestId,
-        headers: {
-          ...responseHeaders,
-          ...(params.extraHeaders ?? {}),
-          'x-afu9-error-code': params.errorCode,
-        },
-      }
-    );
+      extraHeaders: {
+        ...responseHeaders,
+        ...(params.extraHeaders ?? {}),
+      },
+    });
   };
 
   const buildBlockedMessage = (missingConfig: string[]): string => {
@@ -258,8 +265,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           });
         }
         return respondWithSpecError({
-          status: 401,
-          errorCode: 'spec_unauthorized',
+          code: S2_SPEC_CODES.INTERNAL_ERROR,
+          phase: 'preflight',
+          blockedBy: 'CONFIG',
+          nextAction: 'Provide service token',
           detailsSafe: tokenReason === 'malformed' ? 'Malformed Authorization header' : 'Missing service token',
         });
       }
@@ -271,8 +280,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           });
         }
         return respondWithSpecError({
-          status: 401,
-          errorCode: 'spec_unauthorized',
+          code: S2_SPEC_CODES.INTERNAL_ERROR,
+          phase: 'preflight',
+          blockedBy: 'CONFIG',
+          nextAction: 'Provide service token',
           detailsSafe: expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
         });
       }
@@ -282,14 +293,12 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       const earlyGuardrailMissingConfig = resolveGitHubAppMissingConfig();
       if (earlyGuardrailMissingConfig.length > 0) {
         return respondWithSpecError({
-          status: 409,
-          errorCode: 'GUARDRAIL_CONFIG_MISSING',
+          code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
+          phase: 'preflight',
+          blockedBy: 'CONFIG',
+          nextAction: 'Configure guardrails',
+          missingConfig: earlyGuardrailMissingConfig,
           detailsSafe: `Missing required config: ${earlyGuardrailMissingConfig.join(', ')}`,
-          extraBody: { missingConfig: earlyGuardrailMissingConfig },
-          extraHeaders: {
-            'x-afu9-phase': 'preflight',
-            'x-afu9-missing-config': earlyGuardrailMissingConfig.join(','),
-          },
         });
       }
     }
@@ -305,8 +314,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       if (!resolved.ok) {
         if (resolved.status >= 500) {
           return respondWithSpecError({
-            status: 502,
-            errorCode: 'spec_upstream_failed',
+            code: S2_SPEC_CODES.INTERNAL_ERROR,
+            phase: 'preflight',
+            blockedBy: 'INTERNAL',
+            nextAction: 'Retry issue lookup',
             detailsSafe: 'Issue lookup failed',
             upstreamStatus: resolved.status,
             upstreamErrorCode: resolved.body.errorCode,
@@ -315,8 +326,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
         if (resolved.status === 404 && resolved.body.errorCode === 'issue_not_found') {
           return respondWithSpecError({
-            status: 404,
-            errorCode: 'issue_not_found',
+            code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
+            phase: 'preflight',
+            blockedBy: 'STATE',
+            nextAction: 'Verify issue id',
             detailsSafe: 'Issue not found',
             extraBody: {
               issueId,
@@ -326,8 +339,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         }
 
         return respondWithSpecError({
-          status: resolved.status,
-          errorCode: 'spec_invalid_payload',
+          code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
+          phase: 'preflight',
+          blockedBy: 'STATE',
+          nextAction: 'Verify issue id',
           detailsSafe: 'Invalid issue identifier',
         });
       }
@@ -341,8 +356,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       body = (await request.json()) as Record<string, unknown>;
     } catch {
       return respondWithSpecError({
-        status: 400,
-        errorCode: 'spec_invalid_payload',
+        code: S2_SPEC_CODES.SPEC_NOT_READY,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Provide spec payload',
         detailsSafe: 'Invalid request body',
       });
     }
@@ -364,8 +381,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     if (!scope) {
       return respondWithSpecError({
-        status: 400,
-        errorCode: 'spec_invalid_payload',
+        code: S2_SPEC_CODES.SPEC_NOT_READY,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Provide scope',
         detailsSafe: 'Scope is required',
       });
     }
@@ -373,8 +392,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     // Validate acceptance criteria (required for SPEC_READY)
     if (!acceptanceCriteria || acceptanceCriteria.length === 0) {
       return respondWithSpecError({
-        status: 400,
-        errorCode: 'spec_invalid_payload',
+        code: S2_SPEC_CODES.SPEC_NOT_READY,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Provide acceptance criteria',
         detailsSafe: 'Acceptance criteria required',
       });
     }
@@ -402,8 +423,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
         if (!repoFullName || !issueNumber || !githubUrl) {
           return respondWithSpecError({
-            status: 409,
-            errorCode: 'spec_invalid_payload',
+            code: S2_SPEC_CODES.GITHUB_MIRROR_MISSING,
+            phase: 'preflight',
+            blockedBy: 'STATE',
+            nextAction: 'Link GitHub issue',
             detailsSafe: 'Issue missing GitHub metadata for spec',
           });
         }
@@ -419,8 +442,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
         if (!seedResult.success || !seedResult.data) {
           return respondWithSpecError({
-            status: 502,
-            errorCode: 'spec_upstream_failed',
+            code: S2_SPEC_CODES.INTERNAL_ERROR,
+            phase: 'preflight',
+            blockedBy: 'INTERNAL',
+            nextAction: 'Retry seeding issue',
             detailsSafe: 'Failed to seed S1S3 issue',
           });
         }
@@ -440,25 +465,21 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         foundBy,
       });
 
-      return jsonResponse(
-        {
-          ok: false,
-          code: 'issue_not_found',
+      return makeAfu9Error({
+        stage: 'S2',
+        code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Verify issue id',
+        requestId,
+        handler: handlerName,
+        extraBody: {
           message: 'Issue not found',
-          errorCode: 'issue_not_found',
           issueId,
-          requestId,
           lookupStore: 'control',
         },
-        {
-          status: 404,
-          requestId,
-          headers: {
-            ...responseHeaders,
-            'x-afu9-error-code': 'issue_not_found',
-          },
-        }
-      );
+        extraHeaders: responseHeaders,
+      });
     }
 
     console.log('[S2] Spec ready issue resolved:', {
@@ -470,8 +491,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     // Check if issue is in valid state for spec
     if (issue.status !== S1S3IssueStatus.CREATED && issue.status !== S1S3IssueStatus.SPEC_READY) {
       return respondWithSpecError({
-        status: 409,
-        errorCode: 'spec_invalid_payload',
+        code: S2_SPEC_CODES.SPEC_NOT_READY,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Ensure issue is ready for spec',
         detailsSafe: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
       });
     }
@@ -482,14 +505,12 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         const earlyGuardrailMissingConfig = resolveGitHubAppMissingConfig();
         if (earlyGuardrailMissingConfig.length > 0) {
           return respondWithSpecError({
-            status: 409,
-            errorCode: 'GUARDRAIL_CONFIG_MISSING',
+            code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
+            phase: 'preflight',
+            blockedBy: 'CONFIG',
+            nextAction: 'Configure guardrails',
+            missingConfig: earlyGuardrailMissingConfig,
             detailsSafe: `Missing required config: ${earlyGuardrailMissingConfig.join(', ')}`,
-            extraBody: { missingConfig: earlyGuardrailMissingConfig },
-            extraHeaders: {
-              'x-afu9-phase': 'preflight',
-              'x-afu9-missing-config': earlyGuardrailMissingConfig.join(','),
-            },
           });
         }
       }
@@ -502,8 +523,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     if (!updateResult.success || !updateResult.data) {
       return respondWithSpecError({
-        status: 502,
-        errorCode: 'spec_upstream_failed',
+        code: S2_SPEC_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry spec update',
         detailsSafe: 'Failed to update issue',
       });
     }
@@ -533,8 +556,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           ? (error as { status?: number }).status
           : undefined;
       return respondWithSpecError({
-        status: 502,
-        errorCode: 'spec_upstream_failed',
+        code: S2_SPEC_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry run creation',
         detailsSafe: 'Failed to create run record',
         upstreamStatus,
       });
@@ -542,8 +567,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     if (!runResult.success || !runResult.data) {
       return respondWithSpecError({
-        status: 502,
-        errorCode: 'spec_upstream_failed',
+        code: S2_SPEC_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry run creation',
         detailsSafe: 'Failed to create run record',
       });
     }
@@ -581,8 +608,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     if (!stepResult.success || !stepResult.data) {
       return respondWithSpecError({
-        status: 502,
-        errorCode: 'spec_upstream_failed',
+        code: S2_SPEC_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry step logging',
         detailsSafe: 'Failed to create step event',
       });
     }
@@ -607,8 +636,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
       if (!blockedStepResult.success || !blockedStepResult.data) {
         return respondWithSpecError({
-          status: 502,
-          errorCode: 'spec_upstream_failed',
+          code: S2_SPEC_CODES.INTERNAL_ERROR,
+          phase: 'mapped',
+          blockedBy: 'INTERNAL',
+          nextAction: 'Retry step logging',
           detailsSafe: 'Failed to record blocked sync step',
         });
       }
@@ -683,14 +714,12 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         const guardrailMissingConfig = resolveGitHubAppMissingConfig();
         if (guardrailMissingConfig.length > 0) {
           return respondWithSpecError({
-            status: 409,
-            errorCode: 'GUARDRAIL_CONFIG_MISSING',
+            code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
+            phase: 'preflight',
+            blockedBy: 'CONFIG',
+            nextAction: 'Configure guardrails',
+            missingConfig: guardrailMissingConfig,
             detailsSafe: `Missing required config: ${guardrailMissingConfig.join(', ')}`,
-            extraBody: { missingConfig: guardrailMissingConfig },
-            extraHeaders: {
-              'x-afu9-phase': 'preflight',
-              'x-afu9-missing-config': guardrailMissingConfig.join(','),
-            },
           });
         }
 
@@ -705,15 +734,20 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
         if (guardrailDecision.outcome === 'deny') {
           const missingConfig = guardrailDecision.missingConfig ?? [];
+          const guardrailCode =
+            guardrailDecision.code === 'GUARDRAIL_REPO_NOT_ALLOWED'
+              ? S2_SPEC_CODES.GUARDRAIL_REPO_NOT_ALLOWED
+              : S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING;
           return respondWithSpecError({
-            status: 409,
-            errorCode: guardrailDecision.code,
+            code: guardrailCode,
+            phase: 'preflight',
+            blockedBy: guardrailCode === S2_SPEC_CODES.GUARDRAIL_REPO_NOT_ALLOWED ? 'POLICY' : 'CONFIG',
+            nextAction:
+              guardrailCode === S2_SPEC_CODES.GUARDRAIL_REPO_NOT_ALLOWED
+                ? 'Allowlist repo'
+                : 'Configure guardrails',
+            missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
             detailsSafe: guardrailDecision.detailsSafe || 'Guardrail blocked',
-            extraBody: missingConfig.length > 0 ? { missingConfig } : undefined,
-            extraHeaders: {
-              'x-afu9-phase': 'preflight',
-              'x-afu9-missing-config': missingConfig.join(','),
-            },
           });
         }
       }
@@ -762,8 +796,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     if (!syncStepResult.success || !syncStepResult.data) {
       return respondWithSpecError({
-        status: 502,
-        errorCode: 'spec_upstream_failed',
+        code: S2_SPEC_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry step logging',
         detailsSafe: 'Failed to record sync step',
       });
     }
@@ -819,10 +855,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       typeof (error as { status?: number })?.status === 'number'
         ? (error as { status?: number }).status
         : undefined;
-    const status = upstreamStatus ? 502 : 500;
     return respondWithSpecError({
-      status,
-      errorCode: 'spec_ready_failed',
+      code: S2_SPEC_CODES.INTERNAL_ERROR,
+      phase: 'mapped',
+      blockedBy: 'INTERNAL',
+      nextAction: 'Retry spec request',
       detailsSafe: 'Failed to set spec',
       upstreamStatus,
     });

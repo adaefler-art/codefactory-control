@@ -84,7 +84,7 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     );
   });
 
-  test('maps proxy TypeError to 409 with headers', async () => {
+  test('maps proxy TypeError to 500 with headers', async () => {
     mockWithAfu9ScopeFallback.mockImplementation(async () => {
       throw new TypeError('Cannot create proxy with a non-object as target or handler');
     });
@@ -101,8 +101,8 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
     });
     const body = await response.json();
 
-    expect(response.status).toBe(409);
-    expect(body.code).toBe('IMPLEMENT_PRECONDITION_FAILED');
+    expect(response.status).toBe(500);
+    expect(body.code).toBe('INTERNAL_ERROR');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s9-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-456');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');

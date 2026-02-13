@@ -154,10 +154,17 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe('SPEC_NOT_READY');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('STATE');
+    expect(body.nextAction).toBe('Wait for spec ready');
+    expect(body.requestId).toBeTruthy();
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
+    expect(response.headers.get('x-afu9-error-code')).toBe('SPEC_NOT_READY');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-missing-config')).toBe('');
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
@@ -195,6 +202,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('CONFIG');
+    expect(body.nextAction).toBe('Configure guardrails');
+    expect(body.requestId).toBe('req-123');
     expect(Array.isArray(body.missingConfig)).toBe(true);
     expect(body.missingConfig).toContain('GITHUB_APP_ID');
     expect(body.missingConfig).toContain('GITHUB_APP_PRIVATE_KEY_PEM');
@@ -204,6 +215,9 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-missing-config')).toBe(
       'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
     );
@@ -235,7 +249,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.code).toBe('IMPLEMENT_FAILED');
+    expect(body.code).toBe('INTERNAL_ERROR');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
     expect(response.headers.get('x-cf-handler')).toBe('s1s3-implement');
