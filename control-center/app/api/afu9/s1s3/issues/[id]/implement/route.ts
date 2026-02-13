@@ -125,6 +125,32 @@ function setAfu9Headers(
   return response;
 }
 
+function stamp(
+  response: Response,
+  meta: {
+    requestId: string;
+    handler: string;
+    phase?: string;
+    blockedBy?: string;
+    errorCode?: string;
+  }
+): Response {
+  const buildStamp =
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT_SHA ??
+    process.env.COMMIT_SHA ??
+    'unknown';
+  response.headers.set('x-afu9-request-id', meta.requestId);
+  response.headers.set('x-afu9-handler', meta.handler);
+  if (meta.phase) response.headers.set('x-afu9-phase', meta.phase);
+  if (meta.blockedBy) response.headers.set('x-afu9-blocked-by', meta.blockedBy);
+  if (meta.errorCode) response.headers.set('x-afu9-error-code', meta.errorCode);
+  response.headers.set('x-afu9-control-build', buildStamp);
+  response.headers.set('cache-control', 'no-store');
+  return response;
+}
+
 function resolveGitHubAppMissingConfig(): string[] {
   const appId = process.env.GITHUB_APP_ID || process.env.GH_APP_ID;
   const appKey = process.env.GITHUB_APP_PRIVATE_KEY_PEM || process.env.GH_APP_PRIVATE_KEY_PEM;
@@ -222,7 +248,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       })
     );
-    return setAfu9Headers(response, requestId, HANDLER_MARKER);
+    return stamp(setAfu9Headers(response, requestId, HANDLER_MARKER), {
+      requestId,
+      handler: HANDLER_MARKER,
+      phase: 'preflight',
+      blockedBy: 'CONFIG',
+      errorCode: S3_IMPLEMENT_CODES.GUARDRAIL_CONFIG_MISSING,
+    });
   }
 
   const stageId = stageEntry.stageId;
@@ -280,13 +312,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
         extraHeaders: responseHeaders,
       })
     );
-    return setAfu9Headers(
-      response,
-      requestId,
-      HANDLER_MARKER,
-      authPath,
-      params.phase,
-      params.missingConfig ?? missingConfig
+    return stamp(
+      setAfu9Headers(
+        response,
+        requestId,
+        HANDLER_MARKER,
+        authPath,
+        params.phase,
+        params.missingConfig ?? missingConfig
+      ),
+      {
+        requestId,
+        handler: HANDLER_MARKER,
+        phase: params.phase,
+        blockedBy: params.blockedBy,
+        errorCode: params.code,
+      }
     );
   };
 
@@ -297,7 +338,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
         headers: responseHeaders,
       })
     );
-    return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath, phase, missingConfig);
+    return stamp(
+      setAfu9Headers(response, requestId, HANDLER_MARKER, authPath, phase, missingConfig),
+      {
+        requestId,
+        handler: HANDLER_MARKER,
+        phase,
+      }
+    );
   };
 
   const respondWithPreflightDecision = (decision: PreflightDecision) => {

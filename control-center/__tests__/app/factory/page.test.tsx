@@ -120,8 +120,14 @@ describe('Factory Status UI Page', () => {
     render(<FactoryPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/API error: 500/i)).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalled();
     });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading factory status...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/API error: 500/i)).toBeInTheDocument();
   });
 
   test('should show factory runs section', async () => {

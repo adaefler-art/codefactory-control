@@ -74,6 +74,31 @@ export const revalidate = 0;
 const AUTH_PATH = 'control';
 const CF_HANDLER = 's1s3-spec';
 
+function stamp(
+  response: Response,
+  meta: {
+    requestId: string;
+    handler: string;
+    phase?: string;
+    blockedBy?: string;
+    errorCode?: string;
+  }
+): Response {
+  const buildStamp =
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT_SHA ??
+    process.env.COMMIT_SHA ??
+    'unknown';
+  response.headers.set('x-afu9-request-id', meta.requestId);
+  response.headers.set('x-afu9-handler', meta.handler);
+  if (meta.phase) response.headers.set('x-afu9-phase', meta.phase);
+  if (meta.blockedBy) response.headers.set('x-afu9-blocked-by', meta.blockedBy);
+  if (meta.errorCode) response.headers.set('x-afu9-error-code', meta.errorCode);
+  response.headers.set('x-afu9-control-build', buildStamp);
+  response.headers.set('cache-control', 'no-store');
+  return response;
+}
 
 function getStringField(record: Record<string, unknown>, ...keys: string[]): string | null {
   for (const key of keys) {
@@ -168,7 +193,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
   if (!stageEntry || !specRoute?.handler) {
     const registryError = getStageRegistryError('S2');
-    return makeAfu9Error({
+    const response = makeAfu9Error({
       stage: 'S2',
       code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
       phase: 'preflight',
@@ -191,6 +216,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         }),
         'x-cf-handler': CF_HANDLER,
       },
+    });
+    return stamp(response, {
+      requestId,
+      handler: CF_HANDLER,
+      phase: 'preflight',
+      blockedBy: 'CONFIG',
+      errorCode: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
     });
   }
 
@@ -224,7 +256,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     extraHeaders?: Record<string, string>;
   }) => {
     const message = params.detailsSafe || 'Request failed';
-    return makeAfu9Error({
+    const response = makeAfu9Error({
       stage: 'S2',
       code: params.code,
       phase: params.phase,
@@ -249,6 +281,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         ...(params.extraHeaders ?? {}),
       },
     });
+    return stamp(response, {
+      requestId,
+      handler: CF_HANDLER,
+      phase: params.phase,
+      blockedBy: params.blockedBy,
+      errorCode: params.code,
+    });
   };
 
   const buildBlockedMessage = (missingConfig: string[]): string => {
@@ -257,7 +296,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
   };
 
   const respondWithPreflightDecision = (decision: PreflightDecision) => {
-    return makeAfu9Error({
+    const response = makeAfu9Error({
       stage: 'S2',
       code: decision.code,
       phase: decision.phase,
@@ -275,6 +314,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         scopeResolved: 's1s3',
       },
       extraHeaders: responseHeaders,
+    });
+    return stamp(response, {
+      requestId,
+      handler: CF_HANDLER,
+      phase: decision.phase,
+      blockedBy: decision.blockedBy,
+      errorCode: decision.code,
     });
   };
 
@@ -472,7 +518,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         foundBy,
       });
 
-      return makeAfu9Error({
+      const response = makeAfu9Error({
         stage: 'S2',
         code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
         phase: 'preflight',
@@ -486,6 +532,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           lookupStore: 'control',
         },
         extraHeaders: responseHeaders,
+      });
+      return stamp(response, {
+        requestId,
+        handler: CF_HANDLER,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        errorCode: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
       });
     }
 
@@ -682,7 +735,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         blockedReason,
       };
 
-      return jsonResponse(
+      const response = jsonResponse(
         {
           ok: true,
           issueId: updatedIssue.id,
@@ -712,6 +765,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           headers: responseHeaders,
         }
       );
+      return stamp(response, {
+        requestId,
+        handler: CF_HANDLER,
+        phase: 'success',
+      });
     }
 
     let syncStatus: 'SUCCEEDED' | 'SKIPPED' | 'FAILED' = 'SUCCEEDED';
@@ -794,7 +852,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       run_id: run.id,
     });
 
-    return jsonResponse(
+    const response = jsonResponse(
       {
         ok: true,
         issueId: updatedIssue.id,
@@ -822,6 +880,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         headers: responseHeaders,
       }
     );
+    return stamp(response, {
+      requestId,
+      handler: CF_HANDLER,
+      phase: 'success',
+    });
   } catch (error) {
     console.error('[API /api/afu9/s1s3/issues/[id]/spec] Error setting spec:', error);
     const upstreamStatus =

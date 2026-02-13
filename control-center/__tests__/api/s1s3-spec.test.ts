@@ -194,7 +194,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-scope-requested')).toBe('s1s3');
     expect(response.headers.get('x-afu9-scope-resolved')).toBe('s1s3');
     expect(response.headers.get('x-afu9-stage')).toBe('S2');
-    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-spec');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-1');
+    expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-error-code')).toBeNull();
     expect(body.ok).toBe(true);
     expect(body.issueId).toBe(issueId);
@@ -301,10 +304,11 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.nextAction).toBe('Allowlist repo for repo-write');
     expect(body.requestId).toBe('req-guardrail-1');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-1');
-    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-spec');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-blocked-by')).toBe('POLICY');
     expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-missing-config')).toBeNull();
     expect(mockSyncAfu9SpecToGitHubIssue).not.toHaveBeenCalled();
@@ -418,7 +422,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
       'GITHUB_APP_SECRET_ID',
     ]);
     expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-2');
-    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-spec');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
     expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
@@ -480,7 +484,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-mirror-1');
-    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-spec');
   });
 
   it('spec_saves_and_returns_200_when_github_missing_with_blocked_run_step', async () => {
@@ -888,7 +892,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-2');
-    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-spec');
   });
 
   it('enforces acceptanceCriteria minItems=1', async () => {
