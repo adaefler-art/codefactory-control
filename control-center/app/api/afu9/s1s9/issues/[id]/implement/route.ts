@@ -4,7 +4,6 @@ import { POST as postS1S3Implement } from '../../../../s1s3/issues/[id]/implemen
 import { isIssueNotFound, withAfu9ScopeFallback, buildAfu9ScopeHeaders } from '../../../_shared';
 import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
 import { getControlResponseHeaders } from '../../../../../issues/_shared';
-import { makeAfu9Error, S3_IMPLEMENT_CODES } from '@/lib/afu9/workflow-errors';
 
 interface RouteContext {
 	params: Promise<{
@@ -69,11 +68,6 @@ function parseMissingConfig(value: string | null): string[] {
 		.filter((entry) => entry.length > 0);
 }
 
-function isProxyTypeError(error: unknown): boolean {
-	if (!(error instanceof TypeError)) return false;
-	return error.message.toLowerCase().includes('cannot create proxy with a non-object as target or handler');
-}
-
 async function postS1S9Implement(request: NextRequest, context: RouteContext) {
 	const lookupResponse = await getS1S9Issue(request, context);
 	if (await isIssueNotFound(lookupResponse)) {
@@ -123,27 +117,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 			missingConfig
 		);
 	} catch (error) {
-		if (isProxyTypeError(error)) {
-			const response = applyHandlerHeaders(
-				makeAfu9Error({
-					stage: 'S3',
-					code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
-					phase: 'preflight',
-					blockedBy: 'INTERNAL',
-					nextAction: 'Retry implement when proxy ready',
-					requestId,
-					handler: HANDLER_MARKER,
-					extraBody: {
-						scopeRequested: 's1s9',
-						scopeResolved: 's1s9',
-						detailsSafe: 'Implement precondition failed',
-						thrown: false,
-					},
-					extraHeaders: responseHeaders,
-				})
-			);
-			return setAfu9Headers(response, requestId, HANDLER_MARKER, 'unknown', 'preflight', []);
-		}
 		throw error;
 	}
 }

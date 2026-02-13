@@ -114,6 +114,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       GITHUB_APP_ID: '12345',
       GITHUB_APP_PRIVATE_KEY_PEM: 'dummy-key',
       AFU9_GITHUB_IMPLEMENT_LABEL: 'afu9:implement',
+      AFU9_GITHUB_IMPLEMENT_COMMENT: 'Please implement this issue.',
       AFU9_STAGE: 'dev',
     };
     __resetPolicyCache();
@@ -178,7 +179,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(body.phase).toBe('preflight');
     expect(body.blockedBy).toBe('CONFIG');
-    expect(body.nextAction).toBe('Configure guardrails');
+    expect(body.nextAction).toBe('Set required config in runtime');
     expect(body.requestId).toBeTruthy();
     expect(body.requiredConfig).toEqual([
       'GITHUB_APP_ID',
@@ -238,7 +239,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
     expect(body.phase).toBe('preflight');
     expect(body.blockedBy).toBe('POLICY');
-    expect(body.nextAction).toBe('Allowlist repo');
+    expect(body.nextAction).toBe('Allowlist repo for repo-write');
     expect(body.requestId).toBeTruthy();
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
@@ -392,11 +393,22 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
     expect(body.code).toBe('IMPLEMENT_TRIGGER_CONFIG_MISSING');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('CONFIG');
+    expect(body.nextAction).toBe('Configure implement trigger label/comment');
+    expect(body.requestId).toBeTruthy();
     expect(body.requiredConfig).toEqual([
       'AFU9_GITHUB_IMPLEMENT_LABEL',
       'AFU9_GITHUB_IMPLEMENT_COMMENT',
     ]);
-    expect(response.headers.get('x-afu9-auth-path')).toBe('app');
+    expect(response.headers.get('x-afu9-error-code')).toBe('IMPLEMENT_TRIGGER_CONFIG_MISSING');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
+    expect(response.headers.get('x-afu9-error-code')).toBe('IMPLEMENT_TRIGGER_CONFIG_MISSING');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-missing-config')).toBe(
       'AFU9_GITHUB_IMPLEMENT_LABEL,AFU9_GITHUB_IMPLEMENT_COMMENT'
@@ -427,9 +439,46 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
     expect(body.code).toBe('GITHUB_MIRROR_MISSING');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('STATE');
+    expect(body.nextAction).toBe('Link GitHub issue (S1) or restore mirror metadata');
+    expect(body.requestId).toBeTruthy();
+    expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_MIRROR_MISSING');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
+  });
+
+  test('maps proxy TypeError to SPEC_NOT_READY preflight', async () => {
+    setupTriggerRunMocks();
+    mockTriggerAfu9Implementation.mockRejectedValue(
+      new TypeError('Cannot create proxy with a non-object as target or handler')
+    );
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'x-request-id': 'req-proxy' },
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('SPEC_NOT_READY');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('STATE');
+    expect(body.nextAction).toBe('Complete and save S2 spec');
+    expect(body.requestId).toBe('req-proxy');
+    expect(response.headers.get('x-afu9-error-code')).toBe('SPEC_NOT_READY');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-proxy');
   });
 
   test('triggers GitHub implementation and returns 202', async () => {

@@ -153,6 +153,14 @@ const EXTERNALLY_CALLED_ROUTES = [
   '/api/build-info',                // Build metadata endpoint
   '/api/metrics',                   // Prometheus/monitoring metrics
   '/api/webhooks/events/[id]',      // Webhook event retrieval (external polling)
+  '/api/afu9/guardrails/audit',      // External ops/automation caller, guardrails
+  '/api/afu9/guardrails/preflight',  // External ops/automation caller, guardrails
+  '/api/afu9/issues/[id]/workflow-status', // External poller (engine/UI), S1-S3 workflow
+  '/api/afu9/s1s9/issues/[id]',      // UI/engine proxy, S1/S2/S3 (s1s9 wrapper)
+  '/api/afu9/s1s9/issues/[id]/spec', // UI/engine proxy, S2 (s1s9 wrapper)
+  '/api/afu9/s1s9/issues/[id]/implement', // UI/engine proxy, S3 (s1s9 wrapper)
+  '/api/docs',                      // External docs viewer, docs
+  '/api/openapi.json',              // External OpenAPI consumer, docs
 ];
 
 // ============================================================================
