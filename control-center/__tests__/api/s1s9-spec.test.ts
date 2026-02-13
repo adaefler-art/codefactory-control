@@ -15,6 +15,7 @@ import {
   updateS1S3IssueSpec,
 } from '../../src/lib/db/s1s3Flow';
 import { syncAfu9SpecToGitHubIssue } from '../../src/lib/github/issue-sync';
+import { __resetPolicyCache } from '../../src/lib/github/auth-wrapper';
 
 const mockGetS1S9Issue = jest.fn();
 
@@ -68,20 +69,29 @@ describe('POST /api/afu9/s1s9/issues/[id]/spec', () => {
   const setBackendMissingGithub = () => {
     delete process.env.GITHUB_APP_ID;
     delete process.env.GITHUB_APP_PRIVATE_KEY_PEM;
+    delete process.env.GITHUB_APP_SECRET_ID;
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     process.env = { ...originalEnv };
+    process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+      allowlist: [{ owner: 'octo', repo: 'repo', branches: ['main'] }],
+    });
+    process.env.AFU9_GUARDRAILS_ENABLED = 'false';
+    process.env.AFU9_GUARDRAILS_TOKEN_SCOPE = 'write';
     setBackendReady();
+    __resetPolicyCache();
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    __resetPolicyCache();
   });
 
   it('spec_saves_and_returns_200_when_backend_missing_with_blocked_run_step', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+    process.env.AFU9_GUARDRAILS_ENABLED = 'false';
     setBackendMissingGithub();
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({

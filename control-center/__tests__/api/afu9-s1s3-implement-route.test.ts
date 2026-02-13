@@ -9,8 +9,7 @@ import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/impl
 import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow';
 import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 import { triggerAfu9Implementation } from '../../src/lib/github/issue-sync';
-import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper';
-import { GitHubAppConfigError } from '../../src/lib/github-app-auth';
+import { createAuthenticatedClient, __resetPolicyCache } from '../../src/lib/github/auth-wrapper';
 
 const mockGetS1S3IssueById = jest.fn();
 const mockCreateS1S3Run = jest.fn();
@@ -71,6 +70,18 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     process.env.AFU9_STAGE = 'local';
     process.env.AFU9_GITHUB_IMPLEMENT_LABEL = 'implement';
     process.env.AFU9_GITHUB_IMPLEMENT_COMMENT = 'go';
+    process.env.AFU9_GUARDRAILS_ENABLED = 'true';
+    process.env.AFU9_GUARDRAILS_TOKEN_SCOPE = 'write';
+    process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+      allowlist: [{ owner: 'org', repo: 'repo', branches: ['main'] }],
+    });
+    process.env.GITHUB_APP_ID = 'afu9-app';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = 'test-key';
+    delete process.env.GITHUB_APP_SECRET_ID;
+    delete process.env.GH_APP_ID;
+    delete process.env.GH_APP_PRIVATE_KEY_PEM;
+    delete process.env.GH_APP_SECRET_ID;
+    __resetPolicyCache();
 
     mockGetStageRegistryEntry.mockReturnValue({
       stageId: 'S3',
@@ -88,6 +99,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       uuid: 'issue-123',
       source: 'control',
     });
+  });
+
+  afterEach(() => {
+    __resetPolicyCache();
   });
 
   test('returns 409 + handler headers when mirror missing', async () => {
@@ -147,7 +162,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
-  test('returns 409 + handler headers when github auth missing', async () => {
+  test('returns 409 + handler headers when guardrail config missing', async () => {
     mockGetS1S3IssueById.mockResolvedValue({
       success: true,
       data: {
@@ -159,9 +174,13 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
         github_issue_url: 'https://github.com/org/repo/issues/42',
       },
     });
-    mockCreateAuthenticatedClient.mockRejectedValue(
-      new GitHubAppConfigError('Missing GITHUB_APP_ID')
-    );
+    process.env.GITHUB_APP_ID = '';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '';
+    process.env.GITHUB_APP_SECRET_ID = '';
+    process.env.GH_APP_ID = '';
+    process.env.GH_APP_PRIVATE_KEY_PEM = '';
+    process.env.GH_APP_SECRET_ID = '';
+    __resetPolicyCache();
 
     const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
       method: 'POST',
@@ -175,7 +194,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     const body = await response.json();
 
     expect(response.status).toBe(409);
-    expect(body.code).toBe('GITHUB_AUTH_MISSING');
+    expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(Array.isArray(body.missingConfig)).toBe(true);
     expect(body.missingConfig).toContain('GITHUB_APP_ID');
     expect(body.missingConfig).toContain('GITHUB_APP_PRIVATE_KEY_PEM');

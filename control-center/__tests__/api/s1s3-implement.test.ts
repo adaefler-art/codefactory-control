@@ -12,7 +12,7 @@
 import { POST as implementIssue } from '../../app/api/afu9/s1s3/issues/[id]/implement/route';
 import { S1S3IssueStatus } from '../../src/lib/contracts/s1s3Flow';
 import { triggerAfu9Implementation } from '../../src/lib/github/issue-sync';
-import { createAuthenticatedClient } from '../../src/lib/github/auth-wrapper';
+import { createAuthenticatedClient, __resetPolicyCache } from '../../src/lib/github/auth-wrapper';
 import { GitHubAppConfigError } from '../../src/lib/github-app-auth';
 import {
   getS1S3IssueById,
@@ -107,11 +107,16 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     jest.clearAllMocks();
     process.env = {
       ...envSnapshot,
+      GITHUB_REPO_ALLOWLIST: JSON.stringify({
+        allowlist: [{ owner: 'owner', repo: 'repo', branches: ['main'] }],
+      }),
+      AFU9_GUARDRAILS_TOKEN_SCOPE: 'write',
       GITHUB_APP_ID: '12345',
       GITHUB_APP_PRIVATE_KEY_PEM: 'dummy-key',
       AFU9_GITHUB_IMPLEMENT_LABEL: 'afu9:implement',
       AFU9_STAGE: 'dev',
     };
+    __resetPolicyCache();
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
       type: 'uuid',
@@ -131,13 +136,26 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
   afterEach(() => {
     process.env = { ...envSnapshot };
+    __resetPolicyCache();
   });
 
-  test('returns GITHUB_AUTH_MISSING when dispatch config is missing', async () => {
+  test('returns GUARDRAIL_CONFIG_MISSING when guardrail config is missing', async () => {
     process.env = {
       ...envSnapshot,
+      AFU9_GUARDRAILS_ENABLED: 'true',
       AFU9_STAGE: 'dev',
+      GITHUB_REPO_ALLOWLIST: JSON.stringify({
+        allowlist: [{ owner: 'owner', repo: 'repo', branches: ['main'] }],
+      }),
+      AFU9_GUARDRAILS_TOKEN_SCOPE: 'write',
     };
+    process.env.GITHUB_APP_ID = '';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '';
+    process.env.GITHUB_APP_SECRET_ID = '';
+    process.env.GH_APP_ID = '';
+    process.env.GH_APP_PRIVATE_KEY_PEM = '';
+    process.env.GH_APP_SECRET_ID = '';
+    __resetPolicyCache();
     mockGetS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
     mockCreateAuthenticatedClient.mockRejectedValue(
       new GitHubAppConfigError('Missing GITHUB_APP_ID')
@@ -157,7 +175,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
     expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('GITHUB_AUTH_MISSING');
+    expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(body.requiredConfig).toEqual([
       'GITHUB_APP_ID',
       'GITHUB_APP_PRIVATE_KEY_PEM',
@@ -174,13 +192,49 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-handler')).toBeTruthy();
     expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
-    expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-missing-config')).toBe(
       'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
     );
-    expect(mockCreateAuthenticatedClient).toHaveBeenCalled();
+    expect(mockCreateAuthenticatedClient).not.toHaveBeenCalled();
+    expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();
+  });
+
+  test('blocks when repo is not allowlisted', async () => {
+    process.env = {
+      ...envSnapshot,
+      AFU9_GUARDRAILS_ENABLED: 'true',
+      GITHUB_REPO_ALLOWLIST: JSON.stringify({
+        allowlist: [{ owner: 'allowed', repo: 'repo', branches: ['main'] }],
+      }),
+      AFU9_GUARDRAILS_TOKEN_SCOPE: 'write',
+      GITHUB_APP_ID: '12345',
+      GITHUB_APP_PRIVATE_KEY_PEM: 'dummy-key',
+      AFU9_GITHUB_IMPLEMENT_LABEL: 'afu9:implement',
+      AFU9_STAGE: 'dev',
+    };
+    __resetPolicyCache();
+    mockGetS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
+
+    const request = new Request('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({ baseBranch: 'main' }),
+    }) as unknown as Parameters<typeof implementIssue>[0];
+
+    const response = await implementIssue(request, {
+      params: Promise.resolve({ id: 'issue-123' }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe('');
+    expect(mockCreateAuthenticatedClient).not.toHaveBeenCalled();
     expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
@@ -297,10 +351,16 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
   test('returns IMPLEMENT_TRIGGER_CONFIG_MISSING when trigger config is missing', async () => {
     process.env = {
       ...envSnapshot,
+      AFU9_GUARDRAILS_ENABLED: 'true',
+      AFU9_GUARDRAILS_TOKEN_SCOPE: 'write',
+      GITHUB_REPO_ALLOWLIST: JSON.stringify({
+        allowlist: [{ owner: 'owner', repo: 'repo', branches: ['main'] }],
+      }),
       GITHUB_APP_ID: '12345',
       GITHUB_APP_PRIVATE_KEY_PEM: 'dummy-key',
       AFU9_STAGE: 'dev',
     };
+    __resetPolicyCache();
 
     mockGetS1S3IssueById.mockResolvedValue({ success: true, data: mockIssue });
 

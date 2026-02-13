@@ -58,6 +58,7 @@ import {
   resolveStageMissingConfig,
 } from '@/lib/stage-registry';
 import { syncAfu9SpecToGitHubIssue } from '@/lib/github/issue-sync';
+import { evaluateGuardrailsPreflight } from '@/lib/guardrails/preflight-evaluator';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -84,6 +85,46 @@ function getNumberField(record: Record<string, unknown>, ...keys: string[]): num
     }
   }
   return null;
+}
+
+function hasValue(value: string | undefined | null): boolean {
+  return Boolean(value && value.trim().length > 0);
+}
+
+function resolveGitHubAppMissingConfig(): string[] {
+  const appId = process.env.GITHUB_APP_ID || process.env.GH_APP_ID;
+  const appKey = process.env.GITHUB_APP_PRIVATE_KEY_PEM || process.env.GH_APP_PRIVATE_KEY_PEM;
+  const appSecretId = process.env.GITHUB_APP_SECRET_ID || process.env.GH_APP_SECRET_ID;
+  const hasAppId = hasValue(appId);
+  const hasAppKey = hasValue(appKey);
+  const hasSecretId = hasValue(appSecretId);
+  const dispatcherConfigured = (hasAppId && hasAppKey) || hasSecretId;
+
+  if (dispatcherConfigured) {
+    return [];
+  }
+
+  const missing: string[] = [];
+  if (!hasAppId) {
+    missing.push('GITHUB_APP_ID');
+  }
+  if (!hasAppKey) {
+    missing.push('GITHUB_APP_PRIVATE_KEY_PEM');
+  }
+  if (!hasSecretId) {
+    missing.push('GITHUB_APP_SECRET_ID');
+  }
+
+  return missing;
+}
+
+function isGuardrailsEnabled(): boolean {
+  const raw = process.env.AFU9_GUARDRAILS_ENABLED;
+  if (!raw) {
+    return true;
+  }
+  const normalized = raw.trim().toLowerCase();
+  return !['0', 'false', 'no', 'off'].includes(normalized);
 }
 
 function deriveRepoFullName(issue: Record<string, unknown>): string | null {
@@ -171,6 +212,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     upstreamStatus?: number;
     upstreamErrorCode?: string;
     extraBody?: Record<string, unknown>;
+    extraHeaders?: Record<string, string>;
   }) => {
     const message = params.detailsSafe || 'Request failed';
     return jsonResponse(
@@ -194,6 +236,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         requestId,
         headers: {
           ...responseHeaders,
+          ...(params.extraHeaders ?? {}),
           'x-afu9-error-code': params.errorCode,
         },
       }
@@ -231,6 +274,22 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           status: 401,
           errorCode: 'spec_unauthorized',
           detailsSafe: expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
+        });
+      }
+    }
+
+    if (isGuardrailsEnabled()) {
+      const earlyGuardrailMissingConfig = resolveGitHubAppMissingConfig();
+      if (earlyGuardrailMissingConfig.length > 0) {
+        return respondWithSpecError({
+          status: 409,
+          errorCode: 'GUARDRAIL_CONFIG_MISSING',
+          detailsSafe: `Missing required config: ${earlyGuardrailMissingConfig.join(', ')}`,
+          extraBody: { missingConfig: earlyGuardrailMissingConfig },
+          extraHeaders: {
+            'x-afu9-phase': 'preflight',
+            'x-afu9-missing-config': earlyGuardrailMissingConfig.join(','),
+          },
         });
       }
     }
@@ -417,7 +476,23 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       });
     }
 
+
     // Update issue with spec data
+      if (isGuardrailsEnabled()) {
+        const earlyGuardrailMissingConfig = resolveGitHubAppMissingConfig();
+        if (earlyGuardrailMissingConfig.length > 0) {
+          return respondWithSpecError({
+            status: 409,
+            errorCode: 'GUARDRAIL_CONFIG_MISSING',
+            detailsSafe: `Missing required config: ${earlyGuardrailMissingConfig.join(', ')}`,
+            extraBody: { missingConfig: earlyGuardrailMissingConfig },
+            extraHeaders: {
+              'x-afu9-phase': 'preflight',
+              'x-afu9-missing-config': earlyGuardrailMissingConfig.join(','),
+            },
+          });
+        }
+      }
     const updateResult = await updateS1S3IssueSpec(pool, issue.id, {
       problem: problem?.trim() || null,
       scope: scope?.trim() || null,
@@ -604,6 +679,45 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       syncMessage = 'GitHub issue metadata missing for sync.';
       syncErrorCode = 'GITHUB_METADATA_MISSING';
     } else {
+      if (isGuardrailsEnabled()) {
+        const guardrailMissingConfig = resolveGitHubAppMissingConfig();
+        if (guardrailMissingConfig.length > 0) {
+          return respondWithSpecError({
+            status: 409,
+            errorCode: 'GUARDRAIL_CONFIG_MISSING',
+            detailsSafe: `Missing required config: ${guardrailMissingConfig.join(', ')}`,
+            extraBody: { missingConfig: guardrailMissingConfig },
+            extraHeaders: {
+              'x-afu9-phase': 'preflight',
+              'x-afu9-missing-config': guardrailMissingConfig.join(','),
+            },
+          });
+        }
+
+        const guardrailDecision = evaluateGuardrailsPreflight({
+          requestId,
+          operation: 'repo_write',
+          repo: repoFullName,
+          actor: updatedIssue.owner ?? undefined,
+          capabilities: ['repo-write'],
+          requiresConfig: [],
+        });
+
+        if (guardrailDecision.outcome === 'deny') {
+          const missingConfig = guardrailDecision.missingConfig ?? [];
+          return respondWithSpecError({
+            status: 409,
+            errorCode: guardrailDecision.code,
+            detailsSafe: guardrailDecision.detailsSafe || 'Guardrail blocked',
+            extraBody: missingConfig.length > 0 ? { missingConfig } : undefined,
+            extraHeaders: {
+              'x-afu9-phase': 'preflight',
+              'x-afu9-missing-config': missingConfig.join(','),
+            },
+          });
+        }
+      }
+
       const [owner, repo] = repoFullName.split('/');
       try {
         const syncResult = await syncAfu9SpecToGitHubIssue({
