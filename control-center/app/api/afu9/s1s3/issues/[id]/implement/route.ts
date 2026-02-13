@@ -48,6 +48,7 @@ import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-regist
 import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
 import { GitHubAppConfigError, GitHubAppKeyFormatError } from '@/lib/github-app-auth';
 import { triggerAfu9Implementation } from '@/lib/github/issue-sync';
+import { evaluateGuardrailsPreflight } from '@/lib/guardrails/preflight-evaluator';
 
 // Avoid stale reads
 export const dynamic = 'force-dynamic';
@@ -65,6 +66,9 @@ interface RouteContext {
 type S3ErrorCode =
   | 'AFU9_STAGE_MISSING'
   | 'ENGINE_MISCONFIGURED'
+  | 'GUARDRAIL_REPO_NOT_ALLOWED'
+  | 'GUARDRAIL_TOKEN_SCOPE_INVALID'
+  | 'GUARDRAIL_CONFIG_MISSING'
   | 'GITHUB_WRITE_DENIED'
   | 'GITHUB_MIRROR_MISSING'
   | 'SPEC_NOT_READY'
@@ -429,6 +433,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const [repoOwner, repoName] = repoFullName.split('/');
+
+    const guardrailDecision = evaluateGuardrailsPreflight({
+      requestId,
+      operation: 'repo_write',
+      repo: repoFullName,
+      actor: issue.owner ?? undefined,
+      capabilities: ['repo-write'],
+      requiresConfig: resolveGitHubAppMissingConfig(),
+    });
+
+    if (guardrailDecision.outcome === 'deny') {
+      missingConfig = guardrailDecision.missingConfig ?? [];
+      return respondS3Error({
+        status: 409,
+        code: guardrailDecision.code,
+        message: guardrailDecision.detailsSafe || 'Guardrail blocked',
+        requiredConfig: missingConfig.length > 0 ? missingConfig : undefined,
+        missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
+        preconditionFailed: 'GUARDRAIL_BLOCKED',
+        detailsSafe: guardrailDecision.detailsSafe || 'Guardrail blocked',
+        phase: 'preflight',
+      });
+    }
 
     // Canonical GitHub client for AFU9 write paths: auth-wrapper createAuthenticatedClient (S1/S2).
     let authClient;

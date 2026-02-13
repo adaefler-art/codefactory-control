@@ -15,6 +15,7 @@ import {
   updateS1S3IssueSpec,
 } from '../../src/lib/db/s1s3Flow';
 import { syncAfu9SpecToGitHubIssue } from '../../src/lib/github/issue-sync';
+import { __resetPolicyCache } from '../../src/lib/github/auth-wrapper';
 
 jest.mock('@/lib/db', () => ({
   getPool: jest.fn(() => ({
@@ -66,12 +67,20 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreateS1S3RunStep.mockReset();
     process.env = { ...originalEnv };
+    process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+      allowlist: [{ owner: 'octo', repo: 'repo', branches: ['main'] }],
+    });
+    process.env.AFU9_GUARDRAILS_ENABLED = 'false';
+    process.env.AFU9_GUARDRAILS_TOKEN_SCOPE = 'write';
     setBackendReady();
+    __resetPolicyCache();
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    __resetPolicyCache();
   });
 
   it('accepts a minimal valid body', async () => {
@@ -194,8 +203,219 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.githubSync?.status).toBe('SUCCEEDED');
   });
 
+  it('blocks when repo is not allowlisted before GitHub sync', async () => {
+    process.env.AFU9_GUARDRAILS_ENABLED = 'true';
+    process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+      allowlist: [{ owner: 'allowed', repo: 'repo', branches: ['main'] }],
+    });
+    __resetPolicyCache();
+    const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: issueId,
+      issue: { id: issueId },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'CREATED',
+        owner: 'afu9',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: [],
+      },
+    });
+
+    mockCreateS1S3Run.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'run-guardrail-1',
+        status: 'RUNNING',
+      },
+    });
+
+    mockCreateS1S3RunStep
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-start',
+          status: 'STARTED',
+          step_name: 'Spec Ready',
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-spec',
+          status: 'SUCCEEDED',
+          step_name: 'Spec Ready',
+        },
+      });
+
+    mockUpdateS1S3IssueSpec.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'SPEC_READY',
+        spec_ready_at: '2024-01-01T00:00:00Z',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: ['AC1'],
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/spec`,
+      {
+        method: 'POST',
+        headers: new Headers({
+          'content-type': 'application/json',
+          'x-request-id': 'req-guardrail-1',
+          'x-afu9-sub': 'test-user',
+        }),
+        body: JSON.stringify({
+          scope: 'Test scope',
+          acceptanceCriteria: ['AC1'],
+        }),
+      }
+    );
+
+    const response = await postSpec(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-1');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe('');
+    expect(mockSyncAfu9SpecToGitHubIssue).not.toHaveBeenCalled();
+  });
+
+  it('blocks when guardrail config is missing before GitHub sync', async () => {
+    const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+    process.env.AFU9_GUARDRAILS_ENABLED = 'true';
+    process.env.AFU9_GUARDRAILS_TOKEN_SCOPE = 'write';
+    process.env.GITHUB_REPO_ALLOWLIST = JSON.stringify({
+      allowlist: [{ owner: 'octo', repo: 'repo', branches: ['main'] }],
+    });
+    process.env.GITHUB_APP_ID = '';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '';
+    process.env.GITHUB_APP_SECRET_ID = '';
+    process.env.GH_APP_ID = '';
+    process.env.GH_APP_PRIVATE_KEY_PEM = '';
+    process.env.GH_APP_SECRET_ID = '';
+    __resetPolicyCache();
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: issueId,
+      issue: { id: issueId },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'CREATED',
+        owner: 'afu9',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: [],
+      },
+    });
+
+    mockCreateS1S3Run.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'run-guardrail-2',
+        status: 'RUNNING',
+      },
+    });
+
+    mockCreateS1S3RunStep
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-start',
+          status: 'STARTED',
+          step_name: 'Spec Ready',
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'step-spec',
+          status: 'SUCCEEDED',
+          step_name: 'Spec Ready',
+        },
+      });
+
+    mockUpdateS1S3IssueSpec.mockResolvedValue({
+      success: true,
+      data: {
+        id: issueId,
+        status: 'SPEC_READY',
+        spec_ready_at: '2024-01-01T00:00:00Z',
+        repo_full_name: 'octo/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/octo/repo/issues/42',
+        acceptance_criteria: ['AC1'],
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/spec`,
+      {
+        method: 'POST',
+        headers: new Headers({
+          'content-type': 'application/json',
+          'x-request-id': 'req-guardrail-2',
+          'x-afu9-sub': 'test-user',
+        }),
+        body: JSON.stringify({
+          scope: 'Test scope',
+          acceptanceCriteria: ['AC1'],
+        }),
+      }
+    );
+
+    const response = await postSpec(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(body.missingConfig).toEqual([
+      'GITHUB_APP_ID',
+      'GITHUB_APP_PRIVATE_KEY_PEM',
+      'GITHUB_APP_SECRET_ID',
+    ]);
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-2');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-missing-config')).toBe(
+      'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
+    );
+    expect(mockSyncAfu9SpecToGitHubIssue).not.toHaveBeenCalled();
+  });
+
   it('spec_saves_and_returns_200_when_github_missing_with_blocked_run_step', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+    process.env.AFU9_GUARDRAILS_ENABLED = 'false';
     setBackendMissingGithub();
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
@@ -313,6 +533,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
   it('spec_saves_and_returns_200_when_github_sync_fails', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+    process.env.AFU9_GUARDRAILS_ENABLED = 'false';
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
@@ -426,6 +647,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
   it('spec_returns_normal_run_step_when_backend_available', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+    process.env.AFU9_GUARDRAILS_ENABLED = 'false';
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
       ok: true,
