@@ -271,6 +271,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GITHUB_AUTH_INVALID');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-401');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-auth-path')).toBe('app');
   });
 

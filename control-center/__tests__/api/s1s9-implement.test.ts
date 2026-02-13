@@ -7,53 +7,30 @@
 import { NextRequest } from 'next/server';
 import { POST as postS1S9Implement } from '../../app/api/afu9/s1s9/issues/[id]/implement/route';
 import { POST as postS1S3Implement } from '../../app/api/afu9/s1s3/issues/[id]/implement/route';
-import { GET as getS1S9Issue } from '../../app/api/afu9/issues/[id]/route';
-import { withAfu9ScopeFallback } from '../../app/api/afu9/s1s9/_shared';
 
 jest.mock('../../app/api/afu9/s1s3/issues/[id]/implement/route', () => ({
   POST: jest.fn(),
 }));
 
-jest.mock('../../app/api/afu9/issues/[id]/route', () => ({
-  GET: jest.fn(),
-}));
-
-jest.mock('../../app/api/afu9/s1s9/_shared', () => ({
-  isIssueNotFound: jest.fn(async () => false),
-  withAfu9ScopeFallback: jest.fn(),
-  buildAfu9ScopeHeaders: jest.fn((params: { requestedScope: string; resolvedScope: string }) => ({
-    'x-afu9-scope-requested': params.requestedScope,
-    'x-afu9-scope-resolved': params.resolvedScope,
-  })),
-}));
-
 describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
   const mockPostS1S3Implement = postS1S3Implement as jest.Mock;
-  const mockGetS1S9Issue = getS1S9Issue as jest.Mock;
-  const mockWithAfu9ScopeFallback = withAfu9ScopeFallback as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetS1S9Issue.mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
-    mockWithAfu9ScopeFallback.mockImplementation(async (options: { primary: () => Promise<Response> }) => {
-      return options.primary();
-    });
   });
 
-  test('preserves downstream 409 and adds handler headers', async () => {
+  test('preserves downstream 409 and headers', async () => {
     mockPostS1S3Implement.mockResolvedValue(
       new Response(JSON.stringify({ ok: false, code: 'GITHUB_AUTH_MISSING', requestId: 'req-123' }), {
         status: 409,
         headers: {
           'content-type': 'application/json',
           'x-afu9-request-id': 'req-123',
+          'x-afu9-handler': 's1s3-implement',
           'x-afu9-auth-path': 'app',
           'x-afu9-phase': 'preflight',
+          'x-afu9-blocked-by': 'CONFIG',
+          'x-afu9-error-code': 'GITHUB_AUTH_MISSING',
           'x-afu9-missing-config': 'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID',
         },
       })
@@ -73,21 +50,21 @@ describe('POST /api/afu9/s1s9/issues/[id]/implement', () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe('GITHUB_AUTH_MISSING');
-    expect(response.headers.get('x-afu9-handler')).toBe('s1s9-implement');
-    expect(response.headers.get('x-afu9-handler')).toBeTruthy();
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-123');
-    expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-auth-path')).toBe('app');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_AUTH_MISSING');
     expect(response.headers.get('x-afu9-missing-config')).toBe(
       'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
     );
   });
 
-  test('propagates proxy TypeError without rewriting', async () => {
-    mockWithAfu9ScopeFallback.mockImplementation(async () => {
-      throw new TypeError('Cannot create proxy with a non-object as target or handler');
-    });
+  test('propagates core errors without rewriting', async () => {
+    mockPostS1S3Implement.mockRejectedValue(
+      new TypeError('Cannot create proxy with a non-object as target or handler')
+    );
 
     const request = new NextRequest('http://localhost/api/afu9/s1s9/issues/issue-123/implement', {
       method: 'POST',
