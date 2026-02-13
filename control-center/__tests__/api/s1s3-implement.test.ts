@@ -176,6 +176,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('CONFIG');
+    expect(body.nextAction).toBe('Configure guardrails');
+    expect(body.requestId).toBeTruthy();
     expect(body.requiredConfig).toEqual([
       'GITHUB_APP_ID',
       'GITHUB_APP_PRIVATE_KEY_PEM',
@@ -193,6 +197,8 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
     expect(response.headers.get('x-afu9-missing-config')).toBe(
@@ -230,9 +236,16 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('POLICY');
+    expect(body.nextAction).toBe('Allowlist repo');
+    expect(body.requestId).toBeTruthy();
     expect(response.headers.get('x-afu9-request-id')).toBeTruthy();
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('POLICY');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-missing-config')).toBe('');
     expect(mockCreateAuthenticatedClient).not.toHaveBeenCalled();
     expect(mockTriggerAfu9Implementation).not.toHaveBeenCalled();
@@ -463,7 +476,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(mockTriggerAfu9Implementation).toHaveBeenCalled();
   });
 
-  test('returns IMPLEMENT_FAILED on unexpected error', async () => {
+  test('returns INTERNAL_ERROR on unexpected error', async () => {
     mockGetS1S3IssueById.mockImplementation(() => {
       throw new Error('boom');
     });
@@ -482,7 +495,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
 
     expect(response.status).toBe(500);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('IMPLEMENT_FAILED');
+    expect(body.code).toBe('INTERNAL_ERROR');
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-commit')).toBeTruthy();
     expect(response.headers.get('x-afu9-auth-path')).toBe('unknown');

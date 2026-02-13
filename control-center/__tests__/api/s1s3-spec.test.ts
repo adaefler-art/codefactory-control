@@ -294,10 +294,17 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('POLICY');
+    expect(body.nextAction).toBe('Allowlist repo');
+    expect(body.requestId).toBe('req-guardrail-1');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-1');
     expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
-    expect(response.headers.get('x-afu9-missing-config')).toBe('');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('POLICY');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-afu9-missing-config')).toBeNull();
     expect(mockSyncAfu9SpecToGitHubIssue).not.toHaveBeenCalled();
   });
 
@@ -399,6 +406,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('CONFIG');
+    expect(body.nextAction).toBe('Configure guardrails');
+    expect(body.requestId).toBe('req-guardrail-2');
     expect(body.missingConfig).toEqual([
       'GITHUB_APP_ID',
       'GITHUB_APP_PRIVATE_KEY_PEM',
@@ -407,6 +418,9 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-2');
     expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
     expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-afu9-missing-config')).toBe(
       'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
     );
@@ -807,11 +821,10 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('spec_invalid_payload');
-    expect(body.errorCode).toBe('spec_invalid_payload');
-    expect(response.headers.get('x-afu9-error-code')).toBe('spec_invalid_payload');
+    expect(body.code).toBe('SPEC_NOT_READY');
+    expect(response.headers.get('x-afu9-error-code')).toBe('SPEC_NOT_READY');
   });
 
   it('enforces acceptanceCriteria minItems=1', async () => {
@@ -860,13 +873,12 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('spec_invalid_payload');
-    expect(body.errorCode).toBe('spec_invalid_payload');
+    expect(body.code).toBe('SPEC_NOT_READY');
   });
 
-  it('returns 502 with spec_upstream_failed on downstream errors', async () => {
+  it('returns INTERNAL_ERROR on downstream errors', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
 
     mockResolveIssueIdentifierOr404.mockResolvedValue({
@@ -914,14 +926,13 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
     const body = await response.json();
 
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(500);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('spec_upstream_failed');
-    expect(body.errorCode).toBe('spec_upstream_failed');
-    expect(response.headers.get('x-afu9-error-code')).toBe('spec_upstream_failed');
+    expect(body.code).toBe('INTERNAL_ERROR');
+    expect(response.headers.get('x-afu9-error-code')).toBe('INTERNAL_ERROR');
   });
 
-  it('returns spec_ready_failed on unexpected handler errors', async () => {
+  it('returns INTERNAL_ERROR on unexpected handler errors', async () => {
     const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
 
     mockResolveIssueIdentifierOr404.mockRejectedValue(new Error('boom'));
@@ -950,8 +961,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
 
     expect(response.status).toBe(500);
     expect(body.ok).toBe(false);
-    expect(body.code).toBe('spec_ready_failed');
-    expect(body.errorCode).toBe('spec_ready_failed');
-    expect(response.headers.get('x-afu9-error-code')).toBe('spec_ready_failed');
+    expect(body.code).toBe('INTERNAL_ERROR');
+    expect(response.headers.get('x-afu9-error-code')).toBe('INTERNAL_ERROR');
   });
 });

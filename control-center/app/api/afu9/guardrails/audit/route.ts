@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestId } from '@/lib/api/response-helpers';
 
-type GuardrailFinding = {
+export type GuardrailFinding = {
   level: 'critical' | 'warn' | 'info';
   code: string;
   messageSafe: string;
   detailsSafe?: string;
 };
 
-type GuardrailSummary = {
+export type GuardrailSummary = {
   critical: number;
   warn: number;
   info: number;
@@ -134,8 +134,7 @@ function buildSummary(findings: GuardrailFinding[]): GuardrailSummary {
   );
 }
 
-export async function GET(request: NextRequest) {
-  const requestId = getRequestId(request);
+export function buildGuardrailsAuditSnapshot() {
   const findings = [
     parseAllowlistStatus(),
     parseTokenScopeStatus(),
@@ -144,11 +143,19 @@ export async function GET(request: NextRequest) {
     buildGithubAppAuthStatus(),
   ];
 
-  const body: GuardrailAuditResponse = {
-    ok: true,
+  return {
     ts: new Date().toISOString(),
     summary: buildSummary(findings),
     findings,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request);
+  const snapshot = buildGuardrailsAuditSnapshot();
+  const body: GuardrailAuditResponse = {
+    ok: true,
+    ...snapshot,
   };
 
   const headers = buildHeaders(requestId);

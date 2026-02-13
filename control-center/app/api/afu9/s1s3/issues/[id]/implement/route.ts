@@ -42,6 +42,13 @@ import {
   S1S3StepStatus,
 } from '@/lib/contracts/s1s3Flow';
 import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import {
+  COMMON_AFU9_CODES,
+  S3_IMPLEMENT_CODES,
+  makeAfu9Error,
+  type Afu9BlockedBy,
+  type Afu9Phase,
+} from '@/lib/afu9/workflow-errors';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-registry';
@@ -62,43 +69,6 @@ interface RouteContext {
     id: string;
   }>;
 }
-
-type S3ErrorCode =
-  | 'AFU9_STAGE_MISSING'
-  | 'ENGINE_MISCONFIGURED'
-  | 'GUARDRAIL_REPO_NOT_ALLOWED'
-  | 'GUARDRAIL_TOKEN_SCOPE_INVALID'
-  | 'GUARDRAIL_CONFIG_MISSING'
-  | 'GITHUB_WRITE_DENIED'
-  | 'GITHUB_MIRROR_MISSING'
-  | 'SPEC_NOT_READY'
-  | 'GITHUB_AUTH_MISSING'
-  | 'GITHUB_AUTH_INVALID'
-  | 'GITHUB_TARGET_NOT_FOUND'
-  | 'GITHUB_VALIDATION_FAILED'
-  | 'GITHUB_UPSTREAM_UNREACHABLE'
-  | 'IMPLEMENT_PRECONDITION_FAILED'
-  | 'IMPLEMENT_TRIGGER_CONFIG_MISSING'
-  | 'VALIDATION_FAILED'
-  | 'NOT_IMPLEMENTED'
-  | 'IMPLEMENT_INVALID_PAYLOAD'
-  | 'IMPLEMENT_FAILED'
-  | 'INTERNAL_ERROR';
-
-type S3ErrorResponse = {
-  ok: false;
-  stage: 'S3';
-  code: S3ErrorCode;
-  errorCode?: string;
-  message: string;
-  requestId: string;
-  requiredConfig?: string[];
-  missingConfig?: string[];
-  preconditionFailed?: string | null;
-  upstreamStatus?: number;
-  githubRequestId?: string;
-  detailsSafe?: string;
-};
 
 type S3SuccessResponse = {
   ok: true;
@@ -230,27 +200,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!stageEntry || !implementRoute?.handler) {
     const registryError = getStageRegistryError('S3');
     const response = applyHandlerHeaders(
-      NextResponse.json(
-        {
-          ok: false,
+      makeAfu9Error({
+        stage: 'S3',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'preflight',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Check stage registry',
+        requestId,
+        handler: HANDLER_MARKER,
+        extraBody: {
           stage: 'S3',
-          code: registryError.code,
           message: registryError.message,
-          requestId,
-          errorCode: registryError.code,
         },
-        {
-          status: 500,
-          headers: {
-            ...getControlResponseHeaders(requestId, routeHeaderValue),
-            ...buildAfu9ScopeHeaders({
-              requestedScope: 's1s3',
-              resolvedScope: 's1s3',
-            }),
-            'x-afu9-error-code': registryError.code,
-          },
-        }
-      )
+        extraHeaders: {
+          ...getControlResponseHeaders(requestId, routeHeaderValue),
+          ...buildAfu9ScopeHeaders({
+            requestedScope: 's1s3',
+            resolvedScope: 's1s3',
+          }),
+        },
+      })
     );
     return setAfu9Headers(response, requestId, HANDLER_MARKER);
   }
@@ -275,39 +244,39 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const pool = getPool();
 
   const respondS3Error = (params: {
-    status: number;
-    code: S3ErrorCode;
+    code: string;
     message: string;
+    phase: Afu9Phase;
+    blockedBy: Afu9BlockedBy;
+    nextAction: string;
     requiredConfig?: string[];
     missingConfig?: string[];
     preconditionFailed?: string | null;
     upstreamStatus?: number;
     githubRequestId?: string;
     detailsSafe?: string;
-    phase?: Afu9Phase;
   }) => {
-    const body: S3ErrorResponse = {
-      ok: false,
-      stage: stageId,
-      code: params.code,
-      errorCode: params.code,
-      message: params.message,
-      requestId,
-      requiredConfig: params.requiredConfig,
-      missingConfig: params.missingConfig,
-      preconditionFailed: params.preconditionFailed ?? null,
-      upstreamStatus: params.upstreamStatus,
-      githubRequestId: params.githubRequestId,
-      detailsSafe: params.detailsSafe,
-    };
-
     const response = applyHandlerHeaders(
-      NextResponse.json(body, {
-        status: params.status,
-        headers: {
-          ...responseHeaders,
-          'x-afu9-error-code': params.code,
+      makeAfu9Error({
+        stage: 'S3',
+        code: params.code,
+        phase: params.phase,
+        blockedBy: params.blockedBy,
+        nextAction: params.nextAction,
+        requestId,
+        handler: HANDLER_MARKER,
+        missingConfig: params.missingConfig,
+        extraBody: {
+          stage: stageId,
+          message: params.message,
+          requiredConfig: params.requiredConfig,
+          missingConfig: params.missingConfig,
+          preconditionFailed: params.preconditionFailed ?? null,
+          upstreamStatus: params.upstreamStatus,
+          githubRequestId: params.githubRequestId,
+          detailsSafe: params.detailsSafe,
         },
+        extraHeaders: responseHeaders,
       })
     );
     return setAfu9Headers(
@@ -315,7 +284,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       requestId,
       HANDLER_MARKER,
       authPath,
-      params.phase ?? phase,
+      params.phase,
       params.missingConfig ?? missingConfig
     );
   };
@@ -336,23 +305,36 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!hasValue(stageValue)) {
       missingConfig = ['AFU9_STAGE', 'DEPLOY_ENV', 'ENVIRONMENT'];
       return respondS3Error({
-        status: 409,
-        code: 'AFU9_STAGE_MISSING',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'preflight',
+        blockedBy: 'CONFIG',
+        nextAction: 'Configure AFU9 stage',
         message: 'AFU9 stage/env gate missing',
         requiredConfig: missingConfig,
         missingConfig,
         preconditionFailed: 'AFU9_STAGE_MISSING',
         detailsSafe: 'AFU9 stage/env gate missing',
-        phase: 'preflight',
       });
     }
 
     const { id } = await context.params;
     const resolved = await resolveIssueIdentifierOr404(id, requestId);
     if (!resolved.ok) {
+      if (resolved.status === 404) {
+        return respondS3Error({
+          code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
+          phase: 'preflight',
+          blockedBy: 'STATE',
+          nextAction: 'Verify issue id',
+          message: 'Issue not found',
+          detailsSafe: 'Issue not found',
+        });
+      }
       return respondS3Error({
-        status: resolved.status,
-        code: 'VALIDATION_FAILED',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'preflight',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry issue lookup',
         message: resolved.body.errorCode || 'Invalid issue identifier',
       });
     }
@@ -364,12 +346,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       body = (await request.json()) as Record<string, unknown>;
     } catch {
       return respondS3Error({
-        status: 422,
-        code: 'IMPLEMENT_INVALID_PAYLOAD',
+        code: S3_IMPLEMENT_CODES.SPEC_NOT_READY,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Provide implement payload',
         message: 'Invalid request body',
         preconditionFailed: 'INVALID_PAYLOAD',
         detailsSafe: 'Invalid request body',
-        phase: 'preflight',
       });
     }
     const hasCustomInputs = Boolean(
@@ -382,11 +365,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const issueResult = await getS1S3IssueById(pool, issueId);
     if (!issueResult.success || !issueResult.data) {
       return respondS3Error({
-        status: 404,
-        code: 'VALIDATION_FAILED',
+        code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Verify issue id',
         message: 'Issue not found',
         detailsSafe: 'Issue not found',
-        phase: 'preflight',
       });
     }
 
@@ -396,23 +380,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const issueNumber = issue.github_issue_number;
     if (!repoFullName || !repoFullName.includes('/')) {
       return respondS3Error({
-        status: 409,
-        code: 'GITHUB_MIRROR_MISSING',
+        code: S3_IMPLEMENT_CODES.GITHUB_MIRROR_MISSING,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Link GitHub issue',
         message: 'GitHub mirror missing',
         preconditionFailed: 'GITHUB_MIRROR_MISSING',
         detailsSafe: 'Missing repository metadata for issue',
-        phase: 'preflight',
       });
     }
 
     if (!issueNumber) {
       return respondS3Error({
-        status: 409,
-        code: 'GITHUB_MIRROR_MISSING',
+        code: S3_IMPLEMENT_CODES.GITHUB_MIRROR_MISSING,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Link GitHub issue',
         message: 'GitHub mirror missing',
         preconditionFailed: 'GITHUB_MIRROR_MISSING',
         detailsSafe: 'Missing GitHub issue number',
-        phase: 'preflight',
       });
     }
 
@@ -423,12 +409,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       issue.status !== S1S3IssueStatus.PR_CREATED
     ) {
       return respondS3Error({
-        status: 409,
-        code: 'SPEC_NOT_READY',
+        code: S3_IMPLEMENT_CODES.SPEC_NOT_READY,
+        phase: 'preflight',
+        blockedBy: 'STATE',
+        nextAction: 'Wait for spec ready',
         message: 'Spec not ready',
         preconditionFailed: 'SPEC_NOT_READY',
         detailsSafe: `Issue status ${issue.status}`,
-        phase: 'preflight',
       });
     }
 
@@ -445,15 +432,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (guardrailDecision.outcome === 'deny') {
       missingConfig = guardrailDecision.missingConfig ?? [];
+      const guardrailCode =
+        guardrailDecision.code === 'GUARDRAIL_REPO_NOT_ALLOWED'
+          ? S3_IMPLEMENT_CODES.GUARDRAIL_REPO_NOT_ALLOWED
+          : S3_IMPLEMENT_CODES.GUARDRAIL_CONFIG_MISSING;
       return respondS3Error({
-        status: 409,
-        code: guardrailDecision.code,
+        code: guardrailCode,
+        phase: 'preflight',
+        blockedBy: guardrailCode === S3_IMPLEMENT_CODES.GUARDRAIL_REPO_NOT_ALLOWED ? 'POLICY' : 'CONFIG',
+        nextAction:
+          guardrailCode === S3_IMPLEMENT_CODES.GUARDRAIL_REPO_NOT_ALLOWED
+            ? 'Allowlist repo'
+            : 'Configure guardrails',
         message: guardrailDecision.detailsSafe || 'Guardrail blocked',
         requiredConfig: missingConfig.length > 0 ? missingConfig : undefined,
         missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
         preconditionFailed: 'GUARDRAIL_BLOCKED',
         detailsSafe: guardrailDecision.detailsSafe || 'Guardrail blocked',
-        phase: 'preflight',
       });
     }
 
@@ -466,26 +461,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (error instanceof GitHubAppConfigError || error instanceof GitHubAppKeyFormatError) {
         missingConfig = resolveGitHubAppMissingConfig();
         return respondS3Error({
-          status: 409,
-          code: 'GITHUB_AUTH_MISSING',
+          code: S3_IMPLEMENT_CODES.GITHUB_AUTH_MISSING,
+          phase: 'preflight',
+          blockedBy: 'CONFIG',
+          nextAction: 'Configure GitHub app',
           message: 'GitHub auth not configured',
           requiredConfig: missingConfig.length > 0 ? missingConfig : undefined,
           missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
           preconditionFailed: 'GITHUB_AUTH_MISSING',
           detailsSafe: 'GitHub auth config missing',
-          phase: 'preflight',
         });
       }
 
       if (error instanceof Error && error.name === 'RepoAccessDeniedError') {
         authPath = 'app';
         return respondS3Error({
-          status: 409,
-          code: 'GITHUB_AUTH_INVALID',
+          code: S3_IMPLEMENT_CODES.GITHUB_AUTH_INVALID,
+          phase: 'preflight',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Fix GitHub auth',
           message: 'Repository access denied',
           preconditionFailed: 'GITHUB_AUTH_INVALID',
           detailsSafe: trimDetails(getErrorMessage(error)),
-          phase: 'preflight',
         });
       }
 
@@ -506,14 +503,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (missingTriggerConfig.length === 2) {
       missingConfig = missingTriggerConfig;
       return respondS3Error({
-        status: 409,
-        code: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
+        code: S3_IMPLEMENT_CODES.IMPLEMENT_TRIGGER_CONFIG_MISSING,
+        phase: 'preflight',
+        blockedBy: 'CONFIG',
+        nextAction: 'Configure implement trigger',
         message: 'GitHub trigger not configured',
         requiredConfig: missingTriggerConfig,
         missingConfig: missingTriggerConfig,
         preconditionFailed: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
         detailsSafe: 'Implement trigger config missing',
-        phase: 'preflight',
       });
     }
 
@@ -528,11 +526,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!runResult.success || !runResult.data) {
       return respondS3Error({
-        status: 500,
-        code: 'INTERNAL_ERROR',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry run creation',
         message: 'Failed to create run record',
         detailsSafe: 'Failed to create run record',
-        phase: 'mapped',
       });
     }
 
@@ -554,11 +553,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!startStep.success || !startStep.data) {
       return respondS3Error({
-        status: 500,
-        code: 'INTERNAL_ERROR',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry step logging',
         message: 'Failed to create step event',
         detailsSafe: 'Failed to create step event',
-        phase: 'mapped',
       });
     }
 
@@ -598,75 +598,81 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (isProxyTypeError(error)) {
         return respondS3Error({
-          status: 409,
-          code: 'IMPLEMENT_PRECONDITION_FAILED',
+          code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+          phase: 'preflight',
+          blockedBy: 'INTERNAL',
+          nextAction: 'Retry implement when proxy ready',
           message: 'Implement precondition failed',
           preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
           detailsSafe: 'Implement precondition failed',
-          phase: 'preflight',
         });
       }
 
       if (error instanceof Error && error.name === 'RepoAccessDeniedError') {
         return respondS3Error({
-          status: 409,
-          code: 'GITHUB_AUTH_INVALID',
+          code: S3_IMPLEMENT_CODES.GITHUB_AUTH_INVALID,
+          phase: 'mapped',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Fix GitHub auth',
           message: 'Repository access denied',
           preconditionFailed: 'GITHUB_AUTH_INVALID',
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
-          phase: 'mapped',
         });
       }
 
       if (upstreamStatus === 401 || upstreamStatus === 403) {
         return respondS3Error({
-          status: 409,
-          code: 'GITHUB_AUTH_INVALID',
+          code: S3_IMPLEMENT_CODES.GITHUB_AUTH_INVALID,
+          phase: 'mapped',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Fix GitHub auth',
           message: 'GitHub auth invalid',
           preconditionFailed: 'GITHUB_AUTH_INVALID',
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
-          phase: 'mapped',
         });
       }
 
       if (upstreamStatus === 404) {
         return respondS3Error({
-          status: 409,
-          code: 'GITHUB_TARGET_NOT_FOUND',
+          code: S3_IMPLEMENT_CODES.GITHUB_TARGET_NOT_FOUND,
+          phase: 'mapped',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Verify GitHub target',
           message: 'GitHub target not found',
           preconditionFailed: 'GITHUB_TARGET_NOT_FOUND',
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
-          phase: 'mapped',
         });
       }
 
       if (upstreamStatus === 422) {
         return respondS3Error({
-          status: 409,
-          code: 'GITHUB_VALIDATION_FAILED',
+          code: S3_IMPLEMENT_CODES.GITHUB_VALIDATION_FAILED,
+          phase: 'mapped',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Fix GitHub payload',
           message: 'GitHub validation failed',
           preconditionFailed: 'GITHUB_VALIDATION_FAILED',
           upstreamStatus,
           githubRequestId,
           detailsSafe: trimDetails(errorMessage),
-          phase: 'mapped',
         });
       }
 
       return respondS3Error({
-        status: 502,
-        code: 'GITHUB_UPSTREAM_UNREACHABLE',
+        code: S3_IMPLEMENT_CODES.GITHUB_UPSTREAM_UNREACHABLE,
+        phase: 'mapped',
+        blockedBy: 'UPSTREAM',
+        nextAction: 'Retry GitHub request',
         message: 'GitHub upstream unreachable',
         upstreamStatus,
         githubRequestId,
         detailsSafe: trimDetails(errorMessage),
-        phase: 'mapped',
       });
     }
 
@@ -678,11 +684,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!updateResult.success || !updateResult.data) {
       return respondS3Error({
-        status: 500,
-        code: 'INTERNAL_ERROR',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry status update',
         message: 'Failed to update issue status',
         detailsSafe: 'Failed to update issue status',
-        phase: 'mapped',
       });
     }
 
@@ -703,11 +710,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (!stepResult.success || !stepResult.data) {
       return respondS3Error({
-        status: 500,
-        code: 'INTERNAL_ERROR',
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry step logging',
         message: 'Failed to create step event',
         detailsSafe: 'Failed to create step event',
-        phase: 'mapped',
       });
     }
 
@@ -733,11 +741,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
   } catch (error) {
     return respondS3Error({
-      status: 500,
-      code: 'IMPLEMENT_FAILED',
+      code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+      phase: 'mapped',
+      blockedBy: 'INTERNAL',
+      nextAction: 'Retry implement request',
       message: 'Implementation failed',
       detailsSafe: trimDetails(getErrorMessage(error)) || 'Implementation failed',
-      phase: 'mapped',
     });
   }
 }

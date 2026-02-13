@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { POST as postS1S3Spec } from '../../../../s1s3/issues/[id]/spec/route';
-import { getRequestId, getRouteHeaderValue, jsonResponse } from '@/lib/api/response-helpers';
+import { getRequestId, getRouteHeaderValue } from '@/lib/api/response-helpers';
+import { makeAfu9Error, S2_SPEC_CODES } from '@/lib/afu9/workflow-errors';
 import { getControlResponseHeaders } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../_shared';
 
@@ -50,40 +51,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
 		const response = await postS1S3Spec(request, context);
 		return applyHandlerHeaders(response);
 	} catch (error) {
-		const upstreamStatus =
-			typeof (error as { status?: number })?.status === 'number'
-				? (error as { status?: number }).status
-				: undefined;
-		const errorName =
-			typeof (error as { name?: string })?.name === 'string'
-				? (error as { name?: string }).name
-				: undefined;
-		const errorMessage =
-			typeof (error as { message?: string })?.message === 'string'
-				? (error as { message?: string }).message
-				: undefined;
-		const errorMessageSafe = errorMessage ? errorMessage.slice(0, 200) : undefined;
-		const status = upstreamStatus ? 502 : 500;
-		return jsonResponse(
-			{
-				errorCode: 'spec_ready_failed',
-				requestId,
+		return makeAfu9Error({
+			stage: 'S2',
+			code: S2_SPEC_CODES.INTERNAL_ERROR,
+			phase: 'mapped',
+			blockedBy: 'INTERNAL',
+			nextAction: 'Retry spec request',
+			requestId,
+			handler: HANDLER_MARKER,
+			extraBody: {
 				scopeRequested: requestedScope,
 				scopeResolved: 's1s9',
 				detailsSafe: 'Failed to set spec',
 				thrown: true,
-				errorName,
-				errorMessageSafe,
-				hasStatusField: typeof upstreamStatus === 'number',
 			},
-			{
-				status,
-				requestId,
-				headers: {
-					...responseHeaders,
-					'x-afu9-error-code': 'spec_ready_failed',
-				},
-			}
-		);
+			extraHeaders: responseHeaders,
+		});
 	}
 }
