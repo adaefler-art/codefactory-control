@@ -48,6 +48,7 @@ import {
   type Afu9BlockedBy,
   type Afu9Phase,
 } from '@/lib/afu9/workflow-errors';
+import { decideS2Preflight, type PreflightDecision } from '@/lib/afu9/preflight-decisions';
 import {
   extractServiceTokenFromHeaders,
   getControlResponseHeaders,
@@ -169,10 +170,10 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     const registryError = getStageRegistryError('S2');
     return makeAfu9Error({
       stage: 'S2',
-      code: S2_SPEC_CODES.INTERNAL_ERROR,
+      code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
       phase: 'preflight',
-      blockedBy: 'INTERNAL',
-      nextAction: 'Check stage registry',
+      blockedBy: 'CONFIG',
+      nextAction: 'Set required config in runtime',
       requestId,
       handler: 'control.s1s3.spec',
       extraBody: {
@@ -255,6 +256,28 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     return `GitHub sync disabled (${primary})`;
   };
 
+  const respondWithPreflightDecision = (decision: PreflightDecision) => {
+    return makeAfu9Error({
+      stage: 'S2',
+      code: decision.code,
+      phase: decision.phase,
+      blockedBy: decision.blockedBy,
+      nextAction: decision.nextAction,
+      requestId,
+      handler: handlerName,
+      missingConfig: decision.missingConfig,
+      extraBody: {
+        message: decision.detailsSafe || 'Preflight blocked',
+        detailsSafe: decision.detailsSafe,
+        handler: handlerName,
+        route: routeHeaderValue,
+        scopeRequested: requestedScope,
+        scopeResolved: 's1s3',
+      },
+      extraHeaders: responseHeaders,
+    });
+  };
+
   try {
     if (!verifiedUserSub && shouldEnforceServiceToken) {
       if (!providedServiceToken) {
@@ -265,10 +288,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           });
         }
         return respondWithSpecError({
-          code: S2_SPEC_CODES.INTERNAL_ERROR,
+          code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
           phase: 'preflight',
           blockedBy: 'CONFIG',
-          nextAction: 'Provide service token',
+          nextAction: 'Set required config in runtime',
+          missingConfig: ['SERVICE_READ_TOKEN'],
           detailsSafe: tokenReason === 'malformed' ? 'Malformed Authorization header' : 'Missing service token',
         });
       }
@@ -280,25 +304,12 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           });
         }
         return respondWithSpecError({
-          code: S2_SPEC_CODES.INTERNAL_ERROR,
-          phase: 'preflight',
-          blockedBy: 'CONFIG',
-          nextAction: 'Provide service token',
-          detailsSafe: expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
-        });
-      }
-    }
-
-    if (isGuardrailsEnabled()) {
-      const earlyGuardrailMissingConfig = resolveGitHubAppMissingConfig();
-      if (earlyGuardrailMissingConfig.length > 0) {
-        return respondWithSpecError({
           code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
           phase: 'preflight',
           blockedBy: 'CONFIG',
-          nextAction: 'Configure guardrails',
-          missingConfig: earlyGuardrailMissingConfig,
-          detailsSafe: `Missing required config: ${earlyGuardrailMissingConfig.join(', ')}`,
+          nextAction: 'Set required config in runtime',
+          missingConfig: ['SERVICE_READ_TOKEN'],
+          detailsSafe: expectedServiceToken ? 'Service token mismatch' : 'Service token not configured',
         });
       }
     }
@@ -352,16 +363,11 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     // Parse request body
     let body: Record<string, unknown> = {};
+    let bodyParseFailed = false;
     try {
       body = (await request.json()) as Record<string, unknown>;
     } catch {
-      return respondWithSpecError({
-        code: S2_SPEC_CODES.SPEC_NOT_READY,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Provide spec payload',
-        detailsSafe: 'Invalid request body',
-      });
+      bodyParseFailed = true;
     }
 
     const problem = typeof body.problem === 'string' ? body.problem : undefined;
@@ -379,31 +385,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       );
     }
 
-    if (!scope) {
-      return respondWithSpecError({
-        code: S2_SPEC_CODES.SPEC_NOT_READY,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Provide scope',
-        detailsSafe: 'Scope is required',
-      });
-    }
-
-    // Validate acceptance criteria (required for SPEC_READY)
-    if (!acceptanceCriteria || acceptanceCriteria.length === 0) {
-      return respondWithSpecError({
-        code: S2_SPEC_CODES.SPEC_NOT_READY,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Provide acceptance criteria',
-        detailsSafe: 'Acceptance criteria required',
-      });
-    }
+    const hasAcceptanceCriteria = Boolean(acceptanceCriteria && acceptanceCriteria.length > 0);
+    const specInputsValid = Boolean(!bodyParseFailed && scope && hasAcceptanceCriteria);
 
     console.log('[S2] Spec ready request:', {
       requestId,
       issue_id: issueId,
-      ac_count: acceptanceCriteria.length,
+      ac_count: acceptanceCriteria?.length ?? 0,
     });
 
     // Get existing issue
@@ -415,44 +403,63 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     if (issue) {
       foundBy = resolvedIssueId ? 'id' : 'canonicalId';
-    } else {
-      if (controlIssue) {
-        const repoFullName = deriveRepoFullName(controlIssue);
-        const issueNumber = getNumberField(controlIssue, 'github_issue_number', 'githubIssueNumber');
-        const githubUrl = getStringField(controlIssue, 'github_url', 'githubUrl');
+    } else if (controlIssue) {
+      const repoFullName = deriveRepoFullName(controlIssue);
+      const issueNumber = getNumberField(controlIssue, 'github_issue_number', 'githubIssueNumber');
+      const githubUrl = getStringField(controlIssue, 'github_url', 'githubUrl');
+      const mirrorRepo = githubUrl ? repoFullName : null;
+      const mirrorIssueNumber = githubUrl ? issueNumber : null;
 
-        if (!repoFullName || !issueNumber || !githubUrl) {
-          return respondWithSpecError({
-            code: S2_SPEC_CODES.GITHUB_MIRROR_MISSING,
-            phase: 'preflight',
-            blockedBy: 'STATE',
-            nextAction: 'Link GitHub issue',
-            detailsSafe: 'Issue missing GitHub metadata for spec',
-          });
-        }
+      const guardrailDecision = isGuardrailsEnabled() && repoFullName
+        ? evaluateGuardrailsPreflight({
+            requestId,
+            operation: 'repo_write',
+            repo: repoFullName,
+            actor: getStringField(controlIssue, 'assignee') || undefined,
+            capabilities: ['repo-write'],
+            requiresConfig: resolveGitHubAppMissingConfig(),
+          })
+        : null;
+      const preflightDecision = decideS2Preflight({
+        issueExists: Boolean(controlIssue),
+        repoFullName: mirrorRepo,
+        githubIssueNumber: mirrorIssueNumber,
+        specReady: specInputsValid,
+        guardrailResult: guardrailDecision
+          ? {
+              allowed: guardrailDecision.outcome !== 'deny',
+              code: guardrailDecision.code,
+              missingConfig: guardrailDecision.missingConfig,
+              detailsSafe: guardrailDecision.detailsSafe,
+            }
+          : null,
+      });
 
-        const seedResult = await upsertS1S3Issue(pool, {
-          repo_full_name: repoFullName,
-          github_issue_number: issueNumber,
-          github_issue_url: githubUrl,
-          owner: getStringField(controlIssue, 'assignee') || 'afu9',
-          canonical_id: getStringField(controlIssue, 'canonical_id', 'canonicalId') || undefined,
-          status: S1S3IssueStatus.CREATED,
-        });
-
-        if (!seedResult.success || !seedResult.data) {
-          return respondWithSpecError({
-            code: S2_SPEC_CODES.INTERNAL_ERROR,
-            phase: 'preflight',
-            blockedBy: 'INTERNAL',
-            nextAction: 'Retry seeding issue',
-            detailsSafe: 'Failed to seed S1S3 issue',
-          });
-        }
-
-        issue = seedResult.data;
-        foundBy = 'seeded';
+      if (preflightDecision) {
+        return respondWithPreflightDecision(preflightDecision);
       }
+
+      const seedResult = await upsertS1S3Issue(pool, {
+        repo_full_name: repoFullName || '',
+        github_issue_number: issueNumber || 0,
+        github_issue_url: githubUrl || '',
+        owner: getStringField(controlIssue, 'assignee') || 'afu9',
+        canonical_id: getStringField(controlIssue, 'canonical_id', 'canonicalId') || undefined,
+        status: S1S3IssueStatus.CREATED,
+      });
+
+      if (!seedResult.success || !seedResult.data) {
+        return respondWithSpecError({
+          code: S2_SPEC_CODES.INTERNAL_ERROR,
+          phase: 'mapped',
+          blockedBy: 'INTERNAL',
+          nextAction: 'Retry seeding issue',
+          detailsSafe: 'Failed to seed S1S3 issue',
+        });
+      }
+
+      issue = seedResult.data;
+      foundBy = 'seeded';
     }
 
     if (!issue) {
@@ -488,32 +495,40 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       foundBy,
     });
 
-    // Check if issue is in valid state for spec
-    if (issue.status !== S1S3IssueStatus.CREATED && issue.status !== S1S3IssueStatus.SPEC_READY) {
-      return respondWithSpecError({
-        code: S2_SPEC_CODES.SPEC_NOT_READY,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Ensure issue is ready for spec',
-        detailsSafe: `Issue must be in CREATED or SPEC_READY state. Current: ${issue.status}`,
-      });
+    const repoFullName = issue.repo_full_name;
+    const issueNumber = issue.github_issue_number;
+    const issueStatusReady =
+      issue.status === S1S3IssueStatus.CREATED || issue.status === S1S3IssueStatus.SPEC_READY;
+    const guardrailDecision = isGuardrailsEnabled() && repoFullName
+      ? evaluateGuardrailsPreflight({
+          requestId,
+          operation: 'repo_write',
+          repo: repoFullName,
+          actor: issue.owner ?? undefined,
+          capabilities: ['repo-write'],
+          requiresConfig: resolveGitHubAppMissingConfig(),
+        })
+      : null;
+    const preflightDecision = decideS2Preflight({
+      issueExists: Boolean(issue),
+      repoFullName,
+      githubIssueNumber: issueNumber,
+      specReady: Boolean(specInputsValid && issueStatusReady),
+      guardrailResult: guardrailDecision
+        ? {
+            allowed: guardrailDecision.outcome !== 'deny',
+            code: guardrailDecision.code,
+            missingConfig: guardrailDecision.missingConfig,
+            detailsSafe: guardrailDecision.detailsSafe,
+          }
+        : null,
+    });
+
+    if (preflightDecision) {
+      return respondWithPreflightDecision(preflightDecision);
     }
 
-
     // Update issue with spec data
-      if (isGuardrailsEnabled()) {
-        const earlyGuardrailMissingConfig = resolveGitHubAppMissingConfig();
-        if (earlyGuardrailMissingConfig.length > 0) {
-          return respondWithSpecError({
-            code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
-            phase: 'preflight',
-            blockedBy: 'CONFIG',
-            nextAction: 'Configure guardrails',
-            missingConfig: earlyGuardrailMissingConfig,
-            detailsSafe: `Missing required config: ${earlyGuardrailMissingConfig.join(', ')}`,
-          });
-        }
-      }
     const updateResult = await updateS1S3IssueSpec(pool, issue.id, {
       problem: problem?.trim() || null,
       scope: scope?.trim() || null,
@@ -703,61 +718,19 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     let syncMessage: string | undefined;
     let syncErrorCode: string | undefined;
 
-    const repoFullName = updatedIssue.repo_full_name;
-    const issueNumber = updatedIssue.github_issue_number;
-    if (!repoFullName || !issueNumber || !repoFullName.includes('/')) {
+    const syncRepoFullName = updatedIssue.repo_full_name;
+    const syncIssueNumber = updatedIssue.github_issue_number;
+    if (!syncRepoFullName || !syncIssueNumber || !syncRepoFullName.includes('/')) {
       syncStatus = 'FAILED';
       syncMessage = 'GitHub issue metadata missing for sync.';
       syncErrorCode = 'GITHUB_METADATA_MISSING';
     } else {
-      if (isGuardrailsEnabled()) {
-        const guardrailMissingConfig = resolveGitHubAppMissingConfig();
-        if (guardrailMissingConfig.length > 0) {
-          return respondWithSpecError({
-            code: S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING,
-            phase: 'preflight',
-            blockedBy: 'CONFIG',
-            nextAction: 'Configure guardrails',
-            missingConfig: guardrailMissingConfig,
-            detailsSafe: `Missing required config: ${guardrailMissingConfig.join(', ')}`,
-          });
-        }
-
-        const guardrailDecision = evaluateGuardrailsPreflight({
-          requestId,
-          operation: 'repo_write',
-          repo: repoFullName,
-          actor: updatedIssue.owner ?? undefined,
-          capabilities: ['repo-write'],
-          requiresConfig: [],
-        });
-
-        if (guardrailDecision.outcome === 'deny') {
-          const missingConfig = guardrailDecision.missingConfig ?? [];
-          const guardrailCode =
-            guardrailDecision.code === 'GUARDRAIL_REPO_NOT_ALLOWED'
-              ? S2_SPEC_CODES.GUARDRAIL_REPO_NOT_ALLOWED
-              : S2_SPEC_CODES.GUARDRAIL_CONFIG_MISSING;
-          return respondWithSpecError({
-            code: guardrailCode,
-            phase: 'preflight',
-            blockedBy: guardrailCode === S2_SPEC_CODES.GUARDRAIL_REPO_NOT_ALLOWED ? 'POLICY' : 'CONFIG',
-            nextAction:
-              guardrailCode === S2_SPEC_CODES.GUARDRAIL_REPO_NOT_ALLOWED
-                ? 'Allowlist repo'
-                : 'Configure guardrails',
-            missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
-            detailsSafe: guardrailDecision.detailsSafe || 'Guardrail blocked',
-          });
-        }
-      }
-
-      const [owner, repo] = repoFullName.split('/');
+      const [owner, repo] = syncRepoFullName.split('/');
       try {
         const syncResult = await syncAfu9SpecToGitHubIssue({
           owner,
           repo,
-          issueNumber,
+          issueNumber: syncIssueNumber,
           problem: updatedIssue.problem,
           scope: updatedIssue.scope,
           acceptanceCriteria: acceptanceCriteria,

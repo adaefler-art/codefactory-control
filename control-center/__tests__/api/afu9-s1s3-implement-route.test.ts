@@ -156,7 +156,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('SPEC_NOT_READY');
     expect(body.phase).toBe('preflight');
     expect(body.blockedBy).toBe('STATE');
-    expect(body.nextAction).toBe('Wait for spec ready');
+    expect(body.nextAction).toBe('Complete and save S2 spec');
     expect(body.requestId).toBeTruthy();
     expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
     expect(response.headers.get('x-afu9-handler-ver')).toBe('v1');
@@ -204,7 +204,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(body.phase).toBe('preflight');
     expect(body.blockedBy).toBe('CONFIG');
-    expect(body.nextAction).toBe('Configure guardrails');
+    expect(body.nextAction).toBe('Set required config in runtime');
     expect(body.requestId).toBe('req-123');
     expect(Array.isArray(body.missingConfig)).toBe(true);
     expect(body.missingConfig).toContain('GITHUB_APP_ID');

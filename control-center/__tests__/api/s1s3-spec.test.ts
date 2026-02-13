@@ -9,6 +9,7 @@ import { POST as postSpec } from '../../app/api/afu9/s1s3/issues/[id]/spec/route
 import { resolveIssueIdentifierOr404 } from '../../app/api/issues/_shared';
 import {
   getS1S3IssueById,
+  getS1S3IssueByCanonicalId,
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
@@ -48,6 +49,7 @@ jest.mock('../../app/api/issues/_shared', () => {
 describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
   const mockResolveIssueIdentifierOr404 = resolveIssueIdentifierOr404 as jest.Mock;
   const mockGetS1S3IssueById = getS1S3IssueById as jest.Mock;
+  const mockGetS1S3IssueByCanonicalId = getS1S3IssueByCanonicalId as jest.Mock;
   const mockCreateS1S3Run = createS1S3Run as jest.Mock;
   const mockCreateS1S3RunStep = createS1S3RunStep as jest.Mock;
   const mockUpdateS1S3RunStatus = updateS1S3RunStatus as jest.Mock;
@@ -296,7 +298,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.code).toBe('GUARDRAIL_REPO_NOT_ALLOWED');
     expect(body.phase).toBe('preflight');
     expect(body.blockedBy).toBe('POLICY');
-    expect(body.nextAction).toBe('Allowlist repo');
+    expect(body.nextAction).toBe('Allowlist repo for repo-write');
     expect(body.requestId).toBe('req-guardrail-1');
     expect(response.headers.get('x-afu9-request-id')).toBe('req-guardrail-1');
     expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
@@ -408,7 +410,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(body.phase).toBe('preflight');
     expect(body.blockedBy).toBe('CONFIG');
-    expect(body.nextAction).toBe('Configure guardrails');
+    expect(body.nextAction).toBe('Set required config in runtime');
     expect(body.requestId).toBe('req-guardrail-2');
     expect(body.missingConfig).toEqual([
       'GITHUB_APP_ID',
@@ -425,6 +427,60 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
       'GITHUB_APP_ID,GITHUB_APP_PRIVATE_KEY_PEM,GITHUB_APP_SECRET_ID'
     );
     expect(mockSyncAfu9SpecToGitHubIssue).not.toHaveBeenCalled();
+  });
+
+  it('returns GITHUB_MIRROR_MISSING when mirror metadata is missing', async () => {
+    const issueId = '234fcabf-1234-4abc-9def-1234567890ab';
+
+    mockResolveIssueIdentifierOr404.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: issueId,
+      issue: {
+        id: issueId,
+        status: 'CREATED',
+        github_repo: null,
+        github_issue_number: null,
+        github_url: null,
+      },
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({ success: false, error: 'Issue not found' });
+    mockGetS1S3IssueByCanonicalId.mockResolvedValue({ success: false, error: 'Issue not found' });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/spec`,
+      {
+        method: 'POST',
+        headers: new Headers({
+          'content-type': 'application/json',
+          'x-request-id': 'req-mirror-1',
+          'x-afu9-sub': 'test-user',
+        }),
+        body: JSON.stringify({
+          scope: 'Test scope',
+          acceptanceCriteria: ['AC1'],
+        }),
+      }
+    );
+
+    const response = await postSpec(request, {
+      params: Promise.resolve({ id: issueId }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GITHUB_MIRROR_MISSING');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('STATE');
+    expect(body.nextAction).toBe('Link GitHub issue (S1) or restore mirror metadata');
+    expect(body.requestId).toBe('req-mirror-1');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GITHUB_MIRROR_MISSING');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-mirror-1');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
   });
 
   it('spec_saves_and_returns_200_when_github_missing_with_blocked_run_step', async () => {
@@ -824,7 +880,15 @@ describe('POST /api/afu9/s1s3/issues/[id]/spec', () => {
     expect(response.status).toBe(409);
     expect(body.ok).toBe(false);
     expect(body.code).toBe('SPEC_NOT_READY');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('STATE');
+    expect(body.nextAction).toBe('Complete and save S2 spec');
+    expect(body.requestId).toBe('req-2');
     expect(response.headers.get('x-afu9-error-code')).toBe('SPEC_NOT_READY');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('STATE');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-2');
+    expect(response.headers.get('x-afu9-handler')).toBe('control.s1s3.spec');
   });
 
   it('enforces acceptanceCriteria minItems=1', async () => {

@@ -49,6 +49,7 @@ import {
   type Afu9BlockedBy,
   type Afu9Phase,
 } from '@/lib/afu9/workflow-errors';
+import { decideS3Preflight, type PreflightDecision } from '@/lib/afu9/preflight-decisions';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-registry';
@@ -202,10 +203,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const response = applyHandlerHeaders(
       makeAfu9Error({
         stage: 'S3',
-        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        code: S3_IMPLEMENT_CODES.GUARDRAIL_CONFIG_MISSING,
         phase: 'preflight',
-        blockedBy: 'INTERNAL',
-        nextAction: 'Check stage registry',
+        blockedBy: 'CONFIG',
+        nextAction: 'Set required config in runtime',
         requestId,
         handler: HANDLER_MARKER,
         extraBody: {
@@ -299,23 +300,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return setAfu9Headers(response, requestId, HANDLER_MARKER, authPath, phase, missingConfig);
   };
 
+  const respondWithPreflightDecision = (decision: PreflightDecision) => {
+    return respondS3Error({
+      code: decision.code,
+      phase: decision.phase,
+      blockedBy: decision.blockedBy,
+      nextAction: decision.nextAction,
+      message: decision.detailsSafe || 'Preflight blocked',
+      requiredConfig: decision.missingConfig,
+      missingConfig: decision.missingConfig,
+      detailsSafe: decision.detailsSafe,
+    });
+  };
+
   try {
     const stageValue =
       process.env.AFU9_STAGE || process.env.DEPLOY_ENV || process.env.ENVIRONMENT;
-    if (!hasValue(stageValue)) {
-      missingConfig = ['AFU9_STAGE', 'DEPLOY_ENV', 'ENVIRONMENT'];
-      return respondS3Error({
-        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
-        phase: 'preflight',
-        blockedBy: 'CONFIG',
-        nextAction: 'Configure AFU9 stage',
-        message: 'AFU9 stage/env gate missing',
-        requiredConfig: missingConfig,
-        missingConfig,
-        preconditionFailed: 'AFU9_STAGE_MISSING',
-        detailsSafe: 'AFU9 stage/env gate missing',
-      });
-    }
+    const stageMissingConfig = hasValue(stageValue)
+      ? []
+      : ['AFU9_STAGE', 'DEPLOY_ENV', 'ENVIRONMENT'];
 
     const { id } = await context.params;
     const resolved = await resolveIssueIdentifierOr404(id, requestId);
@@ -378,79 +381,63 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const repoFullName = issue.repo_full_name;
     const issueNumber = issue.github_issue_number;
-    if (!repoFullName || !repoFullName.includes('/')) {
-      return respondS3Error({
-        code: S3_IMPLEMENT_CODES.GITHUB_MIRROR_MISSING,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Link GitHub issue',
-        message: 'GitHub mirror missing',
-        preconditionFailed: 'GITHUB_MIRROR_MISSING',
-        detailsSafe: 'Missing repository metadata for issue',
-      });
+    const issueSpecReady =
+      issue.status === S1S3IssueStatus.SPEC_READY ||
+      issue.status === S1S3IssueStatus.IMPLEMENTING ||
+      issue.status === S1S3IssueStatus.PR_CREATED;
+
+    const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim();
+    const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim();
+    const missingTriggerConfig: string[] = [];
+
+    if (!hasValue(triggerLabel)) {
+      missingTriggerConfig.push('AFU9_GITHUB_IMPLEMENT_LABEL');
+    }
+    if (!hasValue(triggerComment)) {
+      missingTriggerConfig.push('AFU9_GITHUB_IMPLEMENT_COMMENT');
     }
 
-    if (!issueNumber) {
-      return respondS3Error({
-        code: S3_IMPLEMENT_CODES.GITHUB_MIRROR_MISSING,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Link GitHub issue',
-        message: 'GitHub mirror missing',
-        preconditionFailed: 'GITHUB_MIRROR_MISSING',
-        detailsSafe: 'Missing GitHub issue number',
-      });
-    }
+    const guardrailDecision = stageMissingConfig.length === 0 && repoFullName
+      ? evaluateGuardrailsPreflight({
+          requestId,
+          operation: 'repo_write',
+          repo: repoFullName,
+          actor: issue.owner ?? undefined,
+          capabilities: ['repo-write'],
+          requiresConfig: resolveGitHubAppMissingConfig(),
+        })
+      : null;
+    const guardrailResult = stageMissingConfig.length > 0
+      ? {
+          allowed: false,
+          code: S3_IMPLEMENT_CODES.GUARDRAIL_CONFIG_MISSING,
+          missingConfig: stageMissingConfig,
+          detailsSafe: 'AFU9 stage/env gate missing',
+        }
+      : guardrailDecision
+        ? {
+            allowed: guardrailDecision.outcome !== 'deny',
+            code: guardrailDecision.code,
+            missingConfig: guardrailDecision.missingConfig,
+            detailsSafe: guardrailDecision.detailsSafe,
+          }
+        : null;
+    const authMissingConfig = resolveGitHubAppMissingConfig();
+    const preflightContext = {
+      repoFullName,
+      githubIssueNumber: issueNumber,
+      specReady: issueSpecReady,
+      triggerConfigMissing: missingTriggerConfig,
+      guardrailResult,
+      authMissingConfig,
+    };
+    const preflightDecision = decideS3Preflight(preflightContext);
 
-    // Check if issue has spec ready
-    if (
-      issue.status !== S1S3IssueStatus.SPEC_READY &&
-      issue.status !== S1S3IssueStatus.IMPLEMENTING &&
-      issue.status !== S1S3IssueStatus.PR_CREATED
-    ) {
-      return respondS3Error({
-        code: S3_IMPLEMENT_CODES.SPEC_NOT_READY,
-        phase: 'preflight',
-        blockedBy: 'STATE',
-        nextAction: 'Wait for spec ready',
-        message: 'Spec not ready',
-        preconditionFailed: 'SPEC_NOT_READY',
-        detailsSafe: `Issue status ${issue.status}`,
-      });
+    if (preflightDecision) {
+      return respondWithPreflightDecision(preflightDecision);
     }
 
     const [repoOwner, repoName] = repoFullName.split('/');
-
-    const guardrailDecision = evaluateGuardrailsPreflight({
-      requestId,
-      operation: 'repo_write',
-      repo: repoFullName,
-      actor: issue.owner ?? undefined,
-      capabilities: ['repo-write'],
-      requiresConfig: resolveGitHubAppMissingConfig(),
-    });
-
-    if (guardrailDecision.outcome === 'deny') {
-      missingConfig = guardrailDecision.missingConfig ?? [];
-      const guardrailCode =
-        guardrailDecision.code === 'GUARDRAIL_REPO_NOT_ALLOWED'
-          ? S3_IMPLEMENT_CODES.GUARDRAIL_REPO_NOT_ALLOWED
-          : S3_IMPLEMENT_CODES.GUARDRAIL_CONFIG_MISSING;
-      return respondS3Error({
-        code: guardrailCode,
-        phase: 'preflight',
-        blockedBy: guardrailCode === S3_IMPLEMENT_CODES.GUARDRAIL_REPO_NOT_ALLOWED ? 'POLICY' : 'CONFIG',
-        nextAction:
-          guardrailCode === S3_IMPLEMENT_CODES.GUARDRAIL_REPO_NOT_ALLOWED
-            ? 'Allowlist repo'
-            : 'Configure guardrails',
-        message: guardrailDecision.detailsSafe || 'Guardrail blocked',
-        requiredConfig: missingConfig.length > 0 ? missingConfig : undefined,
-        missingConfig: missingConfig.length > 0 ? missingConfig : undefined,
-        preconditionFailed: 'GUARDRAIL_BLOCKED',
-        detailsSafe: guardrailDecision.detailsSafe || 'Guardrail blocked',
-      });
-    }
 
     // Canonical GitHub client for AFU9 write paths: auth-wrapper createAuthenticatedClient (S1/S2).
     let authClient;
@@ -487,32 +474,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       throw error;
-    }
-
-    const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim();
-    const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim();
-    const missingTriggerConfig: string[] = [];
-
-    if (!hasValue(triggerLabel)) {
-      missingTriggerConfig.push('AFU9_GITHUB_IMPLEMENT_LABEL');
-    }
-    if (!hasValue(triggerComment)) {
-      missingTriggerConfig.push('AFU9_GITHUB_IMPLEMENT_COMMENT');
-    }
-
-    if (missingTriggerConfig.length === 2) {
-      missingConfig = missingTriggerConfig;
-      return respondS3Error({
-        code: S3_IMPLEMENT_CODES.IMPLEMENT_TRIGGER_CONFIG_MISSING,
-        phase: 'preflight',
-        blockedBy: 'CONFIG',
-        nextAction: 'Configure implement trigger',
-        message: 'GitHub trigger not configured',
-        requiredConfig: missingTriggerConfig,
-        missingConfig: missingTriggerConfig,
-        preconditionFailed: 'IMPLEMENT_TRIGGER_CONFIG_MISSING',
-        detailsSafe: 'Implement trigger config missing',
-      });
     }
 
     // Create run record
@@ -597,11 +558,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, errorMessage);
 
       if (isProxyTypeError(error)) {
+        const fallbackDecision = decideS3Preflight(preflightContext);
+        if (fallbackDecision) {
+          return respondWithPreflightDecision(fallbackDecision);
+        }
         return respondS3Error({
-          code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+          code: S3_IMPLEMENT_CODES.SPEC_NOT_READY,
           phase: 'preflight',
-          blockedBy: 'INTERNAL',
-          nextAction: 'Retry implement when proxy ready',
+          blockedBy: 'STATE',
+          nextAction: 'Complete and save S2 spec',
           message: 'Implement precondition failed',
           preconditionFailed: 'IMPLEMENT_PRECONDITION_FAILED',
           detailsSafe: 'Implement precondition failed',
