@@ -75,6 +75,7 @@ export const revalidate = 0;
 
 const HANDLER_MARKER = 's1s3-implement';
 const HANDLER_VERSION = 'v1';
+const DEFAULT_IMPLEMENT_LABEL = 'afu9:implement';
 
 interface RouteContext {
   params: Promise<{
@@ -679,13 +680,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const requestTriggerComment =
       (typeof payload.triggerComment === 'string' ? payload.triggerComment : payload.comment)?.trim() ||
       undefined;
-    const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim() || requestTriggerLabel;
-    const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim() || requestTriggerComment;
-    const baseBranch = typeof payload.baseBranch === 'string' ? payload.baseBranch.trim() : '';
     const canonicalIssueId =
       getStringField(canonicalIssue ?? {}, 'id') ||
       getStringField(canonicalIssue ?? {}, 'canonical_id', 'canonicalId') ||
       issueId;
+    const defaultTriggerComment = `AFU9 implement request for issue ${canonicalIssueId}.`;
+    const triggerLabel =
+      process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim() ||
+      requestTriggerLabel ||
+      DEFAULT_IMPLEMENT_LABEL;
+    const triggerComment =
+      process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim() ||
+      requestTriggerComment ||
+      defaultTriggerComment;
+    const baseBranch = typeof payload.baseBranch === 'string' ? payload.baseBranch.trim() : '';
     const specHash = buildS3SpecHash(issue as unknown as Record<string, unknown>);
     const idempotencyKey = buildS3IdempotencyKey({
       canonicalIssueId,

@@ -837,6 +837,80 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     );
   });
 
+  test('uses backend default trigger label/comment when env and request are missing', async () => {
+    process.env.AFU9_GITHUB_IMPLEMENT_LABEL = '';
+    process.env.AFU9_GITHUB_IMPLEMENT_COMMENT = '';
+
+    mockResolveIssue.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: '234fcabf-1215-4c0f-915b-c32a84332360',
+      source: 'control',
+      issue: {
+        id: '234fcabf-1215-4c0f-915b-c32a84332360',
+      },
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'issue-123',
+        status: S1S3IssueStatus.SPEC_READY,
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        owner: 'afu9',
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+
+    mockCreateS1S3Run.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'run-default-1',
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    mockCreateS1S3RunStep.mockResolvedValue({
+      success: true,
+      data: { id: 'step-default-1' },
+    });
+
+    mockUpdateS1S3IssueStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'issue-123',
+        status: S1S3IssueStatus.IMPLEMENTING,
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+
+    (triggerAfu9Implementation as jest.Mock).mockResolvedValue({
+      labelApplied: true,
+      commentPosted: true,
+    });
+
+    const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: {
+        'x-request-id': 'req-trigger-default',
+      },
+    });
+
+    const response = await implementIssue(request, { params: Promise.resolve({ id: 'issue-123' }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(triggerAfu9Implementation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: 'afu9:implement',
+        comment: expect.stringContaining('AFU9 implement request for issue'),
+      })
+    );
+  });
+
   test('S3 implement is idempotent and does not re-post comment', async () => {
     const canonicalUuid = '234fcabf-1215-4c0f-915b-c32a84332360';
     const issueState = {
