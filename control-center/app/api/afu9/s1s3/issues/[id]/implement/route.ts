@@ -30,6 +30,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import {
   getS1S3IssueById,
+  upsertS1S3Issue,
   createS1S3Run,
   createS1S3RunStep,
   updateS1S3RunStatus,
@@ -221,6 +222,47 @@ function getErrorMessage(error: unknown): string {
 function isProxyTypeError(error: unknown): boolean {
   if (!(error instanceof TypeError)) return false;
   return error.message.toLowerCase().includes('proxy');
+}
+
+function getStringField(record: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function getNumberField(record: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function deriveRepoFullName(issue: Record<string, unknown>): string | null {
+  const repoField = getStringField(issue, 'github_repo', 'githubRepo');
+  if (repoField && repoField.includes('/')) {
+    return repoField;
+  }
+
+  const url = getStringField(issue, 'github_url', 'githubUrl');
+  if (!url) return null;
+
+  const match = url.match(/github\.com\/([^/]+\/[^/]+)(?:\/|$)/i);
+  return match?.[1] ?? null;
+}
+
+function mapCanonicalStatusToS1S3Status(status: string | null): S1S3IssueStatus {
+  if (status === S1S3IssueStatus.SPEC_READY) return S1S3IssueStatus.SPEC_READY;
+  if (status === S1S3IssueStatus.IMPLEMENTING) return S1S3IssueStatus.IMPLEMENTING;
+  if (status === S1S3IssueStatus.PR_CREATED) return S1S3IssueStatus.PR_CREATED;
+  if (status === S1S3IssueStatus.DONE) return S1S3IssueStatus.DONE;
+  return S1S3IssueStatus.CREATED;
 }
 
 /**
@@ -418,6 +460,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
     const issueId = resolved.uuid;
+    const canonicalIssue = (resolved.issue as Record<string, unknown>) || null;
 
     // Parse request body
     let body: Record<string, unknown> = {};
@@ -434,26 +477,55 @@ export async function POST(request: NextRequest, context: RouteContext) {
         detailsSafe: 'Invalid request body',
       });
     }
-    const hasCustomInputs = Boolean(
-      (body as Record<string, unknown>).baseBranch ||
-      (body as Record<string, unknown>).prTitle ||
-      (body as Record<string, unknown>).prBody
-    );
-
-    // Get existing issue
+    // Get or lazily seed derived S1S3 issue state from canonical control issue
     const issueResult = await getS1S3IssueById(pool, issueId);
-    if (!issueResult.success || !issueResult.data) {
+    let issue = issueResult.success ? issueResult.data : undefined;
+
+    if (!issue && canonicalIssue) {
+      const repoFullName = deriveRepoFullName(canonicalIssue);
+      const githubIssueNumber = getNumberField(canonicalIssue, 'github_issue_number', 'githubIssueNumber');
+      const githubIssueUrl = getStringField(canonicalIssue, 'github_url', 'githubUrl');
+
+      if (repoFullName && githubIssueNumber && githubIssueUrl) {
+        const seededStatus = mapCanonicalStatusToS1S3Status(
+          getStringField(canonicalIssue, 'status')
+        );
+        const seedResult = await upsertS1S3Issue(pool, {
+          repo_full_name: repoFullName,
+          github_issue_number: githubIssueNumber,
+          github_issue_url: githubIssueUrl,
+          owner: getStringField(canonicalIssue, 'assignee') || 'afu9',
+          canonical_id: getStringField(canonicalIssue, 'canonical_id', 'canonicalId') || undefined,
+          status: seededStatus,
+        });
+
+        if (seedResult.success && seedResult.data) {
+          issue = seedResult.data;
+          console.info('[S3] lazy state created from canonical', {
+            requestId,
+            canonicalIssueId: issueId,
+            s1s3IssueId: issue.id,
+            repoFullName,
+            githubIssueNumber,
+          });
+        }
+      }
+    }
+
+    if (!issue) {
       return respondS3Error({
         code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
         phase: 'preflight',
         blockedBy: 'STATE',
         nextAction: 'Verify issue id',
         message: 'Issue not found',
-        detailsSafe: 'Issue not found',
+        detailsSafe: `S1S3 state missing after canonical resolve: id=${issueId}`,
+        idInput: id,
+        idKind,
+        idResolved: issueId,
+        idStore: 's1s3',
       });
     }
-
-    const issue = issueResult.data;
 
     const repoFullName = issue.repo_full_name;
     const issueNumber = issue.github_issue_number;
