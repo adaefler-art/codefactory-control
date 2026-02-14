@@ -12,6 +12,7 @@ import { triggerAfu9Implementation } from '../../src/lib/github/issue-sync';
 import { createAuthenticatedClient, __resetPolicyCache } from '../../src/lib/github/auth-wrapper';
 
 const mockGetS1S3IssueById = jest.fn();
+const mockUpsertS1S3Issue = jest.fn();
 const mockCreateS1S3Run = jest.fn();
 const mockCreateS1S3RunStep = jest.fn();
 const mockUpdateS1S3RunStatus = jest.fn();
@@ -27,6 +28,7 @@ jest.mock('@/lib/db', () => ({
 
 jest.mock('@/lib/db/s1s3Flow', () => ({
   getS1S3IssueById: (...args: unknown[]) => mockGetS1S3IssueById(...args),
+  upsertS1S3Issue: (...args: unknown[]) => mockUpsertS1S3Issue(...args),
   createS1S3Run: (...args: unknown[]) => mockCreateS1S3Run(...args),
   createS1S3RunStep: (...args: unknown[]) => mockCreateS1S3RunStep(...args),
   updateS1S3RunStatus: (...args: unknown[]) => mockUpdateS1S3RunStatus(...args),
@@ -467,6 +469,91 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.detailsSafe).toContain('control');
     
     expect(mockGetS1S3IssueById).not.toHaveBeenCalled();
+    expect(triggerAfu9Implementation).not.toHaveBeenCalled();
+  });
+
+  test('auto-creates S1S3 state from canonical issue and proceeds to next preflight gate', async () => {
+    const canonicalId = 'aaaa1111';
+    const canonicalUuid = 'aaaa1111-1111-4111-8111-aaaaaaaaaaaa';
+
+    process.env.GITHUB_APP_ID = '';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '';
+    process.env.GITHUB_APP_SECRET_ID = '';
+    process.env.GH_APP_ID = '';
+    process.env.GH_APP_PRIVATE_KEY_PEM = '';
+    process.env.GH_APP_SECRET_ID = '';
+    __resetPolicyCache();
+
+    mockResolveIssue.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid: canonicalUuid,
+      shortId: canonicalId,
+      source: 'control',
+      issue: {
+        id: canonicalUuid,
+        status: 'SPEC_READY',
+        github_repo: 'org/repo',
+        github_issue_number: 42,
+        github_url: 'https://github.com/org/repo/issues/42',
+        assignee: 'afu9',
+        canonical_id: 'I811',
+      },
+    });
+
+    mockGetS1S3IssueById.mockResolvedValueOnce({
+      success: false,
+      error: 'Issue not found',
+    });
+
+    mockUpsertS1S3Issue.mockResolvedValue({
+      success: true,
+      data: {
+        id: 's1s3-seeded-1',
+        status: S1S3IssueStatus.SPEC_READY,
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        owner: 'afu9',
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${canonicalId}/implement`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'x-request-id': 'req-seed' },
+      }
+    );
+    const params = Promise.resolve({ id: canonicalId });
+    const response = await implementIssue(request, { params });
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(mockUpsertS1S3Issue).toHaveBeenCalledTimes(1);
+    expect(mockUpsertS1S3Issue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+        status: S1S3IssueStatus.SPEC_READY,
+      })
+    );
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(body.blockedBy).toBe('CONFIG');
+    expect(body.phase).toBe('preflight');
+    expect(body.code).not.toBe('ISSUE_NOT_FOUND');
+
+    expect(response.headers.get('x-afu9-handler')).toBe('s1s3-implement');
+    expect(response.headers.get('x-afu9-phase')).toBe('preflight');
+    expect(response.headers.get('x-afu9-blocked-by')).toBe('CONFIG');
+    expect(response.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(response.headers.get('x-afu9-request-id')).toBe('req-seed');
+    expect(response.headers.get('x-afu9-control-build')).toBeDefined();
+
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 });
