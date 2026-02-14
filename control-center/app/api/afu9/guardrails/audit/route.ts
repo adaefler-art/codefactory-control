@@ -27,10 +27,21 @@ function hasValue(value: string | undefined | null): boolean {
   return Boolean(value && value.trim().length > 0);
 }
 
+function getControlBuild(): string {
+  return (
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT_SHA ??
+    process.env.COMMIT_SHA ??
+    'unknown'
+  );
+}
+
 function buildHeaders(requestId: string): Headers {
   const headers = new Headers();
   headers.set('x-afu9-request-id', requestId);
   headers.set('x-afu9-handler', HANDLER_MARKER);
+  headers.set('x-afu9-control-build', getControlBuild());
   headers.set('cache-control', 'no-store');
   return headers;
 }

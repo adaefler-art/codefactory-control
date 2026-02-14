@@ -50,6 +50,16 @@ function isAllowedCode(stage: Afu9Stage, code: string): boolean {
   return stage === 'S2' ? S2_ALLOWED.has(code) : S3_ALLOWED.has(code);
 }
 
+function getControlBuild(): string {
+  return (
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT_SHA ??
+    process.env.COMMIT_SHA ??
+    'unknown'
+  );
+}
+
 function resolveStatus(params: { code: string; blockedBy: Afu9BlockedBy }): number {
   if (params.code === COMMON_AFU9_CODES.ISSUE_NOT_FOUND) {
     return 404;
@@ -99,6 +109,9 @@ export function makeAfu9Error(params: {
   response.headers.set('x-afu9-phase', params.phase);
   response.headers.set('x-afu9-blocked-by', params.blockedBy);
   response.headers.set('x-afu9-error-code', params.code);
+  if (!response.headers.has('x-afu9-control-build')) {
+    response.headers.set('x-afu9-control-build', getControlBuild());
+  }
   response.headers.set('cache-control', 'no-store');
 
   if (params.missingConfig && params.missingConfig.length > 0) {

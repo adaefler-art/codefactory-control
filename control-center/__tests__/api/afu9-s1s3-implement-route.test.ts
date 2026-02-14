@@ -354,4 +354,119 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-auth-path')).toBe('app');
     expect(triggerAfu9Implementation).toHaveBeenCalled();
   });
+
+  test('resolves publicId (8-hex) to UUID and includes ID diagnostic headers on success', async () => {
+    const publicId = '12abcdef';
+    const uuid = '12abcdef-1234-5678-9abc-def123456789';
+    
+    // Mock resolveIssueIdentifierOr404 to return UUID from publicId
+    mockResolveIssue.mockResolvedValue({
+      ok: true,
+      type: 'shortid',
+      uuid,
+      shortId: publicId,
+      source: 'control',
+    });
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: S1S3IssueStatus.SPEC_READY,
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        owner: 'afu9',
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+    mockCreateS1S3Run.mockResolvedValue({
+      success: true,
+      data: { id: 'run-123', created_at: new Date().toISOString() },
+    });
+    mockCreateS1S3RunStep.mockResolvedValue({
+      success: true,
+      data: { id: 'step-123' },
+    });
+    mockUpdateS1S3IssueStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: uuid,
+        status: S1S3IssueStatus.IMPLEMENTING,
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+    (triggerAfu9Implementation as jest.Mock).mockResolvedValue({
+      labelApplied: true,
+      commentPosted: false,
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${publicId}/implement`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'x-request-id': 'req-publicid' },
+      }
+    );
+    const params = Promise.resolve({ id: publicId });
+    const response = await implementIssue(request, { params });
+    const body = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(mockResolveIssue).toHaveBeenCalledWith(publicId, 'req-publicid');
+    // ID diagnostic headers should NOT appear on success
+    // They are only added to error responses
+    expect(response.headers.get('x-afu9-id-input')).toBeNull();
+    expect(response.headers.get('x-afu9-id-kind')).toBeNull();
+    expect(response.headers.get('x-afu9-id-resolved')).toBeNull();
+    expect(response.headers.get('x-afu9-store')).toBeNull();
+  });
+
+  test('returns 404 with ID diagnostic headers when issue not found', async () => {
+    const nonExistentId = 'deadbeef';
+    
+    mockResolveIssue.mockResolvedValue({
+      ok: false,
+      status: 404,
+      body: {
+        errorCode: 'issue_not_found',
+        issueId: nonExistentId,
+        lookupStore: 'control',
+        requestId: 'req-404',
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${nonExistentId}/implement`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'x-request-id': 'req-404' },
+      }
+    );
+    const params = Promise.resolve({ id: nonExistentId });
+    const response = await implementIssue(request, { params });
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.code).toBe('ISSUE_NOT_FOUND');
+    expect(body.stage).toBe('S3');
+    expect(body.phase).toBe('preflight');
+    expect(body.blockedBy).toBe('STATE');
+    
+    // Validate ID diagnostic headers
+    expect(response.headers.get('x-afu9-id-input')).toBe(nonExistentId);
+    expect(response.headers.get('x-afu9-id-kind')).toBe('publicId'); // 8-hex
+    expect(response.headers.get('x-afu9-store')).toBe('control');
+    expect(response.headers.get('x-afu9-id-resolved')).toBeNull(); // Not resolved on 404
+    
+    // Validate enhanced detailsSafe message
+    expect(body.detailsSafe).toContain(nonExistentId);
+    expect(body.detailsSafe).toContain('publicId');
+    expect(body.detailsSafe).toContain('control');
+    
+    expect(mockGetS1S3IssueById).not.toHaveBeenCalled();
+    expect(triggerAfu9Implementation).not.toHaveBeenCalled();
+  });
 });

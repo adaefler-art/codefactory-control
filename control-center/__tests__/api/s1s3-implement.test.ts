@@ -523,6 +523,7 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.githubTrigger?.labelApplied).toBe(true);
     expect(body.githubTrigger?.commentPosted).toBe(false);
     expect(response.headers.get('x-afu9-auth-path')).toBe('app');
+    expect(response.headers.get('x-afu9-control-build')).toBeTruthy();
     expect(mockCreateAuthenticatedClient).toHaveBeenCalled();
     expect(mockTriggerAfu9Implementation).toHaveBeenCalled();
   });
