@@ -12,6 +12,8 @@ import { triggerAfu9Implementation } from '../../src/lib/github/issue-sync';
 import { createAuthenticatedClient, __resetPolicyCache } from '../../src/lib/github/auth-wrapper';
 
 const mockGetS1S3IssueById = jest.fn();
+const mockGetS1S3IssueByCanonicalId = jest.fn();
+const mockGetS1S3IssueByGitHub = jest.fn();
 const mockUpsertS1S3Issue = jest.fn();
 const mockCreateS1S3Run = jest.fn();
 const mockCreateS1S3RunStep = jest.fn();
@@ -28,6 +30,8 @@ jest.mock('@/lib/db', () => ({
 
 jest.mock('@/lib/db/s1s3Flow', () => ({
   getS1S3IssueById: (...args: unknown[]) => mockGetS1S3IssueById(...args),
+  getS1S3IssueByCanonicalId: (...args: unknown[]) => mockGetS1S3IssueByCanonicalId(...args),
+  getS1S3IssueByGitHub: (...args: unknown[]) => mockGetS1S3IssueByGitHub(...args),
   upsertS1S3Issue: (...args: unknown[]) => mockUpsertS1S3Issue(...args),
   createS1S3Run: (...args: unknown[]) => mockCreateS1S3Run(...args),
   createS1S3RunStep: (...args: unknown[]) => mockCreateS1S3RunStep(...args),
@@ -100,6 +104,14 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
       type: 'uuid',
       uuid: 'issue-123',
       source: 'control',
+    });
+    mockGetS1S3IssueByCanonicalId.mockResolvedValue({
+      success: false,
+      error: 'Issue not found',
+    });
+    mockGetS1S3IssueByGitHub.mockResolvedValue({
+      success: false,
+      error: 'Issue not found',
     });
   });
 
@@ -472,6 +484,66 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
   });
 
+  test('regression: once status becomes SPEC_READY, S3 no longer returns SPEC_NOT_READY', async () => {
+    const issueId = 'issue-flow-1';
+    let currentStatus: S1S3IssueStatus = S1S3IssueStatus.CREATED;
+
+    mockGetS1S3IssueById.mockImplementation(async () => ({
+      success: true,
+      data: {
+        id: issueId,
+        status: currentStatus,
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        owner: 'afu9',
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+        acceptance_criteria: ['AC1'],
+        spec_ready_at: currentStatus === S1S3IssueStatus.CREATED ? null : new Date().toISOString(),
+      },
+    }));
+
+    const firstRequest = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/implement`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'x-request-id': 'req-flow-1' },
+      }
+    );
+
+    const firstResponse = await implementIssue(firstRequest, { params: Promise.resolve({ id: issueId }) });
+    const firstBody = await firstResponse.json();
+
+    expect(firstResponse.status).toBe(409);
+    expect(firstBody.code).toBe('SPEC_NOT_READY');
+
+    currentStatus = S1S3IssueStatus.SPEC_READY;
+    process.env.GITHUB_APP_ID = '';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '';
+    process.env.GITHUB_APP_SECRET_ID = '';
+    process.env.GH_APP_ID = '';
+    process.env.GH_APP_PRIVATE_KEY_PEM = '';
+    process.env.GH_APP_SECRET_ID = '';
+    __resetPolicyCache();
+
+    const secondRequest = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${issueId}/implement`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'x-request-id': 'req-flow-2' },
+      }
+    );
+
+    const secondResponse = await implementIssue(secondRequest, { params: Promise.resolve({ id: issueId }) });
+    const secondBody = await secondResponse.json();
+
+    expect(secondResponse.status).toBe(409);
+    expect(secondBody.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(secondBody.code).not.toBe('SPEC_NOT_READY');
+    expect(secondResponse.headers.get('x-afu9-error-code')).toBe('GUARDRAIL_CONFIG_MISSING');
+  });
+
   test('auto-creates S1S3 state from canonical issue and proceeds to next preflight gate', async () => {
     const canonicalId = 'aaaa1111';
     const canonicalUuid = 'aaaa1111-1111-4111-8111-aaaaaaaaaaaa';
@@ -555,5 +627,73 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(response.headers.get('x-afu9-control-build')).toBeDefined();
 
     expect(triggerAfu9Implementation).not.toHaveBeenCalled();
+  });
+
+  test('regression: existing s1s3 row from github mirror is reused and not downgraded to SPEC_NOT_READY', async () => {
+    const canonicalUuid = 'bbbb1111-1111-4111-8111-bbbbbbbbbbbb';
+
+    process.env.GITHUB_APP_ID = '';
+    process.env.GITHUB_APP_PRIVATE_KEY_PEM = '';
+    process.env.GITHUB_APP_SECRET_ID = '';
+    process.env.GH_APP_ID = '';
+    process.env.GH_APP_PRIVATE_KEY_PEM = '';
+    process.env.GH_APP_SECRET_ID = '';
+    __resetPolicyCache();
+
+    mockResolveIssue.mockResolvedValue({
+      ok: true,
+      type: 'uuid',
+      uuid: canonicalUuid,
+      source: 'control',
+      issue: {
+        id: canonicalUuid,
+        status: 'CREATED',
+        github_repo: 'org/repo',
+        github_issue_number: 42,
+        github_url: 'https://github.com/org/repo/issues/42',
+        assignee: 'afu9',
+        canonical_id: 'I900',
+      },
+    });
+
+    mockGetS1S3IssueById.mockResolvedValueOnce({
+      success: false,
+      error: 'Issue not found',
+    });
+
+    mockGetS1S3IssueByCanonicalId.mockResolvedValueOnce({
+      success: false,
+      error: 'Issue not found',
+    });
+
+    mockGetS1S3IssueByGitHub.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: 's1s3-existing-1',
+        status: S1S3IssueStatus.SPEC_READY,
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        owner: 'afu9',
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+
+    const request = new NextRequest(
+      `http://localhost/api/afu9/s1s3/issues/${canonicalUuid}/implement`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'x-request-id': 'req-reuse' },
+      }
+    );
+
+    const response = await implementIssue(request, { params: Promise.resolve({ id: canonicalUuid }) });
+    const body = await response.json();
+
+    expect(mockGetS1S3IssueByGitHub).toHaveBeenCalledWith(expect.anything(), 'org/repo', 42);
+    expect(mockUpsertS1S3Issue).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
+    expect(body.code).not.toBe('SPEC_NOT_READY');
   });
 });
