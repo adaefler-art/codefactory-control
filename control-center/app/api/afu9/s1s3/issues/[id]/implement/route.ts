@@ -30,6 +30,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import {
   getS1S3IssueById,
+  getS1S3IssueByCanonicalId,
+  getS1S3IssueByGitHub,
   upsertS1S3Issue,
   createS1S3Run,
   createS1S3RunStep,
@@ -463,9 +465,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const canonicalIssue = (resolved.issue as Record<string, unknown>) || null;
 
     // Parse request body
-    let body: Record<string, unknown> = {};
     try {
-      body = (await request.json()) as Record<string, unknown>;
+      await request.json();
     } catch {
       return respondS3Error({
         code: S3_IMPLEMENT_CODES.SPEC_NOT_READY,
@@ -482,11 +483,39 @@ export async function POST(request: NextRequest, context: RouteContext) {
     let issue = issueResult.success ? issueResult.data : undefined;
 
     if (!issue && canonicalIssue) {
+      const canonicalId = getStringField(canonicalIssue, 'canonical_id', 'canonicalId');
+      if (canonicalId) {
+        const canonicalLookup = await getS1S3IssueByCanonicalId(pool, canonicalId);
+        if (canonicalLookup.success && canonicalLookup.data) {
+          issue = canonicalLookup.data;
+          console.info('[S3] existing state resolved by canonical_id', {
+            requestId,
+            canonicalIssueId: issueId,
+            canonicalId,
+            s1s3IssueId: issue.id,
+          });
+        }
+      }
+
       const repoFullName = deriveRepoFullName(canonicalIssue);
       const githubIssueNumber = getNumberField(canonicalIssue, 'github_issue_number', 'githubIssueNumber');
       const githubIssueUrl = getStringField(canonicalIssue, 'github_url', 'githubUrl');
 
-      if (repoFullName && githubIssueNumber && githubIssueUrl) {
+      if (!issue && repoFullName && githubIssueNumber) {
+        const githubLookup = await getS1S3IssueByGitHub(pool, repoFullName, githubIssueNumber);
+        if (githubLookup.success && githubLookup.data) {
+          issue = githubLookup.data;
+          console.info('[S3] existing state resolved by github mirror', {
+            requestId,
+            canonicalIssueId: issueId,
+            s1s3IssueId: issue.id,
+            repoFullName,
+            githubIssueNumber,
+          });
+        }
+      }
+
+      if (!issue && repoFullName && githubIssueNumber && githubIssueUrl) {
         const seededStatus = mapCanonicalStatusToS1S3Status(
           getStringField(canonicalIssue, 'status')
         );
@@ -529,10 +558,48 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const repoFullName = issue.repo_full_name;
     const issueNumber = issue.github_issue_number;
+    const canonicalIssueStatus = canonicalIssue
+      ? mapCanonicalStatusToS1S3Status(getStringField(canonicalIssue, 'status'))
+      : S1S3IssueStatus.CREATED;
+    const canonicalSpecReady =
+      canonicalIssueStatus === S1S3IssueStatus.SPEC_READY ||
+      canonicalIssueStatus === S1S3IssueStatus.IMPLEMENTING ||
+      canonicalIssueStatus === S1S3IssueStatus.PR_CREATED;
     const issueSpecReady =
       issue.status === S1S3IssueStatus.SPEC_READY ||
       issue.status === S1S3IssueStatus.IMPLEMENTING ||
-      issue.status === S1S3IssueStatus.PR_CREATED;
+      issue.status === S1S3IssueStatus.PR_CREATED ||
+      canonicalSpecReady;
+    const acceptanceCriteriaRaw = issue.acceptance_criteria;
+    const acceptanceCriteriaLen = Array.isArray(acceptanceCriteriaRaw)
+      ? acceptanceCriteriaRaw.length
+      : typeof acceptanceCriteriaRaw === 'string'
+        ? (() => {
+            try {
+              const parsed = JSON.parse(acceptanceCriteriaRaw);
+              return Array.isArray(parsed) ? parsed.length : 0;
+            } catch {
+              return 0;
+            }
+          })()
+        : 0;
+
+    console.info('[S3] preflight spec gate', {
+      requestId,
+      issueIdParam: id,
+      resolvedCanonicalId: issueId,
+      s1s3RecordFound: Boolean(issue),
+      issueId: issue.id ?? issueId,
+      stage: 'S3',
+      status: issue.status,
+      canonicalStatus: canonicalIssueStatus,
+      specReadyComputed: issueSpecReady,
+      specReadyFromCanonical: canonicalSpecReady,
+      repoFullNamePresent: Boolean(repoFullName),
+      githubIssueNumberPresent: Boolean(issueNumber),
+      specReadyAtPresent: Boolean(issue.spec_ready_at),
+      acceptanceCriteriaLen: acceptanceCriteriaLen,
+    });
 
     const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim();
     const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim();
