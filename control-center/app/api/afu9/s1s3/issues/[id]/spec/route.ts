@@ -186,6 +186,35 @@ interface RouteContext {
 export const POST = withApi(async (request: NextRequest, context: RouteContext) => {
   const requestId = getRequestId(request);
   const pool = getPool();
+  let traceIssueIdParam: string | null = null;
+  let traceResolvedCanonicalId: string | null = null;
+  let traceIssueId: string | null = null;
+  let traceStatusBefore: string | null = null;
+  let traceStatusAfter: string | null = null;
+  let traceWroteSpec = false;
+  let traceSpecInputsValid = false;
+  let traceIssueStatusReady = false;
+  let traceAcceptanceCriteriaLen = 0;
+  let traceScopePresent = false;
+
+  const traceReturn = (gate: string) => {
+    console.info('[S2] return trace', {
+      requestId,
+      stage: 'S2',
+      issueIdParam: traceIssueIdParam,
+      resolvedCanonicalId: traceResolvedCanonicalId,
+      issueId: traceIssueId,
+      gate,
+      statusBefore: traceStatusBefore,
+      statusAfter: traceStatusAfter,
+      wroteSpec: traceWroteSpec,
+      specInputsValid: traceSpecInputsValid,
+      issueStatusReady: traceIssueStatusReady,
+      acceptanceCriteriaLen: traceAcceptanceCriteriaLen,
+      scopePresent: traceScopePresent,
+    });
+  };
+
   const routeHeaderValue = getRouteHeaderValue(request);
   const requestedScope = request.nextUrl?.pathname?.includes('/afu9/s1s9/') ? 's1s9' : 's1s3';
   const stageEntry = getStageRegistryEntry('S2');
@@ -217,6 +246,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         'x-cf-handler': CF_HANDLER,
       },
     });
+    traceReturn('REGISTRY_CONFIG_MISSING');
     return stamp(response, {
       requestId,
       handler: CF_HANDLER,
@@ -255,6 +285,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     extraBody?: Record<string, unknown>;
     extraHeaders?: Record<string, string>;
   }) => {
+    traceReturn(params.code);
     const message = params.detailsSafe || 'Request failed';
     const response = makeAfu9Error({
       stage: 'S2',
@@ -296,6 +327,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
   };
 
   const respondWithPreflightDecision = (decision: PreflightDecision) => {
+    traceReturn(`PREFLIGHT_${decision.code}`);
     const response = makeAfu9Error({
       stage: 'S2',
       code: decision.code,
@@ -362,6 +394,8 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     const { id } = await context.params;
     const issueId = id;
+    traceIssueIdParam = issueId;
+    traceIssueId = issueId;
     const parsedId = parseIssueId(issueId);
     let resolvedIssueId: string | null = null;
     let controlIssue: Record<string, unknown> | null = null;
@@ -404,6 +438,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         });
       }
       resolvedIssueId = resolved.uuid;
+      traceResolvedCanonicalId = resolved.uuid;
       controlIssue = (resolved.issue as Record<string, unknown>) || null;
     }
 
@@ -433,6 +468,9 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
 
     const hasAcceptanceCriteria = Boolean(acceptanceCriteria && acceptanceCriteria.length > 0);
     const specInputsValid = Boolean(!bodyParseFailed && scope && hasAcceptanceCriteria);
+    traceSpecInputsValid = specInputsValid;
+    traceAcceptanceCriteriaLen = acceptanceCriteria?.length ?? 0;
+    traceScopePresent = Boolean(scope);
 
     console.log('[S2] Spec ready request:', {
       requestId,
@@ -533,6 +571,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         },
         extraHeaders: responseHeaders,
       });
+      traceReturn('ISSUE_NOT_FOUND');
       return stamp(response, {
         requestId,
         handler: CF_HANDLER,
@@ -547,11 +586,13 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
       issue_id: issue.id,
       foundBy,
     });
+    traceStatusBefore = issue.status;
 
     const repoFullName = issue.repo_full_name;
     const issueNumber = issue.github_issue_number;
     const issueStatusReady =
       issue.status === S1S3IssueStatus.CREATED || issue.status === S1S3IssueStatus.SPEC_READY;
+    traceIssueStatusReady = issueStatusReady;
     const guardrailDecision = isGuardrailsEnabled() && repoFullName
       ? evaluateGuardrailsPreflight({
           requestId,
@@ -600,6 +641,8 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
     }
 
     const updatedIssue = updateResult.data;
+    traceWroteSpec = true;
+    traceStatusAfter = updatedIssue.status;
 
     console.log('[S2] Spec persisted:', {
       requestId,
@@ -765,6 +808,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
           headers: responseHeaders,
         }
       );
+      traceReturn('SUCCESS_BLOCKED_SYNC');
       return stamp(response, {
         requestId,
         handler: CF_HANDLER,
@@ -880,6 +924,7 @@ export const POST = withApi(async (request: NextRequest, context: RouteContext) 
         headers: responseHeaders,
       }
     );
+    traceReturn('SUCCESS');
     return stamp(response, {
       requestId,
       handler: CF_HANDLER,
