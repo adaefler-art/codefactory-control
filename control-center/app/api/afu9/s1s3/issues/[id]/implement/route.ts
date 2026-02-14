@@ -75,6 +75,16 @@ interface RouteContext {
   }>;
 }
 
+type S3ImplementRequestBody = {
+  baseBranch?: string;
+  prTitle?: string;
+  prBody?: string;
+  triggerLabel?: string;
+  triggerComment?: string;
+  label?: string;
+  comment?: string;
+};
+
 type S3SuccessResponse = {
   ok: true;
   stage: 'S3';
@@ -465,8 +475,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const canonicalIssue = (resolved.issue as Record<string, unknown>) || null;
 
     // Parse request body
+    let payload: S3ImplementRequestBody = {};
     try {
-      await request.json();
+      payload = (await request.json()) as S3ImplementRequestBody;
     } catch {
       return respondS3Error({
         code: S3_IMPLEMENT_CODES.SPEC_NOT_READY,
@@ -601,8 +612,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       acceptanceCriteriaLen: acceptanceCriteriaLen,
     });
 
-    const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim();
-    const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim();
+    const requestTriggerLabel =
+      (typeof payload.triggerLabel === 'string' ? payload.triggerLabel : payload.label)?.trim() ||
+      undefined;
+    const requestTriggerComment =
+      (typeof payload.triggerComment === 'string' ? payload.triggerComment : payload.comment)?.trim() ||
+      undefined;
+    const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim() || requestTriggerLabel;
+    const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim() || requestTriggerComment;
     const missingTriggerConfig: string[] = [];
 
     if (!hasValue(triggerLabel)) {
