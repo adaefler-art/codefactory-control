@@ -53,6 +53,7 @@ import { decideS3Preflight, type PreflightDecision } from '@/lib/afu9/preflight-
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
 import { buildAfu9ScopeHeaders } from '../../../../s1s9/_shared';
 import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-registry';
+import { parseIssueId } from '@/lib/contracts/ids';
 import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
 import { GitHubAppConfigError, GitHubAppKeyFormatError } from '@/lib/github-app-auth';
 import { triggerAfu9Implementation } from '@/lib/github/issue-sync';
@@ -133,6 +134,10 @@ function stamp(
     phase?: string;
     blockedBy?: string;
     errorCode?: string;
+    idInput?: string;
+    idKind?: string;
+    idResolved?: string;
+    idStore?: string;
   }
 ): Response {
   const buildStamp =
@@ -146,6 +151,10 @@ function stamp(
   if (meta.phase) response.headers.set('x-afu9-phase', meta.phase);
   if (meta.blockedBy) response.headers.set('x-afu9-blocked-by', meta.blockedBy);
   if (meta.errorCode) response.headers.set('x-afu9-error-code', meta.errorCode);
+  if (meta.idInput) response.headers.set('x-afu9-id-input', meta.idInput);
+  if (meta.idKind) response.headers.set('x-afu9-id-kind', meta.idKind);
+  if (meta.idResolved) response.headers.set('x-afu9-id-resolved', meta.idResolved);
+  if (meta.idStore) response.headers.set('x-afu9-store', meta.idStore);
   response.headers.set('x-afu9-control-build', buildStamp);
   response.headers.set('cache-control', 'no-store');
   return response;
@@ -288,6 +297,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     upstreamStatus?: number;
     githubRequestId?: string;
     detailsSafe?: string;
+    idInput?: string;
+    idKind?: string;
+    idResolved?: string;
+    idStore?: string;
   }) => {
     const response = applyHandlerHeaders(
       makeAfu9Error({
@@ -327,6 +340,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         phase: params.phase,
         blockedBy: params.blockedBy,
         errorCode: params.code,
+        idInput: params.idInput,
+        idKind: params.idKind,
+        idResolved: params.idResolved,
+        idStore: params.idStore,
       }
     );
   };
@@ -369,16 +386,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
       : ['AFU9_STAGE', 'DEPLOY_ENV', 'ENVIRONMENT'];
 
     const { id } = await context.params;
+    const parsed = parseIssueId(id);
+    const idKind = parsed.kind === 'shortHex8' ? 'publicId' : parsed.kind;
+    
     const resolved = await resolveIssueIdentifierOr404(id, requestId);
     if (!resolved.ok) {
       if (resolved.status === 404) {
+        const lookupStore = resolved.body.lookupStore || 'unknown';
+        const detailsSafe = `Issue not found: id=${id}, kind=${idKind}, store=${lookupStore}`;
+        
         return respondS3Error({
           code: COMMON_AFU9_CODES.ISSUE_NOT_FOUND,
           phase: 'preflight',
           blockedBy: 'STATE',
           nextAction: 'Verify issue id',
           message: 'Issue not found',
-          detailsSafe: 'Issue not found',
+          detailsSafe,
+          idInput: id,
+          idKind,
+          idStore: lookupStore,
         });
       }
       return respondS3Error({
@@ -387,6 +413,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         blockedBy: 'INTERNAL',
         nextAction: 'Retry issue lookup',
         message: resolved.body.errorCode || 'Invalid issue identifier',
+        idInput: id,
+        idKind,
       });
     }
     const issueId = resolved.uuid;

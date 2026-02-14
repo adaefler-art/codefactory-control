@@ -27,12 +27,24 @@ type PreflightErrorResponse = {
 
 const HANDLER_MARKER = 'guardrails-preflight';
 
+function getControlBuild(): string {
+  return (
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT_SHA ??
+    process.env.COMMIT_SHA ??
+    'unknown'
+  );
+}
+
 function buildHeaders(requestId: string, missingConfig: string[]): Headers {
   const headers = new Headers();
   headers.set('x-afu9-request-id', requestId);
   headers.set('x-afu9-handler', HANDLER_MARKER);
   headers.set('x-afu9-phase', 'preflight');
+  headers.set('x-afu9-control-build', getControlBuild());
   headers.set('x-afu9-missing-config', missingConfig.length ? missingConfig.join(',') : '');
+  headers.set('cache-control', 'no-store');
   return headers;
 }
 
