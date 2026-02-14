@@ -165,6 +165,25 @@ export type GithubTriggerResult = {
   issueUrl?: string;
 };
 
+export class CopilotAssignUnsupportedError extends Error {
+  constructor(message = 'Copilot assignment is not supported for this repository') {
+    super(message);
+    this.name = 'CopilotAssignUnsupportedError';
+  }
+}
+
+export class CopilotAssignFailedError extends Error {
+  constructor(message = 'Copilot assignment failed') {
+    super(message);
+    this.name = 'CopilotAssignFailedError';
+  }
+}
+
+export type CopilotAssignResult = {
+  assigned: boolean;
+  assignee: string;
+};
+
 export async function triggerAfu9Implementation(params: {
   owner: string;
   repo: string;
@@ -242,4 +261,65 @@ export async function triggerAfu9Implementation(params: {
     labelApplied,
     commentPosted,
   };
+}
+
+export async function assignAfu9Copilot(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  requestId?: string;
+  octokit?: Octokit;
+  assignee?: string;
+}): Promise<CopilotAssignResult> {
+  const octokit =
+    params.octokit ??
+    (await createAuthenticatedClient({
+      owner: params.owner,
+      repo: params.repo,
+      requestId: params.requestId,
+    }));
+
+  const assignee = normalizeLines(params.assignee) || 'copilot-swe-agent';
+
+  const config = {
+    ...DEFAULT_RETRY_CONFIG,
+    httpMethod: 'POST' as const,
+    allowNonIdempotentRetry: true,
+    requestId: params.requestId,
+    endpoint: 'issues.addAssignees',
+  };
+
+  try {
+    await withRetry(
+      async () =>
+        octokit.rest.issues.addAssignees({
+          owner: params.owner,
+          repo: params.repo,
+          issue_number: params.issueNumber,
+          assignees: [assignee],
+        }),
+      config,
+      (decision) => {
+        console.log(`[GitHub Issue] ${decision.reason}`);
+      }
+    );
+
+    return {
+      assigned: true,
+      assignee,
+    };
+  } catch (error) {
+    const status =
+      typeof (error as { status?: unknown })?.status === 'number'
+        ? ((error as { status?: number }).status as number)
+        : undefined;
+    if (status === 404 || status === 422) {
+      throw new CopilotAssignUnsupportedError(
+        `Copilot assignment unsupported (${status})`
+      );
+    }
+    throw new CopilotAssignFailedError(
+      error instanceof Error ? error.message : 'Copilot assignment failed'
+    );
+  }
 }

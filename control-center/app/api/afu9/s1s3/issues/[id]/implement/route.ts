@@ -27,11 +27,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { getPool } from '@/lib/db';
 import {
   getS1S3IssueById,
   getS1S3IssueByCanonicalId,
   getS1S3IssueByGitHub,
+  listS1S3RunsByIssue,
+  listS1S3RunSteps,
   upsertS1S3Issue,
   createS1S3Run,
   createS1S3RunStep,
@@ -50,7 +53,6 @@ import {
   S3_IMPLEMENT_CODES,
   makeAfu9Error,
   type Afu9BlockedBy,
-  type Afu9Phase,
 } from '@/lib/afu9/workflow-errors';
 import { decideS3Preflight, type PreflightDecision } from '@/lib/afu9/preflight-decisions';
 import { getControlResponseHeaders, resolveIssueIdentifierOr404 } from '../../../../../issues/_shared';
@@ -59,7 +61,12 @@ import { getStageRegistryEntry, getStageRegistryError } from '@/lib/stage-regist
 import { parseIssueId } from '@/lib/contracts/ids';
 import { createAuthenticatedClient } from '@/lib/github/auth-wrapper';
 import { GitHubAppConfigError, GitHubAppKeyFormatError } from '@/lib/github-app-auth';
-import { triggerAfu9Implementation } from '@/lib/github/issue-sync';
+import {
+  assignAfu9Copilot,
+  CopilotAssignFailedError,
+  CopilotAssignUnsupportedError,
+  triggerAfu9Implementation,
+} from '@/lib/github/issue-sync';
 import { evaluateGuardrailsPreflight } from '@/lib/guardrails/preflight-evaluator';
 
 // Avoid stale reads
@@ -92,6 +99,7 @@ type S3SuccessResponse = {
   mutationId: string;
   issueId: string;
   startedAt: string;
+  idempotent?: boolean;
 };
 
 type Afu9AuthPath = 'token' | 'app' | 'unknown';
@@ -267,6 +275,59 @@ function deriveRepoFullName(issue: Record<string, unknown>): string | null {
 
   const match = url.match(/github\.com\/([^/]+\/[^/]+)(?:\/|$)/i);
   return match?.[1] ?? null;
+}
+
+function parseArrayField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0
+        );
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function buildS3SpecHash(issue: Record<string, unknown>): string {
+  const material = {
+    problem: getStringField(issue, 'problem') || '',
+    scope: getStringField(issue, 'scope') || '',
+    acceptanceCriteria: parseArrayField(issue.acceptance_criteria),
+    notes: getStringField(issue, 'notes') || '',
+  };
+  return createHash('sha256').update(JSON.stringify(material)).digest('hex');
+}
+
+function buildS3IdempotencyKey(params: {
+  canonicalIssueId: string;
+  specHash: string;
+  baseBranch?: string;
+}): string {
+  const baseBranch = (params.baseBranch || '').trim().toLowerCase();
+  return `${params.canonicalIssueId}:implement:${params.specHash}:${baseBranch}`;
+}
+
+function getEvidenceRecord(step: { evidence_refs?: unknown }): Record<string, unknown> {
+  const raw = step.evidence_refs;
+  if (!raw) return {};
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
 }
 
 function mapCanonicalStatusToS1S3Status(status: string | null): S1S3IssueStatus {
@@ -620,6 +681,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       undefined;
     const triggerLabel = process.env.AFU9_GITHUB_IMPLEMENT_LABEL?.trim() || requestTriggerLabel;
     const triggerComment = process.env.AFU9_GITHUB_IMPLEMENT_COMMENT?.trim() || requestTriggerComment;
+    const baseBranch = typeof payload.baseBranch === 'string' ? payload.baseBranch.trim() : '';
+    const canonicalIssueId =
+      getStringField(canonicalIssue ?? {}, 'id') ||
+      getStringField(canonicalIssue ?? {}, 'canonical_id', 'canonicalId') ||
+      issueId;
+    const specHash = buildS3SpecHash(issue as unknown as Record<string, unknown>);
+    const idempotencyKey = buildS3IdempotencyKey({
+      canonicalIssueId,
+      specHash,
+      baseBranch,
+    });
     const missingTriggerConfig: string[] = [];
 
     if (!hasValue(triggerLabel)) {
@@ -667,6 +739,63 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (preflightDecision) {
       return respondWithPreflightDecision(preflightDecision);
+    }
+
+    const existingRuns = await listS1S3RunsByIssue(pool, issue.id);
+    if (existingRuns.success && existingRuns.data && existingRuns.data.length > 0) {
+      for (const candidate of existingRuns.data) {
+        if (candidate.type !== S1S3RunType.S3_IMPLEMENT) continue;
+        if (!(candidate.status === S1S3RunStatus.RUNNING || candidate.status === S1S3RunStatus.DONE)) continue;
+
+        const stepsResult = await listS1S3RunSteps(pool, candidate.id);
+        if (!stepsResult.success || !stepsResult.data) continue;
+
+        const matchingStep = stepsResult.data.find((step) => {
+          const evidence = getEvidenceRecord(step);
+          return evidence.idempotency_key === idempotencyKey;
+        });
+
+        if (!matchingStep) continue;
+
+        const triggerStep = stepsResult.data.find((step) => step.step_id === 'S3' && step.status === S1S3StepStatus.SUCCEEDED);
+        const assignStep = stepsResult.data.find(
+          (step) => step.step_id === 'S3_ASSIGN_COPILOT' && step.status === S1S3StepStatus.SUCCEEDED
+        );
+        const triggerEvidence = triggerStep ? getEvidenceRecord(triggerStep) : {};
+        const assignEvidence = assignStep ? getEvidenceRecord(assignStep) : {};
+
+        let issueForResponse = issue;
+        if (
+          issue.status === S1S3IssueStatus.CREATED ||
+          issue.status === S1S3IssueStatus.SPEC_READY
+        ) {
+          const persistedStatus = await updateS1S3IssueStatus(pool, issue.id, S1S3IssueStatus.IMPLEMENTING);
+          if (persistedStatus.success && persistedStatus.data) {
+            issueForResponse = persistedStatus.data;
+          }
+        }
+
+        phase = 'success';
+        return respondS3Success({
+          ok: true,
+          stage: stageId,
+          runId: candidate.id,
+          mutationId: matchingStep.id,
+          issueId: issueForResponse.id,
+          startedAt: new Date(candidate.started_at || candidate.created_at || Date.now()).toISOString(),
+          idempotent: true,
+          issue: issueForResponse,
+          run: candidate,
+          step: matchingStep,
+          githubTrigger: {
+            status: 'ALREADY_TRIGGERED',
+            labelApplied: triggerEvidence.label_applied === true,
+            commentPosted: triggerEvidence.comment_posted === true,
+            copilotAssigned: assignEvidence.copilot_assigned === true,
+            message: 'Existing implement run reused',
+          },
+        });
+      }
     }
 
     const [repoOwner, repoName] = repoFullName.split('/');
@@ -741,6 +870,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         issue_id: issue.id,
         issue_url: issue.github_issue_url,
         request_id: requestId,
+        idempotency_key: idempotencyKey,
+        spec_hash: specHash,
+        base_branch: baseBranch || null,
       },
     });
 
@@ -784,6 +916,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           request_id: requestId,
           label: triggerLabel,
           comment: Boolean(triggerComment),
+          idempotency_key: idempotencyKey,
         },
       });
 
@@ -873,6 +1006,104 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
+    const assignStartStep = await createS1S3RunStep(pool, {
+      run_id: run.id,
+      step_id: 'S3_ASSIGN_COPILOT',
+      step_name: 'Assign to Copilot',
+      status: S1S3StepStatus.STARTED,
+      evidence_refs: {
+        issue_id: issue.id,
+        issue_url: issue.github_issue_url,
+        request_id: requestId,
+        idempotency_key: idempotencyKey,
+      },
+    });
+
+    if (!assignStartStep.success || !assignStartStep.data) {
+      return respondS3Error({
+        code: S3_IMPLEMENT_CODES.INTERNAL_ERROR,
+        phase: 'mapped',
+        blockedBy: 'INTERNAL',
+        nextAction: 'Retry step logging',
+        message: 'Failed to create copilot assignment start step',
+        detailsSafe: 'Failed to create copilot assignment start step',
+      });
+    }
+
+    let copilotAssignResult;
+    try {
+      copilotAssignResult = await assignAfu9Copilot({
+        owner: repoOwner,
+        repo: repoName,
+        issueNumber: issueNumber,
+        requestId,
+        octokit: authClient,
+        assignee: process.env.AFU9_GITHUB_COPILOT_ASSIGNEE,
+      });
+    } catch (error) {
+      await createS1S3RunStep(pool, {
+        run_id: run.id,
+        step_id: 'S3_ASSIGN_COPILOT',
+        step_name: 'Assign to Copilot',
+        status: S1S3StepStatus.FAILED,
+        error_message: getErrorMessage(error),
+        evidence_refs: {
+          issue_id: issue.id,
+          issue_url: issue.github_issue_url,
+          request_id: requestId,
+          idempotency_key: idempotencyKey,
+        },
+      });
+
+      await updateS1S3RunStatus(pool, run.id, S1S3RunStatus.FAILED, getErrorMessage(error));
+
+      if (error instanceof CopilotAssignUnsupportedError) {
+        return respondS3Error({
+          code: 'COPILOT_ASSIGN_UNSUPPORTED',
+          phase: 'mapped',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Enable Copilot assignment support or configure AFU9_GITHUB_COPILOT_ASSIGNEE',
+          message: 'Copilot assignment unsupported',
+          detailsSafe: trimDetails(getErrorMessage(error)),
+        });
+      }
+
+      if (error instanceof CopilotAssignFailedError) {
+        return respondS3Error({
+          code: 'COPILOT_ASSIGN_FAILED',
+          phase: 'mapped',
+          blockedBy: 'UPSTREAM',
+          nextAction: 'Retry copilot assignment',
+          message: 'Copilot assignment failed',
+          detailsSafe: trimDetails(getErrorMessage(error)),
+        });
+      }
+
+      return respondS3Error({
+        code: S3_IMPLEMENT_CODES.GITHUB_UPSTREAM_UNREACHABLE,
+        phase: 'mapped',
+        blockedBy: 'UPSTREAM',
+        nextAction: 'Retry GitHub request',
+        message: 'GitHub upstream unreachable',
+        detailsSafe: trimDetails(getErrorMessage(error)),
+      });
+    }
+
+    await createS1S3RunStep(pool, {
+      run_id: run.id,
+      step_id: 'S3_ASSIGN_COPILOT',
+      step_name: 'Assign to Copilot',
+      status: S1S3StepStatus.SUCCEEDED,
+      evidence_refs: {
+        issue_id: issue.id,
+        issue_url: issue.github_issue_url,
+        request_id: requestId,
+        copilot_assigned: copilotAssignResult.assigned,
+        copilot_assignee: copilotAssignResult.assignee,
+        idempotency_key: idempotencyKey,
+      },
+    });
+
     const updateResult = await updateS1S3IssueStatus(
       pool,
       issue.id,
@@ -902,6 +1133,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         request_id: requestId,
         label_applied: triggerResult.labelApplied,
         comment_posted: triggerResult.commentPosted,
+        idempotency_key: idempotencyKey,
+        implement_started_at: startedAt,
       },
     });
 
@@ -933,6 +1166,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 'TRIGGERED',
         labelApplied: triggerResult.labelApplied,
         commentPosted: triggerResult.commentPosted,
+        copilotAssigned: copilotAssignResult.assigned,
+        copilotAssignee: copilotAssignResult.assignee,
         message: 'GitHub trigger sent',
       },
     });
