@@ -696,4 +696,71 @@ describe('POST /api/afu9/s1s3/issues/[id]/implement', () => {
     expect(body.code).toBe('GUARDRAIL_CONFIG_MISSING');
     expect(body.code).not.toBe('SPEC_NOT_READY');
   });
+
+  test('uses request trigger label/comment when env config is missing', async () => {
+    process.env.AFU9_GITHUB_IMPLEMENT_LABEL = '';
+    process.env.AFU9_GITHUB_IMPLEMENT_COMMENT = '';
+
+    mockGetS1S3IssueById.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'issue-123',
+        status: S1S3IssueStatus.SPEC_READY,
+        repo_full_name: 'org/repo',
+        github_issue_number: 42,
+        owner: 'afu9',
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+
+    mockCreateS1S3Run.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'run-123',
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    mockCreateS1S3RunStep.mockResolvedValue({
+      success: true,
+      data: { id: 'step-123' },
+    });
+
+    mockUpdateS1S3IssueStatus.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'issue-123',
+        status: S1S3IssueStatus.IMPLEMENTING,
+        github_issue_url: 'https://github.com/org/repo/issues/42',
+      },
+    });
+
+    (triggerAfu9Implementation as jest.Mock).mockResolvedValue({
+      labelApplied: true,
+      commentPosted: true,
+    });
+
+    const request = new NextRequest('http://localhost/api/afu9/s1s3/issues/issue-123/implement', {
+      method: 'POST',
+      body: JSON.stringify({
+        triggerLabel: 'afu9:implement',
+        triggerComment: 'Please implement this issue.',
+      }),
+      headers: {
+        'x-request-id': 'req-trigger-fallback',
+      },
+    });
+
+    const response = await implementIssue(request, { params: Promise.resolve({ id: 'issue-123' }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(triggerAfu9Implementation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: 'afu9:implement',
+        comment: 'Please implement this issue.',
+      })
+    );
+  });
 });
